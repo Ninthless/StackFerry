@@ -20,20 +20,6 @@ StackFerry is in active early development. The current branch still contains inh
 
 The fork currently tracks CC Switch `3.18.0` as its baseline.
 
-## Direction
-
-StackFerry is focused on making provider management predictable and easy to inspect:
-
-- Add and edit custom providers without relying on presets
-- Configure provider-specific API endpoints, models, and credentials
-- Review configuration changes before switching an active route
-- Keep credentials local and out of application logs and repository data
-- Preserve unrelated CLI configuration when applying a provider
-- Back up and recover configuration changes safely
-- Present routing state through a restrained shadcn/ui desktop interface
-
-The initial product focus is Claude Code, Codex, and Gemini CLI. Broader inherited integrations will be evaluated as the fork is separated from upstream branding and release infrastructure.
-
 ## Upstream Foundation
 
 CC Switch provides the cross-platform Tauri foundation, provider configuration model, local routing capabilities, and integrations inherited by this fork. StackFerry keeps the upstream MIT license and copyright notice and will continue to document substantial upstream work.
