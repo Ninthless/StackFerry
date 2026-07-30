@@ -16,7 +16,7 @@ StackFerry is not affiliated with or endorsed by the CC Switch maintainers.
 
 ## Project Status
 
-StackFerry is in active development. Its package, application identifier, data directory, database, Deep Link scheme, sync namespace, generated files, and release artifacts are isolated from CC Switch.
+StackFerry `0.1.0` is in active development. Its package, application identifier, data directory, database, Deep Link scheme, sync namespace, generated files, and release artifacts are isolated from CC Switch.
 
 The fork currently tracks CC Switch `3.19.0` as its baseline.
 
@@ -24,9 +24,7 @@ Signed in-app installation is disabled until StackFerry has its own updater sign
 
 ## Upstream Foundation
 
-CC Switch provides the cross-platform Tauri foundation, provider configuration model, local routing capabilities, and integrations inherited by this fork. StackFerry keeps the upstream MIT license and copyright notice and will continue to document substantial upstream work.
-
-Current product documentation is maintained in this repository under [`docs`](docs).
+CC Switch provides the cross-platform Tauri foundation, provider configuration model, local routing capabilities, and integrations inherited by this fork. StackFerry preserves the upstream MIT license, copyright notice, and attribution in this README and Git history.
 
 ## Development
 
