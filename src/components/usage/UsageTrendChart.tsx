@@ -29,6 +29,14 @@ interface UsageTrendChartProps {
   refreshIntervalMs: number;
 }
 
+const SERIES_COLORS = {
+  input: "hsl(var(--foreground))",
+  output: "hsl(var(--foreground) / 0.78)",
+  cacheCreation: "hsl(var(--foreground) / 0.6)",
+  cacheRead: "hsl(var(--foreground) / 0.44)",
+  cost: "hsl(var(--muted-foreground))",
+};
+
 export function UsageTrendChart({
   range,
   rangeLabel,
@@ -133,12 +141,28 @@ export function UsageTrendChart({
           >
             <defs>
               <linearGradient id="colorInput" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
-                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                <stop
+                  offset="5%"
+                  stopColor={SERIES_COLORS.input}
+                  stopOpacity={0.18}
+                />
+                <stop
+                  offset="95%"
+                  stopColor={SERIES_COLORS.input}
+                  stopOpacity={0}
+                />
               </linearGradient>
               <linearGradient id="colorOutput" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#22c55e" stopOpacity={0.2} />
-                <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                <stop
+                  offset="5%"
+                  stopColor={SERIES_COLORS.output}
+                  stopOpacity={0.16}
+                />
+                <stop
+                  offset="95%"
+                  stopColor={SERIES_COLORS.output}
+                  stopOpacity={0}
+                />
               </linearGradient>
               <linearGradient
                 id="colorCacheCreation"
@@ -147,12 +171,28 @@ export function UsageTrendChart({
                 x2="0"
                 y2="1"
               >
-                <stop offset="5%" stopColor="#f97316" stopOpacity={0.2} />
-                <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                <stop
+                  offset="5%"
+                  stopColor={SERIES_COLORS.cacheCreation}
+                  stopOpacity={0.14}
+                />
+                <stop
+                  offset="95%"
+                  stopColor={SERIES_COLORS.cacheCreation}
+                  stopOpacity={0}
+                />
               </linearGradient>
               <linearGradient id="colorCacheRead" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#a855f7" stopOpacity={0.2} />
-                <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+                <stop
+                  offset="5%"
+                  stopColor={SERIES_COLORS.cacheRead}
+                  stopOpacity={0.12}
+                />
+                <stop
+                  offset="95%"
+                  stopColor={SERIES_COLORS.cacheRead}
+                  stopOpacity={0}
+                />
               </linearGradient>
             </defs>
             <CartesianGrid
@@ -190,7 +230,7 @@ export function UsageTrendChart({
               type="monotone"
               dataKey="inputTokens"
               name={t("usage.inputTokens", "输入 Tokens")}
-              stroke="#3b82f6"
+              stroke={SERIES_COLORS.input}
               fillOpacity={1}
               fill="url(#colorInput)"
               strokeWidth={2}
@@ -200,40 +240,43 @@ export function UsageTrendChart({
               type="monotone"
               dataKey="outputTokens"
               name={t("usage.outputTokens", "输出 Tokens")}
-              stroke="#22c55e"
+              stroke={SERIES_COLORS.output}
               fillOpacity={1}
               fill="url(#colorOutput)"
               strokeWidth={2}
+              strokeDasharray="8 3"
             />
             <Area
               yAxisId="tokens"
               type="monotone"
               dataKey="cacheCreationTokens"
               name={t("usage.cacheCreationTokens", "缓存创建")}
-              stroke="#f97316"
+              stroke={SERIES_COLORS.cacheCreation}
               fillOpacity={1}
               fill="url(#colorCacheCreation)"
               strokeWidth={2}
+              strokeDasharray="3 3"
             />
             <Area
               yAxisId="tokens"
               type="monotone"
               dataKey="cacheReadTokens"
               name={t("usage.cacheReadTokens", "缓存命中")}
-              stroke="#a855f7"
+              stroke={SERIES_COLORS.cacheRead}
               fillOpacity={1}
               fill="url(#colorCacheRead)"
               strokeWidth={2}
+              strokeDasharray="10 3 2 3"
             />
             <Area
               yAxisId="cost"
               type="monotone"
               dataKey="cost"
               name={t("usage.cost", "成本")}
-              stroke="#f43f5e"
+              stroke={SERIES_COLORS.cost}
               fill="none"
               strokeWidth={2}
-              strokeDasharray="4 4"
+              strokeDasharray="1 4"
             />
           </AreaChart>
         </ResponsiveContainer>

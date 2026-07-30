@@ -86,18 +86,17 @@ export function LogConfigPanel() {
         </Select>
       </div>
 
-      {/* 日志级别说明 */}
-      <div className="rounded-lg bg-muted/50 p-4 text-xs space-y-1.5">
-        <p className="font-medium text-muted-foreground mb-2">
+      <div className="space-y-1.5 rounded-md bg-muted/50 p-4 text-xs">
+        <p className="mb-2 font-medium text-muted-foreground">
           {t("settings.advanced.logConfig.levelHint")}
         </p>
         <div className="grid gap-1 text-muted-foreground">
           <p>
-            <span className="font-mono text-red-500">error</span> -{" "}
+            <span className="font-mono text-foreground">error</span> -{" "}
             {t("settings.advanced.logConfig.levelDesc.error")}
           </p>
           <p>
-            <span className="font-mono text-orange-500">warn</span> -{" "}
+            <span className="font-mono text-foreground">warn</span> -{" "}
             {t("settings.advanced.logConfig.levelDesc.warn")}
           </p>
           <p>
@@ -105,11 +104,11 @@ export function LogConfigPanel() {
             {t("settings.advanced.logConfig.levelDesc.info")}
           </p>
           <p>
-            <span className="font-mono text-green-500">debug</span> -{" "}
+            <span className="font-mono text-foreground">debug</span> -{" "}
             {t("settings.advanced.logConfig.levelDesc.debug")}
           </p>
           <p>
-            <span className="font-mono text-gray-500">trace</span> -{" "}
+            <span className="font-mono text-foreground">trace</span> -{" "}
             {t("settings.advanced.logConfig.levelDesc.trace")}
           </p>
         </div>
