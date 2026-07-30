@@ -97,7 +97,18 @@
     "windowRestore": "ウィンドウを元に戻す",
     "windowClose": "ウィンドウを閉じる"
   },
+  "shell": {
+    "routeWorkbench": "ルーティングワークベンチ",
+    "applications": "アプリケーション",
+    "workspace": "ワークスペース",
+    "navigation": "メインナビゲーション",
+    "switchApplication": "アプリケーションを切り替え",
+    "routingActive": "ローカルルーティングは有効です",
+    "directMode": "プロバイダー直接接続モード"
+  },
   "provider": {
+    "title": "プロバイダールート",
+    "moreActions": "その他のプロバイダー操作",
     "connectivityCheck": "接続チェック",
     "tabProvider": "プロバイダー",
     "tabUniversal": "統一プロバイダー",
@@ -317,11 +328,13 @@
   },
   "settings": {
     "title": "設定",
+    "description": "アプリケーション設定とデータ管理",
     "general": "一般",
     "tabGeneral": "一般",
     "tabAuth": "認証",
     "tabAdvanced": "詳細",
     "tabProxy": "ルーティング",
+    "tabUsage": "利用状況",
     "authCenter": {
       "title": "OAuth 認証センター",
       "description": "Claude Code で他のサブスクリプションをご利用いただけます。コンプライアンスリスクにご注意ください。",

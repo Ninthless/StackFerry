@@ -1,7 +1,6 @@
 import {
   Bot,
   BookOpen,
-  Boxes,
   Brain,
   Cable,
   ChartNoAxesCombined,
@@ -13,7 +12,6 @@ import {
   Settings,
   ShieldCheck,
   SlidersHorizontal,
-  Sparkles,
   SquareTerminal,
   Wrench,
 } from "lucide-react";
@@ -69,7 +67,7 @@ export function AppSidebar({
   const coreItems: NavItem[] = [
     {
       key: "providers",
-      label: t("provider.title", { defaultValue: "Provider routes" }),
+      label: t("provider.title"),
       icon: Route,
       view: "providers",
     },
@@ -229,7 +227,7 @@ export function AppSidebar({
             StackFerry
           </div>
           <div className="truncate text-[10px] uppercase text-sidebar-foreground/45">
-            Route workbench
+            {t("shell.routeWorkbench")}
           </div>
         </div>
       </div>
@@ -238,9 +236,8 @@ export function AppSidebar({
         <div className="mb-5">
           <div className="mb-2 flex items-center justify-between px-1">
             <span className="text-[10px] font-semibold uppercase text-sidebar-foreground/40">
-              {t("common.apps", { defaultValue: "Applications" })}
+              {t("shell.applications")}
             </span>
-            <Boxes className="h-3.5 w-3.5 text-sidebar-foreground/35" />
           </div>
           <AppSwitcher
             activeApp={activeApp}
@@ -249,11 +246,9 @@ export function AppSidebar({
           />
         </div>
 
-        <nav
-          aria-label={t("common.navigation", { defaultValue: "Navigation" })}
-        >
+        <nav aria-label={t("shell.navigation")}>
           <div className="mb-2 px-1 text-[10px] font-semibold uppercase text-sidebar-foreground/40">
-            {t("common.workspace", { defaultValue: "Workspace" })}
+            {t("shell.workspace")}
           </div>
           <div className="space-y-1">{coreItems.map(renderNavItem)}</div>
           <div className="my-3 border-t border-sidebar-border" />
@@ -294,7 +289,6 @@ export function AppSidebar({
         <div className="mt-2 flex items-center gap-2 px-2.5 text-[10px] text-sidebar-foreground/35">
           <SlidersHorizontal className="h-3 w-3" />
           <span>v0.1.0</span>
-          <Sparkles className="ml-auto h-3 w-3" />
         </div>
       </div>
     </aside>

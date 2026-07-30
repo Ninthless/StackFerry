@@ -97,7 +97,18 @@
     "windowRestore": "還原視窗",
     "windowClose": "關閉視窗"
   },
+  "shell": {
+    "routeWorkbench": "路由工作台",
+    "applications": "應用程式",
+    "workspace": "工作區",
+    "navigation": "主導覽",
+    "switchApplication": "切換應用程式",
+    "routingActive": "本機路由已啟用",
+    "directMode": "Provider 直連模式"
+  },
   "provider": {
+    "title": "Provider 路由",
+    "moreActions": "更多 Provider 操作",
     "connectivityCheck": "檢測連通",
     "tabProvider": "供應商",
     "tabUniversal": "通用供應商",
@@ -317,11 +328,13 @@
   },
   "settings": {
     "title": "設定",
+    "description": "應用程式偏好與資料管理",
     "general": "通用",
     "tabGeneral": "通用",
     "tabAuth": "驗證",
     "tabAdvanced": "進階",
     "tabProxy": "路由",
+    "tabUsage": "統計",
     "authCenter": {
       "title": "OAuth 驗證中心",
       "description": "在 Claude Code 中使用您的其他訂閱，請注意合規風險。",

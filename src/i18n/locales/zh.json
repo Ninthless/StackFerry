@@ -97,7 +97,18 @@
     "windowRestore": "还原窗口",
     "windowClose": "关闭窗口"
   },
+  "shell": {
+    "routeWorkbench": "路由工作台",
+    "applications": "应用",
+    "workspace": "工作区",
+    "navigation": "主导航",
+    "switchApplication": "切换应用",
+    "routingActive": "本地路由已启用",
+    "directMode": "供应商直连模式"
+  },
   "provider": {
+    "title": "供应商路由",
+    "moreActions": "更多供应商操作",
     "connectivityCheck": "检测连通",
     "tabProvider": "供应商",
     "tabUniversal": "统一供应商",
@@ -317,11 +328,13 @@
   },
   "settings": {
     "title": "设置",
+    "description": "应用偏好与数据管理",
     "general": "通用",
     "tabGeneral": "通用",
     "tabAuth": "认证",
     "tabAdvanced": "高级",
     "tabProxy": "路由",
+    "tabUsage": "统计",
     "authCenter": {
       "title": "OAuth 认证中心",
       "description": "在 Claude Code 中使用您的其他订阅，请注意合规风险。",

@@ -97,7 +97,18 @@
     "windowRestore": "Restore window",
     "windowClose": "Close window"
   },
+  "shell": {
+    "routeWorkbench": "Route workbench",
+    "applications": "Applications",
+    "workspace": "Workspace",
+    "navigation": "Main navigation",
+    "switchApplication": "Switch application",
+    "routingActive": "Local routing is active",
+    "directMode": "Direct provider mode"
+  },
   "provider": {
+    "title": "Provider routes",
+    "moreActions": "More provider actions",
     "connectivityCheck": "Connectivity check",
     "tabProvider": "Provider",
     "tabUniversal": "Universal",
@@ -317,11 +328,13 @@
   },
   "settings": {
     "title": "Settings",
+    "description": "Application preferences and data controls",
     "general": "General",
     "tabGeneral": "General",
     "tabAuth": "Auth",
     "tabAdvanced": "Advanced",
     "tabProxy": "Routing",
+    "tabUsage": "Usage",
     "authCenter": {
       "title": "OAuth Authentication Center",
       "description": "Use your other subscriptions in Claude Code — please be mindful of compliance risks.",
