@@ -269,7 +269,7 @@ export function UsageDateRangePicker({
           if (!isEndLive) setActiveField(field);
         }}
       >
-        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="mb-1.5 text-[11px] font-medium uppercase text-muted-foreground">
           {label}
         </div>
         <div className="flex items-center gap-1.5">

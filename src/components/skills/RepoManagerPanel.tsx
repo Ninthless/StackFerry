@@ -89,8 +89,7 @@ export function RepoManagerPanel({
       title={t("skills.repo.title")}
       onClose={onClose}
     >
-      {/* 添加仓库表单 */}
-      <div className="space-y-4 glass-card rounded-xl p-6">
+      <div className="space-y-4 rounded-md border border-border bg-card p-6">
         <h3 className="text-base font-semibold text-foreground">
           {t("skills.addRepo")}
         </h3>
@@ -119,9 +118,7 @@ export function RepoManagerPanel({
               className="mt-2"
             />
           </div>
-          {error && (
-            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
           <Button
             onClick={handleAdd}
             className="bg-primary text-primary-foreground hover:bg-primary/90"
@@ -133,13 +130,12 @@ export function RepoManagerPanel({
         </div>
       </div>
 
-      {/* 仓库列表 */}
       <div className="space-y-4">
         <h3 className="text-base font-semibold text-foreground">
           {t("skills.repo.list")}
         </h3>
         {repos.length === 0 ? (
-          <div className="text-center py-12 glass-card rounded-xl">
+          <div className="border border-dashed border-border bg-card/45 py-12 text-center">
             <p className="text-sm text-muted-foreground">
               {t("skills.repo.empty")}
             </p>
@@ -149,7 +145,7 @@ export function RepoManagerPanel({
             {repos.map((repo) => (
               <div
                 key={`${repo.owner}/${repo.name}`}
-                className="flex items-center justify-between glass-card rounded-xl px-4 py-3"
+                className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3"
               >
                 <div>
                   <div className="text-sm font-medium text-foreground">
@@ -181,7 +177,7 @@ export function RepoManagerPanel({
                     type="button"
                     onClick={() => onRemove(repo.owner, repo.name)}
                     title={t("common.delete")}
-                    className="hover:text-red-500 hover:bg-red-100 dark:hover:text-red-400 dark:hover:bg-red-500/10"
+                    className="hover:bg-destructive/10 hover:text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>

@@ -102,7 +102,7 @@ const WorkspaceFilesPanel: React.FC = () => {
             <button
               key={file.filename}
               onClick={() => setEditingFile(file.filename)}
-              className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card hover:bg-accent/50 transition-colors text-left group"
+              className="group flex items-start gap-3 rounded-md border border-border bg-card p-4 text-left transition-colors hover:border-primary/30 hover:bg-muted/50"
             >
               <div className="mt-0.5 text-muted-foreground group-hover:text-foreground transition-colors">
                 <Icon className="w-5 h-5" />
@@ -129,7 +129,7 @@ const WorkspaceFilesPanel: React.FC = () => {
         {/* Daily Memory — inline with workspace files */}
         <button
           onClick={() => setShowDailyMemory(true)}
-          className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card hover:bg-accent/50 transition-colors text-left group"
+          className="group flex items-start gap-3 rounded-md border border-border bg-card p-4 text-left transition-colors hover:border-primary/30 hover:bg-muted/50"
         >
           <div className="mt-0.5 text-muted-foreground group-hover:text-foreground transition-colors">
             <Calendar className="w-5 h-5" />

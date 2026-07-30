@@ -57,7 +57,7 @@ export function BasicFormFields({
           <DialogTrigger asChild>
             <button
               type="button"
-              className="w-20 h-20 p-3 rounded-xl border-2 border-muted hover:border-primary transition-colors cursor-pointer bg-muted/30 hover:bg-muted/50 flex items-center justify-center"
+              className="flex h-20 w-20 cursor-pointer items-center justify-center rounded-md border border-border bg-muted/30 p-3 transition-colors hover:border-primary hover:bg-muted/50"
               title={
                 currentIcon
                   ? t("providerIcon.clickToChange", {
@@ -79,7 +79,7 @@ export function BasicFormFields({
           <DialogContent
             variant="fullscreen"
             zIndex="top"
-            overlayClassName="bg-[hsl(var(--background))] backdrop-blur-0"
+            overlayClassName="bg-[hsl(var(--background))]"
             className="p-0 sm:rounded-none"
           >
             <div className="flex h-full flex-col">

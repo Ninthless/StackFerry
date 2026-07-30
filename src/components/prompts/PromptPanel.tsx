@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FileText } from "lucide-react";
+import { FileText, Plus } from "lucide-react";
 import { type AppId } from "@/lib/api";
 import { usePromptActions } from "@/hooks/usePromptActions";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
 import PromptListItem from "./PromptListItem";
 import PromptFormPanel from "./PromptFormPanel";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { WorkbenchEmptyState } from "@/components/common/WorkbenchEmptyState";
 
 interface PromptPanelProps {
   open: boolean;
@@ -44,11 +46,9 @@ const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
       if (open) reload();
     }, [open, reload]);
 
-    // Listen for prompt import events from deep link
     useEffect(() => {
       const handlePromptImported = (event: Event) => {
         const customEvent = event as CustomEvent;
-        // Reload if the import is for this app
         if (customEvent.detail?.app === appId) {
           reload();
         }
@@ -60,7 +60,6 @@ const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
       };
     }, [appId, reload]);
 
-    // 应用项目 Profile 会切换激活的 prompt（prompts 非 react-query，需主动 reload）
     useTauriEvent("profile-applied", reload);
 
     const handleAdd = () => {
@@ -88,9 +87,7 @@ const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
           try {
             await deletePrompt(id);
             setConfirmDialog(null);
-          } catch (e) {
-            // Error handled by hook
-          }
+          } catch {}
         },
       });
     };
@@ -101,7 +98,7 @@ const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
 
     return (
       <div className="flex flex-col flex-1 min-h-0 px-6">
-        <div className="flex-shrink-0 py-4 glass rounded-xl border border-white/10 mb-4 px-6">
+        <div className="mb-4 flex-shrink-0 border-b border-border py-3">
           <div className="text-sm text-muted-foreground">
             {t("prompts.count", { count: promptEntries.length })} ·{" "}
             {enabledPrompt
@@ -116,17 +113,17 @@ const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
               {t("prompts.loading")}
             </div>
           ) : promptEntries.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-                <FileText size={24} className="text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-medium text-foreground mb-2">
-                {t("prompts.empty")}
-              </h3>
-              <p className="text-muted-foreground text-sm">
-                {t("prompts.emptyDescription")}
-              </p>
-            </div>
+            <WorkbenchEmptyState
+              icon={<FileText className="h-5 w-5" />}
+              title={t("prompts.empty")}
+              description={t("prompts.emptyDescription")}
+              actions={
+                <Button type="button" size="sm" onClick={handleAdd}>
+                  <Plus className="h-4 w-4" />
+                  {t("prompts.add")}
+                </Button>
+              }
+            />
           ) : (
             <div className="space-y-3">
               {promptEntries.map(([id, prompt]) => (

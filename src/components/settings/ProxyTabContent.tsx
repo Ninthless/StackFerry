@@ -93,7 +93,7 @@ export function ProxyTabContent({
         {/* Local Proxy */}
         <AccordionItem
           value="proxy"
-          className="rounded-xl glass-card overflow-hidden"
+          className="overflow-hidden rounded-md border border-border bg-card"
         >
           <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
             <div className="flex items-center gap-3">
@@ -134,7 +134,7 @@ export function ProxyTabContent({
         {/* Auto Failover */}
         <AccordionItem
           value="failover"
-          className="rounded-xl glass-card overflow-hidden"
+          className="overflow-hidden rounded-md border border-border bg-card"
         >
           <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
             <div className="flex items-center gap-3">
@@ -217,7 +217,7 @@ export function ProxyTabContent({
         {/* Rectifier */}
         <AccordionItem
           value="rectifier"
-          className="rounded-xl glass-card overflow-hidden"
+          className="overflow-hidden rounded-md border border-border bg-card"
         >
           <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
             <div className="flex items-center gap-3">
@@ -240,7 +240,7 @@ export function ProxyTabContent({
         {/* Global Outbound Proxy */}
         <AccordionItem
           value="globalProxy"
-          className="rounded-xl glass-card overflow-hidden"
+          className="overflow-hidden rounded-md border border-border bg-card"
         >
           <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
             <div className="flex items-center gap-3">

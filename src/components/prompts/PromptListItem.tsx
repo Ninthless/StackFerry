@@ -25,9 +25,8 @@ const PromptListItem: React.FC<PromptListItemProps> = ({
   const enabled = prompt.enabled === true;
 
   return (
-    <div className="group relative h-16 rounded-xl border border-border-default bg-muted/50 p-4 transition-all duration-300 hover:bg-muted hover:border-border-default/80 hover:shadow-sm">
-      <div className="flex items-center gap-4 h-full">
-        {/* Toggle 开关 */}
+    <div className="group relative min-h-16 rounded-md border border-border bg-card p-4 transition-colors hover:border-primary/30">
+      <div className="flex h-full items-center gap-4">
         <div className="flex-shrink-0">
           <PromptToggle
             enabled={enabled}
@@ -59,7 +58,7 @@ const PromptListItem: React.FC<PromptListItemProps> = ({
             variant="ghost"
             size="icon"
             onClick={() => onDelete(id)}
-            className="hover:text-red-500 hover:bg-red-100 dark:hover:text-red-400 dark:hover:bg-red-500/10"
+            className="hover:bg-destructive/10 hover:text-destructive"
             title={t("common.delete")}
           >
             <Trash2 size={16} />

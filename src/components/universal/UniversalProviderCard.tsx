@@ -21,7 +21,6 @@ export function UniversalProviderCard({
 }: UniversalProviderCardProps) {
   const { t } = useTranslation();
 
-  // 获取启用的应用列表
   const enabledApps: string[] = [
     provider.apps.claude ? "Claude" : null,
     provider.apps.codex ? "Codex" : null,
@@ -29,8 +28,7 @@ export function UniversalProviderCard({
   ].filter((app): app is string => app !== null);
 
   return (
-    <div className="group relative rounded-xl border border-border/50 bg-card p-4 transition-all hover:border-border hover:shadow-md">
-      {/* 头部：图标和名称 */}
+    <div className="group relative rounded-md border border-border bg-card p-4 transition-colors hover:border-primary/30">
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent">
@@ -44,8 +42,7 @@ export function UniversalProviderCard({
           </div>
         </div>
 
-        {/* 操作按钮 */}
-        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon"
@@ -85,9 +82,7 @@ export function UniversalProviderCard({
         </div>
       </div>
 
-      {/* 配置信息 */}
       <div className="mt-4 space-y-2">
-        {/* Base URL */}
         <div className="flex items-center gap-2 text-sm">
           <Globe className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="truncate text-muted-foreground">
@@ -95,12 +90,11 @@ export function UniversalProviderCard({
           </span>
         </div>
 
-        {/* 启用的应用 */}
         <div className="flex flex-wrap gap-1.5">
           {enabledApps.map((app) => (
             <span
               key={app}
-              className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+              className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
             >
               {app}
             </span>
@@ -115,7 +109,6 @@ export function UniversalProviderCard({
         </div>
       </div>
 
-      {/* 备注 */}
       {provider.notes && (
         <p className="mt-3 text-xs text-muted-foreground line-clamp-2">
           {provider.notes}

@@ -39,35 +39,25 @@ interface UsageHeroProps {
 }
 
 interface TitleTheme {
-  /** Foreground color for the icon glyph (text-* class). */
   accent: string;
-  /** Background tint for the icon square (bg-* class). */
-  iconBg: string;
 }
 
 const TITLE_THEMES: Record<AppType | "all", TitleTheme> = {
-  all: { accent: "text-primary", iconBg: "bg-primary/10" },
+  all: { accent: "text-primary" },
   claude: {
     accent: "text-amber-600 dark:text-amber-400",
-    iconBg: "bg-amber-500/10",
   },
   codex: {
-    // OpenAI/Codex 走黑白单色调；中性灰在深浅模式都能透出方块底色，
-    // 不像纯黑 bg-black/10 在深色背景下会糊掉。
     accent: "text-neutral-700 dark:text-neutral-300",
-    iconBg: "bg-neutral-500/10",
   },
   gemini: {
     accent: "text-sky-600 dark:text-sky-400",
-    iconBg: "bg-sky-500/10",
   },
   grokbuild: {
     accent: "text-rose-600 dark:text-rose-400",
-    iconBg: "bg-rose-500/10",
   },
   opencode: {
     accent: "text-purple-600 dark:text-purple-400",
-    iconBg: "bg-purple-500/10",
   },
 };
 
@@ -226,7 +216,7 @@ export function UsageHero({
 
   if (isLoading) {
     return (
-      <Card className="border border-border/50 bg-card/40 backdrop-blur-sm">
+      <Card>
         <CardContent className="flex items-center justify-center min-h-[200px]">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/50" />
         </CardContent>
@@ -243,18 +233,13 @@ export function UsageHero({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      <Card className="relative overflow-hidden border border-border/50 bg-card/60 backdrop-blur-xl shadow-sm">
+      <Card className="relative overflow-hidden">
         <CardContent className="p-4 md:p-5">
           <div className="flex flex-col gap-4">
             {/* Top row: Main Token Count, Requests, Cost */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div
-                  className={cn(
-                    "p-2.5 rounded-xl bg-gradient-to-br shadow-sm",
-                    titleTheme.iconBg,
-                  )}
-                >
+                <div className="rounded-md border border-primary/20 bg-primary/10 p-2.5">
                   <AppGlyph appType={appType} accentClass={titleTheme.accent} />
                 </div>
                 <div>
@@ -273,7 +258,7 @@ export function UsageHero({
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span
-                      className="text-2xl md:text-3xl font-bold tabular-nums tracking-tight leading-none"
+                      className="text-xl font-bold leading-none tabular-nums md:text-2xl"
                       title={realTotal.toLocaleString()}
                     >
                       {realTotal.toLocaleString()}
@@ -285,22 +270,22 @@ export function UsageHero({
                 </div>
               </div>
 
-              <div className="flex items-center gap-5 bg-background/50 px-4 py-2.5 rounded-xl border border-border/40 shadow-sm">
+              <div className="flex items-center gap-5 rounded-md border border-border bg-background px-4 py-2.5">
                 <div className="flex flex-col">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                  <span className="text-[10px] font-medium uppercase text-muted-foreground">
                     {t("usage.totalRequests")}
                   </span>
                   <span className="font-semibold flex items-center gap-1.5 text-sm tabular-nums">
-                    <Activity className="h-3.5 w-3.5 text-blue-500" />
+                    <Activity className="h-3.5 w-3.5 text-primary" />
                     {requests.toLocaleString()}
                   </span>
                 </div>
                 <div className="w-px h-8 bg-border/60" />
                 <div className="flex flex-col">
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                  <span className="text-[10px] font-medium uppercase text-muted-foreground">
                     {t("usage.totalCost")}
                   </span>
-                  <span className="font-semibold text-green-500 text-sm tabular-nums">
+                  <span className="text-sm font-semibold text-primary tabular-nums">
                     {totalCost == null ? "--" : fmtUsd(totalCost, 4)}
                   </span>
                 </div>
@@ -336,18 +321,18 @@ export function UsageHero({
                 accent="text-emerald-500"
               />
 
-              <div className="col-span-2 lg:col-span-1 flex flex-col justify-center rounded-xl border border-border/40 bg-background/40 p-3 shadow-sm">
+              <div className="col-span-2 flex flex-col justify-center rounded-md border border-border bg-background p-3 lg:col-span-1">
                 <div className="flex items-center justify-between text-[11px] mb-2">
                   <span className="text-muted-foreground font-medium">
                     {t("usage.cacheHitRate", "缓存命中率")}
                   </span>
-                  <span className="font-bold text-emerald-500 tabular-nums">
+                  <span className="font-bold text-primary tabular-nums">
                     {hitPercentLabel}%
                   </span>
                 </div>
                 <div className="relative h-1.5 rounded-full bg-muted/60 overflow-hidden">
                   <motion.div
-                    className="absolute inset-y-0 left-0 bg-emerald-500 rounded-full"
+                    className="absolute inset-y-0 left-0 rounded-full bg-primary"
                     initial={{ width: 0 }}
                     animate={{ width: `${hitPercent}%` }}
                     transition={{ duration: 0.8, ease: "easeOut" }}
@@ -383,14 +368,14 @@ function MiniStat({
 }: MiniStatProps) {
   return (
     <div
-      className="flex flex-col gap-1 rounded-xl border border-border/40 bg-background/40 p-3 shadow-sm"
+      className="flex flex-col gap-1 rounded-md border border-border bg-background p-3"
       title={tooltip}
     >
       <div
         className={`flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground ${accent}`}
       >
         {icon}
-        <span className="text-foreground/70 tracking-wide">{label}</span>
+        <span className="text-foreground/70">{label}</span>
         {tooltip && (
           <Info className="h-3 w-3 text-muted-foreground/60 shrink-0 ml-auto" />
         )}

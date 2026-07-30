@@ -1,4 +1,5 @@
 import { Bot } from "lucide-react";
+import { WorkbenchEmptyState } from "@/components/common/WorkbenchEmptyState";
 
 interface AgentsPanelProps {
   onOpenChange: (open: boolean) => void;
@@ -6,17 +7,12 @@ interface AgentsPanelProps {
 
 export function AgentsPanel({}: AgentsPanelProps) {
   return (
-    <div className="px-6 flex flex-col flex-1 min-h-0">
-      <div className="flex-1 glass-card rounded-xl p-8 flex flex-col items-center justify-center text-center space-y-4">
-        <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4 animate-pulse-slow">
-          <Bot className="w-10 h-10 text-muted-foreground" />
-        </div>
-        <h3 className="text-xl font-semibold">Coming Soon</h3>
-        <p className="text-muted-foreground max-w-md">
-          The Agents management feature is currently under development. Stay
-          tuned for powerful autonomous capabilities.
-        </p>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col px-6 py-4">
+      <WorkbenchEmptyState
+        icon={<Bot className="h-5 w-5" />}
+        title="Agents"
+        description="Agent management is not available in this build."
+      />
     </div>
   );
 }

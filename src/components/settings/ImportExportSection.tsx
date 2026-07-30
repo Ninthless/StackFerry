@@ -60,7 +60,7 @@ export function ImportExportSection({
           <div className="relative">
             <Button
               type="button"
-              className={`w-full h-auto py-3 px-4 bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 text-white ${selectedFile && !isImporting ? "flex-col items-start" : "items-center"}`}
+              className={`h-auto w-full bg-primary px-4 py-3 text-primary-foreground hover:bg-primary/90 ${selectedFile && !isImporting ? "flex-col items-start" : "items-center"}`}
               onClick={!selectedFile ? onSelectFile : onImport}
               disabled={isImporting}
             >
@@ -104,7 +104,7 @@ export function ImportExportSection({
           <div>
             <Button
               type="button"
-              className="w-full h-full py-3 px-4 bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 text-white items-center"
+              className="h-full w-full items-center bg-primary px-4 py-3 text-primary-foreground hover:bg-primary/90"
               onClick={onExport}
             >
               <Save className="mr-2 h-4 w-4" />
@@ -141,7 +141,7 @@ function ImportStatusMessage({
   }
 
   const baseClass =
-    "flex items-start gap-3 rounded-xl border p-4 text-sm leading-relaxed backdrop-blur-sm";
+    "flex items-start gap-3 rounded-md border bg-card p-4 text-sm leading-relaxed";
 
   if (status === "importing") {
     return (

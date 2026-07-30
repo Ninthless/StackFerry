@@ -84,8 +84,7 @@ const PromptFormPanel: React.FC<PromptFormPanelProps> = ({
       };
       await onSave(id, prompt);
       onClose();
-    } catch (error) {
-      // Error handled by hook
+    } catch {
     } finally {
       setSaving(false);
     }
@@ -111,7 +110,7 @@ const PromptFormPanel: React.FC<PromptFormPanelProps> = ({
         </Button>
       }
     >
-      <div className="glass rounded-xl p-6 border border-white/10 space-y-6">
+      <div className="space-y-6 rounded-md border border-border bg-card p-6">
         <div>
           <Label htmlFor="name" className="text-foreground">
             {t("prompts.name")}

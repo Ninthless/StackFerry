@@ -18,7 +18,7 @@ export function ToggleRow({
   disabled,
 }: ToggleRowProps) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card/50 p-4 transition-colors hover:bg-muted/50">
+    <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-card p-4 transition-colors hover:bg-muted/50">
       <div className="flex items-center gap-3">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-background ring-1 ring-border">
           {icon}

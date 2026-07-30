@@ -153,7 +153,7 @@ export function RepoManager({
                   {repos.map((repo) => (
                     <div
                       key={`${repo.owner}/${repo.name}`}
-                      className="flex items-center justify-between rounded-xl border border-border-default bg-card px-4 py-3"
+                      className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3"
                     >
                       <div>
                         <div className="text-sm font-medium text-foreground">

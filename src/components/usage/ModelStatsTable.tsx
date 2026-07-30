@@ -40,7 +40,7 @@ export function ModelStatsTable({
   }
 
   return (
-    <div className="rounded-lg border border-border/50 bg-card/40 backdrop-blur-sm overflow-hidden">
+    <div className="overflow-hidden rounded-md border border-border bg-card">
       <Table>
         <TableHeader>
           <TableRow>

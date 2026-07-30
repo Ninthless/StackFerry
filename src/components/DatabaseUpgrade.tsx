@@ -98,10 +98,10 @@ export function DatabaseUpgrade({ payload }: DatabaseUpgradeProps) {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
-      <div className="w-full max-w-lg space-y-5 rounded-2xl border border-border/60 bg-card/80 p-7 shadow-xl">
+      <div className="w-full max-w-lg space-y-5 rounded-md border border-border bg-card p-7 shadow-xl">
         <div className="flex items-start gap-4">
           <div
-            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${accent.chip}`}
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-md ${accent.chip}`}
           >
             <AccentIcon className="h-6 w-6" />
           </div>

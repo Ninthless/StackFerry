@@ -123,7 +123,7 @@ const CopilotQuotaFooter: React.FC<CopilotQuotaFooterProps> = ({
 
   // 展开模式
   return (
-    <div className="mt-3 rounded-xl border border-border-default bg-card px-4 py-3 shadow-sm">
+    <div className="mt-3 rounded-md border border-border bg-card px-4 py-3">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
           {quota.plan || t("subscription.title")}

@@ -35,6 +35,7 @@ import { SKILLS_APP_IDS } from "@/config/appConfig";
 import { AppCountBar } from "@/components/common/AppCountBar";
 import { AppToggleGroup } from "@/components/common/AppToggleGroup";
 import { ListItemRow } from "@/components/common/ListItemRow";
+import { WorkbenchEmptyState } from "@/components/common/WorkbenchEmptyState";
 import {
   Dialog,
   DialogContent,
@@ -407,20 +408,19 @@ const UnifiedSkillsPanel = React.forwardRef<
             {t("skills.loading")}
           </div>
         ) : !skills || skills.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-              <Sparkles size={24} className="text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">
-              {t("skills.noInstalled")}
-            </h3>
-            <p className="text-muted-foreground text-sm">
-              {t("skills.noInstalledDescription")}
-            </p>
-          </div>
+          <WorkbenchEmptyState
+            icon={<Sparkles className="h-5 w-5" />}
+            title={t("skills.noInstalled")}
+            description={t("skills.noInstalledDescription")}
+            actions={
+              <Button type="button" size="sm" onClick={onOpenDiscovery}>
+                {t("skills.discover")}
+              </Button>
+            }
+          />
         ) : (
           <TooltipProvider delayDuration={300}>
-            <div className="rounded-xl border border-border-default overflow-hidden">
+            <div className="overflow-hidden rounded-md border border-border bg-card">
               {skills.map((skill, index) => (
                 <InstalledSkillListItem
                   key={skill.id}
@@ -504,9 +504,7 @@ const InstalledSkillListItem: React.FC<InstalledSkillListItemProps> = ({
     if (!skill.readmeUrl) return;
     try {
       await settingsApi.openExternal(skill.readmeUrl);
-    } catch {
-      // ignore
-    }
+    } catch {}
   };
 
   const sourceLabel = useMemo(() => {
@@ -561,7 +559,7 @@ const InstalledSkillListItem: React.FC<InstalledSkillListItemProps> = ({
       />
 
       <div
-        className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="flex flex-shrink-0 items-center gap-0.5"
         style={hasUpdate ? { opacity: 1 } : undefined}
       >
         {hasUpdate && onUpdate && (
@@ -569,7 +567,7 @@ const InstalledSkillListItem: React.FC<InstalledSkillListItemProps> = ({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-7 w-7 hover:text-blue-500 hover:bg-blue-100 dark:hover:text-blue-400 dark:hover:bg-blue-500/10"
+            className="h-7 w-7 hover:bg-primary/10 hover:text-primary"
             onClick={onUpdate}
             disabled={isUpdating}
             title={t("skills.update")}
@@ -585,7 +583,7 @@ const InstalledSkillListItem: React.FC<InstalledSkillListItemProps> = ({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-7 w-7 hover:text-red-500 hover:bg-red-100 dark:hover:text-red-400 dark:hover:bg-red-500/10"
+          className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive"
           onClick={onUninstall}
           title={t("skills.uninstall")}
         >
@@ -659,7 +657,7 @@ const RestoreSkillsDialog: React.FC<RestoreSkillsDialogProps> = ({
               {backups.map((backup) => (
                 <div
                   key={backup.backupId}
-                  className="rounded-xl border border-border-default bg-background/70 p-4 shadow-sm"
+                  className="rounded-md border border-border bg-background p-4"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
@@ -786,7 +784,7 @@ const ImportSkillsDialog: React.FC<ImportSkillsDialogProps> = ({
   return (
     <TooltipProvider delayDuration={300}>
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-background rounded-xl p-6 max-w-lg w-full mx-4 shadow-xl max-h-[80vh] flex flex-col">
+        <div className="mx-4 flex max-h-[80vh] w-full max-w-lg flex-col rounded-md border border-border bg-background p-6 shadow-xl">
           <h2 className="text-lg font-semibold mb-2">{t("skills.import")}</h2>
           <p className="text-sm text-muted-foreground mb-4">
             {t("skills.importDescription")}

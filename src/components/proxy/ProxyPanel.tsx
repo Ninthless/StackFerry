@@ -232,7 +232,7 @@ export function ProxyPanel({
         />
 
         {/* [2] Proxy service toggle — always visible */}
-        <div className="flex items-center justify-between rounded-xl border border-border bg-card/50 p-4 transition-colors hover:bg-muted/50">
+        <div className="flex items-center justify-between rounded-md border border-border bg-card p-4 transition-colors hover:bg-muted/50">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background ring-1 ring-border">
               <Power className="h-4 w-4 text-green-500" />
@@ -267,7 +267,7 @@ export function ProxyPanel({
               transition={{ duration: 0.25, ease: "easeInOut" }}
               className="overflow-hidden"
             >
-              <div className="rounded-xl border-2 border-primary/20 bg-primary/5 p-4 space-y-3">
+              <div className="space-y-3 rounded-md border border-primary/25 bg-primary/5 p-4">
                 <p className="text-xs font-medium text-primary">
                   {t("proxyConfig.appTakeover", {
                     defaultValue: "应用接管",

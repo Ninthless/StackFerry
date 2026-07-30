@@ -243,7 +243,7 @@ export const XaiOAuthSection: React.FC<XaiOAuthSectionProps> = ({
               {t("xaiOauth.enterCode", "若浏览器未自动填入，请输入：")}
             </p>
             <div className="flex items-center justify-center gap-2">
-              <code className="rounded border bg-background px-4 py-2 font-mono text-2xl font-bold tracking-wider">
+              <code className="rounded border bg-background px-4 py-2 font-mono text-2xl font-bold">
                 {deviceCode.user_code}
               </code>
               <Button

@@ -294,7 +294,7 @@ export function ProviderPresetSelector({
       if (preset.theme?.backgroundColor) {
         return `${baseClass} text-white`;
       }
-      return `${baseClass} bg-blue-500 text-white dark:bg-blue-600`;
+      return `${baseClass} bg-primary text-primary-foreground`;
     }
 
     return `${baseClass} bg-accent text-muted-foreground hover:bg-accent/80`;
@@ -395,7 +395,7 @@ export function ProviderPresetSelector({
           onClick={() => onPresetChange("custom")}
           className={`inline-flex items-center justify-start gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full ${
             selectedPresetId === "custom"
-              ? "bg-blue-500 text-white dark:bg-blue-600"
+              ? "bg-primary text-primary-foreground"
               : "bg-accent text-muted-foreground hover:bg-accent/80"
           }`}
         >
@@ -440,7 +440,7 @@ export function ProviderPresetSelector({
                 />
               ) : (
                 isPartner && (
-                  <span className="absolute -top-1 -right-1 flex items-center gap-0.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-md">
+                  <span className="absolute -right-1 -top-1 flex items-center gap-0.5 rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-bold text-accent-foreground">
                     <Star className="h-2.5 w-2.5 fill-current" />
                   </span>
                 )
@@ -469,7 +469,7 @@ export function ProviderPresetSelector({
                 className="flex-shrink-0"
               />
               <span className="truncate">{preset.name}</span>
-              <span className="absolute -top-1 -right-1 flex items-center gap-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-md">
+              <span className="absolute -right-1 -top-1 flex items-center gap-0.5 rounded-md bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
                 <Layers className="h-2.5 w-2.5" />
               </span>
             </button>

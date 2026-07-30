@@ -220,7 +220,7 @@ const AgentsDefaultsPanel: React.FC = () => {
       )}
 
       {/* Model Configuration Card */}
-      <div className="rounded-xl border border-border bg-card p-5 mb-4">
+      <div className="mb-4 rounded-md border border-border bg-card p-5">
         <h3 className="text-sm font-medium mb-4">
           {t("openclaw.agents.modelSection")}
         </h3>
@@ -336,7 +336,7 @@ const AgentsDefaultsPanel: React.FC = () => {
       </div>
 
       {/* Runtime Parameters Card */}
-      <div className="rounded-xl border border-border bg-card p-5 mb-4">
+      <div className="mb-4 rounded-md border border-border bg-card p-5">
         <h3 className="text-sm font-medium mb-4">
           {t("openclaw.agents.runtimeSection")}
         </h3>

@@ -147,7 +147,7 @@ export const SubscriptionQuotaView: React.FC<SubscriptionQuotaViewProps> = ({
       );
     }
     return (
-      <div className="mt-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 shadow-sm">
+      <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3">
         <div className="flex items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
             <AlertCircle size={14} />
@@ -192,7 +192,7 @@ export const SubscriptionQuotaView: React.FC<SubscriptionQuotaViewProps> = ({
       );
     }
     return (
-      <div className="mt-3 rounded-xl border border-border-default bg-card px-4 py-3 shadow-sm">
+      <div className="mt-3 rounded-md border border-border bg-card px-4 py-3">
         <div className="flex items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2 text-red-500 dark:text-red-400">
             <AlertCircle size={14} />
@@ -256,7 +256,7 @@ export const SubscriptionQuotaView: React.FC<SubscriptionQuotaViewProps> = ({
 
   // ── 展开模式：详细信息 ──
   return (
-    <div className="mt-3 rounded-xl border border-border-default bg-card px-4 py-3 shadow-sm">
+    <div className="mt-3 rounded-md border border-border bg-card px-4 py-3">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
           {t("subscription.title", { defaultValue: "Subscription Quota" })}

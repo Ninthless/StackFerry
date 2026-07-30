@@ -351,7 +351,7 @@ export function SettingsPage({
                     >
                       <AccordionItem
                         value="directory"
-                        className="rounded-xl glass-card overflow-hidden"
+                        className="overflow-hidden rounded-md border border-border bg-card"
                       >
                         <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
                           <div className="flex items-center gap-3">
@@ -389,7 +389,7 @@ export function SettingsPage({
 
                       <AccordionItem
                         value="data"
-                        className="rounded-xl glass-card overflow-hidden"
+                        className="overflow-hidden rounded-md border border-border bg-card"
                       >
                         <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
                           <div className="flex items-center gap-3">
@@ -421,7 +421,7 @@ export function SettingsPage({
 
                       <AccordionItem
                         value="backup"
-                        className="rounded-xl glass-card overflow-hidden"
+                        className="overflow-hidden rounded-md border border-border bg-card"
                       >
                         <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
                           <div className="flex items-center gap-3">
@@ -454,7 +454,7 @@ export function SettingsPage({
 
                       <AccordionItem
                         value="cloudSync"
-                        className="rounded-xl glass-card overflow-hidden"
+                        className="overflow-hidden rounded-md border border-border bg-card"
                       >
                         <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
                           <div className="flex items-center gap-3">
@@ -481,7 +481,7 @@ export function SettingsPage({
 
                       <AccordionItem
                         value="connectivityCheck"
-                        className="rounded-xl glass-card overflow-hidden"
+                        className="overflow-hidden rounded-md border border-border bg-card"
                       >
                         <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
                           <div className="flex items-center gap-3">
@@ -505,7 +505,7 @@ export function SettingsPage({
 
                       <AccordionItem
                         value="logConfig"
-                        className="rounded-xl glass-card overflow-hidden"
+                        className="overflow-hidden rounded-md border border-border bg-card"
                       >
                         <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
                           <div className="flex items-center gap-3">
@@ -573,7 +573,7 @@ export function SettingsPage({
         open={showRestartPrompt}
         onOpenChange={(open) => !open && handleRestartLater()}
       >
-        <DialogContent zIndex="alert" className="max-w-md glass border-border">
+        <DialogContent zIndex="alert" className="max-w-md border-border">
           <DialogHeader>
             <DialogTitle>{t("settings.restartRequired")}</DialogTitle>
           </DialogHeader>

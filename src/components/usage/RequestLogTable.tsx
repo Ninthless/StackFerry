@@ -110,7 +110,7 @@ export function RequestLogTable({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border bg-card/50 p-2 backdrop-blur-sm">
+      <div className="rounded-md border border-border bg-card p-2">
         <div className="flex flex-wrap items-center gap-1.5">
           {/* Status code */}
           <Select
@@ -150,7 +150,7 @@ export function RequestLogTable({
         <div className="h-[400px] animate-pulse rounded bg-gray-100" />
       ) : (
         <>
-          <div className="rounded-lg border border-border/50 bg-card/40 backdrop-blur-sm overflow-x-auto">
+          <div className="overflow-x-auto rounded-md border border-border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>

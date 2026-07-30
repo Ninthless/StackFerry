@@ -88,8 +88,8 @@ module.exports = {
       borderRadius: {
         sm: "0.375rem",
         md: "0.5rem",
-        lg: "0.75rem",
-        xl: "0.875rem",
+        lg: "0.5rem",
+        xl: "0.5rem",
       },
       fontFamily: {
         // 使用与之前版本保持一致的系统字体栈
@@ -181,4 +181,3 @@ module.exports = {
   },
   plugins: [],
 };
-

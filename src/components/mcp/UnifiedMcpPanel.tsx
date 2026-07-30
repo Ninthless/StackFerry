@@ -21,6 +21,7 @@ import { MCP_APP_IDS } from "@/config/appConfig";
 import { AppCountBar } from "@/components/common/AppCountBar";
 import { AppToggleGroup } from "@/components/common/AppToggleGroup";
 import { ListItemRow } from "@/components/common/ListItemRow";
+import { WorkbenchEmptyState } from "@/components/common/WorkbenchEmptyState";
 
 interface UnifiedMcpPanelProps {
   onOpenChange: (open: boolean) => void;
@@ -154,20 +155,19 @@ const UnifiedMcpPanel = React.forwardRef<
             {t("mcp.loading")}
           </div>
         ) : serverEntries.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-              <Server size={24} className="text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">
-              {t("mcp.unifiedPanel.noServers")}
-            </h3>
-            <p className="text-muted-foreground text-sm">
-              {t("mcp.emptyDescription")}
-            </p>
-          </div>
+          <WorkbenchEmptyState
+            icon={<Server className="h-5 w-5" />}
+            title={t("mcp.unifiedPanel.noServers")}
+            description={t("mcp.emptyDescription")}
+            actions={
+              <Button type="button" size="sm" onClick={handleAdd}>
+                {t("mcp.addMcp")}
+              </Button>
+            }
+          />
         ) : (
           <TooltipProvider delayDuration={300}>
-            <div className="rounded-xl border border-border-default overflow-hidden">
+            <div className="overflow-hidden rounded-md border border-border bg-card">
               {serverEntries.map(([id, server], index) => (
                 <UnifiedMcpListItem
                   key={id}
@@ -246,9 +246,7 @@ const UnifiedMcpListItem: React.FC<UnifiedMcpListItemProps> = ({
     if (!url) return;
     try {
       await settingsApi.openExternal(url);
-    } catch {
-      // ignore
-    }
+    } catch {}
   };
 
   return (
@@ -290,7 +288,7 @@ const UnifiedMcpListItem: React.FC<UnifiedMcpListItemProps> = ({
         appIds={MCP_APP_IDS}
       />
 
-      <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex flex-shrink-0 items-center gap-0.5">
         <Button
           type="button"
           variant="ghost"
@@ -305,7 +303,7 @@ const UnifiedMcpListItem: React.FC<UnifiedMcpListItemProps> = ({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-7 w-7 hover:text-red-500 hover:bg-red-100 dark:hover:text-red-400 dark:hover:bg-red-500/10"
+          className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive"
           onClick={() => onDelete(id)}
           title={t("common.delete")}
         >

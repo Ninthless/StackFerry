@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Layers } from "lucide-react";
+import { Layers, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { UniversalProviderCard } from "./UniversalProviderCard";
@@ -8,6 +8,8 @@ import { UniversalProviderFormModal } from "./UniversalProviderFormModal";
 import { universalProvidersApi } from "@/lib/api";
 import type { UniversalProvider, UniversalProvidersMap } from "@/types";
 import { deepClone } from "@/utils/deepClone";
+import { Button } from "@/components/ui/button";
+import { WorkbenchEmptyState } from "@/components/common/WorkbenchEmptyState";
 
 export function UniversalProviderPanel() {
   const { t } = useTranslation();
@@ -219,18 +221,25 @@ export function UniversalProviderPanel() {
 
   return (
     <div className="space-y-4">
-      {/* 头部 */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 border-b border-border pb-3">
         <Layers className="h-5 w-5 text-primary" />
         <h2 className="text-lg font-semibold">
           {t("universalProvider.title", { defaultValue: "统一供应商" })}
         </h2>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+        <span className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
           {providerList.length}
         </span>
+        <Button
+          type="button"
+          size="sm"
+          className="ml-auto"
+          onClick={() => setIsFormOpen(true)}
+        >
+          <Plus className="h-4 w-4" />
+          {t("universalProvider.add", { defaultValue: "Add provider" })}
+        </Button>
       </div>
 
-      {/* 描述 */}
       <p className="text-sm text-muted-foreground">
         {t("universalProvider.description", {
           defaultValue:
@@ -238,25 +247,26 @@ export function UniversalProviderPanel() {
         })}
       </p>
 
-      {/* 供应商列表 */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
       ) : providerList.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-12 text-center">
-          <Layers className="mb-3 h-10 w-10 text-muted-foreground/50" />
-          <p className="text-sm text-muted-foreground">
-            {t("universalProvider.empty", {
-              defaultValue: "还没有统一供应商",
-            })}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground/70">
-            {t("universalProvider.emptyHint", {
-              defaultValue: "点击下方「添加统一供应商」按钮创建一个",
-            })}
-          </p>
-        </div>
+        <WorkbenchEmptyState
+          icon={<Layers className="h-5 w-5" />}
+          title={t("universalProvider.empty", {
+            defaultValue: "No universal providers",
+          })}
+          description={t("universalProvider.emptyHint", {
+            defaultValue: "Create a provider to sync it across applications.",
+          })}
+          actions={
+            <Button type="button" size="sm" onClick={() => setIsFormOpen(true)}>
+              <Plus className="h-4 w-4" />
+              {t("universalProvider.add", { defaultValue: "Add provider" })}
+            </Button>
+          }
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {providerList.map((provider) => (
@@ -272,7 +282,6 @@ export function UniversalProviderPanel() {
         </div>
       )}
 
-      {/* 表单模态框 */}
       <UniversalProviderFormModal
         isOpen={isFormOpen}
         onClose={() => {
@@ -284,7 +293,6 @@ export function UniversalProviderPanel() {
         editingProvider={editingProvider}
       />
 
-      {/* 删除确认对话框 */}
       <ConfirmDialog
         isOpen={deleteConfirm.open}
         title={t("universalProvider.deleteConfirmTitle", {
@@ -299,7 +307,6 @@ export function UniversalProviderPanel() {
         onCancel={() => setDeleteConfirm({ open: false, id: "", name: "" })}
       />
 
-      {/* 同步确认对话框 */}
       <ConfirmDialog
         isOpen={syncConfirm.open}
         title={t("universalProvider.syncConfirmTitle", {

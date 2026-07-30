@@ -114,7 +114,7 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
     }
 
     return (
-      <div className="mt-3 rounded-xl border border-border-default bg-card px-4 py-3 shadow-sm">
+      <div className="mt-3 rounded-md border border-border bg-card px-4 py-3">
         <div className="flex items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2 text-red-500 dark:text-red-400">
             <AlertCircle size={14} />
@@ -275,7 +275,7 @@ const UsageFooter: React.FC<UsageFooterProps> = ({
   }
 
   return (
-    <div className="mt-3 rounded-xl border border-border-default bg-card px-4 py-3 shadow-sm">
+    <div className="mt-3 rounded-md border border-border bg-card px-4 py-3">
       {/* 标题行：包含刷新按钮和自动查询时间 */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">

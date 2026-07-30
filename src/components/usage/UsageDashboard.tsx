@@ -240,18 +240,16 @@ export function UsageDashboard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="space-y-8 pb-8"
+      className="space-y-5 pb-8"
     >
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-2">
         <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-bold tracking-tight">
-            {t("usage.title")}
-          </h2>
+          <h2 className="text-lg font-semibold">{t("usage.title")}</h2>
           <p className="text-sm text-muted-foreground">{t("usage.subtitle")}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center p-1 bg-muted/30 rounded-lg border border-border/50">
+          <div className="flex items-center rounded-md border border-border bg-background p-1">
             {APP_FILTER_OPTIONS.map((type) => {
               const label = t(`usage.appFilter.${type}`);
               return (
@@ -262,10 +260,10 @@ export function UsageDashboard({
                   title={label}
                   aria-label={label}
                   className={cn(
-                    "flex h-8 items-center justify-center px-2.5 rounded-md transition-all",
+                    "flex h-8 items-center justify-center rounded-md px-2.5 transition-colors",
                     appType === type
-                      ? "bg-background text-primary shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   {type === "all" ? (
@@ -387,7 +385,7 @@ export function UsageDashboard({
       <div className="space-y-4">
         <Tabs defaultValue="logs" className="w-full">
           <div className="flex items-center justify-between mb-4">
-            <TabsList className="bg-muted/50">
+            <TabsList className="border border-border bg-background p-1">
               <TabsTrigger value="logs" className="gap-2">
                 <ListFilter className="h-4 w-4" />
                 {t("usage.requestLogs")}
@@ -446,7 +444,7 @@ export function UsageDashboard({
       <Accordion type="multiple" defaultValue={[]} className="w-full space-y-4">
         <AccordionItem
           value="pricing"
-          className="rounded-xl glass-card overflow-hidden"
+          className="overflow-hidden rounded-md border border-border bg-card"
         >
           <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
             <div className="flex items-center gap-3">
@@ -467,7 +465,7 @@ export function UsageDashboard({
         </AccordionItem>
         <AccordionItem
           value="maintenance"
-          className="rounded-xl glass-card overflow-hidden"
+          className="overflow-hidden rounded-md border border-border bg-card"
         >
           <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
             <div className="flex items-center gap-3">

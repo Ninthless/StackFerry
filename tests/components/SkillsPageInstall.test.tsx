@@ -180,7 +180,7 @@ describe("SkillsPage - skills.sh install (regression)", () => {
     // Click install on the SECOND card (Agent Browser B)
     const secondCard = screen
       .getByText("Agent Browser B")
-      .closest("div.glass-card");
+      .closest("[data-skill-key]");
     expect(secondCard).not.toBeNull();
     const installButton = secondCard!.querySelector(
       "button:last-of-type",

@@ -870,7 +870,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
       onClose={onClose}
       footer={footer}
     >
-      <div className="glass rounded-xl border border-white/10 px-6 py-4 flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-card px-6 py-4">
         <p className="text-base font-medium leading-none text-foreground">
           {t("usageScript.enableUsageQuery")}
         </p>
@@ -884,7 +884,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
       {script.enabled && (
         <div className="space-y-6">
           {/* 预设模板选择 */}
-          <div className="space-y-4 glass rounded-xl border border-white/10 p-6">
+          <div className="space-y-4 rounded-md border border-border bg-card p-6">
             <Label className="text-base font-medium">
               {t("usageScript.presetTemplate")}
             </Label>
@@ -1524,7 +1524,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
 
           {/* 提取器代码 - 专用模板不需要 */}
           {!NATIVE_USAGE_TEMPLATES.has(selectedTemplate || "") && (
-            <div className="space-y-4 glass rounded-xl border border-white/10 p-6">
+            <div className="space-y-4 rounded-md border border-border bg-card p-6">
               <div className="flex items-center justify-between">
                 <Label className="text-base font-medium">
                   {t("usageScript.extractorCode")}
@@ -1549,7 +1549,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
 
           {/* 帮助信息 - 专用模板不需要 */}
           {!NATIVE_USAGE_TEMPLATES.has(selectedTemplate || "") && (
-            <div className="glass rounded-xl border border-white/10 p-6 text-sm text-foreground/90">
+            <div className="rounded-md border border-border bg-card p-6 text-sm text-foreground/90">
               <h4 className="font-medium mb-2">
                 {t("usageScript.scriptHelp")}
               </h4>

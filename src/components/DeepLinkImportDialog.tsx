@@ -552,7 +552,7 @@ export function DeepLinkImportDialog() {
                       {/* Parsed Config Details */}
                       {parsedConfig && (
                         <div className="rounded-lg bg-muted/50 p-3 space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                          <div className="text-xs font-medium uppercase text-muted-foreground">
                             {t("deeplink.configDetails")}
                           </div>
 

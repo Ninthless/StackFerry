@@ -316,7 +316,7 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
               {t("copilot.enterCode", "在浏览器中输入以下代码：")}
             </p>
             <div className="flex items-center justify-center gap-2">
-              <code className="text-2xl font-mono font-bold tracking-wider bg-background px-4 py-2 rounded border">
+              <code className="rounded border bg-background px-4 py-2 font-mono text-2xl font-bold">
                 {deviceCode.user_code}
               </code>
               <Button
