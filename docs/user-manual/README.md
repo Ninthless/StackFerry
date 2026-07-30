@@ -1,4 +1,4 @@
-# CC Switch User Manual / 用户手册 / ユーザーマニュアル
+# StackFerry User Manual / 用户手册 / ユーザーマニュアル
 
 > Claude Code / Claude Desktop / Codex / Gemini CLI / OpenCode / OpenClaw / Hermes
 
@@ -14,9 +14,9 @@
 
 - Documentation version: v3.16.0
 - Last updated: 2026-05-29
-- Compatible with CC Switch v3.16.0+
+- Compatible with StackFerry v3.16.0+
 
 ## Links
 
-- [GitHub Issues](https://github.com/farion1231/cc-switch/issues)
-- [GitHub Repository](https://github.com/farion1231/cc-switch)
+- [GitHub Issues](https://github.com/Ninthless/StackFerry/issues)
+- [GitHub Repository](https://github.com/Ninthless/StackFerry)
