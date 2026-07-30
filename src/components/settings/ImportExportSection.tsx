@@ -145,15 +145,11 @@ function ImportStatusMessage({
 
   if (status === "importing") {
     return (
-      <div
-        className={`${baseClass} border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400`}
-      >
+      <div className={`${baseClass} border-border bg-muted text-foreground`}>
         <Loader2 className="mt-0.5 h-5 w-5 flex-shrink-0 animate-spin" />
         <div>
           <p className="font-semibold">{t("settings.importing")}</p>
-          <p className="text-blue-600/80 dark:text-blue-400/80">
-            {t("common.loading")}
-          </p>
+          <p className="text-muted-foreground">{t("common.loading")}</p>
         </div>
       </div>
     );

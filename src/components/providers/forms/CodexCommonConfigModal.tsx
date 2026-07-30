@@ -100,17 +100,17 @@ export const CodexCommonConfigModal: React.FC<CodexCommonConfigModalProps> = ({
       }
     >
       <div className="space-y-4">
-        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/30 p-3 space-y-1.5">
-          <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+        <div className="space-y-1.5 rounded-md border border-border bg-muted/60 p-3">
+          <p className="text-sm font-medium text-foreground">
             {t("commonConfig.guideTitle")}
           </p>
-          <p className="text-xs text-blue-700/80 dark:text-blue-400/80">
+          <p className="text-xs text-muted-foreground">
             {t("commonConfig.guidePurpose")}
           </p>
-          <p className="text-xs text-blue-700/80 dark:text-blue-400/80">
+          <p className="text-xs text-muted-foreground">
             {t("commonConfig.guideUsage")}
           </p>
-          <p className="text-xs text-blue-700/80 dark:text-blue-400/80">
+          <p className="text-xs text-muted-foreground">
             {t("commonConfig.guideReExtract")}
           </p>
           <p className="text-xs text-muted-foreground">

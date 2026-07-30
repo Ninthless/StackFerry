@@ -260,7 +260,7 @@ const McpWizardModal: React.FC<McpWizardModalProps> = ({
                     onChange={(e) =>
                       setWizardType(e.target.value as "stdio" | "http" | "sse")
                     }
-                    className="w-4 h-4 accent-blue-500"
+                    className="h-4 w-4 accent-primary"
                   />
                   <span className="text-sm text-foreground">
                     {t("mcp.wizard.typeStdio")}
@@ -274,7 +274,7 @@ const McpWizardModal: React.FC<McpWizardModalProps> = ({
                     onChange={(e) =>
                       setWizardType(e.target.value as "stdio" | "http" | "sse")
                     }
-                    className="w-4 h-4 accent-blue-500"
+                    className="h-4 w-4 accent-primary"
                   />
                   <span className="text-sm text-foreground">
                     {t("mcp.wizard.typeHttp")}
@@ -288,7 +288,7 @@ const McpWizardModal: React.FC<McpWizardModalProps> = ({
                     onChange={(e) =>
                       setWizardType(e.target.value as "stdio" | "http" | "sse")
                     }
-                    className="w-4 h-4 accent-blue-500"
+                    className="h-4 w-4 accent-primary"
                   />
                   <span className="text-sm text-foreground">
                     {t("mcp.wizard.typeSse")}
@@ -341,7 +341,7 @@ const McpWizardModal: React.FC<McpWizardModalProps> = ({
                     onChange={(e) => setWizardArgs(e.target.value)}
                     placeholder={t("mcp.wizard.argsPlaceholder")}
                     rows={3}
-                    className="w-full rounded-md border border-border-default bg-background px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-y"
+                    className="w-full resize-y rounded-md border border-border-default bg-background px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/25"
                   />
                 </div>
 
@@ -355,7 +355,7 @@ const McpWizardModal: React.FC<McpWizardModalProps> = ({
                     onChange={(e) => setWizardEnv(e.target.value)}
                     placeholder={t("mcp.wizard.envPlaceholder")}
                     rows={3}
-                    className="w-full rounded-md border border-border-default bg-background px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-y"
+                    className="w-full resize-y rounded-md border border-border-default bg-background px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/25"
                   />
                 </div>
               </>
@@ -390,7 +390,7 @@ const McpWizardModal: React.FC<McpWizardModalProps> = ({
                     onChange={(e) => setWizardHeaders(e.target.value)}
                     placeholder={t("mcp.wizard.headersPlaceholder")}
                     rows={3}
-                    className="w-full rounded-md border border-border-default bg-background px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-y"
+                    className="w-full resize-y rounded-md border border-border-default bg-background px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/25"
                   />
                 </div>
               </>

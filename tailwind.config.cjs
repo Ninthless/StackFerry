@@ -49,11 +49,6 @@ module.exports = {
           },
           hover: "hsl(var(--sidebar-hover))",
         },
-        blue: {
-          400: "#409CFF",
-          500: "#0A84FF",
-          600: "#0060DF",
-        },
         gray: {
           50: "#fafafa",
           100: "#f4f4f5",

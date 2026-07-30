@@ -453,7 +453,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
                     onClick={applyCustom}
                     className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       selectedPreset === -1
-                        ? "bg-emerald-500 text-white dark:bg-emerald-600"
+                        ? "bg-primary text-primary-foreground"
                         : "bg-accent text-muted-foreground hover:bg-accent/80"
                     }`}
                   >
@@ -468,7 +468,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
                         onClick={() => applyPreset(idx)}
                         className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                           selectedPreset === idx
-                            ? "bg-emerald-500 text-white dark:bg-emerald-600"
+                            ? "bg-primary text-primary-foreground"
                             : "bg-accent text-muted-foreground hover:bg-accent/80"
                         }`}
                         title={t(descriptionKey)}
@@ -698,7 +698,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsWizardOpen(true)}
-                  className="text-sm text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 transition-colors"
+                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
                 >
                   {t("mcp.form.useWizard")}
                 </button>

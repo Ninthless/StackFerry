@@ -341,7 +341,7 @@ export const CopilotAuthSection: React.FC<CopilotAuthSectionProps> = ({
               href={deviceCode.verification_uri}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-sm text-blue-500 hover:underline"
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
               {deviceCode.verification_uri}
               <ExternalLink className="h-3 w-3" />

@@ -82,7 +82,7 @@ export function AppSwitcher({
             className={cn(
               "group flex h-10 min-w-0 items-center gap-2 rounded-md border px-2 text-left text-[11px] font-medium transition-colors",
               isActive
-                ? "border-primary/35 bg-primary/10 text-sidebar-foreground"
+                ? "border-sidebar-foreground/25 bg-sidebar-active text-sidebar-foreground"
                 : "border-transparent text-sidebar-foreground/60 hover:border-sidebar-border hover:bg-sidebar-hover hover:text-sidebar-foreground",
             )}
           >
@@ -97,7 +97,7 @@ export function AppSwitcher({
                   className={cn(
                     "absolute -bottom-0.5 -right-0.5 flex h-[10px] w-[10px] items-center justify-center rounded-[2px] border",
                     isActive
-                      ? "border-primary/40 bg-sidebar text-primary"
+                      ? "border-sidebar-foreground/35 bg-sidebar text-sidebar-foreground"
                       : "border-sidebar-border bg-sidebar text-sidebar-foreground/45",
                   )}
                   aria-hidden="true"

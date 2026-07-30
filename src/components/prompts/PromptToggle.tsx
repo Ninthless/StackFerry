@@ -23,14 +23,14 @@ const PromptToggle: React.FC<PromptToggleProps> = ({
       disabled={disabled}
       onClick={() => onChange(!enabled)}
       className={`
-        relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/20
+        relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
         ${enabled ? "bg-primary" : "bg-muted-foreground/30"}
         ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
       `}
     >
       <span
         className={`
-          inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+          inline-block h-4 w-4 transform rounded-full bg-primary-foreground transition-transform
           ${enabled ? "translate-x-6" : "translate-x-1"}
         `}
       />

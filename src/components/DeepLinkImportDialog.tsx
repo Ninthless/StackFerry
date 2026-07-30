@@ -400,7 +400,7 @@ export function DeepLinkImportDialog() {
                     <div className="font-medium text-sm text-muted-foreground">
                       {t("deeplink.homepage")}
                     </div>
-                    <div className="col-span-2 text-sm break-all text-blue-600 dark:text-blue-400">
+                    <div className="col-span-2 break-all text-sm text-foreground">
                       {request.homepage}
                     </div>
                   </div>
@@ -536,7 +536,7 @@ export function DeepLinkImportDialog() {
                           {t("deeplink.configSource")}
                         </div>
                         <div className="col-span-2 text-sm">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium">
+                          <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
                             {configSource === "base64"
                               ? t("deeplink.configEmbedded")
                               : t("deeplink.configRemote")}
@@ -653,14 +653,14 @@ export function DeepLinkImportDialog() {
                         <div className="col-span-2 text-sm">
                           {/*
                             判据是 `=== true`，与后端 `usage_enabled.unwrap_or(false)`
-                            严格对齐。此前用的 `!== false` 会把"链接没说"渲染成绿色的
+                            严格对齐。此前用的 `!== false` 会把"链接没说"渲染成
                             「已启用」——徽章必须显示实际会发生的事，不能比后端更乐观。
                           */}
                           <span
                             className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
                               request.usageEnabled === true
-                                ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
-                                : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
+                                ? "bg-primary text-primary-foreground"
+                                : "border border-border bg-muted text-muted-foreground"
                             }`}
                           >
                             {request.usageEnabled === true

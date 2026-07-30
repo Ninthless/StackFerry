@@ -203,12 +203,14 @@ export function AppSidebar({
         <Icon
           className={cn(
             "h-4 w-4 shrink-0",
-            isActive ? "text-primary" : "text-sidebar-foreground/50",
+            isActive
+              ? "text-sidebar-active-foreground"
+              : "text-sidebar-foreground/50",
           )}
         />
         <span className="min-w-0 truncate">{item.label}</span>
         {item.key === "providers" && isRouteActive && (
-          <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+          <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-sidebar-active-foreground" />
         )}
       </button>
     );
@@ -264,7 +266,7 @@ export function AppSidebar({
           <button
             type="button"
             onClick={onOpenUsage}
-            className="mb-2 flex h-9 w-full items-center gap-2.5 rounded-md bg-primary/10 px-2.5 text-left text-xs text-primary hover:bg-primary/15"
+            className="mb-2 flex h-9 w-full items-center gap-2.5 rounded-md bg-sidebar-active px-2.5 text-left text-xs text-sidebar-foreground hover:bg-sidebar-hover"
           >
             <ChartNoAxesCombined className="h-4 w-4" />
             <span className="truncate">

@@ -299,7 +299,7 @@ export function ProviderCard({
           "z-10 scale-[1.01] cursor-grabbing border-primary shadow-md",
       )}
     >
-      <div className="relative flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div className="relative flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <button
             type="button"
@@ -335,20 +335,20 @@ export function ProviderCard({
               </h3>
 
               {isOmo && (
-                <span className="inline-flex items-center rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
                   OMO
                 </span>
               )}
 
               {isOmoSlim && (
-                <span className="inline-flex items-center rounded-md bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
                   Slim
                 </span>
               )}
 
               {appId === "claude-desktop" &&
                 providerNeedsRouting(appId, provider) && (
-                  <span className="inline-flex items-center rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                  <span className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
                     {t("claudeDesktop.modeProxy", {
                       defaultValue: "需要路由",
                     })}
@@ -356,7 +356,7 @@ export function ProviderCard({
                 )}
 
               {appId === "claude" && providerNeedsRouting(appId, provider) && (
-                <span className="inline-flex items-center rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                <span className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
                   {t("claudeCode.needsRouting", {
                     defaultValue: "需要路由",
                   })}
@@ -364,7 +364,7 @@ export function ProviderCard({
               )}
 
               {codexNeedsRouting && (
-                <span className="inline-flex items-center rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                <span className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
                   {t("codex.needsRouting", {
                     defaultValue: "需要路由",
                   })}
@@ -380,7 +380,7 @@ export function ProviderCard({
               )}
 
               {appId === "codex" && supportsOfficialRouting && (
-                <span className="inline-flex items-center rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                <span className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
                   {isProxyTakeover
                     ? t("codex.officialRouting", {
                         defaultValue: "官方账号路由",
@@ -447,7 +447,7 @@ export function ProviderCard({
           </div>
         </div>
 
-        <div className="flex min-w-0 items-center gap-3 border-t border-border pt-3 xl:ml-auto xl:border-t-0 xl:pt-0">
+        <div className="flex min-w-0 items-center gap-3 border-t border-border pt-3 2xl:ml-auto 2xl:border-t-0 2xl:pt-0">
           <div className="ml-auto">
             <div className="flex items-center gap-1">
               {isCopilot ? (

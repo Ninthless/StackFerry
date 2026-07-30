@@ -24,7 +24,6 @@ import {
 } from "./format";
 import {
   CACHE_INCLUSIVE_APP_TYPES,
-  type AppType,
   type UsageRangeSelection,
   type UsageSummary,
   type UsageSummaryByApp,
@@ -37,29 +36,6 @@ interface UsageHeroProps {
   model?: string;
   refreshIntervalMs: number;
 }
-
-interface TitleTheme {
-  accent: string;
-}
-
-const TITLE_THEMES: Record<AppType | "all", TitleTheme> = {
-  all: { accent: "text-primary" },
-  claude: {
-    accent: "text-amber-600 dark:text-amber-400",
-  },
-  codex: {
-    accent: "text-neutral-700 dark:text-neutral-300",
-  },
-  gemini: {
-    accent: "text-sky-600 dark:text-sky-400",
-  },
-  grokbuild: {
-    accent: "text-rose-600 dark:text-rose-400",
-  },
-  opencode: {
-    accent: "text-purple-600 dark:text-purple-400",
-  },
-};
 
 /**
  * Combine per-app summaries into a single rolled-up summary.
@@ -131,25 +107,14 @@ function deriveCacheWriteState(appTypes: string[]): CacheWriteState {
   return "partial";
 }
 
-/**
- * Hero 标题图标：选中具体应用时显示该应用的品牌图标，"全部"时回退到通用闪电。
- * 复用 APP_ICON_MAP（与侧边栏 / 应用切换器同一套图标），用 cloneElement 放大到
- * 与原闪电一致的 20px；品牌图标自带配色，外层方块仍按 titleTheme 主题色着色。
- */
-function AppGlyph({
-  appType,
-  accentClass,
-}: {
-  appType?: string;
-  accentClass: string;
-}) {
+function AppGlyph({ appType }: { appType?: string }) {
   if (appType && appType in APP_ICON_MAP) {
     const base = APP_ICON_MAP[appType as AppId].icon;
     if (isValidElement<{ size?: number }>(base)) {
       return cloneElement(base, { size: 20 });
     }
   }
-  return <Zap className={cn("h-5 w-5", accentClass)} />;
+  return <Zap className="h-5 w-5 text-foreground" />;
 }
 
 export function UsageHero({
@@ -177,11 +142,8 @@ export function UsageHero({
   const allApps = data ?? [];
   const summary = pickSummary(allApps, appType);
 
-  const titleTheme =
-    TITLE_THEMES[(appType ?? "all") as keyof typeof TITLE_THEMES] ??
-    TITLE_THEMES.all;
   const appLabel =
-    appType && appType in TITLE_THEMES ? t(`usage.appFilter.${appType}`) : null;
+    appType && appType in APP_ICON_MAP ? t(`usage.appFilter.${appType}`) : null;
 
   const cacheWriteState = deriveCacheWriteState(
     appType ? [appType] : allApps.map((a) => a.appType),
@@ -240,15 +202,13 @@ export function UsageHero({
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="rounded-md border border-primary/20 bg-primary/10 p-2.5">
-                  <AppGlyph appType={appType} accentClass={titleTheme.accent} />
+                  <AppGlyph appType={appType} />
                 </div>
                 <div>
                   <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-0.5">
                     {appLabel && (
                       <>
-                        <span
-                          className={cn("font-semibold", titleTheme.accent)}
-                        >
+                        <span className="font-semibold text-foreground">
                           {appLabel}
                         </span>
                         <span className="text-muted-foreground/30">•</span>
@@ -298,19 +258,19 @@ export function UsageHero({
                 icon={<ArrowDownToLine className="h-3.5 w-3.5" />}
                 label={t("usage.freshInput", "新增输入")}
                 value={formatTokensShort(input, lang)}
-                accent="text-blue-500"
+                accent="text-foreground"
               />
               <MiniStat
                 icon={<ArrowUpFromLine className="h-3.5 w-3.5" />}
                 label={t("usage.output")}
                 value={formatTokensShort(output, lang)}
-                accent="text-purple-500"
+                accent="text-foreground"
               />
               <MiniStat
                 icon={<Database className="h-3.5 w-3.5" />}
                 label={t("usage.cacheWrite", "缓存写入")}
                 value={cacheWriteDisplay.value}
-                accent="text-amber-500"
+                accent="text-foreground"
                 muted={cacheWriteDisplay.muted}
                 tooltip={cacheWriteDisplay.tooltip}
               />
@@ -318,7 +278,7 @@ export function UsageHero({
                 icon={<Sparkles className="h-3.5 w-3.5" />}
                 label={t("usage.cacheRead", "缓存命中")}
                 value={formatTokensShort(cacheRead, lang)}
-                accent="text-emerald-500"
+                accent="text-foreground"
               />
 
               <div className="col-span-2 flex flex-col justify-center rounded-md border border-border bg-background p-3 lg:col-span-1">

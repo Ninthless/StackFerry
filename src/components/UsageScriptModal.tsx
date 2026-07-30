@@ -938,7 +938,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                 <div className="space-y-1 text-xs">
                   {/* baseUrl */}
                   <div className="flex items-center gap-2 py-1">
-                    <code className="text-emerald-500 dark:text-emerald-400 font-mono shrink-0">
+                    <code className="shrink-0 font-mono text-foreground">
                       {"{{baseUrl}}"}
                     </code>
                     <span className="text-muted-foreground/50">=</span>
@@ -955,7 +955,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
 
                   {/* apiKey */}
                   <div className="flex items-center gap-2 py-1">
-                    <code className="text-emerald-500 dark:text-emerald-400 font-mono shrink-0">
+                    <code className="shrink-0 font-mono text-foreground">
                       {"{{apiKey}}"}
                     </code>
                     <span className="text-muted-foreground/50">=</span>
@@ -1313,7 +1313,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                         onClick={() =>
                           settingsApi.openExternal(VOLCENGINE_KEY_CONSOLE_URL)
                         }
-                        className="inline-flex items-center gap-1 text-blue-400 dark:text-blue-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors break-all align-baseline underline-offset-2 hover:underline"
+                        className="inline-flex items-center gap-1 break-all align-baseline text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
                       >
                         {VOLCENGINE_KEY_CONSOLE_URL}
                         <ExternalLink size={12} className="shrink-0" />
@@ -1403,7 +1403,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                         onClick={() =>
                           settingsApi.openExternal(ZHIPU_TEAM_USAGE_URL)
                         }
-                        className="inline-flex items-center gap-1 text-blue-400 dark:text-blue-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors break-all align-baseline underline-offset-2 hover:underline"
+                        className="inline-flex items-center gap-1 break-all align-baseline text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
                       >
                         {ZHIPU_TEAM_USAGE_URL}
                         <ExternalLink size={12} className="shrink-0" />

@@ -101,7 +101,7 @@ export function LogConfigPanel() {
             {t("settings.advanced.logConfig.levelDesc.warn")}
           </p>
           <p>
-            <span className="font-mono text-blue-500">info</span> -{" "}
+            <span className="font-mono text-foreground">info</span> -{" "}
             {t("settings.advanced.logConfig.levelDesc.info")}
           </p>
           <p>
