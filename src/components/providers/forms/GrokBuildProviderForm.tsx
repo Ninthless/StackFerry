@@ -518,8 +518,6 @@ export function GrokBuildProviderForm({
               category={category}
               shouldShowApiKeyLink={Boolean(websiteUrl)}
               websiteUrl={websiteUrl}
-              isPartner={isPartner}
-              partnerPromotionKey={partnerPromotionKey}
               shouldShowSpeedTest
               codexBaseUrl={baseUrl}
               onBaseUrlChange={(value) => {

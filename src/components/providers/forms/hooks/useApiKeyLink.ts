@@ -70,11 +70,6 @@ export function useApiKeyLink({
     return formWebsiteUrl || "";
   }, [currentPresetEntry, formWebsiteUrl]);
 
-  // 提取合作伙伴信息
-  const isPartner = useMemo(() => {
-    return currentPresetEntry?.preset.isPartner ?? false;
-  }, [currentPresetEntry]);
-
   const partnerPromotionKey = useMemo(() => {
     return currentPresetEntry?.preset.partnerPromotionKey;
   }, [currentPresetEntry]);
@@ -91,7 +86,6 @@ export function useApiKeyLink({
         ? shouldShowApiKeyLink
         : false,
     websiteUrl: getWebsiteUrl,
-    isPartner,
     partnerPromotionKey,
   };
 }

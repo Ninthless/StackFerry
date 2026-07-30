@@ -26,7 +26,6 @@ interface GeminiFormFieldsProps {
   category?: ProviderCategory;
   shouldShowApiKeyLink: boolean;
   websiteUrl: string;
-  isPartner?: boolean;
   partnerPromotionKey?: string;
 
   // Base URL
@@ -56,7 +55,6 @@ export function GeminiFormFields({
   category,
   shouldShowApiKeyLink,
   websiteUrl,
-  isPartner,
   partnerPromotionKey,
   shouldShowSpeedTest,
   baseUrl,
@@ -139,8 +137,6 @@ export function GeminiFormFields({
           category={category}
           shouldShowLink={shouldShowApiKeyLink}
           websiteUrl={websiteUrl}
-          isPartner={isPartner}
-          partnerPromotionKey={partnerPromotionKey}
         />
       )}
 

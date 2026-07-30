@@ -1671,8 +1671,6 @@ function ProviderFormFull({
   const {
     shouldShowApiKeyLink: shouldShowClaudeApiKeyLink,
     websiteUrl: claudeWebsiteUrl,
-    isPartner: isClaudePartner,
-    partnerPromotionKey: claudePartnerPromotionKey,
   } = useApiKeyLink({
     appId: "claude",
     category,
@@ -1684,8 +1682,6 @@ function ProviderFormFull({
   const {
     shouldShowApiKeyLink: shouldShowCodexApiKeyLink,
     websiteUrl: codexWebsiteUrl,
-    isPartner: isCodexPartner,
-    partnerPromotionKey: codexPartnerPromotionKey,
   } = useApiKeyLink({
     appId: "codex",
     category,
@@ -1697,7 +1693,6 @@ function ProviderFormFull({
   const {
     shouldShowApiKeyLink: shouldShowGeminiApiKeyLink,
     websiteUrl: geminiWebsiteUrl,
-    isPartner: isGeminiPartner,
     partnerPromotionKey: geminiPartnerPromotionKey,
   } = useApiKeyLink({
     appId: "gemini",
@@ -1710,8 +1705,6 @@ function ProviderFormFull({
   const {
     shouldShowApiKeyLink: shouldShowOpencodeApiKeyLink,
     websiteUrl: opencodeWebsiteUrl,
-    isPartner: isOpencodePartner,
-    partnerPromotionKey: opencodePartnerPromotionKey,
   } = useApiKeyLink({
     appId: "opencode",
     category,
@@ -1724,8 +1717,6 @@ function ProviderFormFull({
   const {
     shouldShowApiKeyLink: shouldShowOpenclawApiKeyLink,
     websiteUrl: openclawWebsiteUrl,
-    isPartner: isOpenclawPartner,
-    partnerPromotionKey: openclawPartnerPromotionKey,
   } = useApiKeyLink({
     appId: "openclaw",
     category,
@@ -1738,8 +1729,6 @@ function ProviderFormFull({
   const {
     shouldShowApiKeyLink: shouldShowHermesApiKeyLink,
     websiteUrl: hermesWebsiteUrl,
-    isPartner: isHermesPartner,
-    partnerPromotionKey: hermesPartnerPromotionKey,
   } = useApiKeyLink({
     appId: "hermes",
     category,
@@ -2197,8 +2186,6 @@ function ProviderFormFull({
               category={category}
               shouldShowApiKeyLink={shouldShowClaudeApiKeyLink}
               websiteUrl={claudeWebsiteUrl}
-              isPartner={isClaudePartner}
-              partnerPromotionKey={claudePartnerPromotionKey}
               isCopilotPreset={
                 presetProviderType === "github_copilot" ||
                 initialData?.meta?.providerType === "github_copilot" ||
@@ -2291,8 +2278,6 @@ function ProviderFormFull({
               category={category}
               shouldShowApiKeyLink={shouldShowCodexApiKeyLink}
               websiteUrl={codexWebsiteUrl}
-              isPartner={isCodexPartner}
-              partnerPromotionKey={codexPartnerPromotionKey}
               shouldShowSpeedTest={shouldShowSpeedTest}
               codexBaseUrl={codexBaseUrl}
               onBaseUrlChange={handleCodexBaseUrlChange}
@@ -2343,7 +2328,6 @@ function ProviderFormFull({
               category={category}
               shouldShowApiKeyLink={shouldShowGeminiApiKeyLink}
               websiteUrl={geminiWebsiteUrl}
-              isPartner={isGeminiPartner}
               partnerPromotionKey={geminiPartnerPromotionKey}
               shouldShowSpeedTest={shouldShowSpeedTest}
               baseUrl={geminiBaseUrl}
@@ -2369,8 +2353,6 @@ function ProviderFormFull({
               category={category}
               shouldShowApiKeyLink={shouldShowOpencodeApiKeyLink}
               websiteUrl={opencodeWebsiteUrl}
-              isPartner={isOpencodePartner}
-              partnerPromotionKey={opencodePartnerPromotionKey}
               baseUrl={opencodeForm.opencodeBaseUrl}
               onBaseUrlChange={opencodeForm.handleOpencodeBaseUrlChange}
               headers={opencodeForm.opencodeHeaders}
@@ -2414,8 +2396,6 @@ function ProviderFormFull({
               category={category}
               shouldShowApiKeyLink={shouldShowOpenclawApiKeyLink}
               websiteUrl={openclawWebsiteUrl}
-              isPartner={isOpenclawPartner}
-              partnerPromotionKey={openclawPartnerPromotionKey}
               api={openclawForm.openclawApi}
               onApiChange={openclawForm.handleOpenclawApiChange}
               models={openclawForm.openclawModels}
@@ -2435,8 +2415,6 @@ function ProviderFormFull({
               category={category}
               shouldShowApiKeyLink={shouldShowHermesApiKeyLink}
               websiteUrl={hermesWebsiteUrl}
-              isPartner={isHermesPartner}
-              partnerPromotionKey={hermesPartnerPromotionKey}
               apiMode={hermesForm.hermesApiMode}
               onApiModeChange={hermesForm.handleHermesApiModeChange}
               models={hermesForm.hermesModels}

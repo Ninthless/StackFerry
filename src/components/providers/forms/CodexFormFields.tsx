@@ -65,8 +65,6 @@ interface CodexFormFieldsProps {
   category?: ProviderCategory;
   shouldShowApiKeyLink: boolean;
   websiteUrl: string;
-  isPartner?: boolean;
-  partnerPromotionKey?: string;
 
   // Base URL
   shouldShowSpeedTest: boolean;
@@ -175,8 +173,6 @@ export function CodexFormFields({
   category,
   shouldShowApiKeyLink,
   websiteUrl,
-  isPartner,
-  partnerPromotionKey,
   shouldShowSpeedTest,
   codexBaseUrl,
   onBaseUrlChange,
@@ -519,8 +515,6 @@ export function CodexFormFields({
           category={category}
           shouldShowLink={shouldShowApiKeyLink}
           websiteUrl={websiteUrl}
-          isPartner={isPartner}
-          partnerPromotionKey={partnerPromotionKey}
           placeholder={{
             official: t("providerForm.codexOfficialNoApiKey", {
               defaultValue: "官方供应商无需 API Key",

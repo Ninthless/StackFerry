@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { BadgeCheck, ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type {
   DraggableAttributes,
@@ -412,18 +412,6 @@ export function ProviderCard({
                 isInFailoverQueue &&
                 failoverPriority && (
                   <FailoverPriorityBadge priority={failoverPriority} />
-                )}
-
-              {provider.category === "third_party" &&
-                provider.meta?.isPartner && (
-                  <span
-                    className="text-accent"
-                    title={t("provider.officialPartner", {
-                      defaultValue: "官方合作伙伴",
-                    })}
-                  >
-                    <BadgeCheck className="h-3.5 w-3.5" />
-                  </span>
                 )}
 
               {isHermesReadOnly && (
