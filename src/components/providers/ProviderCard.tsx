@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { GripVertical, ChevronDown, ChevronUp } from "lucide-react";
+import { BadgeCheck, ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type {
   DraggableAttributes,
@@ -285,43 +285,21 @@ export function ProviderCard({
           ? activeProviderId === provider.id
           : isCurrent;
 
-  const shouldUseGreen = !isAnyOmo && isProxyTakeover && isActiveProvider;
   const hasPersistentConfigHighlight = isAdditiveMode && isInConfig;
-  const shouldUseBlue =
-    (isAnyOmo && isActiveProvider) ||
-    (!isAnyOmo &&
-      !isProxyTakeover &&
-      (isActiveProvider || hasPersistentConfigHighlight));
+  const isEmphasized = isActiveProvider || hasPersistentConfigHighlight;
 
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-xl border border-border p-4 transition-all duration-300",
-        "bg-card text-card-foreground group",
-        isAutoFailoverEnabled || isProxyTakeover
-          ? "hover:border-emerald-500/50"
-          : "hover:border-border-active",
-        shouldUseGreen &&
-          "border-emerald-500/60 shadow-sm shadow-emerald-500/10",
-        shouldUseBlue && "border-blue-500/60 shadow-sm shadow-blue-500/10",
-        !(isActiveProvider || hasPersistentConfigHighlight) &&
-          "hover:shadow-sm",
+        "group relative overflow-hidden rounded-md border bg-card p-4 text-card-foreground transition-colors",
+        isEmphasized
+          ? "border-primary/55 bg-primary/[0.035]"
+          : "border-border hover:border-primary/30",
         dragHandleProps?.isDragging &&
-          "cursor-grabbing border-primary shadow-lg scale-105 z-10",
+          "z-10 scale-[1.01] cursor-grabbing border-primary shadow-md",
       )}
     >
-      <div
-        className={cn(
-          "absolute inset-0 bg-gradient-to-r to-transparent transition-opacity duration-500 pointer-events-none",
-          shouldUseGreen && "from-emerald-500/10",
-          shouldUseBlue && "from-blue-500/10",
-          !shouldUseGreen && !shouldUseBlue && "from-primary/10",
-          isActiveProvider || hasPersistentConfigHighlight
-            ? "opacity-100"
-            : "opacity-0",
-        )}
-      />
-      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="relative flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <button
             type="button"
@@ -337,7 +315,7 @@ export function ProviderCard({
             <GripVertical className="h-4 w-4" />
           </button>
 
-          <div className="h-8 w-8 flex-shrink-0 rounded-lg bg-muted flex items-center justify-center border border-border group-hover:scale-105 transition-transform duration-300">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-border bg-muted/70">
             <ProviderIcon
               icon={resolveProviderIcon(
                 appId,
@@ -439,12 +417,12 @@ export function ProviderCard({
               {provider.category === "third_party" &&
                 provider.meta?.isPartner && (
                   <span
-                    className="text-yellow-500 dark:text-yellow-400"
+                    className="text-accent"
                     title={t("provider.officialPartner", {
                       defaultValue: "官方合作伙伴",
                     })}
                   >
-                    ⭐
+                    <BadgeCheck className="h-3.5 w-3.5" />
                   </span>
                 )}
 
@@ -469,7 +447,7 @@ export function ProviderCard({
                 className={cn(
                   "inline-flex max-w-full items-center overflow-hidden text-left text-sm",
                   isClickableUrl
-                    ? "text-blue-500 transition-colors hover:underline dark:text-blue-400 cursor-pointer"
+                    ? "cursor-pointer text-primary transition-colors hover:underline"
                     : "text-muted-foreground cursor-default",
                 )}
                 title={displayUrl}
@@ -481,7 +459,7 @@ export function ProviderCard({
           </div>
         </div>
 
-        <div className="flex items-center ml-auto min-w-0 gap-3">
+        <div className="flex min-w-0 items-center gap-3 border-t border-border pt-3 xl:ml-auto xl:border-t-0 xl:pt-0">
           <div className="ml-auto">
             <div className="flex items-center gap-1">
               {isCopilot ? (
@@ -539,7 +517,7 @@ export function ProviderCard({
                     e.stopPropagation();
                     setIsExpanded(!isExpanded);
                   }}
-                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400 flex-shrink-0"
+                  className="flex-shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   title={
                     isExpanded
                       ? t("usage.collapse", { defaultValue: "收起" })
@@ -556,7 +534,7 @@ export function ProviderCard({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-shrink-0 opacity-0 pointer-events-none group-hover:opacity-100 group-focus-within:opacity-100 group-hover:pointer-events-auto group-focus-within:pointer-events-auto transition-opacity duration-200">
+          <div className="flex flex-shrink-0 items-center gap-1.5">
             <ProviderActions
               appId={appId}
               isCurrent={isCurrent}
@@ -570,11 +548,6 @@ export function ProviderCard({
               onEdit={() => onEdit(provider)}
               onDuplicate={() => onDuplicate(provider)}
               onTest={
-                // 连通检测对第三方/自定义/Copilot/Codex-OAuth 供应商开放（这些正是旧的
-                // 真实请求探测会误报、而可达性探测能正确处理的对象）。官方供应商
-                // (category === "official") 一律隐藏：它们 base_url 故意留空、走客户端
-                // 默认/OAuth 端点，cc-switch 没有可靠的探测目标（尤其 Claude Desktop
-                // 官方是原生 1P 模式，根本不在请求路径上）。
                 onTest && provider.category !== "official"
                   ? () => onTest(provider)
                   : undefined
@@ -600,7 +573,6 @@ export function ProviderCard({
               isAutoFailoverEnabled={isAutoFailoverEnabled}
               isInFailoverQueue={isInFailoverQueue}
               onToggleFailover={onToggleFailover}
-              // OpenClaw: default model
               isDefaultModel={isDefaultModel}
               onSetAsDefault={onSetAsDefault}
             />
@@ -609,7 +581,7 @@ export function ProviderCard({
       </div>
 
       {isExpanded && hasMultiplePlans && (
-        <div className="mt-4 pt-4 border-t border-border-default">
+        <div className="mt-4 border-t border-border pt-4">
           <UsageFooter
             provider={provider}
             providerId={provider.id}

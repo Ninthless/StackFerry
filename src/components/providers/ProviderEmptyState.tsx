@@ -1,4 +1,4 @@
-import { Download, Users } from "lucide-react";
+import { Download, Plus, Route } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import type { AppId } from "@/lib/api/types";
@@ -19,23 +19,23 @@ export function ProviderEmptyState({
     appId === "claude" || appId === "codex" || appId === "gemini";
 
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border p-10 text-center">
-      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-        <Users className="h-7 w-7 text-muted-foreground" />
+    <div className="flex min-h-64 flex-col items-center justify-center border border-dashed border-border bg-card/45 p-10 text-center">
+      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-md border border-primary/25 bg-primary/10">
+        <Route className="h-5 w-5 text-primary" />
       </div>
-      <h3 className="text-lg font-semibold">{t("provider.noProviders")}</h3>
-      <p className="mt-2 max-w-lg text-sm text-muted-foreground">
+      <h3 className="text-base font-semibold">{t("provider.noProviders")}</h3>
+      <p className="mt-2 max-w-md text-sm text-muted-foreground">
         {t("provider.noProvidersDescription")}
       </p>
       {showSnippetHint && (
-        <p className="mt-1 max-w-lg text-sm text-muted-foreground">
+        <p className="mt-1 max-w-md text-xs text-muted-foreground">
           {t("provider.noProvidersDescriptionSnippet")}
         </p>
       )}
-      <div className="mt-6 flex flex-col gap-2">
+      <div className="mt-6 flex items-center gap-2">
         {onImport && (
-          <Button onClick={onImport}>
-            <Download className="mr-2 h-4 w-4" />
+          <Button variant="outline" onClick={onImport}>
+            <Download className="h-4 w-4" />
             {appId === "claude-desktop"
               ? t("provider.importFromClaude", {
                   defaultValue: "将 Claude Code 中已有的供应商导入",
@@ -44,7 +44,8 @@ export function ProviderEmptyState({
           </Button>
         )}
         {onCreate && (
-          <Button variant={onImport ? "outline" : "default"} onClick={onCreate}>
+          <Button onClick={onCreate}>
+            <Plus className="h-4 w-4" />
             {t("provider.addProvider")}
           </Button>
         )}

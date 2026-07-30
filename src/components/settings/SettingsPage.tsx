@@ -16,6 +16,12 @@ import {
   ScrollText,
   HardDriveDownload,
   FlaskConical,
+  Settings2,
+  Network,
+  ShieldCheck,
+  SlidersHorizontal,
+  ChartNoAxesCombined,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -213,7 +219,7 @@ export function SettingsPage({
   const isBusy = useMemo(() => isLoading && !settings, [isLoading, settings]);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden px-6">
+    <div className="flex h-full flex-col overflow-hidden px-6">
       {isBusy ? (
         <div className="flex flex-1 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -222,24 +228,42 @@ export function SettingsPage({
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
-          className="flex flex-col h-full"
+          className="flex h-full min-h-0 flex-row gap-6"
         >
-          <TabsList className="grid w-full grid-cols-6 mb-6 glass rounded-lg">
-            <TabsTrigger value="general">
+          <TabsList className="flex w-44 shrink-0 flex-col items-stretch justify-start gap-1 border-r border-border py-5 pr-4">
+            <TabsTrigger
+              value="general"
+              className="min-w-0 justify-start gap-2"
+            >
+              <Settings2 className="h-4 w-4" />
               {t("settings.tabGeneral")}
             </TabsTrigger>
-            <TabsTrigger value="proxy">{t("settings.tabProxy")}</TabsTrigger>
-            <TabsTrigger value="auth">
+            <TabsTrigger value="proxy" className="min-w-0 justify-start gap-2">
+              <Network className="h-4 w-4" />
+              {t("settings.tabProxy")}
+            </TabsTrigger>
+            <TabsTrigger value="auth" className="min-w-0 justify-start gap-2">
+              <ShieldCheck className="h-4 w-4" />
               {t("settings.tabAuth", { defaultValue: "认证" })}
             </TabsTrigger>
-            <TabsTrigger value="advanced">
+            <TabsTrigger
+              value="advanced"
+              className="min-w-0 justify-start gap-2"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
               {t("settings.tabAdvanced")}
             </TabsTrigger>
-            <TabsTrigger value="usage">{t("usage.title")}</TabsTrigger>
-            <TabsTrigger value="about">{t("common.about")}</TabsTrigger>
+            <TabsTrigger value="usage" className="min-w-0 justify-start gap-2">
+              <ChartNoAxesCombined className="h-4 w-4" />
+              {t("usage.title")}
+            </TabsTrigger>
+            <TabsTrigger value="about" className="min-w-0 justify-start gap-2">
+              <Info className="h-4 w-4" />
+              {t("common.about")}
+            </TabsTrigger>
           </TabsList>
 
-          <div className="flex-1 min-h-0 flex flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col py-5">
             <div
               ref={tabScrollContainerRef}
               className="flex-1 overflow-y-auto overflow-x-hidden pr-2"

@@ -1,0 +1,15 @@
+export type AppView =
+  | "providers"
+  | "settings"
+  | "prompts"
+  | "skills"
+  | "skillsDiscovery"
+  | "mcp"
+  | "agents"
+  | "universal"
+  | "sessions"
+  | "workspace"
+  | "openclawEnv"
+  | "openclawTools"
+  | "openclawAgents"
+  | "hermesMemory";

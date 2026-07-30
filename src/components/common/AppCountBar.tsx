@@ -15,8 +15,8 @@ export const AppCountBar: React.FC<AppCountBarProps> = ({
   appIds = APP_IDS,
 }) => {
   return (
-    <div className="flex-shrink-0 py-4 glass rounded-xl border border-white/10 mb-4 px-6 flex items-center justify-between gap-4">
-      <Badge variant="outline" className="bg-background/50 h-7 px-3">
+    <div className="mb-4 flex flex-shrink-0 items-center justify-between gap-4 border-b border-border py-3">
+      <Badge variant="outline" className="h-7 bg-background px-3">
         {totalLabel}
       </Badge>
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">

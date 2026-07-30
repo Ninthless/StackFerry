@@ -38,6 +38,17 @@ module.exports = {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
+        workspace: "hsl(var(--workspace))",
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          border: "hsl(var(--sidebar-border))",
+          active: {
+            DEFAULT: "hsl(var(--sidebar-active))",
+            foreground: "hsl(var(--sidebar-active-foreground))",
+          },
+          hover: "hsl(var(--sidebar-hover))",
+        },
         blue: {
           400: "#409CFF",
           500: "#0A84FF",

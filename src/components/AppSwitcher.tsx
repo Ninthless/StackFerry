@@ -39,7 +39,7 @@ export function AppSwitcher({
     localStorage.setItem(STORAGE_KEY, app);
     onSwitch(app);
   };
-  const iconSize = 20;
+  const iconSize = 17;
   const appIconName: Record<AppId, string> = {
     claude: "claude",
     "claude-desktop": "claude",
@@ -61,14 +61,13 @@ export function AppSwitcher({
     hermes: "Hermes",
   };
 
-  // Filter apps based on visibility settings (default all visible)
   const appsToShow = ALL_APPS.filter((app) => {
     if (!visibleApps) return true;
     return visibleApps[app];
   });
 
   return (
-    <div className="inline-flex bg-muted rounded-xl p-1 gap-1">
+    <div className="grid grid-cols-2 gap-1">
       {appsToShow.map((app) => {
         const badgeConfig = APP_BADGE_ICON[app];
         const BadgeIcon = badgeConfig?.icon;
@@ -78,13 +77,13 @@ export function AppSwitcher({
             key={app}
             type="button"
             onClick={() => handleSwitch(app)}
-            title={appDisplayName[app]}
             aria-label={appDisplayName[app]}
+            aria-pressed={isActive}
             className={cn(
-              "group inline-flex items-center px-3 h-8 rounded-md text-sm font-medium transition-all duration-200",
+              "group flex h-10 min-w-0 items-center gap-2 rounded-md border px-2 text-left text-[11px] font-medium transition-colors",
               isActive
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground hover:bg-background/50",
+                ? "border-primary/35 bg-primary/10 text-sidebar-foreground"
+                : "border-transparent text-sidebar-foreground/60 hover:border-sidebar-border hover:bg-sidebar-hover hover:text-sidebar-foreground",
             )}
           >
             <span className="relative inline-flex shrink-0">
@@ -96,10 +95,10 @@ export function AppSwitcher({
               {BadgeIcon && (
                 <span
                   className={cn(
-                    "absolute -bottom-0.5 -right-0.5 flex items-center justify-center rounded-[3px] border h-[11px] w-[11px]",
+                    "absolute -bottom-0.5 -right-0.5 flex h-[10px] w-[10px] items-center justify-center rounded-[2px] border",
                     isActive
-                      ? "bg-background border-border text-foreground"
-                      : "bg-muted border-background text-muted-foreground group-hover:bg-background group-hover:text-foreground",
+                      ? "border-primary/40 bg-sidebar text-primary"
+                      : "border-sidebar-border bg-sidebar text-sidebar-foreground/45",
                   )}
                   aria-hidden="true"
                 >
@@ -114,6 +113,9 @@ export function AppSwitcher({
                   />
                 </span>
               )}
+            </span>
+            <span className="min-w-0 truncate leading-tight">
+              {appDisplayName[app]}
             </span>
           </button>
         );
