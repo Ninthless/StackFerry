@@ -219,7 +219,7 @@ export function SettingsPage({
   const isBusy = useMemo(() => isLoading && !settings, [isLoading, settings]);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden px-6">
+    <div className="flex h-full flex-col overflow-hidden px-6 max-[1100px]:px-3">
       {isBusy ? (
         <div className="flex flex-1 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -228,38 +228,58 @@ export function SettingsPage({
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
-          className="flex h-full min-h-0 flex-row gap-6"
+          className="flex h-full min-h-0 flex-row gap-6 max-[1100px]:gap-3"
         >
-          <TabsList className="flex w-44 shrink-0 flex-col items-stretch justify-start gap-1 border-r border-border py-5 pr-4">
+          <TabsList className="flex w-44 shrink-0 flex-col items-stretch justify-start gap-1 border-r border-border py-5 pr-4 max-[1100px]:w-14 max-[1100px]:pr-2">
             <TabsTrigger
               value="general"
-              className="min-w-0 justify-start gap-2"
+              className="min-w-0 justify-start gap-2 max-[1100px]:justify-center"
             >
               <Settings2 className="h-4 w-4" />
-              {t("settings.tabGeneral")}
+              <span className="max-[1100px]:sr-only">
+                {t("settings.tabGeneral")}
+              </span>
             </TabsTrigger>
-            <TabsTrigger value="proxy" className="min-w-0 justify-start gap-2">
+            <TabsTrigger
+              value="proxy"
+              className="min-w-0 justify-start gap-2 max-[1100px]:justify-center"
+            >
               <Network className="h-4 w-4" />
-              {t("settings.tabProxy")}
+              <span className="max-[1100px]:sr-only">
+                {t("settings.tabProxy")}
+              </span>
             </TabsTrigger>
-            <TabsTrigger value="auth" className="min-w-0 justify-start gap-2">
+            <TabsTrigger
+              value="auth"
+              className="min-w-0 justify-start gap-2 max-[1100px]:justify-center"
+            >
               <ShieldCheck className="h-4 w-4" />
-              {t("settings.tabAuth", { defaultValue: "认证" })}
+              <span className="max-[1100px]:sr-only">
+                {t("settings.tabAuth", { defaultValue: "认证" })}
+              </span>
             </TabsTrigger>
             <TabsTrigger
               value="advanced"
-              className="min-w-0 justify-start gap-2"
+              className="min-w-0 justify-start gap-2 max-[1100px]:justify-center"
             >
               <SlidersHorizontal className="h-4 w-4" />
-              {t("settings.tabAdvanced")}
+              <span className="max-[1100px]:sr-only">
+                {t("settings.tabAdvanced")}
+              </span>
             </TabsTrigger>
-            <TabsTrigger value="usage" className="min-w-0 justify-start gap-2">
+            <TabsTrigger
+              value="usage"
+              className="min-w-0 justify-start gap-2 max-[1100px]:justify-center"
+            >
               <ChartNoAxesCombined className="h-4 w-4" />
-              {t("usage.title")}
+              <span className="max-[1100px]:sr-only">{t("usage.title")}</span>
             </TabsTrigger>
-            <TabsTrigger value="about" className="min-w-0 justify-start gap-2">
+            <TabsTrigger
+              value="about"
+              className="min-w-0 justify-start gap-2 max-[1100px]:justify-center"
+            >
               <Info className="h-4 w-4" />
-              {t("common.about")}
+              <span className="max-[1100px]:sr-only">{t("common.about")}</span>
             </TabsTrigger>
           </TabsList>
 

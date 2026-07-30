@@ -25,7 +25,7 @@ export function PageHeader({ title, context, actions }: PageHeaderProps) {
       </div>
       {actions && (
         <div
-          className="flex min-w-0 shrink items-center justify-end gap-2 overflow-x-auto py-2"
+          className="flex min-w-0 shrink items-center justify-end gap-2 overflow-x-auto py-2 max-[1100px]:[&>button]:h-8 max-[1100px]:[&>button]:w-8 max-[1100px]:[&>button]:px-0 max-[1100px]:[&>button>span:first-of-type]:sr-only"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
           {actions}

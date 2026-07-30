@@ -53,14 +53,6 @@ interface ProfileSwitcherProps {
   activeApp: AppId;
 }
 
-/**
- * 项目 Profile 切换器（header 左侧入口）
- *
- * 项目列表全应用共享（用户拥有的项目就那几个），但切换按分组进行：
- * Claude 组（Claude Code 的供应商/MCP/Skills/记忆文件 + Claude Desktop
- * 的供应商）与 Codex 组各自指向自己的当前项目、只应用组内快照。
- * 与右侧 AppSwitcher（仅切换查看的应用）语义不同。
- */
 export function ProfileSwitcher({ activeApp }: ProfileSwitcherProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -73,8 +65,6 @@ export function ProfileSwitcher({ activeApp }: ProfileSwitcherProps) {
   const clearMutation = useClearProfileMutation();
   const createMutation = useCreateProfileMutation();
 
-  // Profile 仅作用于受支持的应用——在其他应用的标签页展示会误导用户
-  // 以为当前应用也被切换了，因此只在有所属分组的应用页面渲染
   const scope = APP_PROFILE_SCOPE[activeApp];
   if (!scope) {
     return null;
@@ -112,16 +102,16 @@ export function ProfileSwitcher({ activeApp }: ProfileSwitcherProps) {
             aria-expanded={open}
             title={t(`profiles.switcherTooltip.${scope}`)}
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium transition-colors",
+              "inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium transition-colors max-[1100px]:w-8 max-[1100px]:justify-center max-[1100px]:px-0",
               "hover:bg-black/5 dark:hover:bg-white/5",
               currentProfile ? "text-foreground" : "text-muted-foreground",
             )}
           >
             <FolderOpen className="h-4 w-4 shrink-0 opacity-70" />
-            <span className="max-w-[9rem] truncate">
+            <span className="max-w-[9rem] truncate max-[1100px]:sr-only">
               {currentProfile?.name ?? t("profiles.none")}
             </span>
-            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50 max-[1100px]:hidden" />
           </button>
         </PopoverTrigger>
         <PopoverContent
