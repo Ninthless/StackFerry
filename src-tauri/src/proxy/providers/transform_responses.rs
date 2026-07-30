@@ -21,7 +21,7 @@ use super::reasoning_bridge::{
     anthropic_block_from_openai_reasoning_item, openai_reasoning_item_from_anthropic_block,
 };
 
-pub(crate) const TOOL_RESULT_ERROR_MARKER: &str = "[cc-switch:tool-result-error]";
+pub(crate) const TOOL_RESULT_ERROR_MARKER: &str = "[stackferry:tool-result-error]";
 
 fn anthropic_image_to_responses_part(block: &Value) -> Option<Value> {
     let source = block.get("source")?;
@@ -1338,7 +1338,7 @@ mod tests {
             .filter_map(|part| part.get("text").and_then(Value::as_str))
             .all(|text| !text.contains("STRING_RESPONSES_SENTINEL")));
         let serialized = result.to_string();
-        assert!(serialized.contains("[cc-switch: omitted 20000 bytes]"));
+        assert!(serialized.contains("[stackferry: omitted 20000 bytes]"));
         assert!(!serialized.contains(&"A".repeat(64)));
     }
 
@@ -1643,7 +1643,7 @@ mod tests {
         assert_eq!(thinking["type"], "thinking");
         assert!(thinking["signature"]
             .as_str()
-            .is_some_and(|value| value.starts_with("ccswitch-openai-reasoning-v1:")));
+            .is_some_and(|value| value.starts_with("stackferry-openai-reasoning-v1:")));
 
         let replay = anthropic_to_responses(
             json!({

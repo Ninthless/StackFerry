@@ -17,26 +17,26 @@ static GLOBAL_CLIENT: OnceCell<RwLock<Client>> = OnceCell::new();
 static CURRENT_PROXY_URL: OnceCell<RwLock<Option<String>>> = OnceCell::new();
 
 /// CC Switch 代理服务器当前监听的端口
-static CC_SWITCH_PROXY_PORT: OnceCell<RwLock<u16>> = OnceCell::new();
+static STACKFERRY_PROXY_PORT: OnceCell<RwLock<u16>> = OnceCell::new();
 
 /// 设置 CC Switch 代理服务器的监听端口
 ///
 /// 应在代理服务器启动时调用，以便系统代理检测能正确识别自己的端口
 pub fn set_proxy_port(port: u16) {
-    if let Some(lock) = CC_SWITCH_PROXY_PORT.get() {
+    if let Some(lock) = STACKFERRY_PROXY_PORT.get() {
         if let Ok(mut current_port) = lock.write() {
             *current_port = port;
-            log::debug!("[GlobalProxy] Updated CC Switch proxy port to {port}");
+            log::debug!("[GlobalProxy] Updated StackFerry proxy port to {port}");
         }
     } else {
-        let _ = CC_SWITCH_PROXY_PORT.set(RwLock::new(port));
-        log::debug!("[GlobalProxy] Initialized CC Switch proxy port to {port}");
+        let _ = STACKFERRY_PROXY_PORT.set(RwLock::new(port));
+        log::debug!("[GlobalProxy] Initialized StackFerry proxy port to {port}");
     }
 }
 
 /// 获取 CC Switch 代理服务器的监听端口
 fn get_proxy_port() -> u16 {
-    CC_SWITCH_PROXY_PORT
+    STACKFERRY_PROXY_PORT
         .get()
         .and_then(|lock| lock.read().ok())
         .map(|port| *port)
@@ -292,15 +292,15 @@ fn proxy_points_to_loopback(value: &str) -> bool {
 
     // 检查是否指向 CC Switch 自己的代理端口
     // 只有指向自己的代理才需要跳过，避免递归
-    fn is_cc_switch_proxy_port(port: Option<u16>) -> bool {
-        let cc_switch_port = get_proxy_port();
-        port == Some(cc_switch_port)
+    fn is_stackferry_proxy_port(port: Option<u16>) -> bool {
+        let stackferry_port = get_proxy_port();
+        port == Some(stackferry_port)
     }
 
     if let Ok(parsed) = url::Url::parse(value) {
         if let Some(host) = parsed.host_str() {
             // 只有当主机是 loopback 且端口是 CC Switch 的端口时才返回 true
-            return host_is_loopback(host) && is_cc_switch_proxy_port(parsed.port());
+            return host_is_loopback(host) && is_stackferry_proxy_port(parsed.port());
         }
         return false;
     }
@@ -308,7 +308,7 @@ fn proxy_points_to_loopback(value: &str) -> bool {
     let with_scheme = format!("http://{value}");
     if let Ok(parsed) = url::Url::parse(&with_scheme) {
         if let Some(host) = parsed.host_str() {
-            return host_is_loopback(host) && is_cc_switch_proxy_port(parsed.port());
+            return host_is_loopback(host) && is_stackferry_proxy_port(parsed.port());
         }
     }
 

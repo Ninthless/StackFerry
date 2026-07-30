@@ -26,11 +26,22 @@ interface UpdateContextValue {
 }
 
 const UpdateContext = createContext<UpdateContextValue | undefined>(undefined);
+const DISMISSED_VERSION_KEY = "stackferry:update:dismissedVersion";
+const LEGACY_DISMISSED_KEY = "dismissedUpdateVersion";
+
+const readDismissedVersion = () => {
+  const dismissedVersion = localStorage.getItem(DISMISSED_VERSION_KEY);
+  if (dismissedVersion) return dismissedVersion;
+
+  const legacyVersion = localStorage.getItem(LEGACY_DISMISSED_KEY);
+  if (!legacyVersion) return null;
+
+  localStorage.setItem(DISMISSED_VERSION_KEY, legacyVersion);
+  localStorage.removeItem(LEGACY_DISMISSED_KEY);
+  return legacyVersion;
+};
 
 export function UpdateProvider({ children }: { children: React.ReactNode }) {
-  const DISMISSED_VERSION_KEY = "ccswitch:update:dismissedVersion";
-  const LEGACY_DISMISSED_KEY = "dismissedUpdateVersion"; // 兼容旧键
-
   const [hasUpdate, setHasUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [isChecking, setIsChecking] = useState(false);
@@ -42,18 +53,7 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
     const current = updateInfo?.availableVersion;
     if (!current) return;
 
-    // 读取新键；若不存在，尝试迁移旧键
-    let dismissedVersion = localStorage.getItem(DISMISSED_VERSION_KEY);
-    if (!dismissedVersion) {
-      const legacy = localStorage.getItem(LEGACY_DISMISSED_KEY);
-      if (legacy) {
-        localStorage.setItem(DISMISSED_VERSION_KEY, legacy);
-        localStorage.removeItem(LEGACY_DISMISSED_KEY);
-        dismissedVersion = legacy;
-      }
-    }
-
-    setIsDismissed(dismissedVersion === current);
+    setIsDismissed(readDismissedVersion() === current);
   }, [updateInfo?.availableVersion]);
 
   const isCheckingRef = useRef(false);
@@ -71,17 +71,7 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
         setHasUpdate(true);
         setUpdateInfo(result.info);
 
-        // 检查是否已经关闭过这个版本的提醒
-        let dismissedVersion = localStorage.getItem(DISMISSED_VERSION_KEY);
-        if (!dismissedVersion) {
-          const legacy = localStorage.getItem(LEGACY_DISMISSED_KEY);
-          if (legacy) {
-            localStorage.setItem(DISMISSED_VERSION_KEY, legacy);
-            localStorage.removeItem(LEGACY_DISMISSED_KEY);
-            dismissedVersion = legacy;
-          }
-        }
-        setIsDismissed(dismissedVersion === result.info.availableVersion);
+        setIsDismissed(readDismissedVersion() === result.info.availableVersion);
         return true; // 有更新
       } else {
         setHasUpdate(false);

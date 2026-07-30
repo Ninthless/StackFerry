@@ -60,7 +60,7 @@ pub(crate) async fn query_xai_oauth_quota_for(
     crate::services::subscription_grok::query_grok_quota(
         &token,
         "xai_oauth",
-        "Please re-login via cc-switch.",
+        "Please re-login via StackFerry.",
     )
     .await
 }

@@ -451,7 +451,7 @@ mod tests {
         let url = build_remote_url(
             "https://dav.example.com/remote.php/dav/files/demo/",
             &[
-                "cc switch-sync".to_string(),
+                "stack ferry-sync".to_string(),
                 "v2".to_string(),
                 "db-v6".to_string(),
                 "default profile".to_string(),
@@ -461,7 +461,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             url,
-            "https://dav.example.com/remote.php/dav/files/demo/cc%20switch-sync/v2/db-v6/default%20profile/manifest.json"
+            "https://dav.example.com/remote.php/dav/files/demo/stack%20ferry-sync/v2/db-v6/default%20profile/manifest.json"
         );
         assert!(!url.contains("//cc"), "should not have double-slash");
     }

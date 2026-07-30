@@ -22,7 +22,7 @@ pub(crate) use super::webdav_sync::archive::{
 
 /// Wire-format identifier stored in remote manifests.
 /// Retains historic "webdav" naming for backward compatibility with existing remotes.
-pub(crate) const PROTOCOL_FORMAT: &str = "cc-switch-webdav-sync";
+pub(crate) const PROTOCOL_FORMAT: &str = "stackferry-sync";
 pub(crate) const PROTOCOL_VERSION: u32 = 2;
 pub(crate) const DB_COMPAT_VERSION: u32 = 6;
 pub(crate) const LEGACY_DB_COMPAT_VERSION: u32 = 5;
@@ -348,10 +348,15 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 pub(crate) fn detect_system_device_name() -> Option<String> {
-    let env_name = ["CC_SWITCH_DEVICE_NAME", "COMPUTERNAME", "HOSTNAME"]
-        .iter()
-        .filter_map(|key| std::env::var(key).ok())
-        .find_map(|value| normalize_device_name(&value));
+    let env_name = [
+        "STACKFERRY_DEVICE_NAME",
+        "CC_SWITCH_DEVICE_NAME",
+        "COMPUTERNAME",
+        "HOSTNAME",
+    ]
+    .iter()
+    .filter_map(|key| std::env::var(key).ok())
+    .find_map(|value| normalize_device_name(&value));
 
     if env_name.is_some() {
         return env_name;

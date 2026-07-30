@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import type { ManagedAuthProvider } from "@/lib/api/auth";
 import type { AppId } from "@/lib/api/types";
 import type { McpServer, Provider, Settings } from "@/types";
 import {
@@ -44,6 +45,25 @@ export const handlers = [
   http.post(`${TAURI_ENDPOINT}/get_skills_migration_result`, () =>
     success(null),
   ),
+  http.post(`${TAURI_ENDPOINT}/list_profiles`, () =>
+    success({
+      profiles: [],
+      currentIds: { claude: null, claudeDesktop: null, codex: null },
+    }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/auth_get_status`, async ({ request }) => {
+    const { authProvider } = await withJson<{
+      authProvider: ManagedAuthProvider;
+    }>(request);
+    return success({
+      provider: authProvider,
+      authenticated: false,
+      default_account_id: null,
+      migration_error: null,
+      accounts: [],
+    });
+  }),
+  http.post(`${TAURI_ENDPOINT}/get_installed_skills`, () => success([])),
   http.post(`${TAURI_ENDPOINT}/get_providers`, async ({ request }) => {
     const { app } = await withJson<{ app: AppId }>(request);
     return success(getProviders(app));

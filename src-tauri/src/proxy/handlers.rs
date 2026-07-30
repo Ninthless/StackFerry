@@ -73,18 +73,18 @@ pub async fn get_status(State(state): State<ProxyState>) -> Result<Json<ProxySta
 /// GET /v1/models — Codex model list (reachability check)
 ///
 /// Codex CLI probes this endpoint at startup and deserializes the response as a
-/// catalog with a top-level `models` field.  Return the cc-switch–managed model
+/// catalog with a top-level `models` field.  Return the StackFerry-managed model
 /// catalog file directly so the format always matches what the current version
 /// of Codex expects.
 ///
 /// Only serves the catalog when the live config.toml still references the
-/// cc-switch–owned `model_catalog_json`, using the same path ownership rules as
+/// StackFerry-owned `model_catalog_json`, using the same path ownership rules as
 /// Codex live-setting import.
 pub async fn handle_models() -> Result<Json<Value>, ProxyError> {
     let generated_path = crate::codex_config::get_codex_model_catalog_path();
     let active_catalog_path = match crate::codex_config::read_codex_config_text() {
         Ok(config_text) => {
-            crate::codex_config::resolve_cc_switch_catalog_path(&config_text, &generated_path)
+            crate::codex_config::resolve_stackferry_catalog_path(&config_text, &generated_path)
         }
         Err(_) => None,
     };
@@ -97,7 +97,7 @@ pub async fn handle_models() -> Result<Json<Value>, ProxyError> {
     } else {
         if active_catalog_path.is_none() {
             log::debug!(
-                "[models] stale guard: catalog not served (model_catalog_json not set to cc-switch catalog)"
+                "[models] stale guard: catalog not served (model_catalog_json not set to StackFerry catalog)"
             );
         }
         json!({"models": []})
@@ -1806,7 +1806,7 @@ fn codex_proxy_error_json(
             concat!(
                 "Upstream provider rejected the request with HTTP 413 (Payload Too Large). ",
                 "The request body exceeds the upstream gateway's size limit; this is the ",
-                "provider's server-side limit, not a CC Switch limit. ",
+                "provider's server-side limit, not a StackFerry limit. ",
                 "Provider: {provider}; model: {model}; endpoint: {endpoint}. ",
                 "To recover, shrink the request: run /compact, remove large pasted logs or ",
                 "inline images, or ask the provider to raise its request body limit ",
@@ -1827,7 +1827,7 @@ fn codex_proxy_error_json(
             .map(|status| format!("; upstream_status: HTTP {status}"))
             .unwrap_or_default();
         format!(
-            "CC Switch local proxy failed while handling Codex endpoint {endpoint}. Provider: {provider_name}; model: {request_model}{status_fragment}; cause: {cause}"
+            "StackFerry local proxy failed while handling Codex endpoint {endpoint}. Provider: {provider_name}; model: {request_model}{status_fragment}; cause: {cause}"
         )
     };
 
@@ -1878,25 +1878,25 @@ fn codex_proxy_error_json(
 
 fn codex_proxy_error_code(error: &ProxyError) -> &'static str {
     match error {
-        ProxyError::ForwardFailed(_) => "cc_switch_forward_failed",
-        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => "cc_switch_timeout",
-        ProxyError::NoAvailableProvider => "cc_switch_no_available_provider",
-        ProxyError::AllProvidersCircuitOpen => "cc_switch_all_providers_circuit_open",
-        ProxyError::NoProvidersConfigured => "cc_switch_no_providers_configured",
-        ProxyError::MaxRetriesExceeded => "cc_switch_max_retries_exceeded",
-        ProxyError::ProviderUnhealthy(_) => "cc_switch_provider_unhealthy",
-        ProxyError::ConfigError(_) => "cc_switch_config_error",
-        ProxyError::TransformError(_) => "cc_switch_transform_error",
-        ProxyError::InvalidRequest(_) => "cc_switch_invalid_request",
-        ProxyError::AuthError(_) => "cc_switch_auth_error",
-        ProxyError::UpstreamError { .. } => "cc_switch_upstream_error",
-        ProxyError::DatabaseError(_) => "cc_switch_database_error",
-        ProxyError::Internal(_) => "cc_switch_internal_error",
+        ProxyError::ForwardFailed(_) => "stackferry_forward_failed",
+        ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => "stackferry_timeout",
+        ProxyError::NoAvailableProvider => "stackferry_no_available_provider",
+        ProxyError::AllProvidersCircuitOpen => "stackferry_all_providers_circuit_open",
+        ProxyError::NoProvidersConfigured => "stackferry_no_providers_configured",
+        ProxyError::MaxRetriesExceeded => "stackferry_max_retries_exceeded",
+        ProxyError::ProviderUnhealthy(_) => "stackferry_provider_unhealthy",
+        ProxyError::ConfigError(_) => "stackferry_config_error",
+        ProxyError::TransformError(_) => "stackferry_transform_error",
+        ProxyError::InvalidRequest(_) => "stackferry_invalid_request",
+        ProxyError::AuthError(_) => "stackferry_auth_error",
+        ProxyError::UpstreamError { .. } => "stackferry_upstream_error",
+        ProxyError::DatabaseError(_) => "stackferry_database_error",
+        ProxyError::Internal(_) => "stackferry_internal_error",
         ProxyError::AlreadyRunning
         | ProxyError::NotRunning
         | ProxyError::BindFailed(_)
         | ProxyError::StopTimeout
-        | ProxyError::StopFailed(_) => "cc_switch_proxy_error",
+        | ProxyError::StopFailed(_) => "stackferry_proxy_error",
     }
 }
 
@@ -3280,12 +3280,12 @@ data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\"}}\n
         let body = codex_proxy_error_json("DeepSeek", "deepseek-chat", "/responses", &error);
 
         let message = body["error"]["message"].as_str().unwrap();
-        assert!(message.contains("CC Switch local proxy failed"));
+        assert!(message.contains("StackFerry local proxy failed"));
         assert!(message.contains("DeepSeek"));
         assert!(message.contains("deepseek-chat"));
         assert!(message.contains("/responses"));
         assert!(message.contains("dns lookup failed"));
-        assert_eq!(body["error"]["code"], "cc_switch_forward_failed");
+        assert_eq!(body["error"]["code"], "stackferry_forward_failed");
         assert_eq!(body["error"]["provider"], "DeepSeek");
         assert_eq!(body["error"]["model"], "deepseek-chat");
     }
@@ -3325,7 +3325,7 @@ data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\"}}\n
 
         let message = body["error"]["message"].as_str().unwrap();
         // 不再误导成「本地代理失败」
-        assert!(!message.contains("CC Switch local proxy failed"));
+        assert!(!message.contains("StackFerry local proxy failed"));
         // 明确指向上游 + 体积超限 + 可操作指引
         assert!(message.contains("413"));
         assert!(message.to_lowercase().contains("upstream"));

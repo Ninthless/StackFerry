@@ -6,7 +6,7 @@ use std::fs;
 
 use serde_json::json;
 
-use cc_switch_lib::{
+use stackferry_lib::{
     AppType, InstalledSkill, McpServer, McpService, ProfilePayload, ProfileScope, ProfileService,
     Prompt, PromptService, Provider, ProviderService, SkillApps, SkillService,
 };
@@ -412,7 +412,7 @@ fn profile_apply_reports_dangling_references_and_continues() {
         "skills": { "claude": ["ghost-skill"] },
         "prompts": { "claude": "ghost-prompt" }
     });
-    let profile = cc_switch_lib::Profile {
+    let profile = stackferry_lib::Profile {
         id: "dangling-test".to_string(),
         name: "Dangling".to_string(),
         payload: payload.to_string(),

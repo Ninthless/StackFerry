@@ -262,7 +262,7 @@ export function SettingsPage({
                       onChange={handleAutoSave}
                     />
                     <SkillStorageLocationSettings
-                      value={settings.skillStorageLocation ?? "cc_switch"}
+                      value={settings.skillStorageLocation ?? "stack_ferry"}
                       installedCount={installedSkills?.length ?? 0}
                       onMigrated={(location) =>
                         updateSettings({ skillStorageLocation: location })

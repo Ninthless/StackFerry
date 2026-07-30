@@ -301,16 +301,16 @@ mod tests {
     struct TestHomeGuard(Option<std::ffi::OsString>);
     impl TestHomeGuard {
         fn set(home: &std::path::Path) -> Self {
-            let guard = Self(std::env::var_os("CC_SWITCH_TEST_HOME"));
-            std::env::set_var("CC_SWITCH_TEST_HOME", home);
+            let guard = Self(std::env::var_os("STACKFERRY_TEST_HOME"));
+            std::env::set_var("STACKFERRY_TEST_HOME", home);
             guard
         }
     }
     impl Drop for TestHomeGuard {
         fn drop(&mut self) {
             match self.0.take() {
-                Some(value) => std::env::set_var("CC_SWITCH_TEST_HOME", value),
-                None => std::env::remove_var("CC_SWITCH_TEST_HOME"),
+                Some(value) => std::env::set_var("STACKFERRY_TEST_HOME", value),
+                None => std::env::remove_var("STACKFERRY_TEST_HOME"),
             }
         }
     }

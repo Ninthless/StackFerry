@@ -48,7 +48,7 @@ vi.mock("@/lib/modelsDevAutoSync", () => ({
 import { ModelsDevAutoSyncPanel } from "@/components/usage/ModelsDevAutoSyncPanel";
 
 const state = {
-  configPath: "C:/Users/test/.cc-switch/model-pricing.json",
+  configPath: "C:/Users/test/.stackferry/model-pricing.json",
   config: {
     autoSyncEnabled: false,
     includeCommonModels: true,

@@ -80,12 +80,11 @@ vi.mock("@/components/ui/textarea", () => ({
 }));
 
 vi.mock("@/components/JsonEditor", () => ({
-  default: ({ value, onChange, placeholder, ...rest }: any) => (
+  default: ({ value, onChange, placeholder }: any) => (
     <textarea
       value={value}
       placeholder={placeholder}
       onChange={(event) => onChange?.(event.target.value)}
-      {...rest}
     />
   ),
 }));

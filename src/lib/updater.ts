@@ -1,6 +1,8 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { isUpdateAvailable } from "./version";
 
-export type UpdateChannel = "stable" | "beta";
+const LATEST_RELEASE_URL =
+  "https://api.github.com/repos/Ninthless/StackFerry/releases/latest";
 
 export interface UpdateInfo {
   currentVersion: string;
@@ -11,7 +13,6 @@ export interface UpdateInfo {
 
 export interface CheckOptions {
   timeout?: number;
-  channel?: UpdateChannel;
 }
 
 export async function getCurrentVersion(): Promise<string> {
@@ -27,21 +28,47 @@ export async function checkForUpdate(
 ): Promise<
   { status: "up-to-date" } | { status: "available"; info: UpdateInfo }
 > {
-  // 动态引入，避免在未安装插件时导致打包期问题
-  const { check } = await import("@tauri-apps/plugin-updater");
-
   const currentVersion = await getCurrentVersion();
-  const update = await check({ timeout: opts.timeout ?? 30000 } as any);
+  const controller = new AbortController();
+  const timer = window.setTimeout(
+    () => controller.abort(),
+    opts.timeout ?? 30000,
+  );
 
-  if (!update) {
+  let response: Response;
+  try {
+    response = await fetch(LATEST_RELEASE_URL, {
+      headers: { Accept: "application/vnd.github+json" },
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timer);
+  }
+
+  if (response.status === 404) {
+    return { status: "up-to-date" };
+  }
+
+  if (!response.ok) {
+    throw new Error(`GitHub release check failed: HTTP ${response.status}`);
+  }
+
+  const release = (await response.json()) as {
+    tag_name?: string;
+    body?: string;
+    published_at?: string;
+  };
+  const latestVersion = (release.tag_name ?? "").replace(/^v/i, "");
+
+  if (!isUpdateAvailable(currentVersion, latestVersion)) {
     return { status: "up-to-date" };
   }
 
   const info: UpdateInfo = {
     currentVersion,
-    availableVersion: (update as any).version ?? "",
-    notes: (update as any).notes,
-    pubDate: (update as any).date,
+    availableVersion: latestVersion,
+    notes: release.body,
+    pubDate: release.published_at,
   };
 
   return { status: "available", info };

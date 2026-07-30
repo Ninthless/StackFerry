@@ -8,7 +8,8 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde_json::{json, Value};
 
-pub(crate) const OPENAI_REASONING_ITEM_PREFIX: &str = "ccswitch-openai-reasoning-v1:";
+pub(crate) const OPENAI_REASONING_ITEM_PREFIX: &str = "stackferry-openai-reasoning-v1:";
+const LEGACY_OPENAI_REASONING_ITEM_PREFIX: &str = "ccswitch-openai-reasoning-v1:";
 
 pub(crate) fn reasoning_summary_text(item: &Value) -> String {
     item.get("summary")
@@ -39,7 +40,9 @@ pub(crate) fn encode_openai_reasoning_item(item: &Value) -> Option<String> {
 }
 
 pub(crate) fn decode_openai_reasoning_item(encoded: &str) -> Option<Value> {
-    let payload = encoded.strip_prefix(OPENAI_REASONING_ITEM_PREFIX)?;
+    let payload = encoded
+        .strip_prefix(OPENAI_REASONING_ITEM_PREFIX)
+        .or_else(|| encoded.strip_prefix(LEGACY_OPENAI_REASONING_ITEM_PREFIX))?;
     let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
     let item: Value = serde_json::from_slice(&bytes).ok()?;
     (item.get("type").and_then(Value::as_str) == Some("reasoning")).then_some(item)

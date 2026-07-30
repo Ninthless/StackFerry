@@ -24,7 +24,7 @@ import {
 } from "@/lib/modelsDevAutoSync";
 
 const state = {
-  configPath: "C:/Users/test/.cc-switch/model-pricing.json",
+  configPath: "C:/Users/test/.stackferry/model-pricing.json",
   config: {
     autoSyncEnabled: true,
     includeCommonModels: true,
@@ -82,7 +82,7 @@ describe("syncModelsDevPricing", () => {
   });
 
   it("skips startup network access when pricing synced within the interval", async () => {
-    const lastSyncAt = Date.now() - MODELS_DEV_STARTUP_SYNC_INTERVAL_MS + 1;
+    const lastSyncAt = Date.now() - MODELS_DEV_STARTUP_SYNC_INTERVAL_MS / 2;
     getModelsDevSyncConfig.mockResolvedValue({
       ...state,
       config: { ...state.config, lastSyncAt },

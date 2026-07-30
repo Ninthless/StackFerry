@@ -566,7 +566,7 @@ pub(crate) async fn query_grok_quota(
         .header("Content-Type", "application/grpc-web+proto")
         .header("x-grpc-web", "1")
         .header("x-user-agent", "connect-es/2.1.1")
-        .header("User-Agent", "cc-switch")
+        .header("User-Agent", "stackferry")
         .body(vec![0u8; 5])
         .timeout(std::time::Duration::from_secs(15))
         .send()
