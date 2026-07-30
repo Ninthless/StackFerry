@@ -103,6 +103,7 @@
     "workspace": "工作区",
     "navigation": "主导航",
     "switchApplication": "切换应用",
+    "moreActions": "更多操作",
     "routingActive": "本地路由已启用",
     "directMode": "供应商直连模式"
   },

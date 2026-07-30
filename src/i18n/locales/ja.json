@@ -103,6 +103,7 @@
     "workspace": "ワークスペース",
     "navigation": "メインナビゲーション",
     "switchApplication": "アプリケーションを切り替え",
+    "moreActions": "その他の操作",
     "routingActive": "ローカルルーティングは有効です",
     "directMode": "プロバイダー直接接続モード"
   },

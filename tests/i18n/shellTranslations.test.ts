@@ -13,6 +13,7 @@ describe("shell translations", () => {
       expect(Object.keys(locale.shell).sort()).toEqual([
         "applications",
         "directMode",
+        "moreActions",
         "navigation",
         "routeWorkbench",
         "routingActive",

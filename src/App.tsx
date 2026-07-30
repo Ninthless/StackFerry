@@ -76,7 +76,10 @@ import AgentsDefaultsPanel from "@/components/openclaw/AgentsDefaultsPanel";
 import OpenClawHealthBanner from "@/components/openclaw/OpenClawHealthBanner";
 import HermesMemoryPanel from "@/components/hermes/HermesMemoryPanel";
 import { AppSidebar } from "@/components/shell/AppSidebar";
-import { PageHeader } from "@/components/shell/PageHeader";
+import {
+  PageHeader,
+  type PageHeaderOverflowAction,
+} from "@/components/shell/PageHeader";
 import type { AppView } from "@/components/shell/types";
 
 interface SyncStatusUpdatedPayload {
@@ -894,16 +897,12 @@ function App() {
 
   const getViewContext = () => {
     if (currentView === "settings") {
-      return t("settings.description", {
-        defaultValue: "Application preferences and data controls",
-      });
+      return t("settings.description");
     }
     if (currentView === "providers") {
       return isProxyRunning && isCurrentAppTakeoverActive
-        ? t("shell.routingActive", {
-            defaultValue: "Local routing is active",
-          })
-        : t("shell.directMode", { defaultValue: "Direct provider mode" });
+        ? t("shell.routingActive")
+        : t("shell.directMode");
     }
     return t(`apps.${sharedFeatureApp}`);
   };
@@ -955,74 +954,23 @@ function App() {
 
     if (currentView === "mcp") {
       return (
-        <>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => mcpPanelRef.current?.openImport()}
-          >
-            <Download className="h-4 w-4" />
-            <span>{t("mcp.importExisting")}</span>
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => mcpPanelRef.current?.openAdd()}
-          >
-            <Plus className="h-4 w-4" />
-            <span>{t("mcp.addMcp")}</span>
-          </Button>
-        </>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => mcpPanelRef.current?.openAdd()}
+        >
+          <Plus className="h-4 w-4" />
+          <span>{t("mcp.addMcp")}</span>
+        </Button>
       );
     }
 
     if (currentView === "skills") {
       return (
-        <>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={() =>
-              unifiedSkillsPanelRef.current?.openRestoreFromBackup()
-            }
-            title={t("skills.restoreFromBackup.button")}
-            aria-label={t("skills.restoreFromBackup.button")}
-          >
-            <History className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={() => unifiedSkillsPanelRef.current?.openInstallFromZip()}
-            title={t("skills.installFromZip.button")}
-            aria-label={t("skills.installFromZip.button")}
-          >
-            <FolderArchive className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => unifiedSkillsPanelRef.current?.openImport()}
-            className="relative"
-            title={
-              hasUnmanagedSkills ? t("skills.unmanagedAvailable") : undefined
-            }
-          >
-            <Download className="h-4 w-4" />
-            <span>{t("skills.import")}</span>
-            {hasUnmanagedSkills && (
-              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
-            )}
-          </Button>
-          <Button type="button" size="sm" onClick={handleOpenSkillsDiscovery}>
-            <Search className="h-4 w-4" />
-            <span>{t("skills.discover")}</span>
-          </Button>
-        </>
+        <Button type="button" size="sm" onClick={handleOpenSkillsDiscovery}>
+          <Search className="h-4 w-4" />
+          <span>{t("skills.discover")}</span>
+        </Button>
       );
     }
 
@@ -1039,25 +987,62 @@ function App() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          {getSkillsPageHeaderActions(skillsDiscoverySource).map(
-            ({ key, labelKey, Icon, execute }) => (
-              <Button
-                key={key}
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => execute(skillsPageRef.current)}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{t(labelKey)}</span>
-              </Button>
-            ),
-          )}
         </>
       );
     }
 
     return null;
+  };
+
+  const getHeaderOverflowActions = (): PageHeaderOverflowAction[] => {
+    if (currentView === "mcp") {
+      return [
+        {
+          key: "import-mcp",
+          label: t("mcp.importExisting"),
+          icon: <Download className="h-4 w-4" />,
+          onSelect: () => mcpPanelRef.current?.openImport(),
+        },
+      ];
+    }
+
+    if (currentView === "skills") {
+      return [
+        {
+          key: "restore-skills",
+          label: t("skills.restoreFromBackup.button"),
+          icon: <History className="h-4 w-4" />,
+          onSelect: () =>
+            unifiedSkillsPanelRef.current?.openRestoreFromBackup(),
+        },
+        {
+          key: "install-skills-zip",
+          label: t("skills.installFromZip.button"),
+          icon: <FolderArchive className="h-4 w-4" />,
+          onSelect: () => unifiedSkillsPanelRef.current?.openInstallFromZip(),
+        },
+        {
+          key: "import-skills",
+          label: t("skills.import"),
+          icon: <Download className="h-4 w-4" />,
+          onSelect: () => unifiedSkillsPanelRef.current?.openImport(),
+          indicator: hasUnmanagedSkills,
+        },
+      ];
+    }
+
+    if (currentView === "skillsDiscovery") {
+      return getSkillsPageHeaderActions(skillsDiscoverySource).map(
+        ({ key, labelKey, Icon, execute }) => ({
+          key,
+          label: t(labelKey),
+          icon: <Icon className="h-4 w-4" />,
+          onSelect: () => execute(skillsPageRef.current),
+        }),
+      );
+    }
+
+    return [];
   };
 
   const renderContent = () => {
@@ -1307,6 +1292,8 @@ function App() {
             title={getViewTitle()}
             context={getViewContext()}
             actions={renderHeaderActions()}
+            overflowActions={getHeaderOverflowActions()}
+            overflowLabel={t("shell.moreActions")}
           />
 
           {showEnvBanner && envConflicts.length > 0 && (

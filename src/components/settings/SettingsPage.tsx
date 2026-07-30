@@ -228,65 +228,60 @@ export function SettingsPage({
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
-          className="flex h-full min-h-0 flex-row gap-6 max-[1100px]:gap-3"
+          className="flex h-full min-h-0 flex-col"
         >
-          <TabsList className="flex w-44 shrink-0 flex-col items-stretch justify-start gap-1 border-r border-border py-5 pr-4 max-[1100px]:w-14 max-[1100px]:pr-2">
+          <TabsList
+            className="mx-auto grid w-full max-w-[960px] shrink-0 grid-cols-6 gap-1 border-b border-border py-3"
+            aria-label={t("common.settings")}
+          >
             <TabsTrigger
               value="general"
-              className="min-w-0 justify-start gap-2 max-[1100px]:justify-center"
+              className="min-w-0 gap-2 px-2 max-[1000px]:text-xs max-[900px]:[&>svg]:hidden"
             >
               <Settings2 className="h-4 w-4" />
-              <span className="max-[1100px]:sr-only">
-                {t("settings.tabGeneral")}
-              </span>
+              <span>{t("settings.tabGeneral")}</span>
             </TabsTrigger>
             <TabsTrigger
               value="proxy"
-              className="min-w-0 justify-start gap-2 max-[1100px]:justify-center"
+              className="min-w-0 gap-2 px-2 max-[1000px]:text-xs max-[900px]:[&>svg]:hidden"
             >
               <Network className="h-4 w-4" />
-              <span className="max-[1100px]:sr-only">
-                {t("settings.tabProxy")}
-              </span>
+              <span>{t("settings.tabProxy")}</span>
             </TabsTrigger>
             <TabsTrigger
               value="auth"
-              className="min-w-0 justify-start gap-2 max-[1100px]:justify-center"
+              className="min-w-0 gap-2 px-2 max-[1000px]:text-xs max-[900px]:[&>svg]:hidden"
             >
               <ShieldCheck className="h-4 w-4" />
-              <span className="max-[1100px]:sr-only">
-                {t("settings.tabAuth", { defaultValue: "认证" })}
-              </span>
+              <span>{t("settings.tabAuth")}</span>
             </TabsTrigger>
             <TabsTrigger
               value="advanced"
-              className="min-w-0 justify-start gap-2 max-[1100px]:justify-center"
+              className="min-w-0 gap-2 px-2 max-[1000px]:text-xs max-[900px]:[&>svg]:hidden"
             >
               <SlidersHorizontal className="h-4 w-4" />
-              <span className="max-[1100px]:sr-only">
-                {t("settings.tabAdvanced")}
-              </span>
+              <span>{t("settings.tabAdvanced")}</span>
             </TabsTrigger>
             <TabsTrigger
               value="usage"
-              className="min-w-0 justify-start gap-2 max-[1100px]:justify-center"
+              className="min-w-0 gap-2 px-2 max-[1000px]:text-xs max-[900px]:[&>svg]:hidden"
             >
               <ChartNoAxesCombined className="h-4 w-4" />
-              <span className="max-[1100px]:sr-only">{t("usage.title")}</span>
+              <span>{t("settings.tabUsage")}</span>
             </TabsTrigger>
             <TabsTrigger
               value="about"
-              className="min-w-0 justify-start gap-2 max-[1100px]:justify-center"
+              className="min-w-0 gap-2 px-2 max-[1000px]:text-xs max-[900px]:[&>svg]:hidden"
             >
               <Info className="h-4 w-4" />
-              <span className="max-[1100px]:sr-only">{t("common.about")}</span>
+              <span>{t("common.about")}</span>
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col py-5">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col py-4">
             <div
               ref={tabScrollContainerRef}
-              className="flex-1 overflow-y-auto overflow-x-hidden pr-2"
+              className="mx-auto w-full max-w-[960px] flex-1 overflow-y-auto overflow-x-hidden pr-2"
             >
               <TabsContent value="general" className="space-y-6 mt-0">
                 {settings ? (
@@ -565,10 +560,10 @@ export function SettingsPage({
 
             {activeTab === "advanced" && settings && (
               <div
-                className="flex-shrink-0 pt-4 border-t border-border-default"
+                className="flex-shrink-0 border-t border-border-default pt-4"
                 style={{ backgroundColor: "hsl(var(--background))" }}
               >
-                <div className="px-6 flex items-center justify-end gap-3">
+                <div className="mx-auto flex w-full max-w-[960px] items-center justify-end gap-3 pr-2">
                   <Button onClick={handleSave} disabled={isSaving}>
                     {isSaving ? (
                       <span className="inline-flex items-center gap-2">

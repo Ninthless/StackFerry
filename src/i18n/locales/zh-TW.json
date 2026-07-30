@@ -103,6 +103,7 @@
     "workspace": "工作區",
     "navigation": "主導覽",
     "switchApplication": "切換應用程式",
+    "moreActions": "更多操作",
     "routingActive": "本機路由已啟用",
     "directMode": "Provider 直連模式"
   },

@@ -103,6 +103,7 @@
     "workspace": "Workspace",
     "navigation": "Main navigation",
     "switchApplication": "Switch application",
+    "moreActions": "More actions",
     "routingActive": "Local routing is active",
     "directMode": "Direct provider mode"
   },
