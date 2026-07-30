@@ -23,4 +23,19 @@ describe("ProviderCard layout", () => {
       "inline-flex max-w-full items-center overflow-hidden text-left text-sm",
     );
   });
+
+  it("adapts its action layout to the card width", () => {
+    expect(source).toContain("provider-card group");
+    expect(source).toContain("provider-card-body");
+    expect(source).toContain("provider-card-controls");
+    expect(source).not.toContain("2xl:flex-row");
+    expect(source).not.toContain("2xl:border-t-0");
+  });
+
+  it("uses semantic monochrome status styles", () => {
+    expect(source).toContain('t("provider.currentlyUsing")');
+    expect(source).toContain('t("provider.inConfig")');
+    expect(source).not.toContain("bg-slate-");
+    expect(source).not.toContain("text-gray-");
+  });
 });

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type {
   DraggableAttributes,
@@ -286,20 +286,21 @@ export function ProviderCard({
           : isCurrent;
 
   const hasPersistentConfigHighlight = isAdditiveMode && isInConfig;
-  const isEmphasized = isActiveProvider || hasPersistentConfigHighlight;
 
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-md border bg-card p-4 text-card-foreground transition-colors",
-        isEmphasized
-          ? "border-primary/55 bg-primary/[0.035]"
-          : "border-border hover:border-primary/30",
+        "provider-card group relative overflow-hidden rounded-md border border-l-[3px] bg-card p-3 text-card-foreground transition-colors",
+        isActiveProvider
+          ? "border-primary/55 border-l-primary bg-primary/[0.035]"
+          : hasPersistentConfigHighlight
+            ? "border-border border-l-foreground/35 bg-muted/20"
+            : "border-border border-l-border hover:border-primary/30",
         dragHandleProps?.isDragging &&
           "z-10 scale-[1.01] cursor-grabbing border-primary shadow-md",
       )}
     >
-      <div className="relative flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+      <div className="provider-card-body relative flex flex-col gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <button
             type="button"
@@ -329,10 +330,22 @@ export function ProviderCard({
           </div>
 
           <div className="min-w-0 flex-1 space-y-1">
-            <div className="flex flex-wrap items-center gap-2 min-h-7">
+            <div className="flex min-h-7 flex-wrap items-center gap-2">
               <h3 className="text-base font-semibold leading-none">
                 {provider.name}
               </h3>
+
+              {isActiveProvider ? (
+                <span className="inline-flex items-center gap-1 rounded-md bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
+                  <Check className="h-3 w-3" />
+                  {t("provider.currentlyUsing")}
+                </span>
+              ) : hasPersistentConfigHighlight ? (
+                <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
+                  <Check className="h-3 w-3" />
+                  {t("provider.inConfig")}
+                </span>
+              ) : null}
 
               {isOmo && (
                 <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
@@ -372,7 +385,7 @@ export function ProviderCard({
               )}
 
               {appId === "claude" && provider.category === "official" && (
-                <span className="inline-flex items-center rounded-md bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-700/60 dark:text-slate-200">
+                <span className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
                   {t("claudeCode.noRoutingSupport", {
                     defaultValue: "不支持路由",
                   })}
@@ -394,7 +407,7 @@ export function ProviderCard({
               {appId === "codex" &&
                 provider.category === "official" &&
                 !supportsOfficialRouting && (
-                  <span className="inline-flex items-center rounded-md bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-700/60 dark:text-slate-200">
+                  <span className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
                     {t("codex.noRoutingSupport", {
                       defaultValue: "不支持路由",
                     })}
@@ -416,7 +429,7 @@ export function ProviderCard({
 
               {isHermesReadOnly && (
                 <span
-                  className="inline-flex items-center rounded-md bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-700/60 dark:text-slate-200"
+                  className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
                   title={t("provider.managedByHermesHint", {
                     defaultValue: "由 Hermes 管理，请在 Hermes Web UI 中编辑",
                   })}
@@ -447,7 +460,7 @@ export function ProviderCard({
           </div>
         </div>
 
-        <div className="flex min-w-0 items-center gap-3 border-t border-border pt-3 2xl:ml-auto 2xl:border-t-0 2xl:pt-0">
+        <div className="provider-card-controls flex min-w-0 items-center gap-3 border-t border-border pt-3">
           <div className="ml-auto">
             <div className="flex items-center gap-1">
               {isCopilot ? (
@@ -480,7 +493,7 @@ export function ProviderCard({
                   />
                 ) : null
               ) : hasMultiplePlans ? (
-                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span className="font-medium">
                     {t("usage.multiplePlans", {
                       count: usage?.data?.length || 0,

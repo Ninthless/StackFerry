@@ -177,3 +177,21 @@ input[type="password"]::-ms-clear {
     flex: 1 1 0%;
   }
 }
+
+.provider-card {
+  container-type: inline-size;
+}
+
+@container (min-width: 780px) {
+  .provider-card-body {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .provider-card-controls {
+    margin-left: auto;
+    border-top-width: 0;
+    padding-top: 0;
+  }
+}

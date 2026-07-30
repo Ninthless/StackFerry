@@ -6,6 +6,7 @@ import {
   Edit,
   Loader2,
   Minus,
+  MoreHorizontal,
   Play,
   Plus,
   Terminal,
@@ -14,6 +15,19 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { AppId } from "@/lib/api";
 
@@ -37,16 +51,11 @@ interface ProviderActionsProps {
   isInFailoverQueue?: boolean;
   onToggleFailover?: (enabled: boolean) => void;
   isOfficialBlockedByProxy?: boolean;
-  // Hermes v12+ providers: dict overlay — edit/delete must go through Web UI
   isReadOnly?: boolean;
-  // OpenClaw: default model
   isDefaultModel?: boolean;
   onSetAsDefault?: () => void;
 }
 
-// 主按钮的呈现状态。title 用于 disabled 态向用户解释为何不可点击；
-// 因 Button 基类带 disabled:pointer-events-none，title 必须挂在外层非禁用
-// 的 wrapper 上才会在 hover 时显示（见下方 <span> 包裹）。
 interface MainButtonState {
   disabled: boolean;
   variant: "default" | "secondary";
@@ -77,20 +86,14 @@ export function ProviderActions({
   onToggleFailover,
   isOfficialBlockedByProxy = false,
   isReadOnly = false,
-  // OpenClaw: default model
   isDefaultModel = false,
   onSetAsDefault,
 }: ProviderActionsProps) {
   const { t } = useTranslation();
-  const iconButtonClass = "h-8 w-8 p-1";
-
-  // 累加模式应用（OpenCode 非 OMO / OpenClaw / Hermes）
   const isAdditiveMode =
     (appId === "opencode" && !isOmo) ||
     appId === "openclaw" ||
     appId === "hermes";
-
-  // 故障转移模式下的按钮逻辑（累加模式和 OMO 应用不支持故障转移）
   const isFailoverMode =
     !isAdditiveMode && !isOmo && isAutoFailoverEnabled && onToggleFailover;
 
@@ -101,8 +104,10 @@ export function ProviderActions({
       } else {
         onSwitch();
       }
-    } else if (isAdditiveMode) {
-      // 累加模式：切换配置状态（添加/移除）
+      return;
+    }
+
+    if (isAdditiveMode) {
       if (isInConfig) {
         if (onRemoveFromConfig) {
           onRemoveFromConfig();
@@ -110,13 +115,17 @@ export function ProviderActions({
           onDelete();
         }
       } else {
-        onSwitch(); // 添加到配置
+        onSwitch();
       }
-    } else if (isFailoverMode) {
-      onToggleFailover(!isInFailoverQueue);
-    } else {
-      onSwitch();
+      return;
     }
+
+    if (isFailoverMode) {
+      onToggleFailover(!isInFailoverQueue);
+      return;
+    }
+
+    onSwitch();
   };
 
   const getMainButtonState = (): MainButtonState => {
@@ -124,7 +133,7 @@ export function ProviderActions({
       if (isCurrent) {
         return {
           disabled: false,
-          variant: "secondary" as const,
+          variant: "secondary",
           className: "bg-muted text-muted-foreground hover:bg-muted",
           icon: <Check className="h-4 w-4" />,
           text: t("provider.inUse"),
@@ -132,33 +141,32 @@ export function ProviderActions({
       }
       return {
         disabled: false,
-        variant: "default" as const,
+        variant: "default",
         className: "",
         icon: <Play className="h-4 w-4" />,
         text: t("provider.enable"),
       };
     }
 
-    // 累加模式（OpenCode 非 OMO / OpenClaw）
     if (isAdditiveMode) {
       if (isInConfig) {
         return {
-          disabled: isDefaultModel === true,
-          variant: "secondary" as const,
+          disabled: isDefaultModel,
+          variant: "secondary",
           className: cn(
             "bg-accent/15 text-foreground hover:bg-accent/25",
-            isDefaultModel && "opacity-40 cursor-not-allowed",
+            isDefaultModel && "cursor-not-allowed opacity-40",
           ),
           icon: <Minus className="h-4 w-4" />,
-          text: t("provider.removeFromConfig", { defaultValue: "移除" }),
+          text: t("provider.removeFromConfig"),
         };
       }
       return {
         disabled: false,
-        variant: "default" as const,
+        variant: "default",
         className: "",
         icon: <Plus className="h-4 w-4" />,
-        text: t("provider.addToConfig", { defaultValue: "添加" }),
+        text: t("provider.addToConfig"),
       };
     }
 
@@ -166,25 +174,25 @@ export function ProviderActions({
       if (isInFailoverQueue) {
         return {
           disabled: false,
-          variant: "secondary" as const,
+          variant: "secondary",
           className: "bg-primary/10 text-primary hover:bg-primary/15",
           icon: <Check className="h-4 w-4" />,
-          text: t("failover.inQueue", { defaultValue: "已加入" }),
+          text: t("failover.inQueue"),
         };
       }
       return {
         disabled: false,
-        variant: "default" as const,
+        variant: "default",
         className: "",
         icon: <Plus className="h-4 w-4" />,
-        text: t("failover.addQueue", { defaultValue: "加入" }),
+        text: t("failover.addQueue"),
       };
     }
 
     if (isCurrent) {
       return {
         disabled: true,
-        variant: "secondary" as const,
+        variant: "secondary",
         className: "bg-muted text-muted-foreground hover:bg-muted",
         icon: <Check className="h-4 w-4" />,
         text: t("provider.inUse"),
@@ -194,7 +202,7 @@ export function ProviderActions({
     if (isOfficialBlockedByProxy) {
       return {
         disabled: true,
-        variant: "default" as const,
+        variant: "default",
         className: "",
         icon: <Play className="h-4 w-4" />,
         text: t("provider.enable"),
@@ -204,7 +212,7 @@ export function ProviderActions({
 
     return {
       disabled: false,
-      variant: "default" as const,
+      variant: "default",
       className: isProxyTakeover ? "bg-primary hover:bg-primary/90" : "",
       icon: <Play className="h-4 w-4" />,
       text: t("provider.enable"),
@@ -212,12 +220,9 @@ export function ProviderActions({
   };
 
   const buttonState = getMainButtonState();
-
   const canDelete =
     !isReadOnly && (isOmo || isAdditiveMode ? true : !isCurrent);
-  const readOnlyHint = t("provider.managedByHermesHint", {
-    defaultValue: "由 Hermes 管理，请在 Hermes Web UI 中编辑",
-  });
+  const readOnlyHint = t("provider.managedByHermesHint");
 
   return (
     <div className="flex items-center gap-1.5">
@@ -226,13 +231,11 @@ export function ProviderActions({
         onSetAsDefault &&
         (() => {
           const activeLabel =
-            appId === "hermes"
-              ? t("provider.inUse", { defaultValue: "已在用" })
-              : t("provider.isDefault", { defaultValue: "当前默认" });
+            appId === "hermes" ? t("provider.inUse") : t("provider.isDefault");
           const inactiveLabel =
             appId === "hermes"
-              ? t("provider.enable", { defaultValue: "启用" })
-              : t("provider.setAsDefault", { defaultValue: "设为默认" });
+              ? t("provider.enable")
+              : t("provider.setAsDefault");
           return (
             <Button
               size="sm"
@@ -241,9 +244,8 @@ export function ProviderActions({
               disabled={isDefaultModel}
               className={cn(
                 "w-fit px-2.5",
-                isDefaultModel
-                  ? "cursor-not-allowed bg-muted text-muted-foreground opacity-60"
-                  : "",
+                isDefaultModel &&
+                  "cursor-not-allowed bg-muted text-muted-foreground opacity-60",
               )}
             >
               <Zap className="h-4 w-4" />
@@ -252,8 +254,6 @@ export function ProviderActions({
           );
         })()}
 
-      {/* wrapper span 承接 hover：disabled 按钮自身 pointer-events:none，
-          原生 title 与 cursor 都必须挂在未禁用的外层元素上才会生效 */}
       <span
         title={buttonState.title}
         className={cn(
@@ -266,96 +266,79 @@ export function ProviderActions({
           variant={buttonState.variant}
           onClick={handleMainButtonClick}
           disabled={buttonState.disabled}
-          className={cn("w-[4.5rem] px-2.5", buttonState.className)}
+          className={cn("min-w-[4.5rem] px-2.5", buttonState.className)}
         >
           {buttonState.icon}
           {buttonState.text}
         </Button>
       </span>
 
-      <div className="flex items-center gap-1">
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={isReadOnly ? undefined : onEdit}
-          disabled={isReadOnly}
-          title={isReadOnly ? readOnlyHint : t("common.edit")}
-          className={cn(
-            iconButtonClass,
-            isReadOnly && "opacity-40 cursor-not-allowed text-muted-foreground",
-          )}
-        >
-          <Edit className="h-4 w-4" />
-        </Button>
-
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={onDuplicate}
-          title={t("provider.duplicate")}
-          className={iconButtonClass}
-        >
-          <Copy className="h-4 w-4" />
-        </Button>
-
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={onTest || undefined}
-          disabled={isTesting}
-          title={t("provider.connectivityCheck", "检测连通")}
-          className={cn(
-            iconButtonClass,
-            !onTest && "opacity-40 cursor-not-allowed text-muted-foreground",
-          )}
-        >
-          {isTesting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Activity className="h-4 w-4" />
-          )}
-        </Button>
-
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={onConfigureUsage || undefined}
-          title={t("provider.configureUsage")}
-          className={cn(
-            iconButtonClass,
-            !onConfigureUsage &&
-              "opacity-40 cursor-not-allowed text-muted-foreground",
-          )}
-        >
-          <BarChart3 className="h-4 w-4" />
-        </Button>
-
-        {onOpenTerminal && (
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={onOpenTerminal}
-            title={t("provider.openTerminal", "打开终端")}
-            className={cn(iconButtonClass, "hover:text-primary")}
-          >
-            <Terminal className="h-4 w-4" />
-          </Button>
-        )}
-
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={canDelete ? onDelete : undefined}
-          title={isReadOnly ? readOnlyHint : t("common.delete")}
-          className={cn(
-            iconButtonClass,
-            canDelete && "hover:text-destructive",
-            !canDelete && "opacity-40 cursor-not-allowed text-muted-foreground",
-          )}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
+      <TooltipProvider delayDuration={300}>
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label={t("provider.moreActions")}
+                  className="h-8 w-8"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {t("provider.moreActions")}
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem
+              onSelect={onEdit}
+              disabled={isReadOnly}
+              title={isReadOnly ? readOnlyHint : undefined}
+            >
+              <Edit className="h-4 w-4" />
+              {t("common.edit")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onDuplicate}>
+              <Copy className="h-4 w-4" />
+              {t("provider.duplicate")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onTest} disabled={!onTest || isTesting}>
+              {isTesting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Activity className="h-4 w-4" />
+              )}
+              {t("provider.connectivityCheck")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={onConfigureUsage}
+              disabled={!onConfigureUsage}
+            >
+              <BarChart3 className="h-4 w-4" />
+              {t("provider.configureUsage")}
+            </DropdownMenuItem>
+            {onOpenTerminal && (
+              <DropdownMenuItem onSelect={onOpenTerminal}>
+                <Terminal className="h-4 w-4" />
+                {t("provider.openTerminal")}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={canDelete ? onDelete : undefined}
+              disabled={!canDelete}
+              title={isReadOnly ? readOnlyHint : undefined}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+              {t("common.delete")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TooltipProvider>
     </div>
   );
 }
