@@ -15,7 +15,6 @@ import {
   SlidersHorizontal,
   Sparkles,
   SquareTerminal,
-  Waypoints,
   Wrench,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -26,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { AppSwitcher } from "@/components/AppSwitcher";
 import { UpdateBadge } from "@/components/UpdateBadge";
 import type { AppView } from "@/components/shell/types";
+import appIcon from "@/assets/icons/app-icon.png";
 
 interface AppSidebarProps {
   activeApp: AppId;
@@ -221,9 +221,7 @@ export function AppSidebar({
         data-tauri-drag-region
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
       >
-        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          <Waypoints className="h-5 w-5" strokeWidth={2.25} />
-        </div>
+        <img src={appIcon} alt="" className="h-9 w-9 rounded-md" />
         <div className="min-w-0">
           <div className="truncate text-[15px] font-semibold leading-5">
             StackFerry
