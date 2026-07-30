@@ -23,6 +23,7 @@ import {
   MODELS_DEV_SYNC_CONFIG_QUERY_KEY,
   syncModelsDevPricingOnStartup,
 } from "./lib/modelsDevAutoSync";
+import { installBrowserPreview } from "./lib/browserPreview";
 
 installGlobalErrorHandlers();
 
@@ -74,17 +75,17 @@ async function handleConfigLoadError(
   await exit(1);
 }
 
-// 监听后端的配置加载错误事件：仅提醒用户并强制退出，不修改任何配置文件
-try {
-  void listen("configLoadError", async (evt) => {
-    await handleConfigLoadError(evt.payload as ConfigLoadErrorPayload | null);
-  });
-} catch (e) {
-  // 忽略事件订阅异常（例如在非 Tauri 环境下）
-  reportFrontendError("config_load_error_listener", e);
-}
-
 async function bootstrap() {
+  await installBrowserPreview();
+
+  try {
+    void listen("configLoadError", async (evt) => {
+      await handleConfigLoadError(evt.payload as ConfigLoadErrorPayload | null);
+    });
+  } catch (e) {
+    reportFrontendError("config_load_error_listener", e);
+  }
+
   // 启动早期主动查询后端初始化错误，避免事件竞态
   try {
     const initError = (await invoke(
