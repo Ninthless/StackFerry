@@ -60,6 +60,25 @@ describe("ProviderActions", () => {
     expect(props.onConfigureUsage).toHaveBeenCalledOnce();
   });
 
+  it("renders the overflow tooltip outside its clipping container", async () => {
+    const user = userEvent.setup();
+    const props = createProps();
+    const { container } = render(
+      <div style={{ overflow: "hidden", transform: "translate3d(0, 0, 0)" }}>
+        <ProviderActions {...props} />
+      </div>,
+    );
+
+    await user.hover(
+      screen.getByRole("button", { name: "provider.moreActions" }),
+    );
+
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("provider.moreActions");
+    expect(container).not.toContainElement(tooltip);
+    expect(document.body).toContainElement(tooltip);
+  });
+
   it("disables protected actions for current read-only providers", async () => {
     const user = userEvent.setup();
     const props = createProps();
