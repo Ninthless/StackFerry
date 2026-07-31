@@ -221,6 +221,12 @@ describe("SessionManagerPage", () => {
     setSessionFixtures(sessions, messages);
   });
 
+  it("keeps vertical workspace spacing around the session cards", () => {
+    const { container } = renderPage();
+
+    expect(container.firstElementChild).toHaveClass("py-4");
+  });
+
   it("deletes the selected session and selects the next visible session", async () => {
     renderPage();
 

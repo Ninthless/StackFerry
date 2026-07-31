@@ -11,7 +11,6 @@ import { ProviderIcon } from "@/components/ProviderIcon";
 export interface AppConfig {
   label: string;
   icon: React.ReactNode;
-  activeClass: string;
   badgeClass: string;
 }
 
@@ -39,8 +38,6 @@ export const SKILLS_APP_IDS: AppId[] = [
 /** App IDs shown in MCP panels (excludes OpenClaw) */
 export const MCP_APP_IDS: AppId[] = [...SKILLS_APP_IDS];
 
-const ACTIVE_APP_CLASS =
-  "bg-primary text-primary-foreground ring-1 ring-primary hover:bg-primary/90";
 const APP_BADGE_CLASS =
   "border border-border bg-muted text-foreground hover:bg-accent gap-1.5";
 
@@ -48,25 +45,21 @@ export const APP_ICON_MAP: Record<AppId, AppConfig> = {
   claude: {
     label: "Claude",
     icon: <ClaudeIcon size={14} />,
-    activeClass: ACTIVE_APP_CLASS,
     badgeClass: APP_BADGE_CLASS,
   },
   "claude-desktop": {
     label: "Claude Desktop",
     icon: <ClaudeIcon size={14} />,
-    activeClass: ACTIVE_APP_CLASS,
     badgeClass: APP_BADGE_CLASS,
   },
   codex: {
     label: "Codex",
     icon: <CodexIcon size={14} />,
-    activeClass: ACTIVE_APP_CLASS,
     badgeClass: APP_BADGE_CLASS,
   },
   gemini: {
     label: "Gemini",
     icon: <GeminiIcon size={14} />,
-    activeClass: ACTIVE_APP_CLASS,
     badgeClass: APP_BADGE_CLASS,
   },
   grokbuild: {
@@ -79,7 +72,6 @@ export const APP_ICON_MAP: Record<AppId, AppConfig> = {
         showFallback={false}
       />
     ),
-    activeClass: ACTIVE_APP_CLASS,
     badgeClass: APP_BADGE_CLASS,
   },
   opencode: {
@@ -92,13 +84,11 @@ export const APP_ICON_MAP: Record<AppId, AppConfig> = {
         showFallback={false}
       />
     ),
-    activeClass: ACTIVE_APP_CLASS,
     badgeClass: APP_BADGE_CLASS,
   },
   openclaw: {
     label: "OpenClaw",
     icon: <OpenClawIcon size={14} />,
-    activeClass: ACTIVE_APP_CLASS,
     badgeClass: APP_BADGE_CLASS,
   },
   hermes: {
@@ -111,7 +101,6 @@ export const APP_ICON_MAP: Record<AppId, AppConfig> = {
         showFallback={false}
       />
     ),
-    activeClass: ACTIVE_APP_CLASS,
     badgeClass: APP_BADGE_CLASS,
   },
 };
