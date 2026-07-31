@@ -129,4 +129,44 @@ describe("useOpencodeFormState", () => {
       timeout: 200,
     });
   });
+
+  it("repairs malformed options when a structured API key is entered", () => {
+    const { result, getSettingsConfig } = renderOpencodeFormState({
+      npm: "@ai-sdk/openai-compatible",
+      options: "invalid",
+      models: {},
+    });
+
+    act(() => {
+      result.current.handleOpencodeApiKeyChange("sk-test");
+    });
+
+    expect(result.current.opencodeApiKey).toBe("sk-test");
+    expect(JSON.parse(getSettingsConfig()).options).toEqual({
+      apiKey: "sk-test",
+    });
+  });
+
+  it("preserves the provider key while syncing raw JSON", () => {
+    const { result } = renderOpencodeFormState({
+      npm: "@ai-sdk/openai-compatible",
+      options: {},
+      models: {},
+    });
+
+    act(() => {
+      result.current.setOpencodeProviderKey("custom-provider");
+      result.current.resetOpencodeState(
+        {
+          npm: "@ai-sdk/anthropic",
+          options: { apiKey: "new-key" },
+          models: {},
+        },
+        false,
+      );
+    });
+
+    expect(result.current.opencodeProviderKey).toBe("custom-provider");
+    expect(result.current.opencodeApiKey).toBe("new-key");
+  });
 });

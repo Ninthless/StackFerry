@@ -85,6 +85,7 @@ struct ClaudeDesktopPaths {
 pub struct DirectGatewayCredentials {
     pub base_url: String,
     pub api_key: String,
+    pub auth_scheme: &'static str,
 }
 
 #[derive(Debug, Clone)]
@@ -317,21 +318,48 @@ pub fn direct_gateway_credentials(
         })?
         .to_string();
 
+    let selected_field = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.api_key_field.as_deref())
+        .filter(|field| matches!(*field, "ANTHROPIC_AUTH_TOKEN" | "ANTHROPIC_API_KEY"))
+        .unwrap_or_else(|| {
+            if env
+                .get("ANTHROPIC_AUTH_TOKEN")
+                .and_then(Value::as_str)
+                .is_some_and(|value| !value.trim().is_empty())
+            {
+                "ANTHROPIC_AUTH_TOKEN"
+            } else {
+                "ANTHROPIC_API_KEY"
+            }
+        });
+
     let api_key = env
-        .get("ANTHROPIC_AUTH_TOKEN")
+        .get(selected_field)
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {
             AppError::localized(
                 "claude_desktop.provider.auth_token_missing",
-                "Claude Desktop 直连供应商缺少 ANTHROPIC_AUTH_TOKEN（Bearer Token）",
-                "Claude Desktop direct provider is missing ANTHROPIC_AUTH_TOKEN (Bearer Token)",
+                "Claude Desktop 直连供应商缺少所选 API Key",
+                "Claude Desktop direct provider is missing the selected API key",
             )
         })?
         .to_string();
 
-    Ok(DirectGatewayCredentials { base_url, api_key })
+    let auth_scheme = if selected_field == "ANTHROPIC_API_KEY" {
+        "x-api-key"
+    } else {
+        "bearer"
+    };
+
+    Ok(DirectGatewayCredentials {
+        base_url,
+        api_key,
+        auth_scheme,
+    })
 }
 
 pub fn validate_direct_provider(provider: &Provider) -> Result<(), AppError> {
@@ -983,6 +1011,7 @@ fn apply_provider_to_paths_inner(
             build_gateway_profile(
                 &credentials.base_url,
                 &credentials.api_key,
+                credentials.auth_scheme,
                 (!model_specs.is_empty()).then_some(model_specs.as_slice()),
             )
         }
@@ -998,7 +1027,7 @@ fn apply_provider_to_paths_inner(
                     supports_1m: route.supports_1m,
                 })
                 .collect::<Vec<_>>();
-            build_gateway_profile(&base_url, &api_key, Some(model_specs.as_slice()))
+            build_gateway_profile(&base_url, &api_key, "bearer", Some(model_specs.as_slice()))
         }
     };
 
@@ -1026,13 +1055,14 @@ fn restore_official_at_paths_inner(paths: &ClaudeDesktopPaths) -> Result<(), App
 fn build_gateway_profile(
     base_url: &str,
     api_key: &str,
+    auth_scheme: &str,
     model_specs: Option<&[InferenceModelSpec]>,
 ) -> Value {
     let mut profile = json!({
         "coworkEgressAllowedHosts": ["*"],
         "disableDeploymentModeChooser": true,
         "inferenceGatewayApiKey": api_key,
-        "inferenceGatewayAuthScheme": "bearer",
+        "inferenceGatewayAuthScheme": auth_scheme,
         "inferenceGatewayBaseUrl": base_url,
         "inferenceProvider": "gateway"
     });
@@ -1369,6 +1399,18 @@ mod tests {
             ..Default::default()
         });
         provider
+    }
+
+    #[test]
+    fn direct_credentials_respect_selected_api_key_field() {
+        let mut provider = direct_provider("x-api-key");
+        provider.settings_config["env"]["ANTHROPIC_API_KEY"] = json!("selected-key");
+        provider.meta.as_mut().unwrap().api_key_field = Some("ANTHROPIC_API_KEY".to_string());
+
+        let credentials = direct_gateway_credentials(&provider).expect("valid credentials");
+
+        assert_eq!(credentials.api_key, "selected-key");
+        assert_eq!(credentials.auth_scheme, "x-api-key");
     }
 
     #[test]
@@ -2217,6 +2259,6 @@ mod tests {
             }),
             None,
         );
-        assert!(!is_compatible_direct_provider(&missing_bearer));
+        assert!(is_compatible_direct_provider(&missing_bearer));
     }
 }

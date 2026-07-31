@@ -212,9 +212,30 @@ export const hasCommonConfigSnippet = (
 };
 
 // 读取配置中的 API Key（支持 Claude, Codex, Gemini）
+export const getClaudeApiKeyFromEnv = (
+  env: Record<string, unknown>,
+  apiKeyField?: string,
+): string => {
+  if (
+    apiKeyField === "ANTHROPIC_AUTH_TOKEN" ||
+    apiKeyField === "ANTHROPIC_API_KEY"
+  ) {
+    const selectedKey = env[apiKeyField];
+    return typeof selectedKey === "string" ? selectedKey : "";
+  }
+
+  const token = env.ANTHROPIC_AUTH_TOKEN;
+  const apiKey = env.ANTHROPIC_API_KEY;
+  if (typeof token === "string" && token) return token;
+  if (typeof apiKey === "string" && apiKey) return apiKey;
+  if (typeof token === "string") return token;
+  return typeof apiKey === "string" ? apiKey : "";
+};
+
 export const getApiKeyFromConfig = (
   jsonString: string,
   appType?: string,
+  apiKeyField?: string,
 ): string => {
   try {
     const config = JSON.parse(jsonString);
@@ -230,7 +251,7 @@ export const getApiKeyFromConfig = (
 
     const env = config?.env;
 
-    if (!env) return "";
+    if (!isPlainObject(env)) return "";
 
     // Gemini API Key
     if (appType === "gemini") {
@@ -244,16 +265,7 @@ export const getApiKeyFromConfig = (
       return typeof codexKey === "string" ? codexKey : "";
     }
 
-    // Claude API Key (优先 ANTHROPIC_AUTH_TOKEN，其次 ANTHROPIC_API_KEY)
-    const token = env.ANTHROPIC_AUTH_TOKEN;
-    const apiKey = env.ANTHROPIC_API_KEY;
-    const value =
-      typeof token === "string"
-        ? token
-        : typeof apiKey === "string"
-          ? apiKey
-          : "";
-    return value;
+    return getClaudeApiKeyFromEnv(env, apiKeyField);
   } catch (err) {
     return "";
   }
@@ -345,10 +357,11 @@ export const setApiKeyInConfig = (
     appType?: string;
     apiKeyField?: string;
   } = {},
-): string => {
+): string | null => {
   const { createIfMissing = false, appType, apiKeyField } = options;
   try {
     const config = JSON.parse(jsonString);
+    if (!isPlainObject(config)) return null;
 
     // 优先检查顶层 apiKey 字段（用于 Bedrock API Key 等预设）
     if (Object.prototype.hasOwnProperty.call(config, "apiKey")) {
@@ -357,9 +370,10 @@ export const setApiKeyInConfig = (
     }
 
     if (!config.env) {
-      if (!createIfMissing) return jsonString;
+      if (!createIfMissing) return null;
       config.env = {};
     }
+    if (!isPlainObject(config.env)) return null;
     const env = config.env as Record<string, any>;
 
     // Gemini API Key
@@ -369,7 +383,7 @@ export const setApiKeyInConfig = (
       } else if (createIfMissing) {
         env.GEMINI_API_KEY = apiKey;
       } else {
-        return jsonString;
+        return null;
       }
       return JSON.stringify(config, null, 2);
     }
@@ -381,24 +395,41 @@ export const setApiKeyInConfig = (
       } else if (createIfMissing) {
         env.CODEX_API_KEY = apiKey;
       } else {
-        return jsonString;
+        return null;
       }
       return JSON.stringify(config, null, 2);
     }
 
     // Claude API Key (优先写入已存在的字段；若两者均不存在且允许创建，则使用 apiKeyField 或默认 AUTH_TOKEN 字段)
-    if ("ANTHROPIC_AUTH_TOKEN" in env) {
+    if (
+      apiKeyField === "ANTHROPIC_AUTH_TOKEN" ||
+      apiKeyField === "ANTHROPIC_API_KEY"
+    ) {
+      const alternateField =
+        apiKeyField === "ANTHROPIC_AUTH_TOKEN"
+          ? "ANTHROPIC_API_KEY"
+          : "ANTHROPIC_AUTH_TOKEN";
+      if (
+        !(apiKeyField in env) &&
+        !(alternateField in env) &&
+        !createIfMissing
+      ) {
+        return null;
+      }
+      env[apiKeyField] = apiKey;
+      delete env[alternateField];
+    } else if ("ANTHROPIC_AUTH_TOKEN" in env) {
       env.ANTHROPIC_AUTH_TOKEN = apiKey;
     } else if ("ANTHROPIC_API_KEY" in env) {
       env.ANTHROPIC_API_KEY = apiKey;
     } else if (createIfMissing) {
-      env[apiKeyField ?? "ANTHROPIC_AUTH_TOKEN"] = apiKey;
+      env.ANTHROPIC_AUTH_TOKEN = apiKey;
     } else {
-      return jsonString;
+      return null;
     }
     return JSON.stringify(config, null, 2);
   } catch (err) {
-    return jsonString;
+    return null;
   }
 };
 

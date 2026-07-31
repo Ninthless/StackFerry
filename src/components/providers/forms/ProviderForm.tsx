@@ -23,6 +23,7 @@ import type {
   CodexChatReasoning,
   PromptCacheRoutingMode,
   ClaudeApiKeyField,
+  OpenCodeModel,
 } from "@/types";
 import {
   providerPresets,
@@ -48,6 +49,7 @@ import {
 } from "@/config/openclawProviderPresets";
 import {
   hermesProviderPresets,
+  type HermesApiMode,
   type HermesProviderPreset,
 } from "@/config/hermesProviderPresets";
 import { OpenCodeFormFields } from "./OpenCodeFormFields";
@@ -91,6 +93,7 @@ import {
   useApiKeyState,
   useBaseUrlState,
   useModelState,
+  parseCodexAuthObject,
   useCodexConfigState,
   useApiKeyLink,
   useTemplateValues,
@@ -116,6 +119,7 @@ import {
   CODEX_DEFAULT_CONFIG,
   GEMINI_DEFAULT_CONFIG,
   OPENCODE_DEFAULT_CONFIG,
+  OPENCODE_DEFAULT_NPM,
   OPENCLAW_DEFAULT_CONFIG,
   normalizePricingSource,
 } from "./helpers/opencodeFormUtils";
@@ -133,6 +137,20 @@ type PresetEntry = {
     | OpenCodeProviderPreset
     | OpenClawProviderPreset
     | HermesProviderPreset;
+};
+
+const isJsonObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+export const serializeGeminiSettingsForSave = (
+  env: Record<string, string>,
+  config: string,
+): string => {
+  const configObject = config.trim() ? JSON.parse(config) : {};
+  if (!isJsonObject(configObject)) {
+    throw new Error("Config must be a JSON object");
+  }
+  return JSON.stringify({ env, config: configObject });
 };
 
 export const normalizeCodexCatalogModelsForSave = (
@@ -407,6 +425,7 @@ function ProviderFormFull({
     mode: "onSubmit",
   });
   const { isSubmitting } = form.formState;
+  const settingsConfig = form.watch("settingsConfig");
 
   const handleSettingsConfigChange = useCallback(
     (config: string) => {
@@ -419,10 +438,17 @@ function ProviderFormFull({
     () => {
       if (appId !== "claude") return "ANTHROPIC_AUTH_TOKEN";
       if (initialData?.meta?.apiKeyField) return initialData.meta.apiKeyField;
-      // Infer from existing config env
       const env = (initialData?.settingsConfig as Record<string, unknown>)
         ?.env as Record<string, unknown> | undefined;
-      if (env?.ANTHROPIC_API_KEY !== undefined) return "ANTHROPIC_API_KEY";
+      const authToken = env?.ANTHROPIC_AUTH_TOKEN;
+      const apiKey = env?.ANTHROPIC_API_KEY;
+      if (
+        typeof apiKey === "string" &&
+        apiKey.length > 0 &&
+        !(typeof authToken === "string" && authToken.length > 0)
+      ) {
+        return "ANTHROPIC_API_KEY";
+      }
       return "ANTHROPIC_AUTH_TOKEN";
     },
   );
@@ -447,7 +473,7 @@ function ProviderFormFull({
     handleApiKeyChange,
     showApiKey: shouldShowApiKey,
   } = useApiKeyState({
-    initialConfig: form.getValues("settingsConfig"),
+    initialConfig: settingsConfig,
     onConfigChange: handleSettingsConfigChange,
     selectedPresetId,
     category,
@@ -493,25 +519,32 @@ function ProviderFormFull({
   const handleApiKeyFieldChange = useCallback(
     (field: ClaudeApiKeyField) => {
       const prev = localApiKeyField;
-      setLocalApiKeyField(field);
-
-      // Swap the env key name in settingsConfig
       try {
         const raw = form.getValues("settingsConfig");
         const config = JSON.parse(raw || "{}");
-        if (config?.env && prev in config.env) {
-          const value = config.env[prev];
-          delete config.env[prev];
-          config.env[field] = value;
-          const updated = JSON.stringify(config, null, 2);
-          form.setValue("settingsConfig", updated);
-          handleSettingsConfigChange(updated);
+        if (
+          !config ||
+          typeof config !== "object" ||
+          Array.isArray(config) ||
+          !config.env ||
+          typeof config.env !== "object" ||
+          Array.isArray(config.env)
+        ) {
+          return;
         }
+        const value =
+          typeof config.env[prev] === "string" ? config.env[prev] : apiKey;
+        delete config.env.ANTHROPIC_AUTH_TOKEN;
+        delete config.env.ANTHROPIC_API_KEY;
+        config.env[field] = value;
+        const updated = JSON.stringify(config, null, 2);
+        handleSettingsConfigChange(updated);
+        setLocalApiKeyField(field);
       } catch {
-        // ignore parse errors during editing
+        return;
       }
     },
-    [localApiKeyField, form, handleSettingsConfigChange],
+    [localApiKeyField, form, handleSettingsConfigChange, apiKey],
   );
 
   // Copilot OAuth 认证状态（仅 Claude 应用需要）
@@ -926,6 +959,83 @@ function ProviderFormFull({
     isLoading: isHermesLiveProviderIdsLoading,
   } = useHermesLiveProviderIds(appId === "hermes");
 
+  const handleRawSettingsConfigChange = useCallback(
+    (config: string) => {
+      form.setValue("settingsConfig", config);
+
+      let parsed: Record<string, any>;
+      try {
+        const value = JSON.parse(config);
+        if (!isJsonObject(value)) return;
+        parsed = value;
+      } catch {
+        return;
+      }
+
+      if (appId === "opencode") {
+        opencodeForm.resetOpencodeState(
+          {
+            ...parsed,
+            npm:
+              typeof parsed.npm === "string"
+                ? parsed.npm
+                : OPENCODE_DEFAULT_NPM,
+            options: isJsonObject(parsed.options) ? parsed.options : {},
+            models: isJsonObject(parsed.models)
+              ? (parsed.models as Record<string, OpenCodeModel>)
+              : {},
+          },
+          false,
+        );
+      } else if (appId === "openclaw") {
+        openclawForm.resetOpenclawState(
+          {
+            baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : "",
+            apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : "",
+            api: typeof parsed.api === "string" ? parsed.api : undefined,
+            models: Array.isArray(parsed.models) ? parsed.models : [],
+            headers: isJsonObject(parsed.headers)
+              ? (parsed.headers as Record<string, string>)
+              : undefined,
+          },
+          false,
+        );
+      } else if (appId === "hermes") {
+        hermesForm.resetHermesState(
+          {
+            name: typeof parsed.name === "string" ? parsed.name : "",
+            base_url:
+              typeof parsed.base_url === "string" ? parsed.base_url : "",
+            api_key: typeof parsed.api_key === "string" ? parsed.api_key : "",
+            api_mode:
+              typeof parsed.api_mode === "string" &&
+              [
+                "chat_completions",
+                "anthropic_messages",
+                "codex_responses",
+                "bedrock_converse",
+              ].includes(parsed.api_mode)
+                ? (parsed.api_mode as HermesApiMode)
+                : undefined,
+            models: Array.isArray(parsed.models) ? parsed.models : [],
+            rate_limit_delay:
+              typeof parsed.rate_limit_delay === "number"
+                ? parsed.rate_limit_delay
+                : undefined,
+          },
+          false,
+        );
+      }
+    },
+    [
+      appId,
+      form,
+      hermesForm.resetHermesState,
+      openclawForm.resetOpenclawState,
+      opencodeForm.resetOpencodeState,
+    ],
+  );
+
   const additiveExistingProviderKeys = useMemo(() => {
     if (appId === "opencode" && !isAnyOmoCategory) {
       return Array.from(
@@ -1033,6 +1143,16 @@ function ProviderFormFull({
           error: overridesResult.error,
         }),
       );
+      return;
+    }
+
+    if (appId === "codex" && codexAuthError) {
+      toast.error(codexAuthError);
+      return;
+    }
+
+    if (appId === "gemini" && geminiConfigError) {
+      toast.error(geminiConfigError);
       return;
     }
 
@@ -1370,7 +1490,7 @@ function ProviderFormFull({
 
     if (appId === "codex") {
       try {
-        const authJson = JSON.parse(codexAuth);
+        const authJson = parseCodexAuthObject(codexAuth);
         let normalizedCodexConfig =
           category !== "official" && (codexConfig ?? "").trim()
             ? setCodexWireApi(codexConfig ?? "", "responses")
@@ -1407,19 +1527,26 @@ function ProviderFormFull({
         }
         settingsConfig = JSON.stringify(configObj);
       } catch (err) {
-        settingsConfig = values.settingsConfig.trim();
+        toast.error(
+          codexAuthError ||
+            t("jsonEditor.invalidJson", {
+              defaultValue: "Invalid JSON format",
+            }),
+        );
+        return;
       }
     } else if (appId === "gemini") {
       try {
         const envObj = envStringToObj(geminiEnv);
-        const configObj = geminiConfig.trim() ? JSON.parse(geminiConfig) : {};
-        const combined = {
-          env: envObj,
-          config: configObj,
-        };
-        settingsConfig = JSON.stringify(combined);
+        settingsConfig = serializeGeminiSettingsForSave(envObj, geminiConfig);
       } catch (err) {
-        settingsConfig = values.settingsConfig.trim();
+        toast.error(
+          geminiConfigError ||
+            t("jsonEditor.invalidJson", {
+              defaultValue: "Invalid JSON format",
+            }),
+        );
+        return;
       }
     } else if (
       appId === "opencode" &&
@@ -2496,8 +2623,8 @@ function ProviderFormFull({
                   {t("provider.configJson")}
                 </Label>
                 <JsonEditor
-                  value={form.getValues("settingsConfig")}
-                  onChange={(config) => form.setValue("settingsConfig", config)}
+                  value={settingsConfig}
+                  onChange={handleRawSettingsConfigChange}
                   placeholder={`{
   "npm": "@ai-sdk/openai-compatible",
   "options": {
@@ -2521,8 +2648,8 @@ function ProviderFormFull({
                   {t("provider.configJson")}
                 </Label>
                 <JsonEditor
-                  value={form.getValues("settingsConfig")}
-                  onChange={(config) => form.setValue("settingsConfig", config)}
+                  value={settingsConfig}
+                  onChange={handleRawSettingsConfigChange}
                   placeholder={
                     appId === "hermes"
                       ? `{

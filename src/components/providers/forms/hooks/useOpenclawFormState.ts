@@ -31,7 +31,10 @@ export interface OpenclawFormState {
   handleOpenclawApiChange: (api: string) => void;
   handleOpenclawModelsChange: (models: OpenClawModel[]) => void;
   handleOpenclawUserAgentChange: (enabled: boolean) => void;
-  resetOpenclawState: (config?: OpenClawProviderConfig) => void;
+  resetOpenclawState: (
+    config?: OpenClawProviderConfig,
+    resetProviderKey?: boolean,
+  ) => void;
 }
 
 function parseOpenclawField<T>(
@@ -108,10 +111,14 @@ export function useOpenclawFormState({
         const config = JSON.parse(
           getSettingsConfig() || OPENCLAW_DEFAULT_CONFIG,
         );
+        if (!config || typeof config !== "object" || Array.isArray(config)) {
+          return false;
+        }
         updater(config);
         onSettingsConfigChange(JSON.stringify(config, null, 2));
+        return true;
       } catch {
-        // ignore
+        return false;
       }
     },
     [getSettingsConfig, onSettingsConfigChange],
@@ -119,67 +126,85 @@ export function useOpenclawFormState({
 
   const handleOpenclawBaseUrlChange = useCallback(
     (baseUrl: string) => {
-      setOpenclawBaseUrl(baseUrl);
-      updateOpenclawConfig((config) => {
-        config.baseUrl = baseUrl.trim().replace(/\/+$/, "");
-      });
+      if (
+        updateOpenclawConfig((config) => {
+          config.baseUrl = baseUrl.trim().replace(/\/+$/, "");
+        })
+      ) {
+        setOpenclawBaseUrl(baseUrl);
+      }
     },
     [updateOpenclawConfig],
   );
 
   const handleOpenclawApiKeyChange = useCallback(
     (apiKey: string) => {
-      setOpenclawApiKey(apiKey);
-      updateOpenclawConfig((config) => {
-        config.apiKey = apiKey;
-      });
+      if (
+        updateOpenclawConfig((config) => {
+          config.apiKey = apiKey;
+        })
+      ) {
+        setOpenclawApiKey(apiKey);
+      }
     },
     [updateOpenclawConfig],
   );
 
   const handleOpenclawApiChange = useCallback(
     (api: string) => {
-      setOpenclawApi(api);
-      updateOpenclawConfig((config) => {
-        config.api = api;
-      });
+      if (
+        updateOpenclawConfig((config) => {
+          config.api = api;
+        })
+      ) {
+        setOpenclawApi(api);
+      }
     },
     [updateOpenclawConfig],
   );
 
   const handleOpenclawModelsChange = useCallback(
     (models: OpenClawModel[]) => {
-      setOpenclawModels(models);
-      updateOpenclawConfig((config) => {
-        config.models = models;
-      });
+      if (
+        updateOpenclawConfig((config) => {
+          config.models = models;
+        })
+      ) {
+        setOpenclawModels(models);
+      }
     },
     [updateOpenclawConfig],
   );
 
   const handleOpenclawUserAgentChange = useCallback(
     (enabled: boolean) => {
-      setOpenclawUserAgent(enabled);
-      updateOpenclawConfig((config) => {
-        if (enabled) {
-          config.headers = { "User-Agent": OPENCLAW_DEFAULT_USER_AGENT };
-        } else {
-          delete config.headers;
-        }
-      });
+      if (
+        updateOpenclawConfig((config) => {
+          if (enabled) {
+            config.headers = { "User-Agent": OPENCLAW_DEFAULT_USER_AGENT };
+          } else {
+            delete config.headers;
+          }
+        })
+      ) {
+        setOpenclawUserAgent(enabled);
+      }
     },
     [updateOpenclawConfig],
   );
 
-  const resetOpenclawState = useCallback((config?: OpenClawProviderConfig) => {
-    setOpenclawProviderKey("");
-    setOpenclawBaseUrl(config?.baseUrl || "");
-    setOpenclawApiKey(config?.apiKey || "");
-    setOpenclawApi(config?.api || "openai-completions");
-    setOpenclawModels(config?.models || []);
-    const ua = config?.headers ? "User-Agent" in config.headers : false;
-    setOpenclawUserAgent(ua);
-  }, []);
+  const resetOpenclawState = useCallback(
+    (config?: OpenClawProviderConfig, resetProviderKey = true) => {
+      if (resetProviderKey) setOpenclawProviderKey("");
+      setOpenclawBaseUrl(config?.baseUrl || "");
+      setOpenclawApiKey(config?.apiKey || "");
+      setOpenclawApi(config?.api || "openai-completions");
+      setOpenclawModels(config?.models || []);
+      const ua = config?.headers ? "User-Agent" in config.headers : false;
+      setOpenclawUserAgent(ua);
+    },
+    [],
+  );
 
   return {
     openclawProviderKey,

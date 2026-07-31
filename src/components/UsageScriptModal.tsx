@@ -13,6 +13,7 @@ import { useDarkMode } from "@/hooks/useDarkMode";
 import {
   extractCodexBaseUrl,
   extractCodexExperimentalBearerToken,
+  getClaudeApiKeyFromEnv,
 } from "@/utils/providerConfigUtils";
 import { parseGrokBuildConfig } from "@/utils/grokBuildConfig";
 import JsonEditor from "./JsonEditor";
@@ -237,12 +238,15 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
           // Claude / Claude Desktop: { env: { ANTHROPIC_AUTH_TOKEN | ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL } }
           // Key fallbacks mirror the backend resolver (Provider::resolve_usage_credentials).
           const env = (config as any).env || {};
+          const apiKeyField = provider.meta?.apiKeyField;
+          const hasSelectedApiKeyField =
+            apiKeyField === "ANTHROPIC_AUTH_TOKEN" ||
+            apiKeyField === "ANTHROPIC_API_KEY";
+          const anthropicApiKey = getClaudeApiKeyFromEnv(env, apiKeyField);
           return {
-            apiKey:
-              env.ANTHROPIC_AUTH_TOKEN ||
-              env.ANTHROPIC_API_KEY ||
-              env.OPENROUTER_API_KEY ||
-              env.GOOGLE_API_KEY,
+            apiKey: hasSelectedApiKeyField
+              ? anthropicApiKey
+              : anthropicApiKey || env.OPENROUTER_API_KEY || env.GOOGLE_API_KEY,
             baseUrl: env.ANTHROPIC_BASE_URL,
           };
         } else if (appId === "codex") {

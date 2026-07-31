@@ -41,15 +41,7 @@ pub fn import_provider_from_deeplink(
         .clone()
         .ok_or_else(|| AppError::InvalidInput("Missing 'app' field for provider".to_string()))?;
 
-    let api_key = merged_request.api_key.as_ref().ok_or_else(|| {
-        AppError::InvalidInput("API key is required (either in URL or config file)".to_string())
-    })?;
-
-    if api_key.is_empty() {
-        return Err(AppError::InvalidInput(
-            "API key cannot be empty".to_string(),
-        ));
-    }
+    normalize_required_api_key(&mut merged_request)?;
 
     // Get endpoint: supports comma-separated multiple URLs (first is primary)
     let endpoint_str = merged_request.endpoint.as_ref().ok_or_else(|| {
@@ -191,6 +183,20 @@ fn get_primary_endpoint(request: &DeepLinkImportRequest) -> String {
 
 fn normalize_deeplink_api_key(api_key: &str) -> String {
     api_key.trim().to_string()
+}
+
+fn normalize_required_api_key(request: &mut DeepLinkImportRequest) -> Result<(), AppError> {
+    let api_key = request.api_key.as_deref().ok_or_else(|| {
+        AppError::InvalidInput("API key is required (either in URL or config file)".to_string())
+    })?;
+    let normalized = normalize_deeplink_api_key(api_key);
+    if normalized.is_empty() {
+        return Err(AppError::InvalidInput(
+            "API key cannot be empty".to_string(),
+        ));
+    }
+    request.api_key = Some(normalized);
+    Ok(())
 }
 
 fn normalize_deeplink_base_url(base_url: &str) -> String {
@@ -962,6 +968,21 @@ mod tests {
             model: Some("anthropic/claude-opus-4-8".to_string()),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn provider_api_key_is_trimmed_and_whitespace_is_rejected() {
+        let mut request = hermes_request();
+        request.api_key = Some("  sk-trimmed  ".to_string());
+
+        normalize_required_api_key(&mut request).expect("valid API key");
+
+        assert_eq!(request.api_key.as_deref(), Some("sk-trimmed"));
+
+        request.api_key = Some(" \t\r\n ".to_string());
+        let err = normalize_required_api_key(&mut request)
+            .expect_err("whitespace-only API key should be rejected");
+        assert!(err.to_string().contains("cannot be empty"));
     }
 
     /// deeplink 同时声明 `api_key` 与 `env_key` 时，导入结果只保留用户可见的

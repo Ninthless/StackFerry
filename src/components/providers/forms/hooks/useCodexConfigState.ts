@@ -16,6 +16,14 @@ interface UseCodexConfigStateProps {
   };
 }
 
+export function parseCodexAuthObject(value: string): Record<string, unknown> {
+  const parsed = value.trim() ? JSON.parse(value) : {};
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Auth JSON must be an object");
+  }
+  return parsed as Record<string, unknown>;
+}
+
 // auth.json 缺 OPENAI_API_KEY 时回退到 config.toml 的 experimental_bearer_token
 // (Mobile 兼容形态：保留 ChatGPT 登录态但用第三方 token)
 function pickCodexApiKey(
@@ -170,15 +178,14 @@ export function useCodexConfigState({ initialData }: UseCodexConfigStateProps) {
 
   // 验证 Codex Auth JSON
   const validateCodexAuth = useCallback((value: string): string => {
-    if (!value.trim()) return "";
     try {
-      const parsed = JSON.parse(value);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        return "Auth JSON must be an object";
-      }
+      parseCodexAuthObject(value);
       return "";
-    } catch {
-      return "Invalid JSON format";
+    } catch (error) {
+      return error instanceof Error &&
+        error.message === "Auth JSON must be an object"
+        ? error.message
+        : "Invalid JSON format";
     }
   }, []);
 

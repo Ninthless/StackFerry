@@ -210,15 +210,23 @@ impl Provider {
             AppType::Claude | AppType::ClaudeDesktop => {
                 let env = settings.get("env");
                 let base_url = str_at(env.and_then(|e| e.get("ANTHROPIC_BASE_URL")));
-                let api_key = first_non_empty(
-                    env,
-                    &[
-                        "ANTHROPIC_AUTH_TOKEN",
-                        "ANTHROPIC_API_KEY",
-                        "OPENROUTER_API_KEY",
-                        "GOOGLE_API_KEY",
-                    ],
-                );
+                let selected_field = self
+                    .meta
+                    .as_ref()
+                    .and_then(|meta| meta.api_key_field.as_deref())
+                    .filter(|field| matches!(*field, "ANTHROPIC_AUTH_TOKEN" | "ANTHROPIC_API_KEY"));
+                let api_key = match selected_field {
+                    Some(field) => str_at(env.and_then(|e| e.get(field))),
+                    None => first_non_empty(
+                        env,
+                        &[
+                            "ANTHROPIC_AUTH_TOKEN",
+                            "ANTHROPIC_API_KEY",
+                            "OPENROUTER_API_KEY",
+                            "GOOGLE_API_KEY",
+                        ],
+                    ),
+                };
                 (base_url, api_key)
             }
         };
@@ -1409,6 +1417,29 @@ mod tests {
             (
                 "https://api.deepseek.com/anthropic".to_string(),
                 "sk-claude".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn resolve_credentials_claude_respects_selected_api_key_field() {
+        let mut provider = provider_with(json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://gateway.example.com",
+                "ANTHROPIC_AUTH_TOKEN": "stale-token",
+                "ANTHROPIC_API_KEY": "selected-key"
+            }
+        }));
+        provider.meta = Some(ProviderMeta {
+            api_key_field: Some("ANTHROPIC_API_KEY".to_string()),
+            ..Default::default()
+        });
+
+        assert_eq!(
+            provider.resolve_usage_credentials(&AppType::Claude),
+            (
+                "https://gateway.example.com".to_string(),
+                "selected-key".to_string()
             )
         );
     }

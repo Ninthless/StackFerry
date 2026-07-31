@@ -593,6 +593,20 @@ impl ClaudeAdapter {
     /// 从 Provider 配置中提取 API Key
     fn extract_key(&self, provider: &Provider) -> Option<String> {
         if let Some(env) = provider.settings_config.get("env") {
+            if let Some(selected_field) = provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.api_key_field.as_deref())
+                .filter(|field| matches!(*field, "ANTHROPIC_AUTH_TOKEN" | "ANTHROPIC_API_KEY"))
+            {
+                return env
+                    .get(selected_field)
+                    .and_then(|value| value.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
+            }
+
             // Anthropic 标准 key
             if let Some(key) = env
                 .get("ANTHROPIC_AUTH_TOKEN")
@@ -678,6 +692,21 @@ impl ClaudeAdapter {
                 .filter(|s| !s.is_empty())
                 .is_some()
         };
+
+        if let Some(selected_field) = provider
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.api_key_field.as_deref())
+            .filter(|field| matches!(*field, "ANTHROPIC_AUTH_TOKEN" | "ANTHROPIC_API_KEY"))
+        {
+            return match selected_field {
+                "ANTHROPIC_AUTH_TOKEN" if has_value(selected_field) => {
+                    Some(AuthStrategy::ClaudeAuth)
+                }
+                "ANTHROPIC_API_KEY" if has_value(selected_field) => Some(AuthStrategy::Anthropic),
+                _ => None,
+            };
+        }
 
         if has_value("ANTHROPIC_AUTH_TOKEN") {
             return Some(AuthStrategy::ClaudeAuth);
@@ -1116,6 +1145,49 @@ mod tests {
                 "ANTHROPIC_API_KEY": "sk-from-api-key"
             }
         }));
+
+        let auth = adapter.extract_auth(&provider).unwrap();
+        assert_eq!(auth.api_key, "sk-from-auth-token");
+        assert_eq!(auth.strategy, AuthStrategy::ClaudeAuth);
+    }
+
+    #[test]
+    fn test_extract_auth_respects_selected_api_key_field() {
+        let adapter = ClaudeAdapter::new();
+        let provider = create_provider_with_meta(
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
+                    "ANTHROPIC_AUTH_TOKEN": "sk-from-auth-token",
+                    "ANTHROPIC_API_KEY": "sk-from-api-key"
+                }
+            }),
+            ProviderMeta {
+                api_key_field: Some("ANTHROPIC_API_KEY".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let auth = adapter.extract_auth(&provider).unwrap();
+        assert_eq!(auth.api_key, "sk-from-api-key");
+        assert_eq!(auth.strategy, AuthStrategy::Anthropic);
+    }
+
+    #[test]
+    fn test_extract_auth_ignores_invalid_api_key_field_metadata() {
+        let adapter = ClaudeAdapter::new();
+        let provider = create_provider_with_meta(
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
+                    "ANTHROPIC_AUTH_TOKEN": "sk-from-auth-token"
+                }
+            }),
+            ProviderMeta {
+                api_key_field: Some("invalid".to_string()),
+                ..Default::default()
+            },
+        );
 
         let auth = adapter.extract_auth(&provider).unwrap();
         assert_eq!(auth.api_key, "sk-from-auth-token");

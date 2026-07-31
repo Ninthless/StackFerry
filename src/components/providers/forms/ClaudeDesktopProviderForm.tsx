@@ -269,15 +269,21 @@ export function ClaudeDesktopProviderForm({
   const [baseUrl, setBaseUrl] = useState(
     envString(initialData?.settingsConfig, "ANTHROPIC_BASE_URL"),
   );
-  const [apiKey, setApiKey] = useState(
-    envString(initialData?.settingsConfig, "ANTHROPIC_AUTH_TOKEN") ||
-      envString(initialData?.settingsConfig, "ANTHROPIC_API_KEY"),
-  );
-  const [apiKeyField, setApiKeyField] = useState<ApiKeyField>(() =>
-    envString(initialData?.settingsConfig, "ANTHROPIC_API_KEY")
+  const initialApiKeyField: ApiKeyField =
+    initialData?.meta?.apiKeyField === "ANTHROPIC_API_KEY"
       ? "ANTHROPIC_API_KEY"
-      : "ANTHROPIC_AUTH_TOKEN",
+      : initialData?.meta?.apiKeyField === "ANTHROPIC_AUTH_TOKEN"
+        ? "ANTHROPIC_AUTH_TOKEN"
+        : envString(initialData?.settingsConfig, "ANTHROPIC_AUTH_TOKEN")
+          ? "ANTHROPIC_AUTH_TOKEN"
+          : envString(initialData?.settingsConfig, "ANTHROPIC_API_KEY")
+            ? "ANTHROPIC_API_KEY"
+            : "ANTHROPIC_AUTH_TOKEN";
+  const [apiKey, setApiKey] = useState(
+    envString(initialData?.settingsConfig, initialApiKeyField),
   );
+  const [apiKeyField, setApiKeyField] =
+    useState<ApiKeyField>(initialApiKeyField);
   const [selectedGitHubAccountId, setSelectedGitHubAccountId] = useState<
     string | null
   >(() => resolveManagedAccountId(initialData?.meta, "github_copilot"));
@@ -741,6 +747,7 @@ export function ClaudeDesktopProviderForm({
     const meta: ProviderMeta = {
       ...(initialData?.meta ?? {}),
       claudeDesktopMode: effectiveMode,
+      apiKeyField: usesManagedOAuth ? undefined : apiKeyField,
       apiFormat:
         activeProviderType === "xai_oauth"
           ? "openai_responses"

@@ -44,7 +44,7 @@ describe("useApiKeyState", () => {
     act(() => {
       official.result.current.handleApiKeyChange("sk-official");
     });
-    expect(officialConfigChange).toHaveBeenLastCalledWith(initialConfig);
+    expect(officialConfigChange).not.toHaveBeenCalled();
 
     const cloudProviderConfigChange = vi.fn();
     const cloudProvider = renderHook(() =>
@@ -62,6 +62,56 @@ describe("useApiKeyState", () => {
     act(() => {
       cloudProvider.result.current.handleApiKeyChange("sk-cloud");
     });
-    expect(cloudProviderConfigChange).toHaveBeenLastCalledWith(initialConfig);
+    expect(cloudProviderConfigChange).not.toHaveBeenCalled();
+  });
+
+  it("uses the selected Claude API key field", () => {
+    const onConfigChange = vi.fn();
+    const initialConfig = JSON.stringify({
+      env: {
+        ANTHROPIC_AUTH_TOKEN: "old-token",
+        ANTHROPIC_API_KEY: "selected-key",
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useApiKeyState({
+        initialConfig,
+        onConfigChange,
+        selectedPresetId: "custom",
+        appType: "claude",
+        apiKeyField: "ANTHROPIC_API_KEY",
+      }),
+    );
+
+    expect(result.current.apiKey).toBe("selected-key");
+
+    act(() => {
+      result.current.handleApiKeyChange("new-key");
+    });
+
+    const updated = JSON.parse(onConfigChange.mock.calls.at(-1)?.[0]);
+    expect(updated.env).toEqual({ ANTHROPIC_API_KEY: "new-key" });
+  });
+
+  it("does not display an unsaved key when env is malformed", () => {
+    const onConfigChange = vi.fn();
+    const initialConfig = JSON.stringify({ env: "invalid" });
+
+    const { result } = renderHook(() =>
+      useApiKeyState({
+        initialConfig,
+        onConfigChange,
+        selectedPresetId: "custom",
+        appType: "claude",
+      }),
+    );
+
+    act(() => {
+      result.current.handleApiKeyChange("new-key");
+    });
+
+    expect(result.current.apiKey).toBe("");
+    expect(onConfigChange).not.toHaveBeenCalled();
   });
 });

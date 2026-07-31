@@ -30,6 +30,40 @@ function renderForm(
 }
 
 describe("ClaudeDesktopProviderForm", () => {
+  it("persists the selected direct API key field", async () => {
+    const onSubmit = vi.fn();
+    renderForm(
+      {
+        name: "Direct Provider",
+        settingsConfig: {
+          env: {
+            ANTHROPIC_BASE_URL: "https://api.example.com",
+            ANTHROPIC_AUTH_TOKEN: "stale-token",
+            ANTHROPIC_API_KEY: "sk-test",
+          },
+        },
+        meta: {
+          apiKeyField: "ANTHROPIC_API_KEY",
+          claudeDesktopMode: "direct",
+          claudeDesktopModelRoutes: {},
+        },
+      },
+      onSubmit,
+    );
+
+    fireEvent.click(document.querySelector('button[type="submit"]')!);
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0].meta.apiKeyField).toBe(
+      "ANTHROPIC_API_KEY",
+    );
+    const settingsConfig = JSON.parse(onSubmit.mock.calls[0][0].settingsConfig);
+    expect(settingsConfig.env).toEqual({
+      ANTHROPIC_BASE_URL: "https://api.example.com",
+      ANTHROPIC_API_KEY: "sk-test",
+    });
+  });
+
   it.each(["github_copilot", "codex_oauth", "xai_oauth"])(
     "托管 OAuth %s 即使旧数据是 direct 也强制开启模型映射",
     (providerType) => {

@@ -29,7 +29,7 @@ export function useApiKeyState({
 }: UseApiKeyStateProps) {
   const [apiKey, setApiKey] = useState(() => {
     if (initialConfig) {
-      return getApiKeyFromConfig(initialConfig, appType);
+      return getApiKeyFromConfig(initialConfig, appType, apiKeyField);
     }
     return "";
   });
@@ -46,16 +46,14 @@ export function useApiKeyState({
     }
 
     // 从配置中提取 API Key（如果不存在则返回空字符串）
-    const extracted = getApiKeyFromConfig(initialConfig, appType);
+    const extracted = getApiKeyFromConfig(initialConfig, appType, apiKeyField);
     if (extracted !== apiKey) {
       setApiKey(extracted);
     }
-  }, [initialConfig, appType, apiKey]);
+  }, [initialConfig, appType, apiKeyField, apiKey]);
 
   const handleApiKeyChange = useCallback(
     (key: string) => {
-      setApiKey(key);
-
       const configString = setApiKeyInConfig(
         initialConfig || "{}",
         key.trim(),
@@ -71,6 +69,8 @@ export function useApiKeyState({
         },
       );
 
+      if (configString === null) return;
+      setApiKey(key);
       onConfigChange(configString);
     },
     [

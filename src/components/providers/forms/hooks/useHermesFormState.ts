@@ -44,7 +44,10 @@ export interface HermesFormState {
   handleHermesApiModeChange: (mode: HermesApiMode) => void;
   handleHermesModelsChange: (models: HermesModel[]) => void;
   handleHermesRateLimitDelayChange: (delay: number | undefined) => void;
-  resetHermesState: (config?: Partial<HermesProviderSettingsConfig>) => void;
+  resetHermesState: (
+    config?: Partial<HermesProviderSettingsConfig>,
+    resetProviderKey?: boolean,
+  ) => void;
 }
 
 function parseHermesField<T>(
@@ -127,10 +130,14 @@ export function useHermesFormState({
     (updater: (config: Record<string, unknown>) => void) => {
       try {
         const config = JSON.parse(getSettingsConfig() || HERMES_DEFAULT_CONFIG);
+        if (!config || typeof config !== "object" || Array.isArray(config)) {
+          return false;
+        }
         updater(config);
         onSettingsConfigChange(JSON.stringify(config, null, 2));
+        return true;
       } catch {
-        // ignore
+        return false;
       }
     },
     [getSettingsConfig, onSettingsConfigChange],
@@ -138,65 +145,83 @@ export function useHermesFormState({
 
   const handleHermesBaseUrlChange = useCallback(
     (baseUrl: string) => {
-      setHermesBaseUrl(baseUrl);
-      updateHermesConfig((config) => {
-        config.base_url = baseUrl.trim().replace(/\/+$/, "");
-      });
+      if (
+        updateHermesConfig((config) => {
+          config.base_url = baseUrl.trim().replace(/\/+$/, "");
+        })
+      ) {
+        setHermesBaseUrl(baseUrl);
+      }
     },
     [updateHermesConfig],
   );
 
   const handleHermesApiKeyChange = useCallback(
     (apiKey: string) => {
-      setHermesApiKey(apiKey);
-      updateHermesConfig((config) => {
-        config.api_key = apiKey;
-      });
+      if (
+        updateHermesConfig((config) => {
+          config.api_key = apiKey;
+        })
+      ) {
+        setHermesApiKey(apiKey);
+      }
     },
     [updateHermesConfig],
   );
 
   const handleHermesApiModeChange = useCallback(
     (mode: HermesApiMode) => {
-      setHermesApiMode(mode);
-      updateHermesConfig((config) => {
-        config.api_mode = mode;
-      });
+      if (
+        updateHermesConfig((config) => {
+          config.api_mode = mode;
+        })
+      ) {
+        setHermesApiMode(mode);
+      }
     },
     [updateHermesConfig],
   );
 
   const handleHermesModelsChange = useCallback(
     (models: HermesModel[]) => {
-      setHermesModels(models);
-      updateHermesConfig((config) => {
-        if (models.length === 0) {
-          delete config.models;
-        } else {
-          config.models = models;
-        }
-      });
+      if (
+        updateHermesConfig((config) => {
+          if (models.length === 0) {
+            delete config.models;
+          } else {
+            config.models = models;
+          }
+        })
+      ) {
+        setHermesModels(models);
+      }
     },
     [updateHermesConfig],
   );
 
   const handleHermesRateLimitDelayChange = useCallback(
     (delay: number | undefined) => {
-      setHermesRateLimitDelay(delay);
-      updateHermesConfig((config) => {
-        if (delay === undefined) {
-          delete config.rate_limit_delay;
-        } else {
-          config.rate_limit_delay = delay;
-        }
-      });
+      if (
+        updateHermesConfig((config) => {
+          if (delay === undefined) {
+            delete config.rate_limit_delay;
+          } else {
+            config.rate_limit_delay = delay;
+          }
+        })
+      ) {
+        setHermesRateLimitDelay(delay);
+      }
     },
     [updateHermesConfig],
   );
 
   const resetHermesState = useCallback(
-    (config?: Partial<HermesProviderSettingsConfig>) => {
-      setHermesProviderKey("");
+    (
+      config?: Partial<HermesProviderSettingsConfig>,
+      resetProviderKey = true,
+    ) => {
+      if (resetProviderKey) setHermesProviderKey("");
       setHermesBaseUrl(config?.base_url || "");
       setHermesApiKey(config?.api_key || "");
       setHermesApiMode(config?.api_mode ?? HERMES_DEFAULT_API_MODE);

@@ -35,7 +35,10 @@ export interface OpencodeFormState {
   handleOpencodeHeadersChange: (headers: Record<string, string>) => void;
   handleOpencodeModelsChange: (models: Record<string, OpenCodeModel>) => void;
   handleOpencodeExtraOptionsChange: (options: Record<string, string>) => void;
-  resetOpencodeState: (config?: OpenCodeProviderConfig) => void;
+  resetOpencodeState: (
+    config?: OpenCodeProviderConfig,
+    resetProviderKey?: boolean,
+  ) => void;
 }
 
 export function useOpencodeFormState({
@@ -103,115 +106,169 @@ export function useOpencodeFormState({
         const config = JSON.parse(
           getSettingsConfig() || OPENCODE_DEFAULT_CONFIG,
         ) as Record<string, any>;
+        if (!config || typeof config !== "object" || Array.isArray(config)) {
+          return false;
+        }
         updater(config);
         onSettingsConfigChange(JSON.stringify(config, null, 2));
-      } catch {}
+        return true;
+      } catch {
+        return false;
+      }
     },
     [getSettingsConfig, onSettingsConfigChange],
   );
 
   const handleOpencodeNpmChange = useCallback(
     (npm: string) => {
-      setOpencodeNpm(npm);
-      updateOpencodeSettings((config) => {
-        config.npm = npm;
-      });
+      if (
+        updateOpencodeSettings((config) => {
+          config.npm = npm;
+        })
+      ) {
+        setOpencodeNpm(npm);
+      }
     },
     [updateOpencodeSettings],
   );
 
   const handleOpencodeApiKeyChange = useCallback(
     (apiKey: string) => {
-      setOpencodeApiKey(apiKey);
-      updateOpencodeSettings((config) => {
-        if (!config.options) config.options = {};
-        config.options.apiKey = apiKey;
-      });
+      if (
+        updateOpencodeSettings((config) => {
+          if (
+            !config.options ||
+            typeof config.options !== "object" ||
+            Array.isArray(config.options)
+          ) {
+            config.options = {};
+          }
+          config.options.apiKey = apiKey;
+        })
+      ) {
+        setOpencodeApiKey(apiKey);
+      }
     },
     [updateOpencodeSettings],
   );
 
   const handleOpencodeBaseUrlChange = useCallback(
     (baseUrl: string) => {
-      setOpencodeBaseUrl(baseUrl);
-      updateOpencodeSettings((config) => {
-        if (!config.options) config.options = {};
-        config.options.baseURL = baseUrl.trim().replace(/\/+$/, "");
-      });
+      if (
+        updateOpencodeSettings((config) => {
+          if (
+            !config.options ||
+            typeof config.options !== "object" ||
+            Array.isArray(config.options)
+          ) {
+            config.options = {};
+          }
+          config.options.baseURL = baseUrl.trim().replace(/\/+$/, "");
+        })
+      ) {
+        setOpencodeBaseUrl(baseUrl);
+      }
     },
     [updateOpencodeSettings],
   );
 
   const handleOpencodeHeadersChange = useCallback(
     (headers: Record<string, string>) => {
-      setOpencodeHeaders(headers);
-      updateOpencodeSettings((config) => {
-        if (!config.options) config.options = {};
-
-        const nextHeaders: Record<string, string> = {};
-        for (const [key, value] of Object.entries(headers)) {
-          const trimmedKey = key.trim();
-          if (trimmedKey && !key.startsWith(OPENCODE_HEADER_DRAFT_PREFIX)) {
-            nextHeaders[trimmedKey] = value;
+      if (
+        updateOpencodeSettings((config) => {
+          if (
+            !config.options ||
+            typeof config.options !== "object" ||
+            Array.isArray(config.options)
+          ) {
+            config.options = {};
           }
-        }
 
-        if (Object.keys(nextHeaders).length > 0) {
-          config.options.headers = nextHeaders;
-        } else {
-          delete config.options.headers;
-        }
-      });
+          const nextHeaders: Record<string, string> = {};
+          for (const [key, value] of Object.entries(headers)) {
+            const trimmedKey = key.trim();
+            if (trimmedKey && !key.startsWith(OPENCODE_HEADER_DRAFT_PREFIX)) {
+              nextHeaders[trimmedKey] = value;
+            }
+          }
+
+          if (Object.keys(nextHeaders).length > 0) {
+            config.options.headers = nextHeaders;
+          } else {
+            delete config.options.headers;
+          }
+        })
+      ) {
+        setOpencodeHeaders(headers);
+      }
     },
     [updateOpencodeSettings],
   );
 
   const handleOpencodeModelsChange = useCallback(
     (models: Record<string, OpenCodeModel>) => {
-      setOpencodeModels(models);
-      updateOpencodeSettings((config) => {
-        config.models = models;
-      });
+      if (
+        updateOpencodeSettings((config) => {
+          config.models = models;
+        })
+      ) {
+        setOpencodeModels(models);
+      }
     },
     [updateOpencodeSettings],
   );
 
   const handleOpencodeExtraOptionsChange = useCallback(
     (options: Record<string, string>) => {
-      setOpencodeExtraOptions(options);
-      updateOpencodeSettings((config) => {
-        if (!config.options) config.options = {};
-
-        for (const k of Object.keys(config.options)) {
-          if (!isKnownOpencodeOptionKey(k)) {
-            delete config.options[k];
+      if (
+        updateOpencodeSettings((config) => {
+          if (
+            !config.options ||
+            typeof config.options !== "object" ||
+            Array.isArray(config.options)
+          ) {
+            config.options = {};
           }
-        }
 
-        for (const [k, v] of Object.entries(options)) {
-          const trimmedKey = k.trim();
-          if (trimmedKey && !k.startsWith(OPENCODE_EXTRA_OPTION_DRAFT_PREFIX)) {
-            try {
-              config.options[trimmedKey] = JSON.parse(v);
-            } catch {
-              config.options[trimmedKey] = v;
+          for (const k of Object.keys(config.options)) {
+            if (!isKnownOpencodeOptionKey(k)) {
+              delete config.options[k];
             }
           }
-        }
-      });
+
+          for (const [k, v] of Object.entries(options)) {
+            const trimmedKey = k.trim();
+            if (
+              trimmedKey &&
+              !k.startsWith(OPENCODE_EXTRA_OPTION_DRAFT_PREFIX)
+            ) {
+              try {
+                config.options[trimmedKey] = JSON.parse(v);
+              } catch {
+                config.options[trimmedKey] = v;
+              }
+            }
+          }
+        })
+      ) {
+        setOpencodeExtraOptions(options);
+      }
     },
     [updateOpencodeSettings],
   );
 
-  const resetOpencodeState = useCallback((config?: OpenCodeProviderConfig) => {
-    setOpencodeProviderKey("");
-    setOpencodeNpm(config?.npm || OPENCODE_DEFAULT_NPM);
-    setOpencodeBaseUrl(config?.options?.baseURL || "");
-    setOpencodeApiKey(config?.options?.apiKey || "");
-    setOpencodeHeaders(config?.options?.headers || {});
-    setOpencodeModels(config?.models || {});
-    setOpencodeExtraOptions(toOpencodeExtraOptions(config?.options || {}));
-  }, []);
+  const resetOpencodeState = useCallback(
+    (config?: OpenCodeProviderConfig, resetProviderKey = true) => {
+      if (resetProviderKey) setOpencodeProviderKey("");
+      setOpencodeNpm(config?.npm || OPENCODE_DEFAULT_NPM);
+      setOpencodeBaseUrl(config?.options?.baseURL || "");
+      setOpencodeApiKey(config?.options?.apiKey || "");
+      setOpencodeHeaders(config?.options?.headers || {});
+      setOpencodeModels(config?.models || {});
+      setOpencodeExtraOptions(toOpencodeExtraOptions(config?.options || {}));
+    },
+    [],
+  );
 
   return {
     opencodeProviderKey,

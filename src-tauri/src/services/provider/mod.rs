@@ -262,6 +262,20 @@ mod tests {
         })
     }
 
+    fn claude_provider(id: &str, api_key: &str) -> Provider {
+        Provider::with_id(
+            id.to_string(),
+            format!("Provider {id}"),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://api.example.com",
+                    "ANTHROPIC_AUTH_TOKEN": api_key,
+                }
+            }),
+            None,
+        )
+    }
+
     fn usage_script_with_credentials(
         api_key: Option<&str>,
         base_url: Option<&str>,
@@ -465,6 +479,138 @@ mod tests {
 
             assert_eq!(script.api_key, None);
             assert_eq!(script.base_url, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn add_rolls_back_database_when_initial_live_write_fails() {
+        with_test_home(|state, _| {
+            fs::create_dir_all(get_claude_settings_path()).expect("create blocking directory");
+            let provider = claude_provider("claude-new", "new-key");
+
+            ProviderService::add(state, AppType::Claude, provider, true)
+                .expect_err("live write should fail");
+
+            assert!(state
+                .db
+                .get_provider_by_id("claude-new", AppType::Claude.as_str())
+                .expect("query provider")
+                .is_none());
+            assert_eq!(
+                state
+                    .db
+                    .get_current_provider(AppType::Claude.as_str())
+                    .expect("query current"),
+                None
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn update_rolls_back_api_key_when_live_write_fails() {
+        with_test_home(|state, _| {
+            let previous = claude_provider("claude-current", "old-key");
+            state
+                .db
+                .save_provider(AppType::Claude.as_str(), &previous)
+                .expect("save previous provider");
+            state
+                .db
+                .set_current_provider(AppType::Claude.as_str(), &previous.id)
+                .expect("set database current");
+            crate::settings::set_current_provider(&AppType::Claude, Some(&previous.id))
+                .expect("set local current");
+            fs::create_dir_all(get_claude_settings_path()).expect("create blocking directory");
+
+            let updated = claude_provider("claude-current", "new-key");
+            ProviderService::update(state, AppType::Claude, None, updated)
+                .expect_err("live write should fail");
+
+            let saved = state
+                .db
+                .get_provider_by_id("claude-current", AppType::Claude.as_str())
+                .expect("query provider")
+                .expect("provider should remain");
+            assert_eq!(
+                saved.settings_config["env"]["ANTHROPIC_AUTH_TOKEN"],
+                json!("old-key")
+            );
+            crate::settings::set_current_provider(&AppType::Claude, None)
+                .expect("clear local current");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn switch_rolls_back_current_pointers_when_live_write_fails() {
+        with_test_home(|state, _| {
+            let previous = claude_provider("claude-a", "key-a");
+            let target = claude_provider("claude-b", "key-b");
+            state
+                .db
+                .save_provider(AppType::Claude.as_str(), &previous)
+                .expect("save previous provider");
+            state
+                .db
+                .save_provider(AppType::Claude.as_str(), &target)
+                .expect("save target provider");
+            state
+                .db
+                .set_current_provider(AppType::Claude.as_str(), &previous.id)
+                .expect("set database current");
+            crate::settings::set_current_provider(&AppType::Claude, Some(&previous.id))
+                .expect("set local current");
+            fs::create_dir_all(get_claude_settings_path()).expect("create blocking directory");
+
+            ProviderService::switch(state, AppType::Claude, &target.id)
+                .expect_err("live write should fail");
+
+            assert_eq!(
+                state
+                    .db
+                    .get_current_provider(AppType::Claude.as_str())
+                    .expect("query database current")
+                    .as_deref(),
+                Some(previous.id.as_str())
+            );
+            assert_eq!(
+                crate::settings::get_current_provider(&AppType::Claude).as_deref(),
+                Some(previous.id.as_str())
+            );
+            crate::settings::set_current_provider(&AppType::Claude, None)
+                .expect("clear local current");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn additive_update_rolls_back_api_key_when_live_write_fails() {
+        with_test_home(|state, _| {
+            let mut previous = opencode_provider("opencode-current");
+            ProviderService::set_provider_live_config_managed(&mut previous, true);
+            state
+                .db
+                .save_provider(AppType::OpenCode.as_str(), &previous)
+                .expect("save previous provider");
+            fs::create_dir_all(crate::opencode_config::get_opencode_config_path())
+                .expect("create blocking directory");
+
+            let mut updated = previous.clone();
+            updated.settings_config["options"]["apiKey"] = json!("new-key");
+            ProviderService::update(state, AppType::OpenCode, None, updated)
+                .expect_err("live write should fail");
+
+            let saved = state
+                .db
+                .get_provider_by_id("opencode-current", AppType::OpenCode.as_str())
+                .expect("query provider")
+                .expect("provider should remain");
+            assert_eq!(
+                saved.settings_config["options"]["apiKey"],
+                json!("test-key")
+            );
         });
     }
 
@@ -700,6 +846,56 @@ mod tests {
             err.to_string().contains("auth"),
             "expected auth error, got {err:?}"
         );
+    }
+
+    #[test]
+    fn validate_provider_settings_rejects_malformed_claude_env() {
+        let provider = Provider::with_id(
+            "claude".into(),
+            "Claude".into(),
+            json!({ "env": "invalid" }),
+            None,
+        );
+
+        let err = ProviderService::validate_provider_settings(&AppType::Claude, &provider)
+            .expect_err("malformed env should be rejected");
+
+        assert!(err.to_string().contains("env"));
+    }
+
+    #[test]
+    fn validate_provider_settings_rejects_malformed_opencode_options() {
+        let provider = Provider::with_id(
+            "opencode".into(),
+            "OpenCode".into(),
+            json!({ "options": "invalid" }),
+            None,
+        );
+
+        let err = ProviderService::validate_provider_settings(&AppType::OpenCode, &provider)
+            .expect_err("malformed options should be rejected");
+
+        assert!(err.to_string().contains("options"));
+    }
+
+    #[test]
+    fn validate_provider_settings_rejects_non_string_additive_api_keys() {
+        let cases = [
+            (AppType::OpenClaw, json!({ "apiKey": 42 })),
+            (AppType::Hermes, json!({ "api_key": false })),
+        ];
+
+        for (app_type, settings) in cases {
+            let provider = Provider::with_id(
+                app_type.as_str().to_string(),
+                app_type.as_str().to_string(),
+                settings,
+                None,
+            );
+
+            ProviderService::validate_provider_settings(&app_type, &provider)
+                .expect_err("non-string API key should be rejected");
+        }
     }
 
     #[test]
@@ -2547,6 +2743,54 @@ impl ProviderService {
             .map(|opt| opt.unwrap_or_default())
     }
 
+    fn restore_provider_record(
+        state: &AppState,
+        app_type: &AppType,
+        provider_id: &str,
+        previous: Option<&Provider>,
+    ) -> Result<(), AppError> {
+        match previous {
+            Some(provider) => state.db.save_provider(app_type.as_str(), provider),
+            None => state.db.delete_provider(app_type.as_str(), provider_id),
+        }
+    }
+
+    fn restore_database_current(
+        state: &AppState,
+        app_type: &AppType,
+        previous: Option<&str>,
+    ) -> Result<(), AppError> {
+        match previous {
+            Some(provider_id) => state
+                .db
+                .set_current_provider(app_type.as_str(), provider_id),
+            None => state.db.clear_current_provider(app_type.as_str()),
+        }
+    }
+
+    fn rollback_error(error: AppError, rollback_errors: Vec<String>) -> AppError {
+        if rollback_errors.is_empty() {
+            error
+        } else {
+            AppError::Message(format!(
+                "{error}; rollback failed: {}",
+                rollback_errors.join("; ")
+            ))
+        }
+    }
+
+    fn remove_additive_provider_from_live(
+        app_type: &AppType,
+        provider_id: &str,
+    ) -> Result<(), AppError> {
+        match app_type {
+            AppType::OpenCode => remove_opencode_provider_from_live(provider_id),
+            AppType::OpenClaw => remove_openclaw_provider_from_live(provider_id),
+            AppType::Hermes => remove_hermes_provider_from_live(provider_id),
+            _ => Ok(()),
+        }
+    }
+
     /// Add a new provider
     pub fn add(
         state: &AppState,
@@ -2564,6 +2808,15 @@ impl ProviderService {
             Self::set_provider_live_config_managed(&mut provider, add_to_live);
         }
 
+        let previous_provider = state
+            .db
+            .get_provider_by_id(&provider.id, app_type.as_str())?;
+        let previous_current = if app_type.is_additive_mode() {
+            None
+        } else {
+            state.db.get_current_provider(app_type.as_str())?
+        };
+
         // Save to database
         state.db.save_provider(app_type.as_str(), &provider)?;
 
@@ -2580,18 +2833,69 @@ impl ProviderService {
             if !add_to_live {
                 return Ok(true);
             }
-            write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
+            if let Err(error) =
+                write_live_with_common_config(state.db.as_ref(), &app_type, &provider)
+            {
+                let mut rollback_errors = Vec::new();
+                if let Err(rollback_error) = Self::restore_provider_record(
+                    state,
+                    &app_type,
+                    &provider.id,
+                    previous_provider.as_ref(),
+                ) {
+                    rollback_errors.push(format!("database: {rollback_error}"));
+                }
+                let live_rollback = match previous_provider.as_ref() {
+                    Some(previous) => {
+                        write_live_with_common_config(state.db.as_ref(), &app_type, previous)
+                    }
+                    None => Self::remove_additive_provider_from_live(&app_type, &provider.id),
+                };
+                if let Err(rollback_error) = live_rollback {
+                    rollback_errors.push(format!("live config: {rollback_error}"));
+                }
+                return Err(Self::rollback_error(error, rollback_errors));
+            }
             return Ok(true);
         }
 
         // For other apps: Check if sync is needed (if this is current provider, or no current provider)
-        let current = state.db.get_current_provider(app_type.as_str())?;
-        if current.is_none() {
+        if previous_current.is_none() {
             // No current provider, set as current and sync
-            state
+            if let Err(error) = state
                 .db
-                .set_current_provider(app_type.as_str(), &provider.id)?;
-            write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
+                .set_current_provider(app_type.as_str(), &provider.id)
+            {
+                let rollback_errors = Self::restore_provider_record(
+                    state,
+                    &app_type,
+                    &provider.id,
+                    previous_provider.as_ref(),
+                )
+                .err()
+                .map(|rollback_error| vec![format!("database: {rollback_error}")])
+                .unwrap_or_default();
+                return Err(Self::rollback_error(error, rollback_errors));
+            }
+            if let Err(error) =
+                write_live_with_common_config(state.db.as_ref(), &app_type, &provider)
+            {
+                let mut rollback_errors = Vec::new();
+                if let Err(rollback_error) = Self::restore_provider_record(
+                    state,
+                    &app_type,
+                    &provider.id,
+                    previous_provider.as_ref(),
+                ) {
+                    rollback_errors.push(format!("database provider: {rollback_error}"));
+                }
+                if let Err(rollback_error) =
+                    Self::restore_database_current(state, &app_type, previous_current.as_deref())
+                {
+                    rollback_errors.push(format!("database current: {rollback_error}"));
+                }
+                return Err(Self::rollback_error(error, rollback_errors));
+            }
         }
 
         Ok(true)
@@ -2742,17 +3046,37 @@ impl ProviderService {
             if !live_config_managed {
                 return Ok(true);
             }
-            write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
+            if let Err(error) =
+                write_live_with_common_config(state.db.as_ref(), &app_type, &provider)
+            {
+                let mut rollback_errors = Vec::new();
+                if let Err(rollback_error) = Self::restore_provider_record(
+                    state,
+                    &app_type,
+                    &provider.id,
+                    existing_provider.as_ref(),
+                ) {
+                    rollback_errors.push(format!("database: {rollback_error}"));
+                }
+                if let Some(previous) = existing_provider.as_ref() {
+                    if let Err(rollback_error) =
+                        write_live_with_common_config(state.db.as_ref(), &app_type, previous)
+                    {
+                        rollback_errors.push(format!("live config: {rollback_error}"));
+                    }
+                }
+                return Err(Self::rollback_error(error, rollback_errors));
+            }
             return Ok(true);
         }
-
-        // Save to database
-        state.db.save_provider(app_type.as_str(), &provider)?;
 
         // For other apps: Check if this is current provider (use effective current, not just DB)
         let effective_current =
             crate::settings::get_effective_current_provider(&state.db, &app_type)?;
         let is_current = effective_current.as_deref() == Some(provider.id.as_str());
+
+        // Save to database
+        state.db.save_provider(app_type.as_str(), &provider)?;
 
         if is_current {
             // 如果 Claude 代理接管处于激活状态，并且代理服务正在运行：
@@ -2771,53 +3095,76 @@ impl ProviderService {
             // proxy_config.enabled is committed.
             let should_sync_via_proxy = has_live_backup || live_taken_over;
 
-            if should_sync_via_proxy {
-                if matches!(app_type, AppType::ClaudeDesktop) {
-                    write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
-                } else {
-                    futures::executor::block_on(
-                        state
-                            .proxy_service
-                            .update_live_backup_from_provider(app_type.as_str(), &provider),
-                    )
-                    .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
-                }
+            let sync_provider = |candidate: &Provider| -> Result<(), AppError> {
+                if should_sync_via_proxy {
+                    if matches!(app_type, AppType::ClaudeDesktop) {
+                        write_live_with_common_config(state.db.as_ref(), &app_type, candidate)?;
+                    } else {
+                        futures::executor::block_on(
+                            state
+                                .proxy_service
+                                .update_live_backup_from_provider(app_type.as_str(), candidate),
+                        )
+                        .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
+                    }
 
-                if futures::executor::block_on(state.proxy_service.is_running()) {
-                    if matches!(app_type, AppType::Claude) {
-                        futures::executor::block_on(
-                            state
-                                .proxy_service
-                                .sync_claude_live_from_provider_while_proxy_active(&provider),
-                        )
-                        .map_err(|e| {
-                            AppError::Message(format!("同步 Claude Live 配置失败: {e}"))
-                        })?;
-                    } else if live_taken_over && matches!(app_type, AppType::Codex) {
-                        // Codex model mappings are projected into a generated
-                        // model_catalog_json file. Refresh takeover-owned Live
-                        // immediately so adding/removing mappings cannot leave
-                        // the previous catalog pointer and capabilities active.
-                        futures::executor::block_on(
-                            state
-                                .proxy_service
-                                .sync_codex_live_from_provider_while_proxy_active(&provider),
-                        )
-                        .map_err(|e| AppError::Message(format!("同步 Codex Live 配置失败: {e}")))?;
+                    if futures::executor::block_on(state.proxy_service.is_running()) {
+                        if matches!(app_type, AppType::Claude) {
+                            futures::executor::block_on(
+                                state
+                                    .proxy_service
+                                    .sync_claude_live_from_provider_while_proxy_active(candidate),
+                            )
+                            .map_err(|e| {
+                                AppError::Message(format!("同步 Claude Live 配置失败: {e}"))
+                            })?;
+                        } else if live_taken_over && matches!(app_type, AppType::Codex) {
+                            // Codex model mappings are projected into a generated
+                            // model_catalog_json file. Refresh takeover-owned Live
+                            // immediately so adding/removing mappings cannot leave
+                            // the previous catalog pointer and capabilities active.
+                            futures::executor::block_on(
+                                state
+                                    .proxy_service
+                                    .sync_codex_live_from_provider_while_proxy_active(candidate),
+                            )
+                            .map_err(|e| {
+                                AppError::Message(format!("同步 Codex Live 配置失败: {e}"))
+                            })?;
+                        }
+                    }
+                } else {
+                    write_live_with_common_config(state.db.as_ref(), &app_type, candidate)?;
+                    // 重写 live 后只重投影本应用的 MCP：全量 sync_all_enabled 会把
+                    // 无关应用的 live 损坏（如 ~/.claude.json 坏 JSON）牵连进保存
+                    // 流程。走到这里 DB 与 live 都已按新配置落盘，保存事实上已
+                    // 成功；投影失败降级为警告，避免制造"保存失败"假象（MCP
+                    // 投影可自愈：下次切换 / 任一 MCP 启停都会重新投影）。
+                    if let Err(err) = McpService::sync_enabled_for_app(state, &app_type) {
+                        log::warn!(
+                            "保存供应商后重投影 {app_type:?} MCP 失败（将在下次同步时自愈）: {err}"
+                        );
                     }
                 }
-            } else {
-                write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
-                // 重写 live 后只重投影本应用的 MCP：全量 sync_all_enabled 会把
-                // 无关应用的 live 损坏（如 ~/.claude.json 坏 JSON）牵连进保存
-                // 流程。走到这里 DB 与 live 都已按新配置落盘，保存事实上已
-                // 成功；投影失败降级为警告，避免制造"保存失败"假象（MCP
-                // 投影可自愈：下次切换 / 任一 MCP 启停都会重新投影）。
-                if let Err(err) = McpService::sync_enabled_for_app(state, &app_type) {
-                    log::warn!(
-                        "保存供应商后重投影 {app_type:?} MCP 失败（将在下次同步时自愈）: {err}"
-                    );
+                Ok(())
+            };
+
+            if let Err(error) = sync_provider(&provider) {
+                let mut rollback_errors = Vec::new();
+                if let Err(rollback_error) = Self::restore_provider_record(
+                    state,
+                    &app_type,
+                    &provider.id,
+                    existing_provider.as_ref(),
+                ) {
+                    rollback_errors.push(format!("database: {rollback_error}"));
                 }
+                if let Some(previous) = existing_provider.as_ref() {
+                    if let Err(rollback_error) = sync_provider(previous) {
+                        rollback_errors.push(format!("live config: {rollback_error}"));
+                    }
+                }
+                return Err(Self::rollback_error(error, rollback_errors));
             }
         }
 
@@ -3090,14 +3437,14 @@ impl ProviderService {
         // Use effective current provider (validated existence) to ensure backfill targets valid provider
         let current_id = crate::settings::get_effective_current_provider(&state.db, &app_type)?;
 
-        if let Some(current_id) = current_id {
+        if let Some(current_id) = current_id.as_deref() {
             if current_id != id {
                 // Additive mode apps - all providers coexist in the same file,
                 // no backfill needed (backfill is for exclusive mode apps like Claude/Codex/Gemini)
                 if !app_type.is_additive_mode() {
                     // Only backfill when switching to a different provider
                     if let Ok(live_config) = read_live_settings(app_type.clone()) {
-                        if let Some(mut current_provider) = providers.get(&current_id).cloned() {
+                        if let Some(mut current_provider) = providers.get(current_id).cloned() {
                             // 切走前先把 live 里的可共享改动（含用户直接在应用内
                             // 装插件/加 hook/改偏好）同步进通用配置片段，再做剥离回填。
                             // 详见 sync_common_config_snippet_from_live 的文档。
@@ -3130,17 +3477,75 @@ impl ProviderService {
             }
         }
 
+        let previous_local_current = crate::settings::get_current_provider(&app_type);
+        let previous_database_current = if app_type.is_additive_mode() {
+            None
+        } else {
+            state.db.get_current_provider(app_type.as_str())?
+        };
+
         // Additive mode apps skip setting is_current (no such concept)
         if !app_type.is_additive_mode() {
             // Update local settings (device-level, takes priority)
             crate::settings::set_current_provider(&app_type, Some(id))?;
 
             // Update database is_current (as default for new devices)
-            state.db.set_current_provider(app_type.as_str(), id)?;
+            if let Err(error) = state.db.set_current_provider(app_type.as_str(), id) {
+                let rollback_errors = crate::settings::set_current_provider(
+                    &app_type,
+                    previous_local_current.as_deref(),
+                )
+                .err()
+                .map(|rollback_error| vec![format!("local current: {rollback_error}")])
+                .unwrap_or_default();
+                return Err(Self::rollback_error(error, rollback_errors));
+            }
         }
 
         // Sync to live (write_gemini_live handles security flag internally for Gemini)
-        write_live_with_common_config(state.db.as_ref(), &app_type, provider)?;
+        if let Err(error) = write_live_with_common_config(state.db.as_ref(), &app_type, provider) {
+            let mut rollback_errors = Vec::new();
+            if app_type.is_additive_mode() {
+                if Self::provider_live_config_managed(provider) != Some(true) {
+                    if let Err(rollback_error) =
+                        Self::remove_additive_provider_from_live(&app_type, &provider.id)
+                    {
+                        rollback_errors.push(format!("live config: {rollback_error}"));
+                    }
+                }
+            } else {
+                if let Err(rollback_error) = crate::settings::set_current_provider(
+                    &app_type,
+                    previous_local_current.as_deref(),
+                ) {
+                    rollback_errors.push(format!("local current: {rollback_error}"));
+                }
+                if let Err(rollback_error) = Self::restore_database_current(
+                    state,
+                    &app_type,
+                    previous_database_current.as_deref(),
+                ) {
+                    rollback_errors.push(format!("database current: {rollback_error}"));
+                }
+                if let Some(previous_id) = current_id.as_deref() {
+                    if let Some(previous_provider) = providers.get(previous_id) {
+                        if let Err(rollback_error) =
+                            state.db.save_provider(app_type.as_str(), previous_provider)
+                        {
+                            rollback_errors.push(format!("database provider: {rollback_error}"));
+                        }
+                        if let Err(rollback_error) = write_live_with_common_config(
+                            state.db.as_ref(),
+                            &app_type,
+                            previous_provider,
+                        ) {
+                            rollback_errors.push(format!("live config: {rollback_error}"));
+                        }
+                    }
+                }
+            }
+            return Err(Self::rollback_error(error, rollback_errors));
+        }
 
         // Hermes is additive, so "switching" doesn't overwrite a live config file
         // — we instead update the top-level `model:` section to point at this
@@ -4128,15 +4533,50 @@ impl ProviderService {
         write_gemini_live(provider)
     }
 
+    fn validate_optional_string_fields(
+        settings: &serde_json::Map<String, Value>,
+        app_name: &str,
+        fields: &[&str],
+    ) -> Result<(), AppError> {
+        for field in fields {
+            if settings.get(*field).is_some_and(|value| !value.is_string()) {
+                return Err(AppError::localized(
+                    "provider.settings.field.invalid_type",
+                    format!("{app_name} 配置字段 {field} 必须是字符串"),
+                    format!("{app_name} configuration field {field} must be a string"),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn validate_provider_settings(app_type: &AppType, provider: &Provider) -> Result<(), AppError> {
         match app_type {
             AppType::Claude => {
-                if !provider.settings_config.is_object() {
-                    return Err(AppError::localized(
+                let settings = provider.settings_config.as_object().ok_or_else(|| {
+                    AppError::localized(
                         "provider.claude.settings.not_object",
                         "Claude 配置必须是 JSON 对象",
                         "Claude configuration must be a JSON object",
-                    ));
+                    )
+                })?;
+                if let Some(env) = settings.get("env") {
+                    let env = env.as_object().ok_or_else(|| {
+                        AppError::localized(
+                            "provider.claude.env.not_object",
+                            "Claude env 配置必须是 JSON 对象",
+                            "Claude env configuration must be a JSON object",
+                        )
+                    })?;
+                    Self::validate_optional_string_fields(
+                        env,
+                        "Claude",
+                        &[
+                            "ANTHROPIC_AUTH_TOKEN",
+                            "ANTHROPIC_API_KEY",
+                            "ANTHROPIC_BASE_URL",
+                        ],
+                    )?;
                 }
             }
             AppType::ClaudeDesktop => {
@@ -4213,36 +4653,55 @@ impl ProviderService {
                 }
             }
             AppType::OpenCode => {
-                // OpenCode uses a different config structure: { npm, options, models }
-                // Basic validation - must be an object
-                if !provider.settings_config.is_object() {
-                    return Err(AppError::localized(
+                let settings = provider.settings_config.as_object().ok_or_else(|| {
+                    AppError::localized(
                         "provider.opencode.settings.not_object",
                         "OpenCode 配置必须是 JSON 对象",
                         "OpenCode configuration must be a JSON object",
-                    ));
+                    )
+                })?;
+                if let Some(options) = settings.get("options") {
+                    let options = options.as_object().ok_or_else(|| {
+                        AppError::localized(
+                            "provider.opencode.options.not_object",
+                            "OpenCode options 配置必须是 JSON 对象",
+                            "OpenCode options configuration must be a JSON object",
+                        )
+                    })?;
+                    Self::validate_optional_string_fields(
+                        options,
+                        "OpenCode",
+                        &["apiKey", "baseURL"],
+                    )?;
                 }
             }
             AppType::OpenClaw => {
-                // OpenClaw uses config structure: { baseUrl, apiKey, api, models }
-                // Basic validation - must be an object
-                if !provider.settings_config.is_object() {
-                    return Err(AppError::localized(
+                let settings = provider.settings_config.as_object().ok_or_else(|| {
+                    AppError::localized(
                         "provider.openclaw.settings.not_object",
                         "OpenClaw 配置必须是 JSON 对象",
                         "OpenClaw configuration must be a JSON object",
-                    ));
-                }
+                    )
+                })?;
+                Self::validate_optional_string_fields(
+                    settings,
+                    "OpenClaw",
+                    &["apiKey", "baseUrl"],
+                )?;
             }
             AppType::Hermes => {
-                // Hermes: accept any JSON object for now
-                if !provider.settings_config.is_object() {
-                    return Err(AppError::localized(
+                let settings = provider.settings_config.as_object().ok_or_else(|| {
+                    AppError::localized(
                         "provider.hermes.settings.not_object",
                         "Hermes 配置必须是 JSON 对象",
                         "Hermes configuration must be a JSON object",
-                    ));
-                }
+                    )
+                })?;
+                Self::validate_optional_string_fields(
+                    settings,
+                    "Hermes",
+                    &["api_key", "base_url"],
+                )?;
             }
         }
 
