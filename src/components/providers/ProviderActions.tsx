@@ -13,6 +13,7 @@ import {
   Trash2,
   Zap,
 } from "lucide-react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -90,6 +91,9 @@ export function ProviderActions({
   onSetAsDefault,
 }: ProviderActionsProps) {
   const { t } = useTranslation();
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
+  const isMenuOpenRef = useRef(false);
+  const suppressTooltipRef = useRef(false);
   const isAdditiveMode =
     (appId === "opencode" && !isOmo) ||
     appId === "openclaw" ||
@@ -224,6 +228,19 @@ export function ProviderActions({
     !isReadOnly && (isOmo || isAdditiveMode ? true : !isCurrent);
   const readOnlyHint = t("provider.managedByHermesHint");
 
+  const handleMenuOpenChange = (open: boolean) => {
+    isMenuOpenRef.current = open;
+    suppressTooltipRef.current = true;
+    setIsTooltipOpen(false);
+  };
+
+  const handleTooltipOpenChange = (open: boolean) => {
+    if (open && (isMenuOpenRef.current || suppressTooltipRef.current)) {
+      return;
+    }
+    setIsTooltipOpen(open);
+  };
+
   return (
     <div className="flex items-center gap-1.5">
       {(appId === "openclaw" || appId === "hermes") &&
@@ -274,8 +291,8 @@ export function ProviderActions({
       </span>
 
       <TooltipProvider delayDuration={300}>
-        <DropdownMenu>
-          <Tooltip>
+        <DropdownMenu onOpenChange={handleMenuOpenChange}>
+          <Tooltip open={isTooltipOpen} onOpenChange={handleTooltipOpenChange}>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -283,6 +300,16 @@ export function ProviderActions({
                   variant="ghost"
                   aria-label={t("provider.moreActions")}
                   className="h-8 w-8"
+                  onPointerMove={() => {
+                    if (!isMenuOpenRef.current) {
+                      suppressTooltipRef.current = false;
+                    }
+                  }}
+                  onBlur={() => {
+                    if (!isMenuOpenRef.current) {
+                      suppressTooltipRef.current = false;
+                    }
+                  }}
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>

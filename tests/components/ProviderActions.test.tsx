@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ProviderActions } from "@/components/providers/ProviderActions";
@@ -77,6 +77,46 @@ describe("ProviderActions", () => {
     expect(tooltip).toHaveTextContent("provider.moreActions");
     expect(container).not.toContainElement(tooltip);
     expect(document.body).toContainElement(tooltip);
+  });
+
+  it("dismisses the overflow tooltip when the menu closes outside", async () => {
+    const user = userEvent.setup();
+    const props = createProps();
+
+    render(<ProviderActions {...props} />);
+
+    const trigger = screen.getByRole("button", {
+      name: "provider.moreActions",
+    });
+    await user.hover(trigger);
+    expect(await screen.findByRole("tooltip")).toBeVisible();
+
+    await user.click(trigger);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("dismisses the overflow tooltip when editing a provider", async () => {
+    const user = userEvent.setup();
+    const props = createProps();
+
+    render(<ProviderActions {...props} />);
+
+    const trigger = screen.getByRole("button", {
+      name: "provider.moreActions",
+    });
+    await user.hover(trigger);
+    expect(await screen.findByRole("tooltip")).toBeVisible();
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: "common.edit" }));
+
+    expect(props.onEdit).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 
   it("disables protected actions for current read-only providers", async () => {
