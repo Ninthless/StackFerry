@@ -32,7 +32,7 @@ export function RequestDetailPanel({
     return (
       <Dialog open onOpenChange={onClose}>
         <DialogContent className="max-w-2xl">
-          <div className="h-[400px] animate-pulse rounded bg-gray-100" />
+          <div className="h-[400px] animate-pulse rounded bg-muted" />
         </DialogContent>
       </Dialog>
     );

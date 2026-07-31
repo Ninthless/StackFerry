@@ -931,7 +931,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
 
             {/* 自定义模式：变量提示和具体值 */}
             {selectedTemplate === TEMPLATE_TYPES.CUSTOM && (
-              <div className="space-y-2 border-t border-white/10 pt-3">
+              <div className="space-y-2 border-t border-border pt-3">
                 <h4 className="text-sm font-medium text-foreground">
                   {t("usageScript.supportedVariables")}
                 </h4>
@@ -999,7 +999,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
 
             {/* Copilot 模式：自动认证提示 */}
             {selectedTemplate === TEMPLATE_TYPES.GITHUB_COPILOT && (
-              <div className="space-y-2 border-t border-white/10 pt-3">
+              <div className="space-y-2 border-t border-border pt-3">
                 <p className="text-sm text-muted-foreground">
                   {t("usageScript.copilotAutoAuth")}
                 </p>
@@ -1008,7 +1008,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
 
             {/* 官方余额查询模式：自动提示 */}
             {selectedTemplate === TEMPLATE_TYPES.BALANCE && (
-              <div className="space-y-3 border-t border-white/10 pt-3">
+              <div className="space-y-3 border-t border-border pt-3">
                 <p className="text-sm text-muted-foreground">
                   {t("usageScript.balanceHint")}
                 </p>
@@ -1029,7 +1029,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
 
             {/* 官方订阅额度模式：自动提示 */}
             {selectedTemplate === TEMPLATE_TYPES.OFFICIAL_SUBSCRIPTION && (
-              <div className="space-y-2 border-t border-white/10 pt-3">
+              <div className="space-y-2 border-t border-border pt-3">
                 <p className="text-sm text-muted-foreground">
                   {t("usageScript.officialSubscriptionHint")}
                 </p>
@@ -1038,7 +1038,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
 
             {/* Coding Plan 模式：供应商选择 */}
             {selectedTemplate === TEMPLATE_TYPES.TOKEN_PLAN && (
-              <div className="space-y-3 border-t border-white/10 pt-3">
+              <div className="space-y-3 border-t border-border pt-3">
                 <p className="text-sm text-muted-foreground">
                   {t("usageScript.tokenPlanHint")}
                 </p>
@@ -1105,7 +1105,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                             }
                             placeholder={t("usageScript.apiKeyPlaceholder")}
                             autoComplete="off"
-                            className="border-white/10"
+                            className="border-border"
                           />
                           {script.apiKey && (
                             <button
@@ -1144,7 +1144,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                           }
                           placeholder={t("usageScript.baseUrlPlaceholder")}
                           autoComplete="off"
-                          className="border-white/10"
+                          className="border-border"
                         />
                       </div>
                     </>
@@ -1165,7 +1165,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                           }
                           placeholder="https://api.newapi.com"
                           autoComplete="off"
-                          className="border-white/10"
+                          className="border-border"
                         />
                       </div>
 
@@ -1188,7 +1188,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                               "usageScript.accessTokenPlaceholder",
                             )}
                             autoComplete="off"
-                            className="border-white/10"
+                            className="border-border"
                           />
                           {script.accessToken && (
                             <button
@@ -1226,7 +1226,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                           }
                           placeholder={t("usageScript.userIdPlaceholder")}
                           autoComplete="off"
-                          className="border-white/10"
+                          className="border-border"
                         />
                       </div>
                     </>
@@ -1248,7 +1248,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                             }
                             placeholder="https://api.zenmux.com/v1/..."
                             autoComplete="off"
-                            className="border-white/10"
+                            className="border-border"
                           />
                         </div>
 
@@ -1267,7 +1267,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                               }
                               placeholder="sk-..."
                               autoComplete="off"
-                              className="border-white/10"
+                              className="border-border"
                             />
                             {script.apiKey && (
                               <button
@@ -1338,7 +1338,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                         }
                         placeholder="AKLT..."
                         autoComplete="off"
-                        className="border-white/10"
+                        className="border-border"
                       />
                     </div>
 
@@ -1359,7 +1359,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                           }
                           placeholder="••••••••"
                           autoComplete="off"
-                          className="border-white/10"
+                          className="border-border"
                         />
                         {script.secretAccessKey && (
                           <button
@@ -1428,7 +1428,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                         }
                         placeholder={t("usageScript.organizationIdPlaceholder")}
                         autoComplete="off"
-                        className="border-white/10"
+                        className="border-border"
                       />
                     </div>
 
@@ -1448,7 +1448,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                         }
                         placeholder={t("usageScript.projectIdPlaceholder")}
                         autoComplete="off"
-                        className="border-white/10"
+                        className="border-border"
                       />
                     </div>
                   </div>
@@ -1456,7 +1456,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
               )}
 
             {/* 通用配置（始终显示） */}
-            <div className="grid gap-4 md:grid-cols-2 pt-4 border-t border-white/10">
+            <div className="grid gap-4 border-t border-border pt-4 md:grid-cols-2">
               {/* 超时时间 */}
               <div className="space-y-2">
                 <Label htmlFor="usage-timeout">
@@ -1482,7 +1482,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                       timeout: validateTimeout(e.target.value),
                     })
                   }
-                  className="border-white/10"
+                  className="border-border"
                 />
               </div>
 
@@ -1516,7 +1516,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
                       ),
                     })
                   }
-                  className="border-white/10"
+                  className="border-border"
                 />
               </div>
             </div>
@@ -1556,7 +1556,7 @@ const UsageScriptModal: React.FC<UsageScriptModalProps> = ({
               <div className="space-y-3 text-xs">
                 <div>
                   <strong>{t("usageScript.configFormat")}</strong>
-                  <pre className="mt-1 p-2 bg-black/20 text-foreground rounded border border-white/10 text-[10px] overflow-x-auto">
+                  <pre className="mt-1 overflow-x-auto rounded border border-border bg-muted/50 p-2 text-[10px] text-foreground">
                     {`({
   request: {
     url: "{{baseUrl}}/api/usage",

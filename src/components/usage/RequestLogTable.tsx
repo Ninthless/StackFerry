@@ -147,7 +147,7 @@ export function RequestLogTable({
       </div>
 
       {isLoading ? (
-        <div className="h-[400px] animate-pulse rounded bg-gray-100" />
+        <div className="h-[400px] animate-pulse rounded bg-muted" />
       ) : (
         <>
           <div className="overflow-x-auto rounded-md border border-border bg-card">

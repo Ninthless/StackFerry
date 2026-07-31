@@ -233,7 +233,7 @@ export function AutoFailoverConfigPanel({
         </Alert>
 
         {/* 重试与超时配置 */}
-        <div className="space-y-4 rounded-lg border border-white/10 bg-muted/30 p-4">
+        <div className="space-y-4 rounded-lg border border-border bg-muted/30 p-4">
           <h4 className="text-sm font-semibold">
             {t("proxy.autoFailover.retrySettings", "重试与超时设置")}
           </h4>
@@ -291,7 +291,7 @@ export function AutoFailoverConfigPanel({
         </div>
 
         {/* 超时配置 */}
-        <div className="space-y-4 rounded-lg border border-white/10 bg-muted/30 p-4">
+        <div className="space-y-4 rounded-lg border border-border bg-muted/30 p-4">
           <h4 className="text-sm font-semibold">
             {t("proxy.autoFailover.timeoutSettings", "超时配置")}
           </h4>
@@ -381,7 +381,7 @@ export function AutoFailoverConfigPanel({
         </div>
 
         {/* 熔断器配置 */}
-        <div className="space-y-4 rounded-lg border border-white/10 bg-muted/30 p-4">
+        <div className="space-y-4 rounded-lg border border-border bg-muted/30 p-4">
           <h4 className="text-sm font-semibold">
             {t("proxy.autoFailover.circuitBreakerSettings", "熔断器配置")}
           </h4>
