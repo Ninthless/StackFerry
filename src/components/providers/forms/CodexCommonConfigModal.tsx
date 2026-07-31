@@ -139,7 +139,7 @@ export const CodexCommonConfigModal: React.FC<CodexCommonConfigModalProps> = ({
           darkMode={isDarkMode}
           rows={16}
           showValidation={false}
-          language="javascript"
+          language="toml"
         />
 
         {error && (

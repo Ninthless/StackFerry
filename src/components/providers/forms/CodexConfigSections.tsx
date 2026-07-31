@@ -366,7 +366,7 @@ export const CodexConfigSection: React.FC<CodexConfigSectionProps> = ({
         darkMode={isDarkMode}
         rows={8}
         showValidation={false}
-        language="javascript"
+        language="toml"
       />
 
       {configError && (

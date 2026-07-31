@@ -2,54 +2,92 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-const monochromeHighlightStyle = HighlightStyle.define([
-  {
-    tag: [tags.keyword, tags.modifier, tags.definitionKeyword],
-    color: "hsl(var(--foreground))",
-    fontWeight: "600",
-  },
-  {
-    tag: [tags.name, tags.variableName, tags.propertyName, tags.attributeName],
-    color: "hsl(var(--foreground) / 0.88)",
-  },
-  {
-    tag: [tags.typeName, tags.className, tags.function(tags.variableName)],
-    color: "hsl(var(--foreground))",
-    fontWeight: "500",
-  },
-  {
-    tag: [tags.string, tags.number, tags.bool, tags.null],
-    color: "hsl(var(--foreground) / 0.72)",
-  },
-  {
-    tag: [tags.operator, tags.punctuation, tags.bracket],
-    color: "hsl(var(--muted-foreground))",
-  },
-  {
-    tag: [tags.heading, tags.strong],
-    color: "hsl(var(--foreground))",
-    fontWeight: "700",
-  },
-  {
-    tag: tags.emphasis,
-    color: "hsl(var(--foreground) / 0.82)",
-    fontStyle: "italic",
-  },
-  {
-    tag: [tags.comment, tags.meta, tags.contentSeparator],
-    color: "hsl(var(--muted-foreground))",
-    fontStyle: "italic",
-  },
-  {
-    tag: [tags.link, tags.url],
-    color: "hsl(var(--foreground))",
-    textDecoration: "underline",
-  },
-  {
-    tag: tags.invalid,
-    color: "hsl(var(--destructive))",
-  },
-]);
+const lightSyntaxPalette = {
+  keyword: "#cf222e",
+  name: "#24292f",
+  property: "#0550ae",
+  type: "#8250df",
+  string: "#0a3069",
+  constant: "#953800",
+  operator: "#57606a",
+  comment: "#6e7781",
+  link: "#0969da",
+  invalid: "#cf222e",
+};
+
+const darkSyntaxPalette: typeof lightSyntaxPalette = {
+  keyword: "#ff7b72",
+  name: "#c9d1d9",
+  property: "#79c0ff",
+  type: "#d2a8ff",
+  string: "#a5d6ff",
+  constant: "#ffa657",
+  operator: "#b1bac4",
+  comment: "#8b949e",
+  link: "#58a6ff",
+  invalid: "#ff7b72",
+};
+
+const createHighlightStyle = (palette: typeof lightSyntaxPalette) =>
+  HighlightStyle.define([
+    {
+      tag: [tags.keyword, tags.modifier, tags.definitionKeyword],
+      color: palette.keyword,
+      fontWeight: "600",
+    },
+    {
+      tag: [tags.name, tags.variableName],
+      color: palette.name,
+    },
+    {
+      tag: [tags.propertyName, tags.attributeName],
+      color: palette.property,
+    },
+    {
+      tag: [tags.typeName, tags.className, tags.function(tags.variableName)],
+      color: palette.type,
+      fontWeight: "500",
+    },
+    {
+      tag: tags.string,
+      color: palette.string,
+    },
+    {
+      tag: [tags.number, tags.bool, tags.null, tags.atom],
+      color: palette.constant,
+    },
+    {
+      tag: [tags.operator, tags.punctuation, tags.bracket],
+      color: palette.operator,
+    },
+    {
+      tag: [tags.heading, tags.strong],
+      color: palette.property,
+      fontWeight: "700",
+    },
+    {
+      tag: tags.emphasis,
+      color: palette.type,
+      fontStyle: "italic",
+    },
+    {
+      tag: [tags.comment, tags.meta, tags.contentSeparator],
+      color: palette.comment,
+      fontStyle: "italic",
+    },
+    {
+      tag: [tags.link, tags.url],
+      color: palette.link,
+      textDecoration: "underline",
+    },
+    {
+      tag: tags.invalid,
+      color: palette.invalid,
+    },
+  ]);
+
+const lightHighlightStyle = createHighlightStyle(lightSyntaxPalette);
+const darkHighlightStyle = createHighlightStyle(darkSyntaxPalette);
 
 export const createCodeMirrorTheme = (dark: boolean) => [
   EditorView.theme(
@@ -138,5 +176,5 @@ export const createCodeMirrorTheme = (dark: boolean) => [
     },
     { dark },
   ),
-  syntaxHighlighting(monochromeHighlightStyle),
+  syntaxHighlighting(dark ? darkHighlightStyle : lightHighlightStyle),
 ];

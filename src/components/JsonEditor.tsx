@@ -2,7 +2,11 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
 import { json } from "@codemirror/lang-json";
 import { javascript } from "@codemirror/lang-javascript";
-import { EditorState } from "@codemirror/state";
+import { StreamLanguage } from "@codemirror/language";
+import { toml } from "@codemirror/legacy-modes/mode/toml";
+import { properties } from "@codemirror/legacy-modes/mode/properties";
+import { EditorState, type Extension } from "@codemirror/state";
+import { tags } from "@lezer/highlight";
 import { placeholder } from "@codemirror/view";
 import { linter, type Diagnostic } from "@codemirror/lint";
 import { useTranslation } from "react-i18next";
@@ -10,6 +14,18 @@ import { Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { createCodeMirrorTheme } from "@/components/editor/codeMirrorTheme";
 import { formatJSON } from "@/utils/formatters";
+
+type EditorLanguage = "json" | "javascript" | "toml" | "properties";
+
+const languageExtensions: Record<EditorLanguage, Extension> = {
+  json: json(),
+  javascript: javascript(),
+  toml: StreamLanguage.define(toml),
+  properties: StreamLanguage.define({
+    ...properties,
+    tokenTable: { ...properties.tokenTable, quote: tags.string },
+  }),
+};
 
 interface JsonEditorProps {
   id?: string;
@@ -19,7 +35,7 @@ interface JsonEditorProps {
   darkMode?: boolean;
   rows?: number;
   showValidation?: boolean;
-  language?: "json" | "javascript";
+  language?: EditorLanguage;
   height?: string | number;
   showMinimap?: boolean;
 }
@@ -98,7 +114,7 @@ const JsonEditor: React.FC<JsonEditorProps> = ({
       doc: value,
       extensions: [
         basicSetup,
-        language === "javascript" ? javascript() : json(),
+        languageExtensions[language],
         placeholder(placeholderText),
         createCodeMirrorTheme(darkMode),
         sizingTheme,

@@ -717,7 +717,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
                   darkMode={isDarkMode}
                   rows={12}
                   showValidation={!useToml}
-                  language={useToml ? "javascript" : "json"}
+                  language={useToml ? "toml" : "json"}
                   height="100%"
                 />
               </div>
