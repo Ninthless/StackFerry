@@ -8,6 +8,7 @@ const visibleApps: VisibleApps = {
   claude: false,
   "claude-desktop": false,
   codex: false,
+  pi: false,
   gemini: false,
   grokbuild: false,
   opencode: false,

@@ -1,4 +1,5 @@
 import type { ProviderCategory } from "@/types";
+import { XFCODE_PROVIDER } from "./xfcodeProvider";
 
 /**
  * Gemini 预设供应商的视觉主题配置
@@ -485,6 +486,24 @@ export const geminiProviderPresets: GeminiProviderPreset[] = [
     description: "TheRouter",
     category: "aggregator",
     endpointCandidates: ["https://api.therouter.ai"],
+  },
+  {
+    name: XFCODE_PROVIDER.name,
+    icon: XFCODE_PROVIDER.icon,
+    websiteUrl: XFCODE_PROVIDER.websiteUrl,
+    apiKeyUrl: XFCODE_PROVIDER.apiKeyUrl,
+    settingsConfig: {
+      env: {
+        GOOGLE_GEMINI_BASE_URL: XFCODE_PROVIDER.apiBaseUrl,
+        GEMINI_API_KEY: "",
+        GEMINI_MODEL: XFCODE_PROVIDER.models.gemini,
+      },
+    },
+    baseURL: XFCODE_PROVIDER.apiBaseUrl,
+    model: XFCODE_PROVIDER.models.gemini,
+    description: XFCODE_PROVIDER.name,
+    category: "aggregator",
+    endpointCandidates: [XFCODE_PROVIDER.apiBaseUrl],
   },
   {
     name: "自定义",

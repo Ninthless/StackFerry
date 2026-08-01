@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { FormLabel } from "@/components/ui/form";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ClaudeIcon, CodexIcon, GeminiIcon } from "@/components/BrandIcons";
-import { ArrowUpAZ, Search, Zap, Layers, Settings2 } from "lucide-react";
+import {
+  ArrowUpAZ,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  Zap,
+  Layers,
+  Settings2,
+} from "lucide-react";
 import type { ProviderPreset } from "@/config/claudeProviderPresets";
 import type { CodexProviderPreset } from "@/config/codexProviderPresets";
 import type { GeminiProviderPreset } from "@/config/geminiProviderPresets";
@@ -12,6 +20,7 @@ import type { ClaudeDesktopProviderPreset } from "@/config/claudeDesktopProvider
 import type { OpenCodeProviderPreset } from "@/config/opencodeProviderPresets";
 import type { OpenClawProviderPreset } from "@/config/openclawProviderPresets";
 import type { HermesProviderPreset } from "@/config/hermesProviderPresets";
+import type { PiProviderPreset } from "@/config/piProviderPresets";
 import type { ProviderCategory } from "@/types";
 import {
   universalProviderPresets,
@@ -20,6 +29,8 @@ import {
 import { ProviderIcon } from "@/components/ProviderIcon";
 
 type PresetTranslator = (key: string) => unknown;
+
+const COLLAPSED_PRESET_LIMIT = 11;
 
 export const PresetSortMode = {
   Original: "original",
@@ -36,12 +47,22 @@ export type AnyPreset =
   | ClaudeDesktopProviderPreset
   | OpenCodeProviderPreset
   | OpenClawProviderPreset
-  | HermesProviderPreset;
+  | HermesProviderPreset
+  | PiProviderPreset;
 
 export type PresetEntry = {
   id: string;
   preset: AnyPreset;
 };
+
+type PresetTheme = {
+  icon?: "claude" | "codex" | "gemini" | "generic";
+  backgroundColor?: string;
+  textColor?: string;
+};
+
+const getPresetTheme = (preset: AnyPreset): PresetTheme | undefined =>
+  "theme" in preset ? preset.theme : undefined;
 
 export function getPresetDisplayName(
   preset: AnyPreset,
@@ -119,7 +140,7 @@ interface ProviderPresetSelectorProps {
   onPresetChange: (value: string) => void;
   onUniversalPresetSelect?: (preset: UniversalProviderPreset) => void;
   onManageUniversalProviders?: () => void;
-  category?: ProviderCategory; // 当前选中的分类
+  category?: ProviderCategory;
 }
 
 export function ProviderPresetSelector({
@@ -137,10 +158,10 @@ export function ProviderPresetSelector({
   const [sortMode, setSortMode] = useState<PresetSortMode>(
     PresetSortMode.Original,
   );
+  const [presetsExpanded, setPresetsExpanded] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // 点击搜索区域外时收起并清空,对齐旧 Popover 的「点击外部关闭」行为
   useEffect(() => {
     if (!searchOpen) return;
 
@@ -158,11 +179,6 @@ export function ProviderPresetSelector({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [searchOpen]);
 
-  // 键盘快捷键: Ctrl/Cmd+F 打开搜索并聚焦输入框。
-  // 使用捕获阶段并阻止冒泡，避免背后 ProviderList 的同名快捷键被意外触发。
-  // 首次打开靠 Input 的 autoFocus 聚焦；若搜索已打开（例如点击 preset 后焦点
-  // 停在按钮上），setSearchOpen(true) 同值不会重渲染、autoFocus 不重触发，
-  // 这里用 rAF 命令式地把焦点移回搜索框（不 select，避免吞掉随后输入的首字符）。
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
@@ -186,6 +202,34 @@ export function ProviderPresetSelector({
       }),
     [presetEntries, searchQuery, sortMode, t],
   );
+  const isFiltering = searchQuery.trim().length > 0;
+  const displayedPresetEntries = useMemo(() => {
+    if (
+      presetsExpanded ||
+      isFiltering ||
+      visiblePresetEntries.length <= COLLAPSED_PRESET_LIMIT
+    ) {
+      return visiblePresetEntries;
+    }
+
+    const collapsed = visiblePresetEntries.slice(0, COLLAPSED_PRESET_LIMIT);
+    if (
+      !selectedPresetId ||
+      selectedPresetId === "custom" ||
+      collapsed.some((entry) => entry.id === selectedPresetId)
+    ) {
+      return collapsed;
+    }
+
+    const selected = visiblePresetEntries.find(
+      (entry) => entry.id === selectedPresetId,
+    );
+    return selected
+      ? [...collapsed.slice(0, COLLAPSED_PRESET_LIMIT - 1), selected]
+      : collapsed;
+  }, [isFiltering, presetsExpanded, selectedPresetId, visiblePresetEntries]);
+  const canTogglePresets =
+    !isFiltering && visiblePresetEntries.length > COLLAPSED_PRESET_LIMIT;
 
   const getCategoryHint = (): ReactNode => {
     switch (category) {
@@ -242,7 +286,7 @@ export function ProviderPresetSelector({
       );
     }
 
-    const iconType = preset.theme?.icon;
+    const iconType = getPresetTheme(preset)?.icon;
     if (iconType) {
       switch (iconType) {
         case "claude":
@@ -259,35 +303,24 @@ export function ProviderPresetSelector({
     return <span className="inline-block w-4 h-4 flex-shrink-0" aria-hidden />;
   };
 
-  const getPresetButtonClass = (isSelected: boolean, preset: AnyPreset) => {
+  const getPresetButtonClass = (isSelected: boolean) => {
     const baseClass =
-      "inline-flex items-center justify-start gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full";
+      "inline-flex w-full items-center justify-start gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors";
 
     if (isSelected) {
-      if (preset.theme?.backgroundColor) {
-        return `${baseClass} text-white`;
-      }
-      return `${baseClass} bg-primary text-primary-foreground`;
+      return `${baseClass} border-foreground bg-foreground text-background`;
     }
 
-    return `${baseClass} bg-accent text-muted-foreground hover:bg-accent/80`;
-  };
-
-  const getPresetButtonStyle = (isSelected: boolean, preset: AnyPreset) => {
-    if (!isSelected || !preset.theme?.backgroundColor) {
-      return undefined;
-    }
-
-    return {
-      backgroundColor: preset.theme.backgroundColor,
-      color: preset.theme.textColor || "#FFFFFF",
-    };
+    return `${baseClass} border-border-default bg-background text-muted-foreground hover:bg-muted hover:text-foreground`;
   };
 
   return (
-    <div ref={searchContainerRef} className="space-y-3">
+    <div
+      ref={searchContainerRef}
+      className="space-y-3 border-b border-border-default pb-6 pt-2"
+    >
       <div className="flex items-center justify-between gap-2">
-        <FormLabel>{t("providerPreset.label")}</FormLabel>
+        <Label>{t("providerPreset.label")}</Label>
         <div className="flex items-center gap-2">
           {searchOpen && (
             <Input
@@ -366,10 +399,10 @@ export function ProviderPresetSelector({
         <button
           type="button"
           onClick={() => onPresetChange("custom")}
-          className={`inline-flex items-center justify-start gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-full ${
+          className={`inline-flex w-full items-center justify-start gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
             selectedPresetId === "custom"
-              ? "bg-primary text-primary-foreground"
-              : "bg-accent text-muted-foreground hover:bg-accent/80"
+              ? "border-foreground bg-foreground text-background"
+              : "border-border-default bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
           <span className="inline-block w-4 h-4 flex-shrink-0" aria-hidden />
@@ -384,7 +417,7 @@ export function ProviderPresetSelector({
           </div>
         )}
 
-        {visiblePresetEntries.map((entry) => {
+        {displayedPresetEntries.map((entry) => {
           const isSelected = selectedPresetId === entry.id;
           const presetCategory = entry.preset.category ?? "others";
           return (
@@ -392,8 +425,8 @@ export function ProviderPresetSelector({
               key={entry.id}
               type="button"
               onClick={() => onPresetChange(entry.id)}
-              className={`${getPresetButtonClass(isSelected, entry.preset)} relative`}
-              style={getPresetButtonStyle(isSelected, entry.preset)}
+              aria-label={getPresetDisplayName(entry.preset, t)}
+              className={`${getPresetButtonClass(isSelected)} relative`}
               title={
                 presetCategoryLabels[presetCategory] ??
                 t("providerPreset.other")
@@ -408,6 +441,29 @@ export function ProviderPresetSelector({
         })}
       </div>
 
+      {canTogglePresets && (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setPresetsExpanded((current) => !current)}
+            className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {presetsExpanded ? (
+              <ChevronUp className="size-3.5" />
+            ) : (
+              <ChevronDown className="size-3.5" />
+            )}
+            {presetsExpanded
+              ? t("providerPreset.showLess")
+              : t("providerPreset.showAll", {
+                  count: visiblePresetEntries.length,
+                })}
+          </Button>
+        </div>
+      )}
+
       {onUniversalPresetSelect && universalProviderPresets.length > 0 && (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
           {universalProviderPresets.map((preset) => (
@@ -415,7 +471,7 @@ export function ProviderPresetSelector({
               key={`universal-${preset.providerType}`}
               type="button"
               onClick={() => onUniversalPresetSelect(preset)}
-              className="inline-flex items-center justify-start gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors bg-accent text-muted-foreground hover:bg-accent/80 relative w-full"
+              className="relative inline-flex w-full items-center justify-start gap-2 rounded-md border border-border-default bg-background px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               title={t("universalProvider.hint", {
                 defaultValue: "跨应用统一配置，自动同步到 Claude/Codex/Gemini",
               })}
@@ -436,7 +492,7 @@ export function ProviderPresetSelector({
             <button
               type="button"
               onClick={onManageUniversalProviders}
-              className="inline-flex items-center justify-start gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors bg-accent text-muted-foreground hover:bg-accent/80 w-full"
+              className="inline-flex w-full items-center justify-start gap-2 rounded-md border border-border-default bg-background px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               title={t("universalProvider.manage", {
                 defaultValue: "管理统一供应商",
               })}

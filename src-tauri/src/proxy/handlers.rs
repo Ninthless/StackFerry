@@ -10,7 +10,7 @@
 use super::{
     content_encoding::{decompress_body, get_content_encoding, is_supported_content_encoding},
     error_mapper::{get_error_message, map_proxy_error_to_status},
-    forwarder::ActiveConnectionGuard,
+    forwarder::{ActiveConnectionGuard, CodexAuxiliaryEndpoint},
     handler_config::{
         claude_stream_usage_event_filter, codex_stream_usage_event_filter, CLAUDE_PARSER_CONFIG,
         CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
@@ -693,6 +693,87 @@ fn decode_codex_request_body(
 // ============================================================================
 // Codex API 处理器
 // ============================================================================
+
+pub async fn handle_alpha_search(
+    State(state): State<ProxyState>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_codex_auxiliary_json(state, request, CodexAuxiliaryEndpoint::AlphaSearch).await
+}
+
+pub async fn handle_image_generations(
+    State(state): State<ProxyState>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_codex_auxiliary_json(state, request, CodexAuxiliaryEndpoint::ImageGeneration).await
+}
+
+pub async fn handle_image_edits(
+    State(state): State<ProxyState>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_codex_auxiliary_json(state, request, CodexAuxiliaryEndpoint::ImageEdit).await
+}
+
+async fn handle_codex_auxiliary_json(
+    state: ProxyState,
+    request: axum::extract::Request,
+    auxiliary_endpoint: CodexAuxiliaryEndpoint,
+) -> Result<axum::response::Response, ProxyError> {
+    let (parts, req_body) = request.into_parts();
+    let method = parts.method;
+    let uri = parts.uri;
+    let mut headers = parts.headers;
+    let extensions = parts.extensions;
+    let body_bytes = req_body
+        .collect()
+        .await
+        .map_err(|error| ProxyError::Internal(format!("Failed to read request body: {error}")))?
+        .to_bytes();
+    let body_bytes = decode_codex_request_body(&mut headers, body_bytes)?;
+    let body = serde_json::from_slice(&body_bytes).map_err(|error| {
+        ProxyError::InvalidRequest(format!("Failed to parse JSON request body: {error}"))
+    })?;
+
+    let mut ctx =
+        RequestContext::new_for_codex_auxiliary(&state, &body, &headers, auxiliary_endpoint)
+            .await?;
+    let endpoint = endpoint_with_query(&uri, auxiliary_endpoint.canonical_path());
+    let forwarder = ctx.create_forwarder(&state);
+    let mut result = match forwarder
+        .forward_codex_auxiliary_with_retry(
+            method,
+            &endpoint,
+            body,
+            headers,
+            extensions,
+            ctx.get_providers(),
+            auxiliary_endpoint,
+        )
+        .await
+    {
+        Ok(result) => result,
+        Err(mut error) => {
+            if let Some(provider) = error.provider.take() {
+                ctx.provider = provider;
+            }
+            log_codex_auxiliary_forward_error(&state, &ctx, &error.error);
+            return Err(error.error);
+        }
+    };
+
+    let connection_guard = result.connection_guard.take();
+    ctx.outbound_model = result.outbound_model.take();
+    ctx.provider = result.provider;
+    process_response(
+        result.response,
+        &ctx,
+        &state,
+        &CODEX_PARSER_CONFIG,
+        connection_guard,
+    )
+    .await
+}
 
 /// 处理 /v1/chat/completions 请求（OpenAI Chat Completions API - Codex CLI）
 pub async fn handle_chat_completions(
@@ -1881,6 +1962,7 @@ fn codex_proxy_error_code(error: &ProxyError) -> &'static str {
         ProxyError::ForwardFailed(_) => "stackferry_forward_failed",
         ProxyError::Timeout(_) | ProxyError::StreamIdleTimeout(_) => "stackferry_timeout",
         ProxyError::NoAvailableProvider => "stackferry_no_available_provider",
+        ProxyError::NoSafeProviderForPaidImage => "stackferry_no_safe_paid_image_provider",
         ProxyError::AllProvidersCircuitOpen => "stackferry_all_providers_circuit_open",
         ProxyError::NoProvidersConfigured => "stackferry_no_providers_configured",
         ProxyError::MaxRetriesExceeded => "stackferry_max_retries_exceeded",
@@ -2572,11 +2654,35 @@ fn log_forward_error(
     is_streaming: bool,
     error: &ProxyError,
 ) {
+    log_forward_error_message(
+        state,
+        ctx,
+        is_streaming,
+        map_proxy_error_to_status(error),
+        get_error_message(error),
+    );
+}
+
+fn log_codex_auxiliary_forward_error(state: &ProxyState, ctx: &RequestContext, error: &ProxyError) {
+    log_forward_error_message(
+        state,
+        ctx,
+        false,
+        map_proxy_error_to_status(error),
+        super::forwarder::codex_auxiliary_error_message_for_log(error),
+    );
+}
+
+fn log_forward_error_message(
+    state: &ProxyState,
+    ctx: &RequestContext,
+    is_streaming: bool,
+    status_code: u16,
+    error_message: String,
+) {
     use super::usage::logger::UsageLogger;
 
     let logger = UsageLogger::new(&state.db);
-    let status_code = map_proxy_error_to_status(error);
-    let error_message = get_error_message(error);
     let request_id = uuid::Uuid::new_v4().to_string();
 
     if let Err(e) = logger.log_error_with_context(

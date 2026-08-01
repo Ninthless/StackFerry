@@ -25,6 +25,7 @@ mod model_capabilities;
 mod openclaw_config;
 mod opencode_config;
 mod panic_hook;
+mod pi_config;
 mod prompt;
 mod prompt_files;
 mod provider;
@@ -412,6 +413,10 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+
             let _ = rustls::crypto::ring::default_provider().install_default();
 
             // 预先刷新 Store 覆盖配置，确保后续路径读取正确（日志/数据库等）
@@ -1553,6 +1558,9 @@ pub fn run() {
             // OpenCode specific
             commands::import_opencode_providers_from_live,
             commands::get_opencode_live_provider_ids,
+            commands::import_pi_providers_from_live,
+            commands::get_pi_live_provider_ids,
+            commands::get_pi_default_provider,
             // OpenClaw specific
             commands::import_openclaw_providers_from_live,
             commands::get_openclaw_live_provider_ids,

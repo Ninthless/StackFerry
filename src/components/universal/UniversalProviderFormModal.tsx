@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useDarkMode } from "@/hooks/useDarkMode";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Eye, EyeOff, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,20 +8,58 @@ import { Switch } from "@/components/ui/switch";
 import { FullScreenPanel } from "@/components/common/FullScreenPanel";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProviderIcon } from "@/components/ProviderIcon";
-import JsonEditor from "@/components/JsonEditor";
-import type { UniversalProvider, UniversalProviderModels } from "@/types";
+import type {
+  UniversalProvider,
+  UniversalProviderApps,
+  UniversalProviderModels,
+} from "@/types";
 import {
   universalProviderPresets,
   createUniversalProviderFromPreset,
   type UniversalProviderPreset,
 } from "@/config/universalProviderPresets";
 import { deepClone } from "@/utils/deepClone";
+import { APP_ICON_MAP, APP_IDS } from "@/config/appConfig";
+import type { AppId } from "@/lib/api";
+import {
+  ProviderFormSection,
+  providerFormClassName,
+  providerPanelContentClassName,
+  providerPanelFooterClassName,
+} from "@/components/providers/forms/ProviderFormLayout";
+
+const normalizeApps = (
+  apps: Partial<UniversalProviderApps>,
+): UniversalProviderApps => ({
+  claude: apps.claude ?? false,
+  "claude-desktop": apps["claude-desktop"] ?? false,
+  codex: apps.codex ?? false,
+  pi: apps.pi ?? false,
+  gemini: apps.gemini ?? false,
+  grokbuild: apps.grokbuild ?? false,
+  opencode: apps.opencode ?? false,
+  openclaw: apps.openclaw ?? false,
+  hermes: apps.hermes ?? false,
+});
+
+const simpleModelApps: AppId[] = [
+  "claude-desktop",
+  "pi",
+  "grokbuild",
+  "opencode",
+  "openclaw",
+  "hermes",
+];
+
+type UniversalProviderField = "name" | "baseUrl" | "apiKey" | "apps";
+
+type UniversalProviderErrors = Partial<Record<UniversalProviderField, string>>;
 
 interface UniversalProviderFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (provider: UniversalProvider) => void;
-  onSaveAndSync?: (provider: UniversalProvider) => void;
+  onSave: (provider: UniversalProvider) => Promise<void> | void;
+  onSaveAndSync?: (provider: UniversalProvider) => Promise<void> | void;
   editingProvider?: UniversalProvider | null;
   initialPreset?: UniversalProviderPreset | null;
 }
@@ -35,7 +72,6 @@ export function UniversalProviderFormModal({
   editingProvider,
   initialPreset,
 }: UniversalProviderFormModalProps) {
-  const isDarkMode = useDarkMode();
   const { t } = useTranslation();
   const isEditMode = !!editingProvider;
 
@@ -48,11 +84,12 @@ export function UniversalProviderFormModal({
   const [showApiKey, setShowApiKey] = useState(false);
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [notes, setNotes] = useState("");
+  const [errors, setErrors] = useState<UniversalProviderErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 应用启用状态
-  const [claudeEnabled, setClaudeEnabled] = useState(true);
-  const [codexEnabled, setCodexEnabled] = useState(true);
-  const [geminiEnabled, setGeminiEnabled] = useState(true);
+  const [apps, setApps] = useState<UniversalProviderApps>(() =>
+    normalizeApps(universalProviderPresets[0].defaultApps),
+  );
 
   // 模型配置
   const [models, setModels] = useState<UniversalProviderModels>({});
@@ -71,9 +108,7 @@ export function UniversalProviderFormModal({
       setApiKey(editingProvider.apiKey);
       setWebsiteUrl(editingProvider.websiteUrl || "");
       setNotes(editingProvider.notes || "");
-      setClaudeEnabled(editingProvider.apps.claude);
-      setCodexEnabled(editingProvider.apps.codex);
-      setGeminiEnabled(editingProvider.apps.gemini);
+      setApps(normalizeApps(editingProvider.apps));
       setModels(editingProvider.models || {});
 
       // 尝试匹配预设
@@ -90,11 +125,11 @@ export function UniversalProviderFormModal({
       setApiKey("");
       setWebsiteUrl(defaultPreset.websiteUrl || "");
       setNotes("");
-      setClaudeEnabled(defaultPreset.defaultApps.claude);
-      setCodexEnabled(defaultPreset.defaultApps.codex);
-      setGeminiEnabled(defaultPreset.defaultApps.gemini);
+      setApps(normalizeApps(defaultPreset.defaultApps));
       setModels(deepClone(defaultPreset.defaultModels));
     }
+    setErrors({});
+    setIsSubmitting(false);
   }, [editingProvider, initialPreset, isOpen]);
 
   // 选择预设
@@ -103,9 +138,7 @@ export function UniversalProviderFormModal({
       setSelectedPreset(preset);
       if (!isEditMode) {
         setName(preset.name);
-        setClaudeEnabled(preset.defaultApps.claude);
-        setCodexEnabled(preset.defaultApps.codex);
-        setGeminiEnabled(preset.defaultApps.gemini);
+        setApps(normalizeApps(preset.defaultApps));
         setModels(deepClone(preset.defaultModels));
       }
     },
@@ -114,7 +147,7 @@ export function UniversalProviderFormModal({
 
   // 更新模型配置
   const updateModel = useCallback(
-    (app: "claude" | "codex" | "gemini", field: string, value: string) => {
+    (app: keyof UniversalProviderModels, field: string, value: string) => {
       setModels((prev) => ({
         ...prev,
         [app]: {
@@ -126,181 +159,104 @@ export function UniversalProviderFormModal({
     [],
   );
 
-  // 计算 Claude 配置 JSON 预览
-  const claudeConfigJson = useMemo(() => {
-    if (!claudeEnabled) return null;
-    const model = models.claude?.model || "claude-sonnet-4-20250514";
-    const haiku = models.claude?.haikuModel || "claude-haiku-4-20250514";
-    const sonnet = models.claude?.sonnetModel || "claude-sonnet-4-20250514";
-    const opus = models.claude?.opusModel || "claude-sonnet-4-20250514";
-    return {
-      env: {
-        ANTHROPIC_BASE_URL: baseUrl,
-        ANTHROPIC_AUTH_TOKEN: apiKey,
-        ANTHROPIC_MODEL: model,
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: haiku,
-        ANTHROPIC_DEFAULT_SONNET_MODEL: sonnet,
-        ANTHROPIC_DEFAULT_OPUS_MODEL: opus,
-      },
-    };
-  }, [claudeEnabled, baseUrl, apiKey, models.claude]);
+  const updateApp = useCallback((app: AppId, enabled: boolean) => {
+    setApps((current) => ({ ...current, [app]: enabled }));
+    setErrors((current) => ({ ...current, apps: undefined }));
+  }, []);
 
-  // 计算 Codex 配置 JSON 预览
-  const codexConfigJson = useMemo(() => {
-    if (!codexEnabled) return null;
-    const model = models.codex?.model || "gpt-5.6-sol";
-    const reasoningEffort = models.codex?.reasoningEffort || "high";
-    // 确保 base_url 以 /v1 结尾（Codex 使用 OpenAI 兼容 API）
-    const codexBaseUrl = baseUrl.endsWith("/v1")
-      ? baseUrl
-      : `${baseUrl.replace(/\/+$/, "")}/v1`;
-    const configToml = `model_provider = "custom"
-model = "${model}"
-model_reasoning_effort = "${reasoningEffort}"
-disable_response_storage = true
-
-[model_providers.custom]
-name = "NewAPI"
-base_url = "${codexBaseUrl}"
-wire_api = "responses"
-requires_openai_auth = true`;
-    return {
-      auth: {
-        OPENAI_API_KEY: apiKey,
-      },
-      config: configToml,
-    };
-  }, [codexEnabled, baseUrl, apiKey, models.codex]);
-
-  // 计算 Gemini 配置 JSON 预览
-  const geminiConfigJson = useMemo(() => {
-    if (!geminiEnabled) return null;
-    const model = models.gemini?.model || "gemini-2.5-pro";
-    return {
-      env: {
-        GOOGLE_GEMINI_BASE_URL: baseUrl,
-        GEMINI_API_KEY: apiKey,
-        GEMINI_MODEL: model,
-      },
-    };
-  }, [geminiEnabled, baseUrl, apiKey, models.gemini]);
-
-  // 提交表单
-  const handleSubmit = useCallback(() => {
-    if (!name.trim() || !baseUrl.trim() || !apiKey.trim()) {
-      return;
+  const validateForm = useCallback(() => {
+    const nextErrors: UniversalProviderErrors = {};
+    if (!name.trim()) {
+      nextErrors.name = t("universalProvider.nameRequired", {
+        defaultValue: "供应商名称不能为空。",
+      });
     }
-
-    const provider: UniversalProvider = editingProvider
-      ? {
-          ...editingProvider,
-          name: name.trim(),
-          baseUrl: baseUrl.trim(),
-          apiKey: apiKey.trim(),
-          websiteUrl: websiteUrl.trim() || undefined,
-          notes: notes.trim() || undefined,
-          apps: {
-            claude: claudeEnabled,
-            codex: codexEnabled,
-            gemini: geminiEnabled,
-          },
-          models,
+    if (!baseUrl.trim()) {
+      nextErrors.baseUrl = t("universalProvider.baseUrlRequired", {
+        defaultValue: "API 地址不能为空。",
+      });
+    } else {
+      try {
+        const url = new URL(baseUrl.trim());
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+          nextErrors.baseUrl = t("universalProvider.baseUrlInvalid", {
+            defaultValue: "API 地址必须使用 HTTP 或 HTTPS。",
+          });
         }
-      : createUniversalProviderFromPreset(
-          selectedPreset || universalProviderPresets[0],
-          crypto.randomUUID(),
-          baseUrl.trim(),
-          apiKey.trim(),
-          name.trim(),
-        );
-
-    // 如果是新建，更新应用启用状态和模型
-    if (!editingProvider) {
-      provider.apps = {
-        claude: claudeEnabled,
-        codex: codexEnabled,
-        gemini: geminiEnabled,
-      };
-      provider.models = models;
-      provider.websiteUrl = websiteUrl.trim() || undefined;
-      provider.notes = notes.trim() || undefined;
+      } catch {
+        nextErrors.baseUrl = t("universalProvider.baseUrlInvalid", {
+          defaultValue: "API 地址必须使用 HTTP 或 HTTPS。",
+        });
+      }
     }
+    if (!apiKey.trim()) {
+      nextErrors.apiKey = t("universalProvider.apiKeyRequired", {
+        defaultValue: "API Key 不能为空。",
+      });
+    }
+    if (!APP_IDS.some((appId) => apps[appId])) {
+      nextErrors.apps = t("universalProvider.appsRequired", {
+        defaultValue: "请至少启用一个应用。",
+      });
+    }
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }, [apiKey, apps, baseUrl, name, t]);
 
-    onSave(provider);
-    onClose();
-  }, [
-    editingProvider,
-    name,
-    baseUrl,
-    apiKey,
-    websiteUrl,
-    notes,
-    claudeEnabled,
-    codexEnabled,
-    geminiEnabled,
-    models,
-    selectedPreset,
-    onSave,
-    onClose,
-  ]);
-
-  // 构建 provider 对象的辅助函数
   const buildProvider = useCallback((): UniversalProvider | null => {
-    if (!name.trim() || !baseUrl.trim() || !apiKey.trim()) {
+    if (!validateForm()) {
       return null;
     }
 
-    const provider: UniversalProvider = editingProvider
-      ? {
-          ...editingProvider,
-          name: name.trim(),
-          baseUrl: baseUrl.trim(),
-          apiKey: apiKey.trim(),
-          websiteUrl: websiteUrl.trim() || undefined,
-          notes: notes.trim() || undefined,
-          apps: {
-            claude: claudeEnabled,
-            codex: codexEnabled,
-            gemini: geminiEnabled,
-          },
-          models,
-        }
+    const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "");
+    const baseProvider = editingProvider
+      ? editingProvider
       : createUniversalProviderFromPreset(
           selectedPreset || universalProviderPresets[0],
           crypto.randomUUID(),
-          baseUrl.trim(),
+          normalizedBaseUrl,
           apiKey.trim(),
           name.trim(),
         );
 
-    // 如果是新建，更新应用启用状态和模型
-    if (!editingProvider) {
-      provider.apps = {
-        claude: claudeEnabled,
-        codex: codexEnabled,
-        gemini: geminiEnabled,
-      };
-      provider.models = models;
-      provider.websiteUrl = websiteUrl.trim() || undefined;
-      provider.notes = notes.trim() || undefined;
-    }
-
-    return provider;
+    return {
+      ...baseProvider,
+      name: name.trim(),
+      baseUrl: normalizedBaseUrl,
+      apiKey: apiKey.trim(),
+      websiteUrl: websiteUrl.trim() || undefined,
+      notes: notes.trim() || undefined,
+      apps,
+      models,
+    };
   }, [
+    validateForm,
     editingProvider,
     name,
     baseUrl,
     apiKey,
     websiteUrl,
     notes,
-    claudeEnabled,
-    codexEnabled,
-    geminiEnabled,
+    apps,
     models,
     selectedPreset,
   ]);
 
-  // 打开保存并同步确认弹窗
+  const handleSubmit = useCallback(async () => {
+    const provider = buildProvider();
+    if (!provider) return;
+
+    setIsSubmitting(true);
+    try {
+      await onSave(provider);
+      onClose();
+    } catch {
+      return;
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [buildProvider, onClose, onSave]);
+
   const handleSaveAndSyncClick = useCallback(() => {
     const provider = buildProvider();
     if (!provider || !onSaveAndSync) return;
@@ -309,34 +265,36 @@ requires_openai_auth = true`;
     setSyncConfirmOpen(true);
   }, [buildProvider, onSaveAndSync]);
 
-  // 确认保存并同步
-  const confirmSaveAndSync = useCallback(() => {
+  const confirmSaveAndSync = useCallback(async () => {
     if (!pendingProvider || !onSaveAndSync) return;
 
-    onSaveAndSync(pendingProvider);
     setSyncConfirmOpen(false);
     setPendingProvider(null);
-    onClose();
+    setIsSubmitting(true);
+    try {
+      await onSaveAndSync(pendingProvider);
+      onClose();
+    } catch {
+      return;
+    } finally {
+      setIsSubmitting(false);
+    }
   }, [pendingProvider, onSaveAndSync, onClose]);
 
   const footer = (
     <>
-      <Button variant="outline" onClick={onClose}>
+      <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
         {t("common.cancel", { defaultValue: "取消" })}
       </Button>
       {isEditMode && onSaveAndSync ? (
-        <Button
-          onClick={handleSaveAndSyncClick}
-          disabled={!name.trim() || !baseUrl.trim() || !apiKey.trim()}
-        >
-          <RefreshCw className="mr-1.5 h-4 w-4" />
+        <Button onClick={handleSaveAndSyncClick} disabled={isSubmitting}>
+          <RefreshCw
+            className={`mr-1.5 h-4 w-4 ${isSubmitting ? "animate-spin" : ""}`}
+          />
           {t("universalProvider.saveAndSync", { defaultValue: "保存并同步" })}
         </Button>
       ) : (
-        <Button
-          onClick={handleSubmit}
-          disabled={!name.trim() || !baseUrl.trim() || !apiKey.trim()}
-        >
+        <Button onClick={handleSubmit} disabled={isSubmitting}>
           {t("common.add", { defaultValue: "添加" })}
         </Button>
       )}
@@ -353,26 +311,26 @@ requires_openai_auth = true`;
       }
       onClose={onClose}
       footer={footer}
+      contentClassName={providerPanelContentClassName}
+      footerClassName={providerPanelFooterClassName}
     >
-      <div className="space-y-6">
-        {/* 预设选择（仅新建模式） */}
+      <div className={providerFormClassName}>
         {!isEditMode && (
-          <div className="space-y-3">
-            <Label>
-              {t("universalProvider.selectPreset", {
-                defaultValue: "选择预设类型",
-              })}
-            </Label>
+          <ProviderFormSection
+            title={t("universalProvider.selectPreset", {
+              defaultValue: "Select preset",
+            })}
+          >
             <div className="flex flex-wrap gap-2">
               {universalProviderPresets.map((preset) => (
                 <button
                   key={preset.providerType}
                   type="button"
                   onClick={() => handlePresetSelect(preset)}
-                  className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
                     selectedPreset?.providerType === preset.providerType
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-accent text-muted-foreground hover:bg-accent/80"
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border-default bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >
                   <ProviderIcon
@@ -385,15 +343,19 @@ requires_openai_auth = true`;
               ))}
             </div>
             {selectedPreset?.description && (
-              <p className="text-xs text-muted-foreground">
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">
                 {selectedPreset.description}
               </p>
             )}
-          </div>
+          </ProviderFormSection>
         )}
 
-        {/* 基本信息 */}
-        <div className="space-y-4">
+        <ProviderFormSection
+          title={t("providerForm.identityTitle", {
+            defaultValue: "Provider identity",
+          })}
+          contentClassName="grid grid-cols-1 gap-4 md:grid-cols-2"
+        >
           <div className="space-y-2">
             <Label htmlFor="name">
               {t("universalProvider.name", { defaultValue: "名称" })}
@@ -401,11 +363,21 @@ requires_openai_auth = true`;
             <Input
               id="name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(event) => {
+                setName(event.target.value);
+                setErrors((current) => ({ ...current, name: undefined }));
+              }}
+              aria-invalid={Boolean(errors.name)}
+              aria-describedby={errors.name ? "name-error" : undefined}
               placeholder={t("universalProvider.namePlaceholder", {
                 defaultValue: "例如：我的 NewAPI",
               })}
             />
+            {errors.name && (
+              <p id="name-error" className="text-xs text-destructive">
+                {errors.name}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -414,10 +386,22 @@ requires_openai_auth = true`;
             </Label>
             <Input
               id="baseUrl"
+              type="url"
               value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
+              onChange={(event) => {
+                setBaseUrl(event.target.value);
+                setErrors((current) => ({ ...current, baseUrl: undefined }));
+              }}
+              aria-invalid={Boolean(errors.baseUrl)}
+              aria-describedby={errors.baseUrl ? "base-url-error" : undefined}
               placeholder="https://api.example.com"
+              spellCheck={false}
             />
+            {errors.baseUrl && (
+              <p id="base-url-error" className="text-xs text-destructive">
+                {errors.baseUrl}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -429,9 +413,16 @@ requires_openai_auth = true`;
                 id="apiKey"
                 type={showApiKey ? "text" : "password"}
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-..."
+                onChange={(event) => {
+                  setApiKey(event.target.value);
+                  setErrors((current) => ({ ...current, apiKey: undefined }));
+                }}
+                aria-invalid={Boolean(errors.apiKey)}
+                aria-describedby={errors.apiKey ? "api-key-error" : undefined}
+                placeholder="sk-…"
                 className="pr-10"
+                autoComplete="off"
+                spellCheck={false}
               />
               <Button
                 type="button"
@@ -439,6 +430,11 @@ requires_openai_auth = true`;
                 size="icon"
                 className="absolute right-0 top-0 h-full px-3"
                 onClick={() => setShowApiKey(!showApiKey)}
+                aria-label={
+                  showApiKey
+                    ? t("apiKeyInput.hide", { defaultValue: "Hide API Key" })
+                    : t("apiKeyInput.show", { defaultValue: "Show API Key" })
+                }
               >
                 {showApiKey ? (
                   <EyeOff className="h-4 w-4" />
@@ -447,6 +443,11 @@ requires_openai_auth = true`;
                 )}
               </Button>
             </div>
+            {errors.apiKey && (
+              <p id="api-key-error" className="text-xs text-destructive">
+                {errors.apiKey}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -455,11 +456,13 @@ requires_openai_auth = true`;
             </Label>
             <Input
               id="websiteUrl"
+              type="url"
               value={websiteUrl}
               onChange={(e) => setWebsiteUrl(e.target.value)}
               placeholder={t("universalProvider.websiteUrlPlaceholder", {
                 defaultValue: "https://example.com（可选，用于在列表中显示）",
               })}
+              spellCheck={false}
             />
           </div>
 
@@ -476,120 +479,129 @@ requires_openai_auth = true`;
               })}
             />
           </div>
-        </div>
+        </ProviderFormSection>
 
-        {/* 应用启用 */}
-        <div className="space-y-3">
-          <Label>
-            {t("universalProvider.enabledApps", { defaultValue: "启用的应用" })}
-          </Label>
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div className="flex items-center gap-2">
-                <ProviderIcon icon="claude" name="Claude" size={20} />
-                <span className="font-medium">Claude Code</span>
-              </div>
-              <Switch
-                checked={claudeEnabled}
-                onCheckedChange={setClaudeEnabled}
-              />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div className="flex items-center gap-2">
-                <ProviderIcon icon="openai" name="Codex" size={20} />
-                <span className="font-medium">OpenAI Codex</span>
-              </div>
-              <Switch
-                checked={codexEnabled}
-                onCheckedChange={setCodexEnabled}
-              />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div className="flex items-center gap-2">
-                <ProviderIcon icon="gemini" name="Gemini" size={20} />
-                <span className="font-medium">Gemini CLI</span>
-              </div>
-              <Switch
-                checked={geminiEnabled}
-                onCheckedChange={setGeminiEnabled}
-              />
-            </div>
+        <ProviderFormSection
+          title={t("universalProvider.enabledApps", {
+            defaultValue: "Enabled apps",
+          })}
+          description={t("universalProvider.enabledAppsHint", {
+            defaultValue: "Choose where this provider should be generated.",
+          })}
+        >
+          <div className="grid grid-cols-1 gap-px overflow-hidden rounded-md border border-border-default bg-border-default sm:grid-cols-2 lg:grid-cols-3">
+            {APP_IDS.map((appId) => (
+              <label
+                key={appId}
+                className="flex min-h-12 cursor-pointer items-center gap-3 bg-background px-3 py-2.5"
+              >
+                <span className="flex h-7 w-7 items-center justify-center rounded-md border border-border-default bg-muted/40">
+                  {APP_ICON_MAP[appId].icon}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                  {t(`apps.${appId}`, {
+                    defaultValue: APP_ICON_MAP[appId].label,
+                  })}
+                </span>
+                <Switch
+                  checked={apps[appId]}
+                  onCheckedChange={(checked) => updateApp(appId, checked)}
+                  aria-label={t(`apps.${appId}`, {
+                    defaultValue: APP_ICON_MAP[appId].label,
+                  })}
+                />
+              </label>
+            ))}
           </div>
-        </div>
+          {errors.apps && (
+            <p className="mt-3 text-xs text-destructive" role="alert">
+              {errors.apps}
+            </p>
+          )}
+        </ProviderFormSection>
 
-        {/* 模型配置 */}
-        <div className="space-y-4">
-          <Label>
-            {t("universalProvider.modelConfig", { defaultValue: "模型配置" })}
-          </Label>
-
-          {/* Claude 模型 */}
-          {claudeEnabled && (
-            <div className="space-y-3 rounded-lg border p-4">
+        <ProviderFormSection
+          title={t("universalProvider.modelConfig", {
+            defaultValue: "Model configuration",
+          })}
+          contentClassName="divide-y divide-border-default py-0"
+        >
+          {apps.claude && (
+            <div className="space-y-3 py-5 first:pt-0 last:pb-0">
               <div className="flex items-center gap-2 font-medium">
-                <ProviderIcon icon="claude" name="Claude" size={16} />
-                Claude
+                {APP_ICON_MAP.claude.icon}
+                {APP_ICON_MAP.claude.label}
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label className="text-xs">
+                  <Label htmlFor="universal-claude-model" className="text-xs">
                     {t("universalProvider.model", { defaultValue: "主模型" })}
                   </Label>
                   <Input
+                    id="universal-claude-model"
                     value={models.claude?.model || ""}
                     onChange={(e) =>
                       updateModel("claude", "model", e.target.value)
                     }
-                    placeholder="claude-sonnet-4-20250514"
+                    placeholder="claude-sonnet-5"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Haiku</Label>
+                  <Label htmlFor="universal-claude-haiku" className="text-xs">
+                    Haiku
+                  </Label>
                   <Input
+                    id="universal-claude-haiku"
                     value={models.claude?.haikuModel || ""}
                     onChange={(e) =>
                       updateModel("claude", "haikuModel", e.target.value)
                     }
-                    placeholder="claude-haiku-4-20250514"
+                    placeholder="claude-haiku-4-5-20251001"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Sonnet</Label>
+                  <Label htmlFor="universal-claude-sonnet" className="text-xs">
+                    Sonnet
+                  </Label>
                   <Input
+                    id="universal-claude-sonnet"
                     value={models.claude?.sonnetModel || ""}
                     onChange={(e) =>
                       updateModel("claude", "sonnetModel", e.target.value)
                     }
-                    placeholder="claude-sonnet-4-20250514"
+                    placeholder="claude-sonnet-5"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Opus</Label>
+                  <Label htmlFor="universal-claude-opus" className="text-xs">
+                    Opus
+                  </Label>
                   <Input
+                    id="universal-claude-opus"
                     value={models.claude?.opusModel || ""}
                     onChange={(e) =>
                       updateModel("claude", "opusModel", e.target.value)
                     }
-                    placeholder="claude-sonnet-4-20250514"
+                    placeholder="claude-opus-5"
                   />
                 </div>
               </div>
             </div>
           )}
 
-          {/* Codex 模型 */}
-          {codexEnabled && (
-            <div className="space-y-3 rounded-lg border p-4">
+          {apps.codex && (
+            <div className="space-y-3 py-5 first:pt-0 last:pb-0">
               <div className="flex items-center gap-2 font-medium">
-                <ProviderIcon icon="openai" name="Codex" size={16} />
-                Codex
+                {APP_ICON_MAP.codex.icon}
+                {APP_ICON_MAP.codex.label}
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label className="text-xs">
+                  <Label htmlFor="universal-codex-model" className="text-xs">
                     {t("universalProvider.model", { defaultValue: "模型" })}
                   </Label>
                   <Input
+                    id="universal-codex-model"
                     value={models.codex?.model || ""}
                     onChange={(e) =>
                       updateModel("codex", "model", e.target.value)
@@ -598,8 +610,14 @@ requires_openai_auth = true`;
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Reasoning Effort</Label>
+                  <Label
+                    htmlFor="universal-codex-reasoning"
+                    className="text-xs"
+                  >
+                    Reasoning Effort
+                  </Label>
                   <Input
+                    id="universal-codex-reasoning"
                     value={models.codex?.reasoningEffort || ""}
                     onChange={(e) =>
                       updateModel("codex", "reasoningEffort", e.target.value)
@@ -611,103 +629,70 @@ requires_openai_auth = true`;
             </div>
           )}
 
-          {/* Gemini 模型 */}
-          {geminiEnabled && (
-            <div className="space-y-3 rounded-lg border p-4">
+          {apps.gemini && (
+            <div className="space-y-3 py-5 first:pt-0 last:pb-0">
               <div className="flex items-center gap-2 font-medium">
-                <ProviderIcon icon="gemini" name="Gemini" size={16} />
-                Gemini
+                {APP_ICON_MAP.gemini.icon}
+                {APP_ICON_MAP.gemini.label}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">
+                <Label htmlFor="universal-gemini-model" className="text-xs">
                   {t("universalProvider.model", { defaultValue: "模型" })}
                 </Label>
                 <Input
+                  id="universal-gemini-model"
                   value={models.gemini?.model || ""}
                   onChange={(e) =>
                     updateModel("gemini", "model", e.target.value)
                   }
-                  placeholder="gemini-2.5-pro"
+                  placeholder="gemini-3.6-flash"
                 />
               </div>
             </div>
           )}
-        </div>
 
-        {/* 配置 JSON 预览 */}
-        {isEditMode && (claudeEnabled || codexEnabled || geminiEnabled) && (
-          <div className="space-y-4">
-            <Label>
-              {t("universalProvider.configJsonPreview", {
-                defaultValue: "配置 JSON 预览",
-              })}
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              {t("universalProvider.configJsonPreviewHint", {
-                defaultValue:
-                  "以下是将要同步到各应用的配置内容（仅覆盖显示的字段，保留其他自定义配置）",
-              })}
-            </p>
-
-            {/* Claude JSON */}
-            {claudeConfigJson && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <ProviderIcon icon="claude" name="Claude" size={16} />
-                  Claude
+          {simpleModelApps.map((appId) => {
+            if (!apps[appId]) return null;
+            const modelConfig = models[appId] as { model?: string } | undefined;
+            return (
+              <div key={appId} className="space-y-3 py-5 first:pt-0 last:pb-0">
+                <div className="flex items-center gap-2 font-medium">
+                  {APP_ICON_MAP[appId].icon}
+                  {APP_ICON_MAP[appId].label}
                 </div>
-                <JsonEditor
-                  value={JSON.stringify(claudeConfigJson, null, 2)}
-                  onChange={() => {}}
-                  height={180}
-                  darkMode={isDarkMode}
-                />
-              </div>
-            )}
-
-            {/* Codex JSON */}
-            {codexConfigJson && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <ProviderIcon icon="openai" name="Codex" size={16} />
-                  Codex
+                <div className="space-y-1">
+                  <Label
+                    htmlFor={`universal-${appId}-model`}
+                    className="text-xs"
+                  >
+                    {t("universalProvider.model", { defaultValue: "Model" })}
+                  </Label>
+                  <Input
+                    id={`universal-${appId}-model`}
+                    value={modelConfig?.model || ""}
+                    onChange={(event) =>
+                      updateModel(appId, "model", event.target.value)
+                    }
+                    placeholder={
+                      appId === "claude-desktop"
+                        ? "claude-sonnet-5"
+                        : "gpt-5.6-sol"
+                    }
+                  />
                 </div>
-                <JsonEditor
-                  value={JSON.stringify(codexConfigJson, null, 2)}
-                  onChange={() => {}}
-                  height={280}
-                  darkMode={isDarkMode}
-                />
               </div>
-            )}
-
-            {/* Gemini JSON */}
-            {geminiConfigJson && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <ProviderIcon icon="gemini" name="Gemini" size={16} />
-                  Gemini
-                </div>
-                <JsonEditor
-                  value={JSON.stringify(geminiConfigJson, null, 2)}
-                  onChange={() => {}}
-                  height={140}
-                  darkMode={isDarkMode}
-                />
-              </div>
-            )}
-          </div>
-        )}
+            );
+          })}
+        </ProviderFormSection>
       </div>
 
-      {/* 保存并同步确认弹窗 */}
       <ConfirmDialog
         isOpen={syncConfirmOpen}
         title={t("universalProvider.syncConfirmTitle", {
           defaultValue: "同步统一供应商",
         })}
         message={t("universalProvider.syncConfirmDescription", {
-          defaultValue: `同步 "${name}" 将会覆盖 Claude、Codex 和 Gemini 中关联的供应商配置。确定要继续吗？`,
+          defaultValue: `同步 "${name}" 将会更新所有已启用应用中的关联供应商配置。确定要继续吗？`,
           name: name,
         })}
         confirmText={t("universalProvider.saveAndSync", {

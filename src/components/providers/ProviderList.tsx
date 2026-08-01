@@ -30,6 +30,7 @@ import {
   useHermesLiveProviderIds,
   useHermesModelConfig,
 } from "@/hooks/useHermes";
+import { usePiDefaultProvider, usePiLiveProviderIds } from "@/hooks/usePi";
 import { useStreamCheck } from "@/hooks/useStreamCheck";
 import { ProviderCard } from "@/components/providers/ProviderCard";
 import { ProviderEmptyState } from "@/components/providers/ProviderEmptyState";
@@ -115,6 +116,8 @@ export function ProviderList({
   // Hermes: 读取当前 model.provider，用于判断哪个供应商是"当前激活"（高亮）
   const { data: hermesModelConfig } = useHermesModelConfig(appId === "hermes");
   const hermesCurrentProviderId = hermesModelConfig?.provider;
+  const { data: piLiveIds } = usePiLiveProviderIds(appId === "pi");
+  const { data: piDefaultProvider } = usePiDefaultProvider(appId === "pi");
 
   // 判断供应商是否已添加到配置（累加模式应用：OpenCode/OpenClaw/Hermes）
   const isProviderInConfig = useCallback(
@@ -128,9 +131,12 @@ export function ProviderList({
       if (appId === "hermes") {
         return hermesLiveIds?.includes(providerId) ?? false;
       }
+      if (appId === "pi") {
+        return piLiveIds?.includes(providerId) ?? false;
+      }
       return true; // 其他应用始终返回 true
     },
-    [appId, opencodeLiveIds, openclawLiveIds, hermesLiveIds],
+    [appId, opencodeLiveIds, openclawLiveIds, hermesLiveIds, piLiveIds],
   );
 
   // OpenClaw: query default model to determine which provider is default
@@ -221,6 +227,10 @@ export function ProviderList({
       }
       if (appId === "hermes") {
         const count = await providersApi.importHermesFromLive();
+        return count > 0;
+      }
+      if (appId === "pi") {
+        const count = await providersApi.importPiFromLive();
         return count > 0;
       }
       if (appId === "claude-desktop") {
@@ -353,7 +363,7 @@ export function ProviderList({
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
+      <div className="mt-4 space-y-3">
         {[0, 1, 2].map((index) => (
           <div
             key={index}
@@ -366,11 +376,13 @@ export function ProviderList({
 
   if (sortedProviders.length === 0) {
     return (
-      <ProviderEmptyState
-        appId={appId}
-        onCreate={onCreate}
-        onImport={() => importMutation.mutate()}
-      />
+      <div className="mt-4">
+        <ProviderEmptyState
+          appId={appId}
+          onCreate={onCreate}
+          onImport={() => importMutation.mutate()}
+        />
+      </div>
     );
   }
 
@@ -393,6 +405,8 @@ export function ProviderList({
               isOmoSlim && provider.id === (currentOmoSlimId || "");
             const isHermesCurrent =
               appId === "hermes" && hermesCurrentProviderId === provider.id;
+            const isPiCurrent =
+              appId === "pi" && piDefaultProvider === provider.id;
             return (
               <SortableProviderCard
                 key={provider.id}
@@ -404,7 +418,9 @@ export function ProviderList({
                       ? isOmoSlimCurrent
                       : appId === "hermes"
                         ? isHermesCurrent
-                        : provider.id === currentProviderId
+                        : appId === "pi"
+                          ? isPiCurrent
+                          : provider.id === currentProviderId
                 }
                 appId={appId}
                 isInConfig={isProviderInConfig(provider.id)}
@@ -435,7 +451,9 @@ export function ProviderList({
                 isDefaultModel={
                   appId === "hermes"
                     ? isHermesCurrent
-                    : isProviderDefaultModel(provider.id)
+                    : appId === "pi"
+                      ? isPiCurrent
+                      : isProviderDefaultModel(provider.id)
                 }
                 onSetAsDefault={
                   onSetAsDefault ? () => onSetAsDefault(provider) : undefined

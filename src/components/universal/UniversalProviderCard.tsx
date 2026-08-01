@@ -3,6 +3,7 @@ import { Edit2, Trash2, RefreshCw, Globe, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import type { UniversalProvider } from "@/types";
+import { APP_ICON_MAP, APP_IDS } from "@/config/appConfig";
 
 interface UniversalProviderCardProps {
   provider: UniversalProvider;
@@ -21,14 +22,10 @@ export function UniversalProviderCard({
 }: UniversalProviderCardProps) {
   const { t } = useTranslation();
 
-  const enabledApps: string[] = [
-    provider.apps.claude ? "Claude" : null,
-    provider.apps.codex ? "Codex" : null,
-    provider.apps.gemini ? "Gemini" : null,
-  ].filter((app): app is string => app !== null);
+  const enabledApps = APP_IDS.filter((appId) => provider.apps[appId]);
 
   return (
-    <div className="group relative rounded-md border border-border bg-card p-4 transition-colors hover:border-primary/30">
+    <div className="group relative rounded-md border border-border-default bg-card p-4 transition-colors hover:border-foreground/25">
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent">
@@ -49,6 +46,9 @@ export function UniversalProviderCard({
             className="h-8 w-8"
             onClick={() => onSync(provider.id)}
             title={t("universalProvider.sync", { defaultValue: "同步到应用" })}
+            aria-label={t("universalProvider.sync", {
+              defaultValue: "同步到应用",
+            })}
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -58,6 +58,9 @@ export function UniversalProviderCard({
             className="h-8 w-8"
             onClick={() => onDuplicate(provider)}
             title={t("universalProvider.duplicate", { defaultValue: "复制" })}
+            aria-label={t("universalProvider.duplicate", {
+              defaultValue: "复制",
+            })}
           >
             <Copy className="h-4 w-4" />
           </Button>
@@ -67,6 +70,7 @@ export function UniversalProviderCard({
             className="h-8 w-8"
             onClick={() => onEdit(provider)}
             title={t("common.edit", { defaultValue: "编辑" })}
+            aria-label={t("common.edit", { defaultValue: "编辑" })}
           >
             <Edit2 className="h-4 w-4" />
           </Button>
@@ -76,6 +80,7 @@ export function UniversalProviderCard({
             className="h-8 w-8 text-destructive hover:text-destructive"
             onClick={() => onDelete(provider.id)}
             title={t("common.delete", { defaultValue: "删除" })}
+            aria-label={t("common.delete", { defaultValue: "删除" })}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -91,12 +96,15 @@ export function UniversalProviderCard({
         </div>
 
         <div className="flex flex-wrap gap-1.5">
-          {enabledApps.map((app) => (
+          {enabledApps.map((appId) => (
             <span
-              key={app}
-              className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+              key={appId}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border-default bg-muted/40 px-2 py-0.5 text-xs font-medium text-foreground"
             >
-              {app}
+              {APP_ICON_MAP[appId].icon}
+              {t(`apps.${appId}`, {
+                defaultValue: APP_ICON_MAP[appId].label,
+              })}
             </span>
           ))}
           {enabledApps.length === 0 && (

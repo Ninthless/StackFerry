@@ -19,6 +19,7 @@ export async function fetchModelsForConfig(
   isFullUrl?: boolean,
   modelsUrl?: string,
   customUserAgent?: string,
+  sendAuthorization?: boolean,
 ): Promise<FetchedModel[]> {
   return invoke("fetch_models_for_config", {
     baseUrl,
@@ -26,6 +27,7 @@ export async function fetchModelsForConfig(
     isFullUrl,
     modelsUrl,
     customUserAgent,
+    sendAuthorization,
   });
 }
 

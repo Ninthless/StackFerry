@@ -30,6 +30,7 @@ import { checkAllEnvConflicts, checkEnvConflicts } from "@/lib/api/env";
 import { useProviderActions } from "@/hooks/useProviderActions";
 import { openclawKeys, useOpenClawHealth } from "@/hooks/useOpenClaw";
 import { hermesKeys, useOpenHermesWebUI } from "@/hooks/useHermes";
+import { piKeys } from "@/hooks/usePi";
 import { hermesApi } from "@/lib/api/hermes";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { useUsageCacheBridge } from "@/hooks/useUsageCacheBridge";
@@ -95,6 +96,7 @@ const VALID_APPS: AppId[] = [
   "claude",
   "claude-desktop",
   "codex",
+  "pi",
   "gemini",
   "grokbuild",
   "opencode",
@@ -162,6 +164,7 @@ function App() {
     claude: true,
     "claude-desktop": true,
     codex: true,
+    pi: true,
     gemini: true,
     grokbuild: true,
     opencode: true,
@@ -173,6 +176,7 @@ function App() {
     if (visibleApps.claude) return "claude";
     if (visibleApps["claude-desktop"]) return "claude-desktop";
     if (visibleApps.codex) return "codex";
+    if (visibleApps.pi) return "pi";
     if (visibleApps.gemini) return "gemini";
     if (visibleApps.grokbuild) return "grokbuild";
     if (visibleApps.opencode) return "opencode";
@@ -193,6 +197,7 @@ function App() {
       currentView === "sessions" &&
       sharedFeatureApp !== "claude" &&
       sharedFeatureApp !== "codex" &&
+      sharedFeatureApp !== "pi" &&
       sharedFeatureApp !== "grokbuild" &&
       sharedFeatureApp !== "opencode" &&
       sharedFeatureApp !== "openclaw" &&
@@ -202,6 +207,12 @@ function App() {
       setCurrentView("providers");
     }
   }, [sharedFeatureApp, currentView]);
+
+  useEffect(() => {
+    if (activeApp === "pi" && currentView === "mcp") {
+      setCurrentView("providers");
+    }
+  }, [activeApp, currentView]);
 
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [usageProvider, setUsageProvider] = useState<Provider | null>(null);
@@ -231,7 +242,8 @@ function App() {
     takeoverStatus,
     status: proxyStatus,
   } = useProxyStatus();
-  const isCurrentAppTakeoverActive = takeoverStatus?.[activeApp] || false;
+  const isCurrentAppTakeoverActive =
+    activeApp === "pi" ? false : takeoverStatus?.[activeApp] || false;
   const activeProviderId = useMemo(() => {
     const target = proxyStatus?.active_targets?.find(
       (t) => t.app_type === activeApp,
@@ -252,12 +264,14 @@ function App() {
       currentView === "openclawEnv" ||
       currentView === "openclawTools" ||
       currentView === "openclawAgents");
-  const { data: openclawHealthWarnings = [] } =
+  const { data: openclawHealthWarningsData } =
     useOpenClawHealth(isOpenClawView);
+  const openclawHealthWarnings = openclawHealthWarningsData ?? [];
   const hasSkillsSupport = sharedFeatureApp !== "openclaw";
   const hasSessionSupport =
     sharedFeatureApp === "claude" ||
     sharedFeatureApp === "codex" ||
+    sharedFeatureApp === "pi" ||
     sharedFeatureApp === "grokbuild" ||
     sharedFeatureApp === "opencode" ||
     sharedFeatureApp === "openclaw" ||
@@ -640,6 +654,11 @@ function App() {
         await queryClient.invalidateQueries({
           queryKey: hermesKeys.liveProviderIds,
         });
+      } else if (activeApp === "pi") {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: piKeys.liveProviderIds }),
+          queryClient.invalidateQueries({ queryKey: piKeys.defaultProvider }),
+        ]);
       }
       toast.success(
         t("notifications.removeFromConfigSuccess", {
@@ -691,7 +710,8 @@ function App() {
     if (
       activeApp === "opencode" ||
       activeApp === "openclaw" ||
-      activeApp === "hermes"
+      activeApp === "hermes" ||
+      activeApp === "pi"
     ) {
       let liveProviderIds: string[] = [];
       try {
@@ -706,10 +726,15 @@ function App() {
                   queryKey: openclawKeys.liveProviderIds,
                   queryFn: () => providersApi.getOpenClawLiveProviderIds(),
                 })
-              : await queryClient.ensureQueryData({
-                  queryKey: hermesKeys.liveProviderIds,
-                  queryFn: () => providersApi.getHermesLiveProviderIds(),
-                });
+              : activeApp === "hermes"
+                ? await queryClient.ensureQueryData({
+                    queryKey: hermesKeys.liveProviderIds,
+                    queryFn: () => providersApi.getHermesLiveProviderIds(),
+                  })
+                : await queryClient.ensureQueryData({
+                    queryKey: piKeys.liveProviderIds,
+                    queryFn: () => providersApi.getPiLiveProviderIds(),
+                  });
       } catch (error) {
         console.error(
           "[App] Failed to load live provider IDs for duplication",
@@ -913,7 +938,8 @@ function App() {
         <>
           {activeApp !== "opencode" &&
             activeApp !== "openclaw" &&
-            activeApp !== "hermes" && (
+            activeApp !== "hermes" &&
+            activeApp !== "pi" && (
               <div className="flex shrink-0 items-center gap-2">
                 {activeApp === "claude-desktop" ? (
                   <ClaudeDesktopRouteToggle />
@@ -1154,7 +1180,8 @@ function App() {
                       onRemoveFromConfig={
                         activeApp === "opencode" ||
                         activeApp === "openclaw" ||
-                        activeApp === "hermes"
+                        activeApp === "hermes" ||
+                        activeApp === "pi"
                           ? (provider) =>
                               setConfirmAction({ provider, action: "remove" })
                           : undefined
@@ -1168,7 +1195,9 @@ function App() {
                           : undefined
                       }
                       onDuplicate={handleDuplicateProvider}
-                      onConfigureUsage={setUsageProvider}
+                      onConfigureUsage={
+                        activeApp === "pi" ? undefined : setUsageProvider
+                      }
                       onOpenWebsite={handleOpenWebsite}
                       onOpenTerminal={
                         activeApp === "claude" ? handleOpenTerminal : undefined
@@ -1179,7 +1208,9 @@ function App() {
                           ? setAsDefaultModel
                           : activeApp === "hermes"
                             ? switchProvider
-                            : undefined
+                            : activeApp === "pi"
+                              ? switchProvider
+                              : undefined
                       }
                     />
                   </motion.div>

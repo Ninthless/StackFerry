@@ -38,6 +38,9 @@ describe("GrokBuildProviderForm", () => {
     expect(screen.queryByRole("button", { name: /BytePlus/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Kimi/ })).toBeNull();
 
+    await user.click(
+      screen.getByRole("button", { name: /providerPreset\.showAll/ }),
+    );
     await user.click(screen.getByRole("button", { name: /PatewayAI/ }));
 
     const baseUrlInput =

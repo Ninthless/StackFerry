@@ -5,6 +5,7 @@ import {
   CodexIcon,
   GeminiIcon,
   OpenClawIcon,
+  PiIcon,
 } from "@/components/BrandIcons";
 import { ProviderIcon } from "@/components/ProviderIcon";
 
@@ -18,6 +19,7 @@ export const APP_IDS: AppId[] = [
   "claude",
   "claude-desktop",
   "codex",
+  "pi",
   "gemini",
   "grokbuild",
   "opencode",
@@ -29,6 +31,7 @@ export const APP_IDS: AppId[] = [
 export const SKILLS_APP_IDS: AppId[] = [
   "claude",
   "codex",
+  "pi",
   "gemini",
   "grokbuild",
   "opencode",
@@ -36,7 +39,14 @@ export const SKILLS_APP_IDS: AppId[] = [
 ];
 
 /** App IDs shown in MCP panels (excludes OpenClaw) */
-export const MCP_APP_IDS: AppId[] = [...SKILLS_APP_IDS];
+export const MCP_APP_IDS: Array<Exclude<AppId, "pi">> = [
+  "claude",
+  "codex",
+  "gemini",
+  "grokbuild",
+  "opencode",
+  "hermes",
+];
 
 const APP_BADGE_CLASS =
   "border border-border bg-muted text-foreground hover:bg-accent gap-1.5";
@@ -55,6 +65,11 @@ export const APP_ICON_MAP: Record<AppId, AppConfig> = {
   codex: {
     label: "Codex",
     icon: <CodexIcon size={14} />,
+    badgeClass: APP_BADGE_CLASS,
+  },
+  pi: {
+    label: "Pi",
+    icon: <PiIcon size={14} />,
     badgeClass: APP_BADGE_CLASS,
   },
   gemini: {

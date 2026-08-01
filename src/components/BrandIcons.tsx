@@ -1,5 +1,5 @@
 interface IconProps {
-  size?: number;
+  size?: number | string;
   className?: string;
 }
 
@@ -8,6 +8,7 @@ import ClaudeSvg from "@/icons/extracted/claude.svg?url";
 import OpenAISvg from "@/icons/extracted/openai.svg?url";
 import GeminiSvg from "@/icons/extracted/gemini.svg?url";
 import OpenClawSvg from "@/icons/extracted/claw.svg?url";
+import PiSvg from "@/icons/extracted/pi.svg?url";
 
 export function ClaudeIcon({ size = 16, className = "" }: IconProps) {
   return (
@@ -30,6 +31,18 @@ export function CodexIcon({ size = 16, className = "" }: IconProps) {
       height={size}
       className={`dark:brightness-0 dark:invert ${className}`}
       alt="Codex"
+      loading="lazy"
+    />
+  );
+}
+
+export function PiIcon({ size = 16, className = "" }: IconProps) {
+  return (
+    <img
+      src={PiSvg}
+      className={className}
+      style={{ width: size, height: size }}
+      alt="Pi"
       loading="lazy"
     />
   );

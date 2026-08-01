@@ -7,6 +7,7 @@ import {
   isUrlIcon,
 } from "@/icons/extracted";
 import { cn } from "@/lib/utils";
+import { PiIcon } from "@/components/BrandIcons";
 
 interface ProviderIconProps {
   icon?: string; // 图标名称
@@ -65,6 +66,15 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
     }
     return undefined;
   }, [color, icon]);
+
+  if (icon === "pi") {
+    return (
+      <PiIcon
+        size={size}
+        className={cn("shrink-0 object-contain", className)}
+      />
+    );
+  }
 
   // 内联 SVG 渲染（支持 CSS currentColor 着色）
   if (iconSvg) {

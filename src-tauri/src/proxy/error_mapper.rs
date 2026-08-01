@@ -34,6 +34,8 @@ pub fn map_proxy_error_to_status(error: &ProxyError) -> u16 {
         // 无可用 Provider：503 Service Unavailable
         ProxyError::NoAvailableProvider => 503,
 
+        ProxyError::NoSafeProviderForPaidImage => 503,
+
         // 所有供应商已熔断：503 Service Unavailable
         ProxyError::AllProvidersCircuitOpen => 503,
 
@@ -76,6 +78,7 @@ pub fn get_error_message(error: &ProxyError) -> String {
         ProxyError::Timeout(msg) => format!("请求超时: {msg}"),
         ProxyError::ForwardFailed(msg) => format!("转发失败: {msg}"),
         ProxyError::NoAvailableProvider => "无可用 Provider".to_string(),
+        ProxyError::NoSafeProviderForPaidImage => error.to_string(),
         ProxyError::AllProvidersCircuitOpen => "所有供应商已熔断，无可用渠道".to_string(),
         ProxyError::NoProvidersConfigured => "未配置供应商".to_string(),
         ProxyError::MaxRetriesExceeded => "所有 Provider 都失败，重试耗尽".to_string(),

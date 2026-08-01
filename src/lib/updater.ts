@@ -1,8 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { relaunch } from "@tauri-apps/plugin-process";
+import type { Update } from "@tauri-apps/plugin-updater";
 import { isUpdateAvailable } from "./version";
-
-const LATEST_RELEASE_URL =
-  "https://api.github.com/repos/Ninthless/StackFerry/releases/latest";
 
 export interface UpdateInfo {
   currentVersion: string;
@@ -13,6 +12,11 @@ export interface UpdateInfo {
 
 export interface CheckOptions {
   timeout?: number;
+}
+
+export interface UpdateHandle {
+  version: string;
+  downloadAndInstall: () => Promise<void>;
 }
 
 export async function getCurrentVersion(): Promise<string> {
@@ -26,50 +30,34 @@ export async function getCurrentVersion(): Promise<string> {
 export async function checkForUpdate(
   opts: CheckOptions = {},
 ): Promise<
-  { status: "up-to-date" } | { status: "available"; info: UpdateInfo }
+  | { status: "up-to-date" }
+  | { status: "available"; info: UpdateInfo; update: UpdateHandle }
 > {
   const currentVersion = await getCurrentVersion();
-  const controller = new AbortController();
-  const timer = window.setTimeout(
-    () => controller.abort(),
-    opts.timeout ?? 30000,
-  );
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const update = await check({ timeout: opts.timeout ?? 30000 });
 
-  let response: Response;
-  try {
-    response = await fetch(LATEST_RELEASE_URL, {
-      headers: { Accept: "application/vnd.github+json" },
-      signal: controller.signal,
-    });
-  } finally {
-    window.clearTimeout(timer);
-  }
-
-  if (response.status === 404) {
-    return { status: "up-to-date" };
-  }
-
-  if (!response.ok) {
-    throw new Error(`GitHub release check failed: HTTP ${response.status}`);
-  }
-
-  const release = (await response.json()) as {
-    tag_name?: string;
-    body?: string;
-    published_at?: string;
-  };
-  const latestVersion = (release.tag_name ?? "").replace(/^v/i, "");
-
-  if (!isUpdateAvailable(currentVersion, latestVersion)) {
+  if (!update || !isUpdateAvailable(currentVersion, update.version)) {
     return { status: "up-to-date" };
   }
 
   const info: UpdateInfo = {
     currentVersion,
-    availableVersion: latestVersion,
-    notes: release.body,
-    pubDate: release.published_at,
+    availableVersion: update.version,
+    notes: update.body ?? undefined,
+    pubDate: update.date ?? undefined,
   };
 
-  return { status: "available", info };
+  return { status: "available", info, update: mapUpdate(update) };
+}
+
+function mapUpdate(update: Update): UpdateHandle {
+  return {
+    version: update.version,
+    downloadAndInstall: () => update.downloadAndInstall(),
+  };
+}
+
+export async function relaunchApp(): Promise<void> {
+  await relaunch();
 }

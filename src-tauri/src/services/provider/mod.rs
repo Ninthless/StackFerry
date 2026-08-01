@@ -23,7 +23,7 @@ use crate::store::AppState;
 // Re-export sub-module functions for external access
 pub use live::{
     import_default_config, import_hermes_providers_from_live, import_openclaw_providers_from_live,
-    import_opencode_providers_from_live, read_live_settings,
+    import_opencode_providers_from_live, import_pi_providers_from_live, read_live_settings,
     should_import_default_config_on_startup, sync_current_to_live,
     update_toml_common_config_snippet,
 };
@@ -39,7 +39,7 @@ pub(crate) use live::{
 // Internal re-exports
 use live::{
     remove_hermes_provider_from_live, remove_openclaw_provider_from_live,
-    remove_opencode_provider_from_live, write_gemini_live,
+    remove_opencode_provider_from_live, remove_pi_provider_from_live, write_gemini_live,
 };
 use usage::validate_usage_script;
 
@@ -228,8 +228,14 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let old_test_home = std::env::var_os("STACKFERRY_TEST_HOME");
         let old_home = std::env::var_os("HOME");
+        let old_hermes_home = std::env::var_os("HERMES_HOME");
+        #[cfg(windows)]
+        let old_local_app_data = std::env::var_os("LOCALAPPDATA");
         std::env::set_var("STACKFERRY_TEST_HOME", temp.path());
         std::env::set_var("HOME", temp.path());
+        std::env::remove_var("HERMES_HOME");
+        #[cfg(windows)]
+        std::env::set_var("LOCALAPPDATA", temp.path().join("AppData").join("Local"));
 
         let db = Arc::new(Database::memory().expect("in-memory database"));
         let state = AppState::new(db);
@@ -242,6 +248,15 @@ mod tests {
         match old_home {
             Some(value) => std::env::set_var("HOME", value),
             None => std::env::remove_var("HOME"),
+        }
+        match old_hermes_home {
+            Some(value) => std::env::set_var("HERMES_HOME", value),
+            None => std::env::remove_var("HERMES_HOME"),
+        }
+        #[cfg(windows)]
+        match old_local_app_data {
+            Some(value) => std::env::set_var("LOCALAPPDATA", value),
+            None => std::env::remove_var("LOCALAPPDATA"),
         }
 
         result
@@ -2216,6 +2231,77 @@ requires_openai_auth = true
 
     #[test]
     #[serial]
+    fn universal_sync_writes_and_removes_every_additive_live_provider() {
+        with_test_home(|state, _| {
+            let mut universal = crate::provider::UniversalProvider::new(
+                "live-sync".to_string(),
+                "Live Sync".to_string(),
+                "openai-compatible".to_string(),
+                "https://api.example.com/v1".to_string(),
+                "sk-live".to_string(),
+            );
+            universal.apps.pi = true;
+            universal.apps.opencode = true;
+            universal.apps.openclaw = true;
+            universal.apps.hermes = true;
+
+            ProviderService::upsert_universal(state, universal.clone())
+                .expect("save universal provider");
+            ProviderService::sync_universal_to_apps(state, &universal.id)
+                .expect("sync universal provider");
+
+            let generated_ids = [
+                (AppType::Pi, "universal-pi-live-sync"),
+                (AppType::OpenCode, "universal-opencode-live-sync"),
+                (AppType::OpenClaw, "universal-openclaw-live-sync"),
+                (AppType::Hermes, "universal-hermes-live-sync"),
+            ];
+
+            for (app, generated_id) in &generated_ids {
+                assert!(
+                    provider_exists_in_live_config(app, generated_id)
+                        .expect("inspect live provider config"),
+                    "{generated_id} should exist in live config"
+                );
+                assert!(
+                    state
+                        .db
+                        .get_provider_by_id(generated_id, app.as_str())
+                        .expect("query generated provider")
+                        .is_some(),
+                    "{generated_id} should exist in the provider database"
+                );
+            }
+
+            universal.apps.pi = false;
+            universal.apps.opencode = false;
+            universal.apps.openclaw = false;
+            universal.apps.hermes = false;
+            ProviderService::upsert_universal(state, universal.clone())
+                .expect("update universal provider");
+            ProviderService::sync_universal_to_apps(state, &universal.id)
+                .expect("remove disabled universal providers");
+
+            for (app, generated_id) in &generated_ids {
+                assert!(
+                    !provider_exists_in_live_config(app, generated_id)
+                        .expect("inspect removed live provider config"),
+                    "{generated_id} should be removed from live config"
+                );
+                assert!(
+                    state
+                        .db
+                        .get_provider_by_id(generated_id, app.as_str())
+                        .expect("query removed generated provider")
+                        .is_none(),
+                    "{generated_id} should be removed from the provider database"
+                );
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
     fn import_opencode_providers_from_live_marks_provider_as_live_managed() {
         with_test_home(|state, _| {
             let provider = opencode_provider("imported-opencode");
@@ -2735,6 +2821,9 @@ impl ProviderService {
     ///
     /// 对于累加模式应用（OpenCode, OpenClaw），不存在"当前供应商"概念，直接返回空字符串。
     pub fn current(state: &AppState, app_type: AppType) -> Result<String, AppError> {
+        if matches!(app_type, AppType::Pi) {
+            return crate::pi_config::get_default_provider().map(|id| id.unwrap_or_default());
+        }
         // Additive mode apps have no "current" provider concept
         if app_type.is_additive_mode() {
             return Ok(String::new());
@@ -2787,6 +2876,7 @@ impl ProviderService {
             AppType::OpenCode => remove_opencode_provider_from_live(provider_id),
             AppType::OpenClaw => remove_openclaw_provider_from_live(provider_id),
             AppType::Hermes => remove_hermes_provider_from_live(provider_id),
+            AppType::Pi => remove_pi_provider_from_live(provider_id),
             _ => Ok(()),
         }
     }
@@ -3217,6 +3307,7 @@ impl ProviderService {
                     AppType::OpenCode => remove_opencode_provider_from_live(id)?,
                     AppType::OpenClaw => remove_openclaw_provider_from_live(id)?,
                     AppType::Hermes => remove_hermes_provider_from_live(id)?,
+                    AppType::Pi => remove_pi_provider_from_live(id)?,
                     _ => {}
                 }
             }
@@ -3281,6 +3372,9 @@ impl ProviderService {
             }
             AppType::Hermes => {
                 remove_hermes_provider_from_live(id)?;
+            }
+            AppType::Pi => {
+                remove_pi_provider_from_live(id)?;
             }
             _ => {
                 return Err(AppError::Message(format!(
@@ -3566,6 +3660,10 @@ impl ProviderService {
             }
         }
 
+        if matches!(app_type, AppType::Pi) {
+            crate::pi_config::apply_switch_defaults(&provider.id, &provider.settings_config)?;
+        }
+
         // For additive-mode providers that were DB-only (live_config_managed == Some(false)),
         // flip the flag to true now that the provider has been successfully written to the live
         // file. This ensures sync_all_providers_to_live() will include it on future syncs.
@@ -3581,6 +3679,7 @@ impl ProviderService {
                     AppType::OpenCode => remove_opencode_provider_from_live(&provider.id),
                     AppType::OpenClaw => remove_openclaw_provider_from_live(&provider.id),
                     AppType::Hermes => remove_hermes_provider_from_live(&provider.id),
+                    AppType::Pi => remove_pi_provider_from_live(&provider.id),
                     _ => Ok(()),
                 };
 
@@ -3867,6 +3966,7 @@ impl ProviderService {
             AppType::OpenCode => Self::extract_opencode_common_config(&provider.settings_config),
             AppType::OpenClaw => Self::extract_openclaw_common_config(&provider.settings_config),
             AppType::Hermes => Ok(String::new()), // Hermes doesn't use common config snippets
+            AppType::Pi => Ok(String::new()),
         }
     }
 
@@ -3884,6 +3984,7 @@ impl ProviderService {
             AppType::OpenCode => Self::extract_opencode_common_config(settings_config),
             AppType::OpenClaw => Self::extract_openclaw_common_config(settings_config),
             AppType::Hermes => Ok(String::new()), // Hermes doesn't use common config snippets
+            AppType::Pi => Ok(String::new()),
         }
     }
 
@@ -4689,6 +4790,7 @@ impl ProviderService {
                     &["apiKey", "baseUrl"],
                 )?;
             }
+            AppType::Pi => crate::pi_config::validate_provider(&provider.settings_config)?,
             AppType::Hermes => {
                 let settings = provider.settings_config.as_object().ok_or_else(|| {
                     AppError::localized(
@@ -4907,7 +5009,7 @@ impl ProviderService {
 
                 Ok((api_key, base_url))
             }
-            AppType::OpenClaw | AppType::Hermes => {
+            AppType::OpenClaw | AppType::Hermes | AppType::Pi => {
                 // OpenClaw/Hermes use apiKey and baseUrl directly on the object
                 let api_key = provider
                     .settings_config
@@ -5055,26 +5157,57 @@ impl ProviderService {
         // 获取统一供应商（用于删除生成的子供应商）
         let provider = state.db.get_universal_provider(id)?;
 
-        // 删除统一供应商
-        state.db.delete_universal_provider(id)?;
-
-        // 删除生成的子供应商
-        if let Some(p) = provider {
-            if p.apps.claude {
-                let claude_id = format!("universal-claude-{id}");
-                let _ = state.db.delete_provider("claude", &claude_id);
-            }
-            if p.apps.codex {
-                let codex_id = format!("universal-codex-{id}");
-                let _ = state.db.delete_provider("codex", &codex_id);
-            }
-            if p.apps.gemini {
-                let gemini_id = format!("universal-gemini-{id}");
-                let _ = state.db.delete_provider("gemini", &gemini_id);
+        if provider.is_some() {
+            for app in [
+                "claude",
+                "claude-desktop",
+                "codex",
+                "pi",
+                "gemini",
+                "grokbuild",
+                "opencode",
+                "openclaw",
+                "hermes",
+            ] {
+                let generated_id = format!("universal-{app}-{id}");
+                let app_type = app.parse::<AppType>()?;
+                if app_type.is_additive_mode() {
+                    Self::remove_additive_provider_from_live(&app_type, &generated_id)?;
+                }
+                state.db.delete_provider(app, &generated_id)?;
             }
         }
 
+        state.db.delete_universal_provider(id)?;
+
         Ok(true)
+    }
+
+    fn sync_universal_app(
+        state: &AppState,
+        app: &str,
+        generated_id: String,
+        generated: Option<Provider>,
+    ) -> Result<(), AppError> {
+        let app_type = app.parse::<AppType>()?;
+        if let Some(mut generated) = generated {
+            if let Some(existing) = state.db.get_provider_by_id(&generated.id, app)? {
+                let mut merged = existing.settings_config.clone();
+                Self::merge_json(&mut merged, &generated.settings_config);
+                generated.settings_config = merged;
+            }
+            if app_type.is_additive_mode() {
+                Self::add(state, app_type, generated, true)?;
+            } else {
+                state.db.save_provider(app, &generated)?;
+            }
+        } else {
+            if app_type.is_additive_mode() {
+                Self::remove_additive_provider_from_live(&app_type, &generated_id)?;
+            }
+            state.db.delete_provider(app, &generated_id)?;
+        }
+        Ok(())
     }
 
     /// 同步统一供应商到各应用
@@ -5084,48 +5217,60 @@ impl ProviderService {
             .get_universal_provider(id)?
             .ok_or_else(|| AppError::Message(format!("统一供应商 {id} 不存在")))?;
 
-        // 同步到 Claude
-        if let Some(mut claude_provider) = provider.to_claude_provider() {
-            // 合并已有配置
-            if let Some(existing) = state.db.get_provider_by_id(&claude_provider.id, "claude")? {
-                let mut merged = existing.settings_config.clone();
-                Self::merge_json(&mut merged, &claude_provider.settings_config);
-                claude_provider.settings_config = merged;
-            }
-            state.db.save_provider("claude", &claude_provider)?;
-        } else {
-            // 如果禁用了 Claude，删除对应的子供应商
-            let claude_id = format!("universal-claude-{id}");
-            let _ = state.db.delete_provider("claude", &claude_id);
-        }
-
-        // 同步到 Codex
-        if let Some(mut codex_provider) = provider.to_codex_provider() {
-            // 合并已有配置
-            if let Some(existing) = state.db.get_provider_by_id(&codex_provider.id, "codex")? {
-                let mut merged = existing.settings_config.clone();
-                Self::merge_json(&mut merged, &codex_provider.settings_config);
-                codex_provider.settings_config = merged;
-            }
-            state.db.save_provider("codex", &codex_provider)?;
-        } else {
-            let codex_id = format!("universal-codex-{id}");
-            let _ = state.db.delete_provider("codex", &codex_id);
-        }
-
-        // 同步到 Gemini
-        if let Some(mut gemini_provider) = provider.to_gemini_provider() {
-            // 合并已有配置
-            if let Some(existing) = state.db.get_provider_by_id(&gemini_provider.id, "gemini")? {
-                let mut merged = existing.settings_config.clone();
-                Self::merge_json(&mut merged, &gemini_provider.settings_config);
-                gemini_provider.settings_config = merged;
-            }
-            state.db.save_provider("gemini", &gemini_provider)?;
-        } else {
-            let gemini_id = format!("universal-gemini-{id}");
-            let _ = state.db.delete_provider("gemini", &gemini_id);
-        }
+        Self::sync_universal_app(
+            state,
+            "claude",
+            format!("universal-claude-{id}"),
+            provider.to_claude_provider(),
+        )?;
+        Self::sync_universal_app(
+            state,
+            "claude-desktop",
+            format!("universal-claude-desktop-{id}"),
+            provider.to_claude_desktop_provider(),
+        )?;
+        Self::sync_universal_app(
+            state,
+            "codex",
+            format!("universal-codex-{id}"),
+            provider.to_codex_provider(),
+        )?;
+        Self::sync_universal_app(
+            state,
+            "pi",
+            format!("universal-pi-{id}"),
+            provider.to_pi_provider(),
+        )?;
+        Self::sync_universal_app(
+            state,
+            "gemini",
+            format!("universal-gemini-{id}"),
+            provider.to_gemini_provider(),
+        )?;
+        Self::sync_universal_app(
+            state,
+            "grokbuild",
+            format!("universal-grokbuild-{id}"),
+            provider.to_grokbuild_provider(),
+        )?;
+        Self::sync_universal_app(
+            state,
+            "opencode",
+            format!("universal-opencode-{id}"),
+            provider.to_opencode_provider(),
+        )?;
+        Self::sync_universal_app(
+            state,
+            "openclaw",
+            format!("universal-openclaw-{id}"),
+            provider.to_openclaw_provider(),
+        )?;
+        Self::sync_universal_app(
+            state,
+            "hermes",
+            format!("universal-hermes-{id}"),
+            provider.to_hermes_provider(),
+        )?;
 
         Ok(true)
     }

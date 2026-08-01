@@ -316,6 +316,39 @@ describe("ProviderPresetSelector pure helpers", () => {
 });
 
 describe("ProviderPresetSelector", () => {
+  it("大列表默认折叠并支持展开和收起", async () => {
+    const user = userEvent.setup();
+    const manyEntries = Array.from({ length: 15 }, (_, index) => ({
+      id: `preset-${index + 1}`,
+      preset: {
+        name: `Preset ${String(index + 1).padStart(2, "0")}`,
+        websiteUrl: `https://preset-${index + 1}.example.com`,
+        settingsConfig: {},
+        category: "third_party" as ProviderCategory,
+      },
+    }));
+
+    renderSelector({ entries: manyEntries });
+
+    expect(
+      screen.queryByRole("button", { name: "Preset 15" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "providerPreset.showAll" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Preset 15" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "providerPreset.showLess" }),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Preset 15" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("默认（original 模式）将官方分类置顶，非赞助商按显示名排序", () => {
     renderSelector();
 

@@ -97,7 +97,8 @@ export function ProviderActions({
   const isAdditiveMode =
     (appId === "opencode" && !isOmo) ||
     appId === "openclaw" ||
-    appId === "hermes";
+    appId === "hermes" ||
+    appId === "pi";
   const isFailoverMode =
     !isAdditiveMode && !isOmo && isAutoFailoverEnabled && onToggleFailover;
 
@@ -243,7 +244,7 @@ export function ProviderActions({
 
   return (
     <div className="flex items-center gap-1.5">
-      {(appId === "openclaw" || appId === "hermes") &&
+      {(appId === "openclaw" || appId === "hermes" || appId === "pi") &&
         isInConfig &&
         onSetAsDefault &&
         (() => {

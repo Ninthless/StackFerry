@@ -4,6 +4,7 @@
  */
 import type { ProviderCategory } from "../types";
 import type { PresetTheme, TemplateValueConfig } from "./claudeProviderPresets";
+import { XFCODE_PROVIDER } from "./xfcodeProvider";
 
 /**
  * Marker field and source values that `hermes_config.rs::get_providers`
@@ -1492,6 +1493,31 @@ export const hermesProviderPresets: HermesProviderPreset[] = [
       model: {
         default: "openai/gpt-5.6-sol",
         provider: "therouter",
+      },
+    },
+  },
+  {
+    name: XFCODE_PROVIDER.name,
+    icon: XFCODE_PROVIDER.icon,
+    websiteUrl: XFCODE_PROVIDER.websiteUrl,
+    apiKeyUrl: XFCODE_PROVIDER.apiKeyUrl,
+    settingsConfig: {
+      name: XFCODE_PROVIDER.providerKey,
+      base_url: XFCODE_PROVIDER.openAiBaseUrl,
+      api_key: "",
+      api_mode: "codex_responses",
+      models: [
+        {
+          id: XFCODE_PROVIDER.models.openAi,
+          name: "GPT-5.6 Sol",
+        },
+      ],
+    },
+    category: "aggregator",
+    suggestedDefaults: {
+      model: {
+        default: XFCODE_PROVIDER.models.openAi,
+        provider: XFCODE_PROVIDER.providerKey,
       },
     },
   },

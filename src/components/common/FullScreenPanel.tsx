@@ -1,6 +1,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +24,7 @@ interface FullScreenPanelProps {
    * 通过 `cn`(twMerge) 合并，传入如 `pt-3` 只覆盖顶部内边距，其余保持默认。
    */
   contentClassName?: string;
+  footerClassName?: string;
 }
 
 const DRAG_BAR_HEIGHT = isWindows() || isLinux() ? 0 : 28; // px - match App.tsx
@@ -40,7 +42,10 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
   children,
   footer,
   contentClassName,
+  footerClassName,
 }) => {
+  const { t } = useTranslation();
+
   React.useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -130,6 +135,7 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
                 variant="outline"
                 size="icon"
                 onClick={onClose}
+                aria-label={t("common.back")}
                 className="rounded-lg select-none"
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
               >
@@ -154,7 +160,12 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
               className="flex-shrink-0 py-4 border-t border-border-default"
               style={{ backgroundColor: "hsl(var(--background))" }}
             >
-              <div className="px-6 flex items-center justify-end gap-3">
+              <div
+                className={cn(
+                  "px-6 flex items-center justify-end gap-3",
+                  footerClassName,
+                )}
+              >
                 {footer}
               </div>
             </div>

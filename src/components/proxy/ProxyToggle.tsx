@@ -30,7 +30,8 @@ export function ProxyToggle({ className, activeApp }: ProxyToggleProps) {
     }
   };
 
-  const takeoverEnabled = takeoverStatus?.[activeApp] || false;
+  const takeoverEnabled =
+    activeApp === "pi" ? false : takeoverStatus?.[activeApp] || false;
 
   const appLabel =
     activeApp === "claude"

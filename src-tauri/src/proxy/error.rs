@@ -29,6 +29,9 @@ pub enum ProxyError {
     #[error("无可用的Provider")]
     NoAvailableProvider,
 
+    #[error("没有可安全处理付费图片请求的供应商；请重置供应商健康状态，或先通过可重放的健康检查完成恢复")]
+    NoSafeProviderForPaidImage,
+
     #[error("所有供应商已熔断，无可用渠道")]
     AllProvidersCircuitOpen,
 
@@ -126,6 +129,9 @@ impl IntoResponse for ProxyError {
                     }
                     ProxyError::ForwardFailed(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
                     ProxyError::NoAvailableProvider => {
+                        (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+                    }
+                    ProxyError::NoSafeProviderForPaidImage => {
                         (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
                     }
                     ProxyError::AllProvidersCircuitOpen => {

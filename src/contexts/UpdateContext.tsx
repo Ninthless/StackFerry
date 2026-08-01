@@ -6,14 +6,15 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import type { UpdateInfo } from "../lib/updater";
-import { checkForUpdate } from "../lib/updater";
+import type { UpdateHandle, UpdateInfo } from "../lib/updater";
+import { checkForUpdate, relaunchApp } from "../lib/updater";
 
 interface UpdateContextValue {
   // 更新状态
   hasUpdate: boolean;
   updateInfo: UpdateInfo | null;
   isChecking: boolean;
+  isInstalling: boolean;
   error: string | null;
 
   // 提示状态
@@ -22,6 +23,7 @@ interface UpdateContextValue {
 
   // 操作方法
   checkUpdate: () => Promise<boolean>;
+  installUpdate: () => Promise<void>;
   resetDismiss: () => void;
 }
 
@@ -45,8 +47,10 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [isChecking, setIsChecking] = useState(false);
+  const [isInstalling, setIsInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDismissed, setIsDismissed] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState<UpdateHandle | null>(null);
 
   // 从 localStorage 读取已关闭的版本
   useEffect(() => {
@@ -57,6 +61,7 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
   }, [updateInfo?.availableVersion]);
 
   const isCheckingRef = useRef(false);
+  const isInstallingRef = useRef(false);
 
   const checkUpdate = useCallback(async () => {
     if (isCheckingRef.current) return false;
@@ -70,12 +75,14 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
       if (result.status === "available") {
         setHasUpdate(true);
         setUpdateInfo(result.info);
+        setPendingUpdate(result.update);
 
         setIsDismissed(readDismissedVersion() === result.info.availableVersion);
         return true; // 有更新
       } else {
         setHasUpdate(false);
         setUpdateInfo(null);
+        setPendingUpdate(null);
         setIsDismissed(false);
         return false; // 已是最新
       }
@@ -83,12 +90,39 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
       console.error("检查更新失败:", err);
       setError(err instanceof Error ? err.message : "检查更新失败");
       setHasUpdate(false);
+      setUpdateInfo(null);
+      setPendingUpdate(null);
+      setIsDismissed(false);
       throw err; // 抛出错误让调用方处理
     } finally {
       setIsChecking(false);
       isCheckingRef.current = false;
     }
   }, []);
+
+  const installUpdate = useCallback(async () => {
+    if (isInstallingRef.current) return;
+    if (!pendingUpdate) {
+      throw new Error("No update is ready to install");
+    }
+
+    isInstallingRef.current = true;
+    setIsInstalling(true);
+    setError(null);
+
+    try {
+      await pendingUpdate.downloadAndInstall();
+      await relaunchApp();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Update installation failed",
+      );
+      throw err;
+    } finally {
+      setIsInstalling(false);
+      isInstallingRef.current = false;
+    }
+  }, [pendingUpdate]);
 
   const dismissUpdate = useCallback(() => {
     setIsDismissed(true);
@@ -119,10 +153,12 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
     hasUpdate,
     updateInfo,
     isChecking,
+    isInstalling,
     error,
     isDismissed,
     dismissUpdate,
     checkUpdate,
+    installUpdate,
     resetDismiss,
   };
 

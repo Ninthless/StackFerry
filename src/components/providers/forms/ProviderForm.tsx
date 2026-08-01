@@ -80,6 +80,7 @@ import { BasicFormFields } from "./BasicFormFields";
 import { ClaudeFormFields } from "./ClaudeFormFields";
 import { ClaudeDesktopProviderForm } from "./ClaudeDesktopProviderForm";
 import { GrokBuildProviderForm } from "./GrokBuildProviderForm";
+import { PiProviderForm } from "./PiProviderForm";
 import { CodexFormFields } from "./CodexFormFields";
 import { GeminiFormFields } from "./GeminiFormFields";
 import { OmoFormFields } from "./OmoFormFields";
@@ -127,6 +128,10 @@ import { HERMES_DEFAULT_CONFIG } from "./hooks/useHermesFormState";
 import { resolveManagedAccountId } from "@/lib/authBinding";
 import { useOpenClawLiveProviderIds } from "@/hooks/useOpenClaw";
 import { useHermesLiveProviderIds } from "@/hooks/useHermes";
+import {
+  ProviderFormSection,
+  providerFormClassName,
+} from "./ProviderFormLayout";
 
 type PresetEntry = {
   id: string;
@@ -265,6 +270,9 @@ export function ProviderForm(props: ProviderFormProps) {
   }
   if (props.appId === "grokbuild") {
     return <GrokBuildProviderForm {...props} />;
+  }
+  if (props.appId === "pi") {
+    return <PiProviderForm {...props} />;
   }
 
   return <ProviderFormFull {...props} />;
@@ -2074,7 +2082,7 @@ function ProviderFormFull({
         <form
           id="provider-form"
           onSubmit={form.handleSubmit(handleSubmit)}
-          className="space-y-6 rounded-md border border-border bg-card p-6"
+          className={providerFormClassName}
         >
           {!initialData && (
             <ProviderPresetSelector
@@ -2300,332 +2308,347 @@ function ProviderFormFull({
             }
           />
 
-          {appId === "claude" && (
-            <ClaudeFormFields
-              providerId={providerId}
-              shouldShowApiKey={
-                (category !== "cloud_provider" ||
-                  hasApiKeyField(form.getValues("settingsConfig"), "claude")) &&
-                shouldShowApiKey(form.getValues("settingsConfig"), isEditMode)
-              }
-              apiKey={apiKey}
-              onApiKeyChange={handleApiKeyChange}
-              category={category}
-              shouldShowApiKeyLink={shouldShowClaudeApiKeyLink}
-              websiteUrl={claudeWebsiteUrl}
-              isCopilotPreset={
-                presetProviderType === "github_copilot" ||
-                initialData?.meta?.providerType === "github_copilot" ||
-                baseUrl.includes("githubcopilot.com")
-              }
-              isCodexOauthPreset={
-                presetProviderType === "codex_oauth" ||
-                initialData?.meta?.providerType === "codex_oauth"
-              }
-              isXaiOauthPreset={
-                presetProviderType === "xai_oauth" ||
-                initialData?.meta?.providerType === "xai_oauth"
-              }
-              usesOAuth={
-                templatePreset?.requiresOAuth === true ||
-                presetProviderType === "github_copilot" ||
-                initialData?.meta?.providerType === "github_copilot" ||
-                baseUrl.includes("githubcopilot.com") ||
-                presetProviderType === "codex_oauth" ||
-                initialData?.meta?.providerType === "codex_oauth" ||
-                presetProviderType === "xai_oauth" ||
-                initialData?.meta?.providerType === "xai_oauth"
-              }
-              isCopilotAuthenticated={isCopilotAuthenticated}
-              selectedGitHubAccountId={selectedGitHubAccountId}
-              onGitHubAccountSelect={setSelectedGitHubAccountId}
-              isCodexOauthAuthenticated={isCodexOauthAuthenticated}
-              selectedCodexAccountId={selectedCodexAccountId}
-              onCodexAccountSelect={setSelectedCodexAccountId}
-              codexFastMode={codexFastMode}
-              onCodexFastModeChange={setCodexFastMode}
-              isXaiOauthAuthenticated={isXaiOauthAuthenticated}
-              selectedXaiAccountId={selectedXaiAccountId}
-              onXaiAccountSelect={setSelectedXaiAccountId}
-              templateValueEntries={templateValueEntries}
-              templateValues={templateValues}
-              templatePresetName={templatePreset?.name || ""}
-              onTemplateValueChange={handleTemplateValueChange}
-              shouldShowSpeedTest={shouldShowSpeedTest}
-              baseUrl={baseUrl}
-              onBaseUrlChange={handleClaudeBaseUrlChange}
-              isEndpointModalOpen={isEndpointModalOpen}
-              onEndpointModalToggle={setIsEndpointModalOpen}
-              onCustomEndpointsChange={
-                isEditMode ? undefined : setDraftCustomEndpoints
-              }
-              autoSelect={endpointAutoSelect}
-              onAutoSelectChange={setEndpointAutoSelect}
-              showEndpointTools
-              shouldShowModelSelector={category !== "official"}
-              claudeModel={claudeModel}
-              defaultHaikuModel={defaultHaikuModel}
-              defaultHaikuModelName={defaultHaikuModelName}
-              defaultSonnetModel={defaultSonnetModel}
-              defaultSonnetModelName={defaultSonnetModelName}
-              defaultOpusModel={defaultOpusModel}
-              defaultOpusModelName={defaultOpusModelName}
-              defaultFableModel={defaultFableModel}
-              defaultFableModelName={defaultFableModelName}
-              subagentModel={subagentModel}
-              onModelChange={handleModelChange}
-              speedTestEndpoints={speedTestEndpoints}
-              apiFormat={localApiFormat}
-              onApiFormatChange={handleApiFormatChange}
-              apiKeyField={localApiKeyField}
-              onApiKeyFieldChange={handleApiKeyFieldChange}
-              isFullUrl={localIsFullUrl}
-              onFullUrlChange={setLocalIsFullUrl}
-              customUserAgent={customUserAgent}
-              onCustomUserAgentChange={setCustomUserAgent}
-              localProxyHeadersOverride={localProxyHeadersOverride}
-              onLocalProxyHeadersOverrideChange={setLocalProxyHeadersOverride}
-              localProxyBodyOverride={localProxyBodyOverride}
-              onLocalProxyBodyOverrideChange={setLocalProxyBodyOverride}
-            />
-          )}
-
-          {appId === "codex" && (
-            <CodexFormFields
-              providerId={providerId}
-              isXaiOauthPreset={
-                presetProviderType === "xai_oauth" ||
-                initialData?.meta?.providerType === "xai_oauth"
-              }
-              isXaiOauthAuthenticated={isXaiOauthAuthenticated}
-              selectedXaiAccountId={selectedXaiAccountId}
-              onXaiAccountSelect={setSelectedXaiAccountId}
-              codexApiKey={codexApiKey}
-              onApiKeyChange={handleCodexApiKeyChange}
-              category={category}
-              shouldShowApiKeyLink={shouldShowCodexApiKeyLink}
-              websiteUrl={codexWebsiteUrl}
-              shouldShowSpeedTest={shouldShowSpeedTest}
-              codexBaseUrl={codexBaseUrl}
-              onBaseUrlChange={handleCodexBaseUrlChange}
-              isFullUrl={localIsFullUrl}
-              onFullUrlChange={setLocalIsFullUrl}
-              isEndpointModalOpen={isCodexEndpointModalOpen}
-              onEndpointModalToggle={setIsCodexEndpointModalOpen}
-              onCustomEndpointsChange={
-                isEditMode ? undefined : setDraftCustomEndpoints
-              }
-              autoSelect={endpointAutoSelect}
-              onAutoSelectChange={setEndpointAutoSelect}
-              codexModel={codexModel}
-              onModelChange={handleCodexModelChange}
-              apiFormat={localCodexApiFormat}
-              onApiFormatChange={handleCodexApiFormatChange}
-              anthropicAuthField={localCodexAnthropicAuthField}
-              onAnthropicAuthFieldChange={setLocalCodexAnthropicAuthField}
-              impersonateClaudeCode={localCodexImpersonateClaudeCode}
-              onImpersonateClaudeCodeChange={setLocalCodexImpersonateClaudeCode}
-              maxOutputTokens={localCodexMaxOutputTokens}
-              onMaxOutputTokensChange={setLocalCodexMaxOutputTokens}
-              codexChatReasoning={codexChatReasoning}
-              onCodexChatReasoningChange={setCodexChatReasoning}
-              promptCacheRouting={promptCacheRouting}
-              onPromptCacheRoutingChange={setPromptCacheRouting}
-              catalogModels={codexCatalogModels}
-              onCatalogModelsChange={setCodexCatalogModels}
-              speedTestEndpoints={speedTestEndpoints}
-              customUserAgent={customUserAgent}
-              onCustomUserAgentChange={setCustomUserAgent}
-              localProxyHeadersOverride={localProxyHeadersOverride}
-              onLocalProxyHeadersOverrideChange={setLocalProxyHeadersOverride}
-              localProxyBodyOverride={localProxyBodyOverride}
-              onLocalProxyBodyOverrideChange={setLocalProxyBodyOverride}
-            />
-          )}
-
-          {appId === "gemini" && (
-            <GeminiFormFields
-              providerId={providerId}
-              shouldShowApiKey={shouldShowApiKey(
-                form.getValues("settingsConfig"),
-                isEditMode,
-              )}
-              apiKey={geminiApiKey}
-              onApiKeyChange={handleGeminiApiKeyChange}
-              category={category}
-              shouldShowApiKeyLink={shouldShowGeminiApiKeyLink}
-              websiteUrl={geminiWebsiteUrl}
-              partnerPromotionKey={geminiPartnerPromotionKey}
-              shouldShowSpeedTest={shouldShowSpeedTest}
-              baseUrl={geminiBaseUrl}
-              onBaseUrlChange={handleGeminiBaseUrlChange}
-              isEndpointModalOpen={isEndpointModalOpen}
-              onEndpointModalToggle={setIsEndpointModalOpen}
-              onCustomEndpointsChange={setDraftCustomEndpoints}
-              autoSelect={endpointAutoSelect}
-              onAutoSelectChange={setEndpointAutoSelect}
-              shouldShowModelField={true}
-              model={geminiModel}
-              onModelChange={handleGeminiModelChange}
-              speedTestEndpoints={speedTestEndpoints}
-            />
-          )}
-
-          {appId === "opencode" && !isAnyOmoCategory && (
-            <OpenCodeFormFields
-              npm={opencodeForm.opencodeNpm}
-              onNpmChange={opencodeForm.handleOpencodeNpmChange}
-              apiKey={opencodeForm.opencodeApiKey}
-              onApiKeyChange={opencodeForm.handleOpencodeApiKeyChange}
-              category={category}
-              shouldShowApiKeyLink={shouldShowOpencodeApiKeyLink}
-              websiteUrl={opencodeWebsiteUrl}
-              baseUrl={opencodeForm.opencodeBaseUrl}
-              onBaseUrlChange={opencodeForm.handleOpencodeBaseUrlChange}
-              headers={opencodeForm.opencodeHeaders}
-              onHeadersChange={opencodeForm.handleOpencodeHeadersChange}
-              models={opencodeForm.opencodeModels}
-              onModelsChange={opencodeForm.handleOpencodeModelsChange}
-              extraOptions={opencodeForm.opencodeExtraOptions}
-              onExtraOptionsChange={
-                opencodeForm.handleOpencodeExtraOptionsChange
-              }
-            />
-          )}
-
-          {appId === "opencode" &&
-            (category === "omo" || category === "omo-slim") && (
-              <OmoFormFields
-                modelOptions={omoModelOptions}
-                modelVariantsMap={omoModelVariantsMap}
-                presetMetaMap={omoPresetMetaMap}
-                agents={omoDraft.omoAgents}
-                onAgentsChange={omoDraft.setOmoAgents}
-                categories={
-                  category === "omo" ? omoDraft.omoCategories : undefined
+          <ProviderFormSection
+            title={t("providerForm.connectionTitle", {
+              defaultValue: "Connection and models",
+            })}
+            description={t("providerForm.connectionDescription", {
+              defaultValue:
+                "Configure credentials, endpoint routing, models, and the generated application config.",
+            })}
+            contentClassName="space-y-6"
+          >
+            {appId === "claude" && (
+              <ClaudeFormFields
+                providerId={providerId}
+                shouldShowApiKey={
+                  (category !== "cloud_provider" ||
+                    hasApiKeyField(
+                      form.getValues("settingsConfig"),
+                      "claude",
+                    )) &&
+                  shouldShowApiKey(form.getValues("settingsConfig"), isEditMode)
                 }
-                onCategoriesChange={
-                  category === "omo" ? omoDraft.setOmoCategories : undefined
+                apiKey={apiKey}
+                onApiKeyChange={handleApiKeyChange}
+                category={category}
+                shouldShowApiKeyLink={shouldShowClaudeApiKeyLink}
+                websiteUrl={claudeWebsiteUrl}
+                isCopilotPreset={
+                  presetProviderType === "github_copilot" ||
+                  initialData?.meta?.providerType === "github_copilot" ||
+                  baseUrl.includes("githubcopilot.com")
                 }
-                otherFieldsStr={omoDraft.omoOtherFieldsStr}
-                onOtherFieldsStrChange={omoDraft.setOmoOtherFieldsStr}
-                isSlim={category === "omo-slim"}
+                isCodexOauthPreset={
+                  presetProviderType === "codex_oauth" ||
+                  initialData?.meta?.providerType === "codex_oauth"
+                }
+                isXaiOauthPreset={
+                  presetProviderType === "xai_oauth" ||
+                  initialData?.meta?.providerType === "xai_oauth"
+                }
+                usesOAuth={
+                  templatePreset?.requiresOAuth === true ||
+                  presetProviderType === "github_copilot" ||
+                  initialData?.meta?.providerType === "github_copilot" ||
+                  baseUrl.includes("githubcopilot.com") ||
+                  presetProviderType === "codex_oauth" ||
+                  initialData?.meta?.providerType === "codex_oauth" ||
+                  presetProviderType === "xai_oauth" ||
+                  initialData?.meta?.providerType === "xai_oauth"
+                }
+                isCopilotAuthenticated={isCopilotAuthenticated}
+                selectedGitHubAccountId={selectedGitHubAccountId}
+                onGitHubAccountSelect={setSelectedGitHubAccountId}
+                isCodexOauthAuthenticated={isCodexOauthAuthenticated}
+                selectedCodexAccountId={selectedCodexAccountId}
+                onCodexAccountSelect={setSelectedCodexAccountId}
+                codexFastMode={codexFastMode}
+                onCodexFastModeChange={setCodexFastMode}
+                isXaiOauthAuthenticated={isXaiOauthAuthenticated}
+                selectedXaiAccountId={selectedXaiAccountId}
+                onXaiAccountSelect={setSelectedXaiAccountId}
+                templateValueEntries={templateValueEntries}
+                templateValues={templateValues}
+                templatePresetName={templatePreset?.name || ""}
+                onTemplateValueChange={handleTemplateValueChange}
+                shouldShowSpeedTest={shouldShowSpeedTest}
+                baseUrl={baseUrl}
+                onBaseUrlChange={handleClaudeBaseUrlChange}
+                isEndpointModalOpen={isEndpointModalOpen}
+                onEndpointModalToggle={setIsEndpointModalOpen}
+                onCustomEndpointsChange={
+                  isEditMode ? undefined : setDraftCustomEndpoints
+                }
+                autoSelect={endpointAutoSelect}
+                onAutoSelectChange={setEndpointAutoSelect}
+                showEndpointTools
+                shouldShowModelSelector={category !== "official"}
+                claudeModel={claudeModel}
+                defaultHaikuModel={defaultHaikuModel}
+                defaultHaikuModelName={defaultHaikuModelName}
+                defaultSonnetModel={defaultSonnetModel}
+                defaultSonnetModelName={defaultSonnetModelName}
+                defaultOpusModel={defaultOpusModel}
+                defaultOpusModelName={defaultOpusModelName}
+                defaultFableModel={defaultFableModel}
+                defaultFableModelName={defaultFableModelName}
+                subagentModel={subagentModel}
+                onModelChange={handleModelChange}
+                speedTestEndpoints={speedTestEndpoints}
+                apiFormat={localApiFormat}
+                onApiFormatChange={handleApiFormatChange}
+                apiKeyField={localApiKeyField}
+                onApiKeyFieldChange={handleApiKeyFieldChange}
+                isFullUrl={localIsFullUrl}
+                onFullUrlChange={setLocalIsFullUrl}
+                customUserAgent={customUserAgent}
+                onCustomUserAgentChange={setCustomUserAgent}
+                localProxyHeadersOverride={localProxyHeadersOverride}
+                onLocalProxyHeadersOverrideChange={setLocalProxyHeadersOverride}
+                localProxyBodyOverride={localProxyBodyOverride}
+                onLocalProxyBodyOverrideChange={setLocalProxyBodyOverride}
               />
             )}
 
-          {/* OpenClaw 专属字段 */}
-          {appId === "openclaw" && (
-            <OpenClawFormFields
-              baseUrl={openclawForm.openclawBaseUrl}
-              onBaseUrlChange={openclawForm.handleOpenclawBaseUrlChange}
-              apiKey={openclawForm.openclawApiKey}
-              onApiKeyChange={openclawForm.handleOpenclawApiKeyChange}
-              category={category}
-              shouldShowApiKeyLink={shouldShowOpenclawApiKeyLink}
-              websiteUrl={openclawWebsiteUrl}
-              api={openclawForm.openclawApi}
-              onApiChange={openclawForm.handleOpenclawApiChange}
-              models={openclawForm.openclawModels}
-              onModelsChange={openclawForm.handleOpenclawModelsChange}
-              userAgent={openclawForm.openclawUserAgent}
-              onUserAgentChange={openclawForm.handleOpenclawUserAgentChange}
-            />
-          )}
-
-          {/* Hermes 专属字段 */}
-          {appId === "hermes" && (
-            <HermesFormFields
-              baseUrl={hermesForm.hermesBaseUrl}
-              onBaseUrlChange={hermesForm.handleHermesBaseUrlChange}
-              apiKey={hermesForm.hermesApiKey}
-              onApiKeyChange={hermesForm.handleHermesApiKeyChange}
-              category={category}
-              shouldShowApiKeyLink={shouldShowHermesApiKeyLink}
-              websiteUrl={hermesWebsiteUrl}
-              apiMode={hermesForm.hermesApiMode}
-              onApiModeChange={hermesForm.handleHermesApiModeChange}
-              models={hermesForm.hermesModels}
-              onModelsChange={hermesForm.handleHermesModelsChange}
-              rateLimitDelay={hermesForm.hermesRateLimitDelay}
-              onRateLimitDelayChange={
-                hermesForm.handleHermesRateLimitDelayChange
-              }
-            />
-          )}
-
-          {/* 配置编辑器：Codex、Claude、Gemini 分别使用不同的编辑器 */}
-          {appId === "codex" ? (
-            <>
-              <CodexConfigEditor
-                authValue={codexAuth}
-                configValue={codexConfig}
-                providerName={form.watch("name")}
-                showRemoteCompaction={category !== "official"}
-                isProxyTakeover={isProxyTakeover}
-                onAuthChange={setCodexAuth}
-                onConfigChange={handleCodexConfigChange}
-                useCommonConfig={useCodexCommonConfigFlag}
-                onCommonConfigToggle={handleCodexCommonConfigToggle}
-                commonConfigSnippet={codexCommonConfigSnippet}
-                onCommonConfigSnippetChange={
-                  handleCodexCommonConfigSnippetChange
+            {appId === "codex" && (
+              <CodexFormFields
+                providerId={providerId}
+                isXaiOauthPreset={
+                  presetProviderType === "xai_oauth" ||
+                  initialData?.meta?.providerType === "xai_oauth"
                 }
-                onCommonConfigErrorClear={clearCodexCommonConfigError}
-                commonConfigError={codexCommonConfigError}
-                authError={codexAuthError}
-                configError={codexConfigError}
-                onExtract={handleCodexExtract}
-                isExtracting={isCodexExtracting}
-              />
-              {settingsConfigErrorField}
-            </>
-          ) : appId === "gemini" ? (
-            <>
-              <GeminiConfigEditor
-                envValue={geminiEnv}
-                configValue={geminiConfig}
-                onEnvChange={handleGeminiEnvChange}
-                onConfigChange={handleGeminiConfigChange}
-                useCommonConfig={useGeminiCommonConfigFlag}
-                onCommonConfigToggle={handleGeminiCommonConfigToggle}
-                commonConfigSnippet={geminiCommonConfigSnippet}
-                onCommonConfigSnippetChange={
-                  handleGeminiCommonConfigSnippetChange
+                isXaiOauthAuthenticated={isXaiOauthAuthenticated}
+                selectedXaiAccountId={selectedXaiAccountId}
+                onXaiAccountSelect={setSelectedXaiAccountId}
+                codexApiKey={codexApiKey}
+                onApiKeyChange={handleCodexApiKeyChange}
+                category={category}
+                shouldShowApiKeyLink={shouldShowCodexApiKeyLink}
+                websiteUrl={codexWebsiteUrl}
+                shouldShowSpeedTest={shouldShowSpeedTest}
+                codexBaseUrl={codexBaseUrl}
+                onBaseUrlChange={handleCodexBaseUrlChange}
+                isFullUrl={localIsFullUrl}
+                onFullUrlChange={setLocalIsFullUrl}
+                isEndpointModalOpen={isCodexEndpointModalOpen}
+                onEndpointModalToggle={setIsCodexEndpointModalOpen}
+                onCustomEndpointsChange={
+                  isEditMode ? undefined : setDraftCustomEndpoints
                 }
-                onCommonConfigErrorClear={clearGeminiCommonConfigError}
-                commonConfigError={geminiCommonConfigError}
-                envError={envError}
-                configError={geminiConfigError}
-                onExtract={handleGeminiExtract}
-                isExtracting={isGeminiExtracting}
+                autoSelect={endpointAutoSelect}
+                onAutoSelectChange={setEndpointAutoSelect}
+                codexModel={codexModel}
+                onModelChange={handleCodexModelChange}
+                apiFormat={localCodexApiFormat}
+                onApiFormatChange={handleCodexApiFormatChange}
+                anthropicAuthField={localCodexAnthropicAuthField}
+                onAnthropicAuthFieldChange={setLocalCodexAnthropicAuthField}
+                impersonateClaudeCode={localCodexImpersonateClaudeCode}
+                onImpersonateClaudeCodeChange={
+                  setLocalCodexImpersonateClaudeCode
+                }
+                maxOutputTokens={localCodexMaxOutputTokens}
+                onMaxOutputTokensChange={setLocalCodexMaxOutputTokens}
+                codexChatReasoning={codexChatReasoning}
+                onCodexChatReasoningChange={setCodexChatReasoning}
+                promptCacheRouting={promptCacheRouting}
+                onPromptCacheRoutingChange={setPromptCacheRouting}
+                catalogModels={codexCatalogModels}
+                onCatalogModelsChange={setCodexCatalogModels}
+                speedTestEndpoints={speedTestEndpoints}
+                customUserAgent={customUserAgent}
+                onCustomUserAgentChange={setCustomUserAgent}
+                localProxyHeadersOverride={localProxyHeadersOverride}
+                onLocalProxyHeadersOverrideChange={setLocalProxyHeadersOverride}
+                localProxyBodyOverride={localProxyBodyOverride}
+                onLocalProxyBodyOverrideChange={setLocalProxyBodyOverride}
               />
-              {settingsConfigErrorField}
-            </>
-          ) : appId === "opencode" &&
-            (category === "omo" || category === "omo-slim") ? (
-            <div className="space-y-2">
-              <Label>{t("provider.configJson")}</Label>
-              <JsonEditor
-                value={omoDraft.mergedOmoJsonPreview}
-                onChange={() => {}}
-                rows={14}
-                showValidation={false}
-                language="json"
-                darkMode={isDarkMode}
+            )}
+
+            {appId === "gemini" && (
+              <GeminiFormFields
+                providerId={providerId}
+                shouldShowApiKey={shouldShowApiKey(
+                  form.getValues("settingsConfig"),
+                  isEditMode,
+                )}
+                apiKey={geminiApiKey}
+                onApiKeyChange={handleGeminiApiKeyChange}
+                category={category}
+                shouldShowApiKeyLink={shouldShowGeminiApiKeyLink}
+                websiteUrl={geminiWebsiteUrl}
+                partnerPromotionKey={geminiPartnerPromotionKey}
+                shouldShowSpeedTest={shouldShowSpeedTest}
+                baseUrl={geminiBaseUrl}
+                onBaseUrlChange={handleGeminiBaseUrlChange}
+                isEndpointModalOpen={isEndpointModalOpen}
+                onEndpointModalToggle={setIsEndpointModalOpen}
+                onCustomEndpointsChange={setDraftCustomEndpoints}
+                autoSelect={endpointAutoSelect}
+                onAutoSelectChange={setEndpointAutoSelect}
+                shouldShowModelField={true}
+                model={geminiModel}
+                onModelChange={handleGeminiModelChange}
+                speedTestEndpoints={speedTestEndpoints}
               />
-            </div>
-          ) : appId === "opencode" &&
-            category !== "omo" &&
-            category !== "omo-slim" ? (
-            <>
+            )}
+
+            {appId === "opencode" && !isAnyOmoCategory && (
+              <OpenCodeFormFields
+                npm={opencodeForm.opencodeNpm}
+                onNpmChange={opencodeForm.handleOpencodeNpmChange}
+                apiKey={opencodeForm.opencodeApiKey}
+                onApiKeyChange={opencodeForm.handleOpencodeApiKeyChange}
+                category={category}
+                shouldShowApiKeyLink={shouldShowOpencodeApiKeyLink}
+                websiteUrl={opencodeWebsiteUrl}
+                baseUrl={opencodeForm.opencodeBaseUrl}
+                onBaseUrlChange={opencodeForm.handleOpencodeBaseUrlChange}
+                headers={opencodeForm.opencodeHeaders}
+                onHeadersChange={opencodeForm.handleOpencodeHeadersChange}
+                models={opencodeForm.opencodeModels}
+                onModelsChange={opencodeForm.handleOpencodeModelsChange}
+                extraOptions={opencodeForm.opencodeExtraOptions}
+                onExtraOptionsChange={
+                  opencodeForm.handleOpencodeExtraOptionsChange
+                }
+              />
+            )}
+
+            {appId === "opencode" &&
+              (category === "omo" || category === "omo-slim") && (
+                <OmoFormFields
+                  modelOptions={omoModelOptions}
+                  modelVariantsMap={omoModelVariantsMap}
+                  presetMetaMap={omoPresetMetaMap}
+                  agents={omoDraft.omoAgents}
+                  onAgentsChange={omoDraft.setOmoAgents}
+                  categories={
+                    category === "omo" ? omoDraft.omoCategories : undefined
+                  }
+                  onCategoriesChange={
+                    category === "omo" ? omoDraft.setOmoCategories : undefined
+                  }
+                  otherFieldsStr={omoDraft.omoOtherFieldsStr}
+                  onOtherFieldsStrChange={omoDraft.setOmoOtherFieldsStr}
+                  isSlim={category === "omo-slim"}
+                />
+              )}
+
+            {/* OpenClaw 专属字段 */}
+            {appId === "openclaw" && (
+              <OpenClawFormFields
+                baseUrl={openclawForm.openclawBaseUrl}
+                onBaseUrlChange={openclawForm.handleOpenclawBaseUrlChange}
+                apiKey={openclawForm.openclawApiKey}
+                onApiKeyChange={openclawForm.handleOpenclawApiKeyChange}
+                category={category}
+                shouldShowApiKeyLink={shouldShowOpenclawApiKeyLink}
+                websiteUrl={openclawWebsiteUrl}
+                api={openclawForm.openclawApi}
+                onApiChange={openclawForm.handleOpenclawApiChange}
+                models={openclawForm.openclawModels}
+                onModelsChange={openclawForm.handleOpenclawModelsChange}
+                userAgent={openclawForm.openclawUserAgent}
+                onUserAgentChange={openclawForm.handleOpenclawUserAgentChange}
+              />
+            )}
+
+            {/* Hermes 专属字段 */}
+            {appId === "hermes" && (
+              <HermesFormFields
+                baseUrl={hermesForm.hermesBaseUrl}
+                onBaseUrlChange={hermesForm.handleHermesBaseUrlChange}
+                apiKey={hermesForm.hermesApiKey}
+                onApiKeyChange={hermesForm.handleHermesApiKeyChange}
+                category={category}
+                shouldShowApiKeyLink={shouldShowHermesApiKeyLink}
+                websiteUrl={hermesWebsiteUrl}
+                apiMode={hermesForm.hermesApiMode}
+                onApiModeChange={hermesForm.handleHermesApiModeChange}
+                models={hermesForm.hermesModels}
+                onModelsChange={hermesForm.handleHermesModelsChange}
+                rateLimitDelay={hermesForm.hermesRateLimitDelay}
+                onRateLimitDelayChange={
+                  hermesForm.handleHermesRateLimitDelayChange
+                }
+              />
+            )}
+
+            {/* 配置编辑器：Codex、Claude、Gemini 分别使用不同的编辑器 */}
+            {appId === "codex" ? (
+              <>
+                <CodexConfigEditor
+                  authValue={codexAuth}
+                  configValue={codexConfig}
+                  providerName={form.watch("name")}
+                  showRemoteCompaction={category !== "official"}
+                  isProxyTakeover={isProxyTakeover}
+                  onAuthChange={setCodexAuth}
+                  onConfigChange={handleCodexConfigChange}
+                  useCommonConfig={useCodexCommonConfigFlag}
+                  onCommonConfigToggle={handleCodexCommonConfigToggle}
+                  commonConfigSnippet={codexCommonConfigSnippet}
+                  onCommonConfigSnippetChange={
+                    handleCodexCommonConfigSnippetChange
+                  }
+                  onCommonConfigErrorClear={clearCodexCommonConfigError}
+                  commonConfigError={codexCommonConfigError}
+                  authError={codexAuthError}
+                  configError={codexConfigError}
+                  onExtract={handleCodexExtract}
+                  isExtracting={isCodexExtracting}
+                />
+                {settingsConfigErrorField}
+              </>
+            ) : appId === "gemini" ? (
+              <>
+                <GeminiConfigEditor
+                  envValue={geminiEnv}
+                  configValue={geminiConfig}
+                  onEnvChange={handleGeminiEnvChange}
+                  onConfigChange={handleGeminiConfigChange}
+                  useCommonConfig={useGeminiCommonConfigFlag}
+                  onCommonConfigToggle={handleGeminiCommonConfigToggle}
+                  commonConfigSnippet={geminiCommonConfigSnippet}
+                  onCommonConfigSnippetChange={
+                    handleGeminiCommonConfigSnippetChange
+                  }
+                  onCommonConfigErrorClear={clearGeminiCommonConfigError}
+                  commonConfigError={geminiCommonConfigError}
+                  envError={envError}
+                  configError={geminiConfigError}
+                  onExtract={handleGeminiExtract}
+                  isExtracting={isGeminiExtracting}
+                />
+                {settingsConfigErrorField}
+              </>
+            ) : appId === "opencode" &&
+              (category === "omo" || category === "omo-slim") ? (
               <div className="space-y-2">
-                <Label htmlFor="settingsConfig">
-                  {t("provider.configJson")}
-                </Label>
+                <Label>{t("provider.configJson")}</Label>
                 <JsonEditor
-                  value={settingsConfig}
-                  onChange={handleRawSettingsConfigChange}
-                  placeholder={`{
+                  value={omoDraft.mergedOmoJsonPreview}
+                  onChange={() => {}}
+                  rows={14}
+                  showValidation={false}
+                  language="json"
+                  darkMode={isDarkMode}
+                />
+              </div>
+            ) : appId === "opencode" &&
+              category !== "omo" &&
+              category !== "omo-slim" ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="settingsConfig">
+                    {t("provider.configJson")}
+                  </Label>
+                  <JsonEditor
+                    value={settingsConfig}
+                    onChange={handleRawSettingsConfigChange}
+                    placeholder={`{
   "npm": "@ai-sdk/openai-compatible",
   "options": {
     "baseURL": "https://your-api-endpoint.com",
@@ -2633,81 +2656,86 @@ function ProviderFormFull({
   },
   "models": {}
 }`}
-                  rows={14}
-                  showValidation={true}
-                  language="json"
-                  darkMode={isDarkMode}
-                />
-              </div>
-              {settingsConfigErrorField}
-            </>
-          ) : appId === "openclaw" || appId === "hermes" ? (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="settingsConfig">
-                  {t("provider.configJson")}
-                </Label>
-                <JsonEditor
-                  value={settingsConfig}
-                  onChange={handleRawSettingsConfigChange}
-                  placeholder={
-                    appId === "hermes"
-                      ? `{
+                    rows={14}
+                    showValidation={true}
+                    language="json"
+                    darkMode={isDarkMode}
+                  />
+                </div>
+                {settingsConfigErrorField}
+              </>
+            ) : appId === "openclaw" || appId === "hermes" ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="settingsConfig">
+                    {t("provider.configJson")}
+                  </Label>
+                  <JsonEditor
+                    value={settingsConfig}
+                    onChange={handleRawSettingsConfigChange}
+                    placeholder={
+                      appId === "hermes"
+                        ? `{
   "name": "my-provider",
   "base_url": "https://api.example.com/v1",
   "api_key": ""
 }`
-                      : `{
+                        : `{
   "baseUrl": "https://api.example.com/v1",
   "apiKey": "your-api-key-here",
   "api": "openai-completions",
   "models": []
 }`
-                  }
-                  rows={14}
-                  showValidation={true}
-                  language="json"
-                  darkMode={isDarkMode}
+                    }
+                    rows={14}
+                    showValidation={true}
+                    language="json"
+                    darkMode={isDarkMode}
+                  />
+                </div>
+                <FormField
+                  control={form.control}
+                  name="settingsConfig"
+                  render={() => (
+                    <FormItem className="space-y-0">
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              <FormField
-                control={form.control}
-                name="settingsConfig"
-                render={() => (
-                  <FormItem className="space-y-0">
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </>
-          ) : (
-            <>
-              <CommonConfigEditor
-                value={form.getValues("settingsConfig")}
-                onChange={(value) => form.setValue("settingsConfig", value)}
-                useCommonConfig={useCommonConfig}
-                onCommonConfigToggle={handleCommonConfigToggle}
-                commonConfigSnippet={commonConfigSnippet}
-                onCommonConfigSnippetChange={handleCommonConfigSnippetChange}
-                commonConfigError={commonConfigError}
-                onEditClick={() => setIsCommonConfigModalOpen(true)}
-                isModalOpen={isCommonConfigModalOpen}
-                onModalClose={() => setIsCommonConfigModalOpen(false)}
-                onExtract={handleClaudeExtract}
-                isExtracting={isClaudeExtracting}
-              />
-              {settingsConfigErrorField}
-            </>
-          )}
+              </>
+            ) : (
+              <>
+                <CommonConfigEditor
+                  value={form.getValues("settingsConfig")}
+                  onChange={(value) => form.setValue("settingsConfig", value)}
+                  useCommonConfig={useCommonConfig}
+                  onCommonConfigToggle={handleCommonConfigToggle}
+                  commonConfigSnippet={commonConfigSnippet}
+                  onCommonConfigSnippetChange={handleCommonConfigSnippetChange}
+                  commonConfigError={commonConfigError}
+                  onEditClick={() => setIsCommonConfigModalOpen(true)}
+                  isModalOpen={isCommonConfigModalOpen}
+                  onModalClose={() => setIsCommonConfigModalOpen(false)}
+                  onExtract={handleClaudeExtract}
+                  isExtracting={isClaudeExtracting}
+                />
+                {settingsConfigErrorField}
+              </>
+            )}
+          </ProviderFormSection>
 
           {!isAnyOmoCategory &&
             appId !== "opencode" &&
             appId !== "openclaw" &&
             appId !== "hermes" && (
-              <ProviderAdvancedConfig
-                pricingConfig={pricingConfig}
-                onPricingConfigChange={setPricingConfig}
-              />
+              <ProviderFormSection
+                title={t("pi.form.advanced", { defaultValue: "Advanced" })}
+              >
+                <ProviderAdvancedConfig
+                  pricingConfig={pricingConfig}
+                  onPricingConfigChange={setPricingConfig}
+                />
+              </ProviderFormSection>
             )}
 
           {showButtons && (

@@ -99,8 +99,8 @@ pub async fn set_auto_failover_enabled(
 
     // 队列为空时把当前供应商自动加入作为 P1，避免用户陷入"必须先加队列才能开启"的死锁
     let mut auto_added_provider_id: Option<String> = None;
-    let p1_provider_id = if enabled {
-        let mut queue = state
+    let activation_provider_id = if enabled {
+        let queue = state
             .db
             .get_failover_queue(&app_type)
             .map_err(|e| e.to_string())?;
@@ -121,27 +121,36 @@ pub async fn set_auto_failover_enabled(
                 .add_to_failover_queue(&app_type, &current_id)
                 .map_err(|e| e.to_string())?;
             auto_added_provider_id = Some(current_id);
-
-            queue = state
-                .db
-                .get_failover_queue(&app_type)
-                .map_err(|e| e.to_string())?;
         }
 
-        queue
-            .first()
-            .map(|item| item.provider_id.clone())
-            .ok_or_else(|| "故障转移队列为空，无法开启故障转移".to_string())?
+        let provider = match state
+            .proxy_service
+            .select_failover_activation_provider(&app_type)
+            .await
+        {
+            Ok(provider) => provider,
+            Err(error) => {
+                if let Some(provider_id) = auto_added_provider_id.as_deref() {
+                    let _ = state.db.remove_from_failover_queue(&app_type, provider_id);
+                }
+                return Err(format!("故障转移队列中没有可用供应商: {error}"));
+            }
+        };
+
+        log::info!(
+            "[Failover] Activation target selected: app_type='{app_type}', provider_id='{}', provider_name='{}'",
+            provider.id,
+            provider.name
+        );
+        provider.id
     } else {
         String::new()
     };
 
-    // 开启前先切到 P1。只有切换成功后才写入 auto_failover_enabled=true，
-    // 避免 P1 不可切换（例如 official provider）时留下“开关已开但目标未切”的脏状态。
     if enabled {
         if let Err(e) = state
             .proxy_service
-            .switch_proxy_target(&app_type, &p1_provider_id)
+            .switch_proxy_target(&app_type, &activation_provider_id)
             .await
         {
             if let Some(provider_id) = auto_added_provider_id {
@@ -165,7 +174,7 @@ pub async fn set_auto_failover_enabled(
         // 发射 provider-switched 事件（让前端刷新当前供应商）
         let event_data = serde_json::json!({
             "appType": app_type,
-            "providerId": p1_provider_id,
+            "providerId": activation_provider_id,
             "source": "failoverEnabled"
         });
         let _ = app.emit("provider-switched", event_data);

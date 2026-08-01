@@ -204,6 +204,10 @@ impl Provider {
                     str_at(options.and_then(|o| o.get("apiKey"))),
                 )
             }
+            AppType::Pi => (
+                str_at(self.settings_config.get("baseUrl")),
+                str_at(self.settings_config.get("apiKey")),
+            ),
             // Claude and Claude Desktop both use the Anthropic-style env map, keeping
             // the OpenRouter/Google key fallbacks the JS-script path relies on.
             // Listed explicitly (not `_`) so a new AppType fails to compile here.
@@ -613,9 +617,22 @@ pub struct UniversalProviderApps {
     #[serde(default)]
     pub claude: bool,
     #[serde(default)]
+    #[serde(rename = "claude-desktop")]
+    pub claude_desktop: bool,
+    #[serde(default)]
     pub codex: bool,
     #[serde(default)]
+    pub pi: bool,
+    #[serde(default)]
     pub gemini: bool,
+    #[serde(default)]
+    pub grokbuild: bool,
+    #[serde(default)]
+    pub opencode: bool,
+    #[serde(default)]
+    pub openclaw: bool,
+    #[serde(default)]
+    pub hermes: bool,
 }
 
 /// Claude 模型配置
@@ -658,15 +675,34 @@ pub struct GeminiModelConfig {
     pub model: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UniversalSimpleModelConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
 /// 各应用的模型配置
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UniversalProviderModels {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claude: Option<ClaudeModelConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "claude-desktop")]
+    pub claude_desktop: Option<ClaudeModelConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub codex: Option<CodexModelConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub pi: Option<UniversalSimpleModelConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gemini: Option<GeminiModelConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grokbuild: Option<UniversalSimpleModelConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opencode: Option<UniversalSimpleModelConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub openclaw: Option<UniversalSimpleModelConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hermes: Option<UniversalSimpleModelConfig>,
 }
 
 /// 统一供应商（跨应用共享配置）
@@ -718,6 +754,48 @@ pub struct UniversalProvider {
 }
 
 impl UniversalProvider {
+    fn openai_base_url(&self) -> String {
+        let base_url = self.base_url.trim_end_matches('/');
+        if base_url.ends_with("/v1")
+            || base_url
+                .split_once("://")
+                .is_some_and(|(_, rest)| rest.contains('/'))
+        {
+            base_url.to_string()
+        } else {
+            format!("{base_url}/v1")
+        }
+    }
+
+    fn simple_model(config: Option<&UniversalSimpleModelConfig>, fallback: &str) -> String {
+        config
+            .and_then(|value| value.model.clone())
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| fallback.to_string())
+    }
+
+    fn generated_provider(
+        &self,
+        app: &str,
+        settings_config: Value,
+        meta: Option<ProviderMeta>,
+    ) -> Provider {
+        Provider {
+            id: format!("universal-{app}-{}", self.id),
+            name: self.name.clone(),
+            settings_config,
+            website_url: self.website_url.clone(),
+            category: Some("aggregator".to_string()),
+            created_at: self.created_at,
+            sort_index: self.sort_index,
+            notes: self.notes.clone(),
+            meta,
+            icon: self.icon.clone(),
+            icon_color: self.icon_color.clone(),
+            in_failover_queue: false,
+        }
+    }
+
     /// 创建新的统一供应商
     pub fn new(
         id: String,
@@ -805,30 +883,19 @@ impl UniversalProvider {
             .and_then(|m| m.reasoning_effort.clone())
             .unwrap_or_else(|| "high".to_string());
 
-        // Codex/OpenAI 的 base_url 既可能是纯 origin（需要补 /v1），也可能包含自定义前缀（不应强行补版本）
-        let base_trimmed = self.base_url.trim_end_matches('/');
-        let origin_only = match base_trimmed.split_once("://") {
-            Some((_scheme, rest)) => !rest.contains('/'),
-            None => !base_trimmed.contains('/'),
-        };
-        let codex_base_url = if base_trimmed.ends_with("/v1") {
-            base_trimmed.to_string()
-        } else if origin_only {
-            format!("{base_trimmed}/v1")
-        } else {
-            base_trimmed.to_string()
-        };
-
-        // 生成 Codex 的 config.toml 内容
+        let model = serde_json::to_string(&model).ok()?;
+        let reasoning_effort = serde_json::to_string(&reasoning_effort).ok()?;
+        let provider_name = serde_json::to_string(&self.name).ok()?;
+        let codex_base_url = serde_json::to_string(&self.openai_base_url()).ok()?;
         let config_toml = format!(
             r#"model_provider = "custom"
-model = "{model}"
-model_reasoning_effort = "{reasoning_effort}"
+model = {model}
+model_reasoning_effort = {reasoning_effort}
 disable_response_storage = true
 
 [model_providers.custom]
-name = "NewAPI"
-base_url = "{codex_base_url}"
+name = {provider_name}
+base_url = {codex_base_url}
 wire_api = "responses"
 requires_openai_auth = true"#
         );
@@ -889,6 +956,131 @@ requires_openai_auth = true"#
             icon_color: self.icon_color.clone(),
             in_failover_queue: false,
         })
+    }
+
+    pub fn to_claude_desktop_provider(&self) -> Option<Provider> {
+        if !self.apps.claude_desktop {
+            return None;
+        }
+        let mut env = serde_json::json!({
+            "ANTHROPIC_BASE_URL": self.base_url,
+            "ANTHROPIC_AUTH_TOKEN": self.api_key,
+        });
+        if let Some(model) = self
+            .models
+            .claude_desktop
+            .as_ref()
+            .and_then(|config| config.model.as_ref())
+            .filter(|model| !model.trim().is_empty())
+        {
+            env["ANTHROPIC_MODEL"] = Value::String(model.clone());
+        }
+        let settings_config = serde_json::json!({ "env": env });
+        let mut meta = self.meta.clone().unwrap_or_default();
+        meta.claude_desktop_mode = Some(ClaudeDesktopMode::Direct);
+        meta.api_format = Some("anthropic".to_string());
+        meta.api_key_field = Some("ANTHROPIC_AUTH_TOKEN".to_string());
+        Some(self.generated_provider("claude-desktop", settings_config, Some(meta)))
+    }
+
+    pub fn to_pi_provider(&self) -> Option<Provider> {
+        if !self.apps.pi {
+            return None;
+        }
+        let model = Self::simple_model(self.models.pi.as_ref(), "gpt-5.6-sol");
+        let settings_config = serde_json::json!({
+            "baseUrl": self.openai_base_url(),
+            "api": "openai-responses",
+            "apiKey": self.api_key,
+            "authHeader": true,
+            "defaultModel": model,
+            "models": [{
+                "id": model,
+                "name": model,
+                "reasoning": true,
+                "input": ["text", "image"]
+            }]
+        });
+        Some(self.generated_provider("pi", settings_config, self.meta.clone()))
+    }
+
+    pub fn to_grokbuild_provider(&self) -> Option<Provider> {
+        if !self.apps.grokbuild {
+            return None;
+        }
+        let model = Self::simple_model(self.models.grokbuild.as_ref(), "gpt-5.6-sol");
+        let model_key = serde_json::to_string(&model).ok()?;
+        let name = serde_json::to_string(&self.name).ok()?;
+        let base_url = serde_json::to_string(&self.openai_base_url()).ok()?;
+        let api_key = serde_json::to_string(&self.api_key).ok()?;
+        let config = format!(
+            "[models]\ndefault = {model_key}\n\n[model.{model_key}]\nmodel = {model_key}\nbase_url = {base_url}\nname = {name}\napi_key = {api_key}\napi_backend = \"responses\"\ncontext_window = 272000\n"
+        );
+        Some(self.generated_provider(
+            "grokbuild",
+            serde_json::json!({ "config": config }),
+            self.meta.clone(),
+        ))
+    }
+
+    pub fn to_opencode_provider(&self) -> Option<Provider> {
+        if !self.apps.opencode {
+            return None;
+        }
+        let model = Self::simple_model(self.models.opencode.as_ref(), "gpt-5.6-sol");
+        let settings_config = serde_json::json!({
+            "npm": "@ai-sdk/openai-compatible",
+            "name": self.name,
+            "options": {
+                "baseURL": self.openai_base_url(),
+                "apiKey": self.api_key,
+                "setCacheKey": true
+            },
+            "models": {
+                model.clone(): { "name": model }
+            }
+        });
+        Some(self.generated_provider("opencode", settings_config, self.meta.clone()))
+    }
+
+    pub fn to_openclaw_provider(&self) -> Option<Provider> {
+        if !self.apps.openclaw {
+            return None;
+        }
+        let model = Self::simple_model(self.models.openclaw.as_ref(), "gpt-5.6-sol");
+        let settings_config = serde_json::json!({
+            "baseUrl": self.openai_base_url(),
+            "apiKey": self.api_key,
+            "api": "openai-completions",
+            "models": [{
+                "id": model,
+                "name": model,
+                "reasoning": true,
+                "input": ["text", "image"],
+                "contextWindow": 272000,
+                "maxTokens": 32768
+            }]
+        });
+        Some(self.generated_provider("openclaw", settings_config, self.meta.clone()))
+    }
+
+    pub fn to_hermes_provider(&self) -> Option<Provider> {
+        if !self.apps.hermes {
+            return None;
+        }
+        let model = Self::simple_model(self.models.hermes.as_ref(), "gpt-5.6-sol");
+        let settings_config = serde_json::json!({
+            "name": format!("universal-hermes-{}", self.id),
+            "base_url": self.openai_base_url(),
+            "api_key": self.api_key,
+            "api_mode": "chat_completions",
+            "models": [{
+                "id": model,
+                "name": model,
+                "context_length": 272000
+            }]
+        });
+        Some(self.generated_provider("hermes", settings_config, self.meta.clone()))
     }
 }
 
@@ -994,6 +1186,7 @@ mod tests {
     use super::{
         ClaudeModelConfig, CodexModelConfig, GeminiModelConfig, LocalProxyRequestOverrides,
         OpenCodeProviderConfig, Provider, ProviderManager, ProviderMeta, UniversalProvider,
+        UniversalSimpleModelConfig,
     };
     use serde_json::json;
     use std::collections::HashMap;
@@ -1342,6 +1535,119 @@ mod tests {
     }
 
     #[test]
+    fn universal_provider_generates_every_additional_app_contract() {
+        let mut universal = UniversalProvider::new(
+            "u1".to_string(),
+            "Universal".to_string(),
+            "newapi".to_string(),
+            "https://api.example.com".to_string(),
+            "api-key".to_string(),
+        );
+        universal.apps.claude_desktop = true;
+        universal.apps.pi = true;
+        universal.apps.grokbuild = true;
+        universal.apps.opencode = true;
+        universal.apps.openclaw = true;
+        universal.apps.hermes = true;
+        universal.models.claude_desktop = Some(ClaudeModelConfig {
+            model: Some("claude-desktop-model".to_string()),
+            ..ClaudeModelConfig::default()
+        });
+        let model = UniversalSimpleModelConfig {
+            model: Some("model-x".to_string()),
+        };
+        universal.models.pi = Some(model.clone());
+        universal.models.grokbuild = Some(model.clone());
+        universal.models.opencode = Some(model.clone());
+        universal.models.openclaw = Some(model.clone());
+        universal.models.hermes = Some(model);
+
+        let claude_desktop = universal
+            .to_claude_desktop_provider()
+            .expect("claude desktop provider");
+        let pi = universal.to_pi_provider().expect("pi provider");
+        let grokbuild = universal
+            .to_grokbuild_provider()
+            .expect("grok build provider");
+        let opencode = universal.to_opencode_provider().expect("opencode provider");
+        let openclaw = universal.to_openclaw_provider().expect("openclaw provider");
+        let hermes = universal.to_hermes_provider().expect("hermes provider");
+
+        assert_eq!(claude_desktop.id, "universal-claude-desktop-u1");
+        assert_eq!(
+            claude_desktop.settings_config["env"]["ANTHROPIC_MODEL"],
+            "claude-desktop-model"
+        );
+        assert_eq!(pi.settings_config["defaultModel"], "model-x");
+        assert_eq!(pi.settings_config["baseUrl"], "https://api.example.com/v1");
+        let grok_config = grokbuild.settings_config["config"]
+            .as_str()
+            .expect("grok config");
+        let grok_toml: toml::Value = toml::from_str(grok_config).expect("parse grok config");
+        assert_eq!(grok_toml["models"]["default"].as_str(), Some("model-x"));
+        assert_eq!(
+            opencode.settings_config["models"]["model-x"]["name"],
+            "model-x"
+        );
+        assert_eq!(openclaw.settings_config["models"][0]["id"], "model-x");
+        assert_eq!(hermes.settings_config["models"][0]["id"], "model-x");
+    }
+
+    #[test]
+    fn universal_openai_compatible_apps_preserve_custom_base_path() {
+        let mut universal = UniversalProvider::new(
+            "u1".to_string(),
+            "Universal".to_string(),
+            "custom".to_string(),
+            "https://gateway.example.com/openai".to_string(),
+            "api-key".to_string(),
+        );
+        universal.apps.pi = true;
+        universal.apps.opencode = true;
+
+        let pi = universal.to_pi_provider().expect("pi provider");
+        let opencode = universal.to_opencode_provider().expect("opencode provider");
+
+        assert_eq!(
+            pi.settings_config["baseUrl"],
+            "https://gateway.example.com/openai"
+        );
+        assert_eq!(
+            opencode.settings_config["options"]["baseURL"],
+            "https://gateway.example.com/openai"
+        );
+    }
+
+    #[test]
+    fn universal_provider_deserializes_legacy_apps_and_serializes_all_app_keys() {
+        let provider: UniversalProvider = serde_json::from_value(json!({
+            "id": "legacy",
+            "name": "Legacy",
+            "providerType": "newapi",
+            "apps": {
+                "claude": true,
+                "codex": true,
+                "gemini": true
+            },
+            "baseUrl": "https://api.example.com",
+            "apiKey": "secret"
+        }))
+        .expect("deserialize legacy universal provider");
+
+        assert!(provider.apps.claude);
+        assert!(!provider.apps.claude_desktop);
+        assert!(!provider.apps.pi);
+        assert!(!provider.apps.grokbuild);
+        assert!(!provider.apps.opencode);
+        assert!(!provider.apps.openclaw);
+        assert!(!provider.apps.hermes);
+
+        let value = serde_json::to_value(provider).expect("serialize universal provider");
+        assert_eq!(value["apps"]["claude-desktop"], json!(false));
+        assert!(value["apps"].get("claude_desktop").is_none());
+    }
+
+    #[test]
     fn opencode_provider_config_defaults() {
         let config = OpenCodeProviderConfig::default();
         assert_eq!(config.npm, "@ai-sdk/openai-compatible");
@@ -1394,6 +1700,37 @@ mod tests {
 
         assert!(toml.contains("base_url = \"https://example.com/openai\""));
         assert!(!toml.contains("https://example.com/openai/v1"));
+    }
+
+    #[test]
+    fn universal_codex_provider_escapes_generated_toml_values() {
+        let mut provider = UniversalProvider::new(
+            "quoted".to_string(),
+            "Gateway \"A\"".to_string(),
+            "custom".to_string(),
+            "https://example.com/openai".to_string(),
+            "sk-test".to_string(),
+        );
+        provider.apps.codex = true;
+        provider.models.codex = Some(CodexModelConfig {
+            model: Some("model-\"quoted\"".to_string()),
+            reasoning_effort: Some("high".to_string()),
+        });
+
+        let generated = provider.to_codex_provider().expect("codex provider");
+        let config = generated.settings_config["config"]
+            .as_str()
+            .expect("codex config");
+        let parsed: toml::Value = toml::from_str(config).expect("parse codex config");
+
+        assert_eq!(
+            parsed.get("model").and_then(toml::Value::as_str),
+            Some("model-\"quoted\"")
+        );
+        assert_eq!(
+            parsed["model_providers"]["custom"]["name"].as_str(),
+            Some("Gateway \"A\"")
+        );
     }
 
     // ── resolve_usage_credentials (per-app credential extraction) ──

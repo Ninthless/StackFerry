@@ -61,6 +61,7 @@ interface ToolVersion {
 const TOOL_NAMES = [
   "claude",
   "codex",
+  "pi",
   "gemini",
   "grok",
   "opencode",
@@ -124,6 +125,8 @@ const POSIX_ONE_CLICK_INSTALL_COMMANDS = `# Claude Code
 ${posixScriptInstallCommand("https://claude.ai/install.sh")} || npm i -g @anthropic-ai/claude-code@latest
 # Codex
 npm i -g @openai/codex@latest
+# Pi
+npm i -g --ignore-scripts @earendil-works/pi-coding-agent@latest
 # Gemini CLI
 npm i -g @google/gemini-cli@latest
 # Grok Build
@@ -139,6 +142,8 @@ const WINDOWS_ONE_CLICK_INSTALL_COMMANDS = `# Claude Code
 npm i -g @anthropic-ai/claude-code@latest
 # Codex
 npm i -g @openai/codex@latest
+# Pi
+npm i -g --ignore-scripts @earendil-works/pi-coding-agent@latest
 # Gemini CLI
 npm i -g @google/gemini-cli@latest
 # Grok Build
@@ -157,6 +162,7 @@ const ONE_CLICK_INSTALL_COMMANDS = isWindows()
 const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   claude: "Claude Code",
   codex: "Codex",
+  pi: "Pi",
   gemini: "Gemini CLI",
   grok: "Grok Build",
   opencode: "OpenCode",
@@ -173,6 +179,7 @@ function toolDisplayName(tool: string): string {
 const TOOL_APP_IDS: Record<ToolName, AppId> = {
   claude: "claude",
   codex: "codex",
+  pi: "pi",
   gemini: "gemini",
   grok: "grokbuild",
   opencode: "opencode",
@@ -232,8 +239,15 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
   );
   const [showInstallCommands, setShowInstallCommands] = useState(false);
 
-  const { hasUpdate, updateInfo, checkUpdate, resetDismiss, isChecking } =
-    useUpdate();
+  const {
+    hasUpdate,
+    updateInfo,
+    checkUpdate,
+    installUpdate,
+    resetDismiss,
+    isChecking,
+    isInstalling,
+  } = useUpdate();
 
   const [wslShellByTool, setWslShellByTool] = useState<
     Record<string, WslShellPreference>
@@ -449,13 +463,34 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
     if (hasUpdate) {
       try {
         resetDismiss();
-        await settingsApi.checkUpdates();
+        if (isPortable) {
+          await settingsApi.checkUpdates();
+          return;
+        }
+        await installUpdate();
       } catch (error) {
-        console.error("[AboutSection] Failed to open release page", error);
-        toast.error(t("settings.updateFailed"), {
-          description: extractErrorMessage(error) || undefined,
-          closeButton: true,
-        });
+        console.error("[AboutSection] Failed to update application", error);
+        if (!isPortable) {
+          try {
+            await settingsApi.checkUpdates();
+          } catch (openError) {
+            console.error(
+              "[AboutSection] Failed to open release page",
+              openError,
+            );
+          }
+        }
+        toast.error(
+          t(
+            isPortable
+              ? "settings.openReleaseNotesFailed"
+              : "settings.updateFailed",
+          ),
+          {
+            description: extractErrorMessage(error) || undefined,
+            closeButton: true,
+          },
+        );
       }
       return;
     }
@@ -469,7 +504,7 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
       console.error("[AboutSection] Check update failed", error);
       toast.error(t("settings.checkUpdateFailed"));
     }
-  }, [checkUpdate, hasUpdate, resetDismiss, t]);
+  }, [checkUpdate, hasUpdate, installUpdate, isPortable, resetDismiss, t]);
 
   const handleCopyInstallCommands = useCallback(async () => {
     try {
@@ -862,10 +897,15 @@ export function AboutSection({ isPortable }: AboutSectionProps) {
               type="button"
               size="sm"
               onClick={handleCheckUpdate}
-              disabled={isChecking}
+              disabled={isChecking || isInstalling}
               className="h-8 gap-1.5 text-xs"
             >
-              {hasUpdate ? (
+              {isInstalling ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  {t("settings.updating")}
+                </>
+              ) : hasUpdate ? (
                 <>
                   <Download className="h-3.5 w-3.5" />
                   {t("settings.updateTo", {

@@ -1,7 +1,7 @@
 {
   "name": "stackferry",
   "version": "0.1.0",
-  "description": "All-in-One Assistant for Claude Code, Codex & Gemini CLI",
+  "description": "Provider and configuration manager for AI coding tools",
   "type": "module",
   "scripts": {
     "dev": "pnpm tauri dev",
@@ -10,6 +10,7 @@
     "dev:renderer": "vite",
     "build:renderer": "vite build",
     "typecheck": "tsc --noEmit",
+    "release:validate": "node scripts/validate-release-version.mjs",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "test:unit": "vitest run",
@@ -74,6 +75,7 @@
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@tauri-apps/plugin-log": "2.8.0",
     "@tauri-apps/plugin-process": "^2.0.0",
+    "@tauri-apps/plugin-updater": "^2.9.0",
     "@tauri-apps/plugin-store": "^2.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

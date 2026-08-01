@@ -22,6 +22,7 @@
 import type { ProviderCategory } from "../types";
 import type { CodexApiFormat } from "../types";
 import { GROK_BUILD_DEFAULT_MODEL } from "../utils/grokBuildConfig";
+import { XFCODE_PROVIDER } from "./xfcodeProvider";
 
 export interface GrokBuildProviderPreset {
   name: string;
@@ -595,6 +596,20 @@ export const grokBuildProviderPresets: GrokBuildProviderPreset[] = [
       OPENROUTER_STYLE_GROK_MODEL,
     ),
     endpointCandidates: ["https://api.therouter.ai/v1"],
+    category: "aggregator",
+  },
+  {
+    name: XFCODE_PROVIDER.name,
+    icon: XFCODE_PROVIDER.icon,
+    websiteUrl: XFCODE_PROVIDER.websiteUrl,
+    apiKeyUrl: XFCODE_PROVIDER.apiKeyUrl,
+    auth: grokAuth(),
+    config: grokPresetConfig(
+      XFCODE_PROVIDER.name,
+      XFCODE_PROVIDER.openAiBaseUrl,
+    ),
+    endpointCandidates: [XFCODE_PROVIDER.openAiBaseUrl],
+    apiFormat: "openai_responses",
     category: "aggregator",
   },
 ];

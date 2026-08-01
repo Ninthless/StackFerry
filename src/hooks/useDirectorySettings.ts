@@ -9,6 +9,7 @@ export type DirectoryAppId = Exclude<AppId, "claude-desktop">;
 type AppDirectoryKey =
   | "claude"
   | "codex"
+  | "pi"
   | "gemini"
   | "grokbuild"
   | "opencode"
@@ -20,6 +21,7 @@ export interface ResolvedDirectories {
   appConfig: string;
   claude: string;
   codex: string;
+  pi: string;
   gemini: string;
   grokbuild: string;
   opencode: string;
@@ -34,6 +36,7 @@ const APP_DIRECTORY_META: Record<
 > = {
   claude: { key: "claude", defaultFolder: ".claude" },
   codex: { key: "codex", defaultFolder: ".codex" },
+  pi: { key: "pi", defaultFolder: ".pi/agent" },
   gemini: { key: "gemini", defaultFolder: ".gemini" },
   grokbuild: { key: "grokbuild", defaultFolder: ".grok" },
   opencode: { key: "opencode", defaultFolder: ".config/opencode" },
@@ -47,6 +50,7 @@ const DIRECTORY_KEY_TO_SETTINGS_FIELD: Record<
 > = {
   claude: "claudeConfigDir",
   codex: "codexConfigDir",
+  pi: "piConfigDir",
   gemini: "geminiConfigDir",
   grokbuild: "grokConfigDir",
   opencode: "opencodeConfigDir",
@@ -133,6 +137,7 @@ export function useDirectorySettings({
     appConfig: "",
     claude: "",
     codex: "",
+    pi: "",
     gemini: "",
     grokbuild: "",
     opencode: "",
@@ -145,6 +150,7 @@ export function useDirectorySettings({
     appConfig: "",
     claude: "",
     codex: "",
+    pi: "",
     gemini: "",
     grokbuild: "",
     opencode: "",
@@ -164,6 +170,7 @@ export function useDirectorySettings({
           overrideRaw,
           claudeDir,
           codexDir,
+          piDir,
           geminiDir,
           grokDir,
           opencodeDir,
@@ -172,6 +179,7 @@ export function useDirectorySettings({
           defaultAppConfig,
           defaultClaudeDir,
           defaultCodexDir,
+          defaultPiDir,
           defaultGeminiDir,
           defaultGrokDir,
           defaultOpencodeDir,
@@ -181,6 +189,7 @@ export function useDirectorySettings({
           settingsApi.getAppConfigDirOverride(),
           settingsApi.getConfigDir("claude"),
           settingsApi.getConfigDir("codex"),
+          settingsApi.getConfigDir("pi"),
           settingsApi.getConfigDir("gemini"),
           settingsApi.getConfigDir("grokbuild"),
           settingsApi.getConfigDir("opencode"),
@@ -189,6 +198,7 @@ export function useDirectorySettings({
           computeDefaultAppConfigDir(),
           computeDefaultConfigDir("claude"),
           computeDefaultConfigDir("codex"),
+          computeDefaultConfigDir("pi"),
           computeDefaultConfigDir("gemini"),
           computeDefaultConfigDir("grokbuild"),
           computeDefaultConfigDir("opencode"),
@@ -204,6 +214,7 @@ export function useDirectorySettings({
           appConfig: defaultAppConfig ?? "",
           claude: defaultClaudeDir ?? "",
           codex: defaultCodexDir ?? "",
+          pi: defaultPiDir ?? "",
           gemini: defaultGeminiDir ?? "",
           grokbuild: defaultGrokDir ?? "",
           opencode: defaultOpencodeDir ?? "",
@@ -218,6 +229,7 @@ export function useDirectorySettings({
           appConfig: normalizedOverride ?? defaultsRef.current.appConfig,
           claude: claudeDir || defaultsRef.current.claude,
           codex: codexDir || defaultsRef.current.codex,
+          pi: piDir || defaultsRef.current.pi,
           gemini: geminiDir || defaultsRef.current.gemini,
           grokbuild: grokDir || defaultsRef.current.grokbuild,
           opencode: opencodeDir || defaultsRef.current.opencode,
@@ -360,6 +372,7 @@ export function useDirectorySettings({
           initialAppConfigDirRef.current ?? defaultsRef.current.appConfig,
         claude: overrides?.claude ?? defaultsRef.current.claude,
         codex: overrides?.codex ?? defaultsRef.current.codex,
+        pi: overrides?.pi ?? defaultsRef.current.pi,
         gemini: overrides?.gemini ?? defaultsRef.current.gemini,
         grokbuild: overrides?.grokbuild ?? defaultsRef.current.grokbuild,
         opencode: overrides?.opencode ?? defaultsRef.current.opencode,

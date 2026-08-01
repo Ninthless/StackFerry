@@ -10,6 +10,7 @@ function makeSkill(overrides: Partial<InstalledSkill> = {}): InstalledSkill {
     apps: {
       claude: true,
       codex: false,
+      pi: false,
       gemini: false,
       opencode: false,
       openclaw: false,

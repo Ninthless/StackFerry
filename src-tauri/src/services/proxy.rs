@@ -1358,13 +1358,7 @@ impl ProxyService {
             .await
             .map_err(|e| format!("删除备份失败: {e}"))?;
 
-        // 5. 重置健康状态
-        self.db
-            .clear_all_provider_health()
-            .await
-            .map_err(|e| format!("重置健康状态失败: {e}"))?;
-
-        log::info!("代理已停止，Live 配置已恢复（保留代理状态，下次启动将自动恢复）");
+        log::info!("代理已停止，Live 配置与供应商健康状态已保留，下次启动将自动恢复");
         Ok(())
     }
 
@@ -3159,6 +3153,23 @@ impl ProxyService {
     /// 检查服务器是否正在运行
     pub async fn is_running(&self) -> bool {
         self.server.read().await.is_some()
+    }
+
+    pub async fn select_failover_activation_provider(
+        &self,
+        app_type: &str,
+    ) -> Result<Provider, String> {
+        if let Some(server) = self.server.read().await.as_ref() {
+            return server
+                .select_failover_activation_provider(app_type)
+                .await
+                .map_err(|error| error.to_string());
+        }
+
+        crate::proxy::ProviderRouter::new(self.db.clone())
+            .select_failover_activation_provider(app_type)
+            .await
+            .map_err(|error| error.to_string())
     }
 
     /// 热更新熔断器配置

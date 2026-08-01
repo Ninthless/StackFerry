@@ -189,6 +189,14 @@ export const providersApi = {
     return await invoke("get_hermes_live_provider_ids");
   },
 
+  async getPiLiveProviderIds(): Promise<string[]> {
+    return await invoke("get_pi_live_provider_ids");
+  },
+
+  async getPiDefaultProvider(): Promise<string | null> {
+    return await invoke("get_pi_default_provider");
+  },
+
   /**
    * 从 OpenClaw live 配置导入供应商到数据库
    * OpenClaw 特有功能：由于累加模式，用户可能已在 openclaw.json 中配置供应商
@@ -203,6 +211,10 @@ export const providersApi = {
    */
   async importHermesFromLive(): Promise<number> {
     return await invoke("import_hermes_providers_from_live");
+  },
+
+  async importPiFromLive(): Promise<number> {
+    return await invoke("import_pi_providers_from_live");
   },
 };
 

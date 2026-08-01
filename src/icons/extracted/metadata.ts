@@ -568,6 +568,13 @@ export const iconMetadata: Record<string, IconMetadata> = {
     keywords: [],
     defaultColor: "currentColor",
   },
+  xfcode: {
+    name: "xfcode",
+    displayName: "XFcode API",
+    category: "ai-provider",
+    keywords: ["xfcode", "orangecc", "aggregator", "gateway", "coding"],
+    defaultColor: "currentColor",
+  },
   yi: {
     name: "yi",
     displayName: "yi",

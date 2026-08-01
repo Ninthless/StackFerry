@@ -279,6 +279,7 @@ export interface VisibleApps {
   claude: boolean;
   "claude-desktop": boolean;
   codex: boolean;
+  pi: boolean;
   gemini: boolean;
   grokbuild: boolean;
   opencode: boolean;
@@ -393,6 +394,7 @@ export interface Settings {
   claudeConfigDir?: string;
   // 覆盖 Codex 配置目录（可选）
   codexConfigDir?: string;
+  piConfigDir?: string;
   // 覆盖 Gemini 配置目录（可选）
   geminiConfigDir?: string;
   // 覆盖 Grok Build 配置目录（可选）
@@ -411,6 +413,7 @@ export interface Settings {
   currentProviderClaudeDesktop?: string;
   // 当前 Codex 供应商 ID（优先于数据库 is_current）
   currentProviderCodex?: string;
+  currentProviderPi?: string;
   // 当前 Gemini 供应商 ID（优先于数据库 is_current）
   currentProviderGemini?: string;
 
@@ -536,8 +539,14 @@ export interface McpConfigResponse {
 // 统一供应商的应用启用状态
 export interface UniversalProviderApps {
   claude: boolean;
+  "claude-desktop": boolean;
   codex: boolean;
+  pi: boolean;
   gemini: boolean;
+  grokbuild: boolean;
+  opencode: boolean;
+  openclaw: boolean;
+  hermes: boolean;
 }
 
 // Claude 模型配置
@@ -559,11 +568,21 @@ export interface GeminiModelConfig {
   model?: string;
 }
 
+export interface UniversalSimpleModelConfig {
+  model?: string;
+}
+
 // 各应用的模型配置
 export interface UniversalProviderModels {
   claude?: ClaudeModelConfig;
+  "claude-desktop"?: ClaudeModelConfig;
   codex?: CodexModelConfig;
+  pi?: UniversalSimpleModelConfig;
   gemini?: GeminiModelConfig;
+  grokbuild?: UniversalSimpleModelConfig;
+  opencode?: UniversalSimpleModelConfig;
+  openclaw?: UniversalSimpleModelConfig;
+  hermes?: UniversalSimpleModelConfig;
 }
 
 // 统一供应商（跨应用共享配置）
@@ -690,6 +709,34 @@ export interface OpenClawProviderConfig {
   models?: OpenClawModel[]; // 可用模型列表
   headers?: Record<string, string>; // 自定义请求头（如 User-Agent）
   authHeader?: boolean; // 供应商自定义认证开关（如 Longcat）
+}
+
+export type PiProviderApi =
+  | "openai-completions"
+  | "openai-responses"
+  | "anthropic-messages"
+  | "google-generative-ai";
+
+export interface PiModelConfig {
+  id: string;
+  name?: string;
+  reasoning?: boolean;
+  input?: string[];
+  contextWindow?: number;
+  maxTokens?: number;
+  [key: string]: unknown;
+}
+
+export interface PiProviderConfig {
+  baseUrl: string;
+  api: PiProviderApi;
+  apiKey?: string;
+  authHeader?: boolean;
+  defaultModel?: string;
+  models: PiModelConfig[];
+  headers?: Record<string, string>;
+  compat?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 // OpenClaw agents.defaults 完整配置

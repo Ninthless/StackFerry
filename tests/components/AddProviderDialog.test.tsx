@@ -166,4 +166,19 @@ context_window = 500000
     expect(submitted.icon).toBeUndefined();
     expect(submitted.iconColor).toBeUndefined();
   });
+
+  it("Pi 新增页不显示预设提示", () => {
+    render(
+      <AddProviderDialog
+        open
+        onOpenChange={vi.fn()}
+        appId="pi"
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByText("provider.addFooterHint"),
+    ).not.toBeInTheDocument();
+  });
 });

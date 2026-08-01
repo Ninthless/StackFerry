@@ -11,6 +11,7 @@ import type { CustomEndpoint, EndpointCandidate } from "@/types";
 // 端点测速超时配置（秒）
 const ENDPOINT_TIMEOUT_SECS: Record<AppId, number> = {
   codex: 12,
+  pi: 8,
   claude: 8,
   "claude-desktop": 8,
   gemini: 8,

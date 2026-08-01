@@ -390,6 +390,7 @@ export function SettingsPage({
                             onResetAppConfig={resetAppConfigDir}
                             claudeDir={settings.claudeConfigDir}
                             codexDir={settings.codexConfigDir}
+                            piDir={settings.piConfigDir}
                             geminiDir={settings.geminiConfigDir}
                             grokDir={settings.grokConfigDir}
                             opencodeDir={settings.opencodeConfigDir}

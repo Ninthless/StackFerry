@@ -9,6 +9,7 @@ import type {
   PromptCacheRoutingMode,
 } from "../types";
 import type { PresetTheme } from "./claudeProviderPresets";
+import { XFCODE_PROVIDER } from "./xfcodeProvider";
 
 export interface CodexProviderPreset {
   name: string;
@@ -1637,6 +1638,22 @@ base_url = "https://cc-api.pipellm.ai/v1"`,
       "openai/gpt-5.3-codex",
     ),
     endpointCandidates: ["https://api.therouter.ai/v1"],
+    category: "aggregator",
+  },
+  {
+    name: XFCODE_PROVIDER.name,
+    icon: XFCODE_PROVIDER.icon,
+    websiteUrl: XFCODE_PROVIDER.websiteUrl,
+    apiKeyUrl: XFCODE_PROVIDER.apiKeyUrl,
+    auth: generateThirdPartyAuth(""),
+    config: generateThirdPartyConfig(
+      XFCODE_PROVIDER.providerKey,
+      XFCODE_PROVIDER.openAiBaseUrl,
+      XFCODE_PROVIDER.models.openAi,
+    ),
+    endpointCandidates: [XFCODE_PROVIDER.openAiBaseUrl],
+    apiFormat: "openai_responses",
+    modelCatalog: modelCatalog([XFCODE_PROVIDER.models.openAi]),
     category: "aggregator",
   },
 ];

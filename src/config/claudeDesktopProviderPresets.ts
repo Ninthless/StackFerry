@@ -10,6 +10,7 @@
  */
 import { ProviderCategory } from "../types";
 import type { PresetTheme } from "./claudeProviderPresets";
+import { XFCODE_PROVIDER } from "./xfcodeProvider";
 
 export type ClaudeDesktopApiFormat =
   | "anthropic"
@@ -1120,6 +1121,22 @@ export const claudeDesktopProviderPresets: ClaudeDesktopProviderPreset[] = [
       true,
     ),
     endpointCandidates: ["https://api.therouter.ai"],
+  },
+  {
+    name: XFCODE_PROVIDER.name,
+    icon: XFCODE_PROVIDER.icon,
+    websiteUrl: XFCODE_PROVIDER.websiteUrl,
+    apiKeyUrl: XFCODE_PROVIDER.apiKeyUrl,
+    category: "aggregator",
+    baseUrl: XFCODE_PROVIDER.apiBaseUrl,
+    mode: "direct",
+    apiFormat: "anthropic",
+    modelRoutes: brandedRoutes(
+      XFCODE_PROVIDER.models.claudeSonnet,
+      XFCODE_PROVIDER.models.claudeOpus,
+      XFCODE_PROVIDER.models.claudeHaiku,
+    ),
+    endpointCandidates: [XFCODE_PROVIDER.apiBaseUrl],
   },
   {
     name: "Novita AI",

@@ -83,6 +83,7 @@ const SESSION_GROUP_EXPANSION_STORAGE_KEY =
 type ProviderFilter =
   | "all"
   | "codex"
+  | "pi"
   | "grokbuild"
   | "claude"
   | "opencode"
@@ -1078,6 +1079,12 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                                 <span>Codex</span>
                               </div>
                             </SelectItem>
+                            <SelectItem value="pi">
+                              <div className="flex items-center gap-2">
+                                <ProviderIcon icon="pi" name="pi" size={14} />
+                                <span>Pi</span>
+                              </div>
+                            </SelectItem>
                             <SelectItem value="grokbuild">
                               <div className="flex items-center gap-2">
                                 <ProviderIcon
@@ -1126,6 +1133,16 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                                   size={14}
                                 />
                                 <span>Gemini CLI</span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="hermes">
+                              <div className="flex items-center gap-2">
+                                <ProviderIcon
+                                  icon="hermes"
+                                  name="hermes"
+                                  size={14}
+                                />
+                                <span>Hermes</span>
                               </div>
                             </SelectItem>
                           </SelectContent>

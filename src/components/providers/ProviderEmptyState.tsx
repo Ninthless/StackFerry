@@ -25,7 +25,11 @@ export function ProviderEmptyState({
       </div>
       <h3 className="text-base font-semibold">{t("provider.noProviders")}</h3>
       <p className="mt-2 max-w-md text-sm text-muted-foreground">
-        {t("provider.noProvidersDescription")}
+        {t(
+          appId === "pi"
+            ? "pi.emptyDescription"
+            : "provider.noProvidersDescription",
+        )}
       </p>
       {showSnippetHint && (
         <p className="mt-1 max-w-md text-xs text-muted-foreground">

@@ -1,5 +1,6 @@
 import type { ProviderCategory, OpenCodeProviderConfig } from "../types";
 import type { PresetTheme, TemplateValueConfig } from "./claudeProviderPresets";
+import { XFCODE_PROVIDER } from "./xfcodeProvider";
 
 export interface OpenCodeProviderPreset {
   name: string;
@@ -1952,6 +1953,38 @@ export const opencodeProviderPresets: OpenCodeProviderPreset[] = [
     },
     category: "aggregator",
     templateValues: {
+      apiKey: {
+        label: "API Key",
+        placeholder: "sk-...",
+        editorValue: "",
+      },
+    },
+  },
+  {
+    name: XFCODE_PROVIDER.name,
+    icon: XFCODE_PROVIDER.icon,
+    websiteUrl: XFCODE_PROVIDER.websiteUrl,
+    apiKeyUrl: XFCODE_PROVIDER.apiKeyUrl,
+    settingsConfig: {
+      npm: "@ai-sdk/openai-compatible",
+      name: XFCODE_PROVIDER.name,
+      options: {
+        baseURL: XFCODE_PROVIDER.openAiBaseUrl,
+        apiKey: "",
+        setCacheKey: true,
+      },
+      models: {
+        [XFCODE_PROVIDER.models.openAi]: { name: "GPT-5.6 Sol" },
+      },
+    },
+    category: "aggregator",
+    templateValues: {
+      baseURL: {
+        label: "Base URL",
+        placeholder: XFCODE_PROVIDER.openAiBaseUrl,
+        defaultValue: XFCODE_PROVIDER.openAiBaseUrl,
+        editorValue: "",
+      },
       apiKey: {
         label: "API Key",
         placeholder: "sk-...",

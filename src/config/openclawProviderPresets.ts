@@ -8,6 +8,7 @@ import type {
   OpenClawDefaultModel,
 } from "../types";
 import type { PresetTheme, TemplateValueConfig } from "./claudeProviderPresets";
+import { XFCODE_PROVIDER } from "./xfcodeProvider";
 
 /** Suggested default model configuration for a preset */
 export interface OpenClawSuggestedDefaults {
@@ -2371,6 +2372,47 @@ export const openclawProviderPresets: OpenClawProviderPreset[] = [
         "therouter/google/gemini-3.6-flash": { alias: "Gemini Flash" },
         "therouter/openai/gpt-5.3-codex": { alias: "Codex" },
         "therouter/qwen/qwen3-coder-480b": { alias: "Qwen Coder" },
+      },
+    },
+  },
+  {
+    name: XFCODE_PROVIDER.name,
+    icon: XFCODE_PROVIDER.icon,
+    websiteUrl: XFCODE_PROVIDER.websiteUrl,
+    apiKeyUrl: XFCODE_PROVIDER.apiKeyUrl,
+    settingsConfig: {
+      baseUrl: XFCODE_PROVIDER.openAiBaseUrl,
+      apiKey: "",
+      api: "openai-responses",
+      models: [
+        {
+          id: XFCODE_PROVIDER.models.openAi,
+          name: "GPT-5.6 Sol",
+        },
+      ],
+    },
+    category: "aggregator",
+    templateValues: {
+      baseUrl: {
+        label: "Base URL",
+        placeholder: XFCODE_PROVIDER.openAiBaseUrl,
+        defaultValue: XFCODE_PROVIDER.openAiBaseUrl,
+        editorValue: "",
+      },
+      apiKey: {
+        label: "API Key",
+        placeholder: "sk-...",
+        editorValue: "",
+      },
+    },
+    suggestedDefaults: {
+      model: {
+        primary: `${XFCODE_PROVIDER.providerKey}/${XFCODE_PROVIDER.models.openAi}`,
+      },
+      modelCatalog: {
+        [`${XFCODE_PROVIDER.providerKey}/${XFCODE_PROVIDER.models.openAi}`]: {
+          alias: "XFcode",
+        },
       },
     },
   },

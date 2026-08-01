@@ -14,6 +14,68 @@ use std::collections::HashSet;
 use std::sync::LazyLock;
 use toml::Value as TomlValue;
 
+pub fn resolve_codex_auxiliary_url(
+    base_url: &str,
+    endpoint: &str,
+    is_full_url: bool,
+) -> Result<String, ProxyError> {
+    if !is_full_url {
+        return Ok(CodexAdapter::new().build_url(base_url, endpoint));
+    }
+
+    let (endpoint_path, endpoint_query) = endpoint
+        .split_once('?')
+        .map_or((endpoint, None), |(path, query)| (path, Some(query)));
+    let endpoint_path = endpoint_path.trim_start_matches('/');
+    if endpoint_path.is_empty() {
+        return Err(ProxyError::ConfigError(
+            "Codex auxiliary endpoint path is empty".to_string(),
+        ));
+    }
+
+    let mut url = url::Url::parse(base_url.trim()).map_err(|error| {
+        ProxyError::ConfigError(format!(
+            "Invalid Codex full endpoint URL; cannot derive auxiliary endpoint: {error}"
+        ))
+    })?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err(ProxyError::ConfigError(
+            "Codex full endpoint URL must be an absolute HTTP(S) URL".to_string(),
+        ));
+    }
+    if url.fragment().is_some() {
+        return Err(ProxyError::ConfigError(
+            "Codex full endpoint URL with a fragment cannot derive an auxiliary endpoint"
+                .to_string(),
+        ));
+    }
+
+    let configured_path = url.path().trim_end_matches('/');
+    let sibling_root = configured_path
+        .strip_suffix("/responses/compact")
+        .or_else(|| configured_path.strip_suffix("/responses"))
+        .ok_or_else(|| {
+            ProxyError::ConfigError(
+                "Codex auxiliary endpoints require a full URL ending in /responses or /responses/compact"
+                    .to_string(),
+            )
+        })?;
+    url.set_path(&format!("{sibling_root}/{endpoint_path}"));
+
+    let merged_query = match (
+        url.query(),
+        endpoint_query.filter(|query| !query.is_empty()),
+    ) {
+        (Some(base), Some(incoming)) if !base.is_empty() => Some(format!("{base}&{incoming}")),
+        (Some(base), _) if !base.is_empty() => Some(base.to_string()),
+        (_, Some(incoming)) => Some(incoming.to_string()),
+        _ => None,
+    };
+    url.set_query(merged_query.as_deref());
+
+    Ok(url.into())
+}
+
 /// 官方 Codex 客户端 User-Agent 正则
 #[allow(dead_code)]
 static CODEX_CLIENT_REGEX: LazyLock<Regex> =
@@ -1263,6 +1325,71 @@ wire_api = "anthropic"
         // base_url 已包含 /v1，endpoint 也包含 /v1
         let url = adapter.build_url("https://www.packyapi.com/v1", "/v1/responses");
         assert_eq!(url, "https://www.packyapi.com/v1/responses");
+    }
+
+    #[test]
+    fn auxiliary_url_supports_origin_v1_and_custom_prefix_bases() {
+        assert_eq!(
+            resolve_codex_auxiliary_url(
+                "https://api.example.com",
+                "/alpha/search?locale=zh-CN",
+                false,
+            )
+            .unwrap(),
+            "https://api.example.com/v1/alpha/search?locale=zh-CN"
+        );
+        assert_eq!(
+            resolve_codex_auxiliary_url(
+                "https://api.example.com/v1",
+                "/images/generations",
+                false,
+            )
+            .unwrap(),
+            "https://api.example.com/v1/images/generations"
+        );
+        assert_eq!(
+            resolve_codex_auxiliary_url(
+                "https://relay.example.com/openai",
+                "/images/edits",
+                false,
+            )
+            .unwrap(),
+            "https://relay.example.com/openai/images/edits"
+        );
+    }
+
+    #[test]
+    fn auxiliary_url_derives_safe_full_urls_and_merges_query() {
+        assert_eq!(
+            resolve_codex_auxiliary_url(
+                "https://relay.example.com/v1/responses?api-version=2026-08-01",
+                "/alpha/search?locale=zh-CN&limit=5",
+                true,
+            )
+            .unwrap(),
+            "https://relay.example.com/v1/alpha/search?api-version=2026-08-01&locale=zh-CN&limit=5"
+        );
+        assert_eq!(
+            resolve_codex_auxiliary_url(
+                "https://relay.example.com/custom/responses/compact/",
+                "/images/edits",
+                true,
+            )
+            .unwrap(),
+            "https://relay.example.com/custom/images/edits"
+        );
+    }
+
+    #[test]
+    fn auxiliary_url_rejects_opaque_full_urls() {
+        for base_url in [
+            "https://relay.example.com/gateway",
+            "https://relay.example.com/v1/chat/completions",
+            "https://relay.example.com/v1/responses#fragment",
+            "opaque-relay-id",
+        ] {
+            assert!(resolve_codex_auxiliary_url(base_url, "/alpha/search", true).is_err());
+        }
     }
 
     // 官方客户端检测测试

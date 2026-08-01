@@ -1,18 +1,15 @@
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FullScreenPanel } from "@/components/common/FullScreenPanel";
-import type { Provider, CustomEndpoint, UniversalProvider } from "@/types";
+import type { Provider, CustomEndpoint } from "@/types";
 import type { AppId } from "@/lib/api";
-import { universalProvidersApi } from "@/lib/api";
 import {
   ProviderForm,
   type ProviderFormValues,
 } from "@/components/providers/forms/ProviderForm";
-import { UniversalProviderFormModal } from "@/components/universal/UniversalProviderFormModal";
 import { UniversalProviderPanel } from "@/components/universal";
 import { providerPresets } from "@/config/claudeProviderPresets";
 import { codexProviderPresets } from "@/config/codexProviderPresets";
@@ -22,7 +19,10 @@ import { extractCodexBaseUrl } from "@/utils/providerConfigUtils";
 import { extractGrokBuildBaseUrl } from "@/utils/grokBuildConfig";
 import { GROKBUILD_OFFICIAL_PROVIDER_ID } from "@/utils/providerCapabilities";
 import type { OpenClawSuggestedDefaults } from "@/config/openclawProviderPresets";
-import type { UniversalProviderPreset } from "@/config/universalProviderPresets";
+import {
+  providerPanelContentClassName,
+  providerPanelFooterClassName,
+} from "@/components/providers/forms/ProviderFormLayout";
 
 interface AddProviderDialogProps {
   open: boolean;
@@ -46,68 +46,10 @@ export function AddProviderDialog({
   onSubmit,
 }: AddProviderDialogProps) {
   const { t } = useTranslation();
-  // OpenCode and OpenClaw don't support universal providers
-  const showUniversalTab =
-    appId !== "opencode" &&
-    appId !== "openclaw" &&
-    appId !== "hermes" &&
-    appId !== "grokbuild" &&
-    appId !== "claude-desktop";
   const [activeTab, setActiveTab] = useState<"app-specific" | "universal">(
     "app-specific",
   );
-  const [universalFormOpen, setUniversalFormOpen] = useState(false);
-  const [selectedUniversalPreset, setSelectedUniversalPreset] =
-    useState<UniversalProviderPreset | null>(null);
   const [isFormSubmitting, setIsFormSubmitting] = useState(false);
-
-  const handleUniversalProviderSave = useCallback(
-    async (provider: UniversalProvider) => {
-      try {
-        await universalProvidersApi.upsert(provider);
-      } catch (error) {
-        console.error(
-          "[AddProviderDialog] Failed to save universal provider",
-          error,
-        );
-        toast.error(
-          t("universalProvider.addFailed", {
-            defaultValue: "统一供应商添加失败",
-          }),
-        );
-        return;
-      }
-
-      try {
-        await universalProvidersApi.sync(provider.id);
-        toast.success(
-          t("universalProvider.addedAndSynced", {
-            defaultValue: "统一供应商已添加并同步",
-          }),
-        );
-      } catch (error) {
-        console.error(
-          "[AddProviderDialog] Provider saved but sync failed",
-          error,
-        );
-        toast.warning(
-          t("universalProvider.addedButSyncFailed", {
-            defaultValue: "统一供应商已添加，但同步失败",
-          }),
-        );
-      }
-
-      setUniversalFormOpen(false);
-      setSelectedUniversalPreset(null);
-      onOpenChange(false);
-    },
-    [t, onOpenChange],
-  );
-
-  const handleUniversalFormClose = useCallback(() => {
-    setUniversalFormOpen(false);
-    setSelectedUniversalPreset(null);
-  }, []);
 
   const handleSubmit = useCallback(
     async (values: ProviderFormValues) => {
@@ -158,9 +100,11 @@ export function AddProviderDialog({
           values.presetId === GROKBUILD_OFFICIAL_PROVIDER_ID;
       }
 
-      // OpenCode/OpenClaw: pass providerKey for ID generation
       if (
-        (appId === "opencode" || appId === "openclaw" || appId === "hermes") &&
+        (appId === "opencode" ||
+          appId === "openclaw" ||
+          appId === "hermes" ||
+          appId === "pi") &&
         values.providerKey
       ) {
         providerData.providerKey = values.providerKey;
@@ -320,11 +264,8 @@ export function AddProviderDialog({
   );
 
   const footer =
-    !showUniversalTab || activeTab === "app-specific" ? (
+    activeTab === "app-specific" ? (
       <>
-        <span className="mr-auto min-w-0 text-xs text-muted-foreground truncate">
-          {t("provider.addFooterHint")}
-        </span>
         <Button
           variant="outline"
           onClick={() => onOpenChange(false)}
@@ -343,22 +284,9 @@ export function AddProviderDialog({
         </Button>
       </>
     ) : (
-      <>
-        <Button
-          variant="outline"
-          onClick={() => onOpenChange(false)}
-          className="border-border/20 hover:bg-accent hover:text-accent-foreground"
-        >
-          {t("common.cancel")}
-        </Button>
-        <Button
-          onClick={() => setUniversalFormOpen(true)}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          {t("universalProvider.add")}
-        </Button>
-      </>
+      <Button variant="outline" onClick={() => onOpenChange(false)}>
+        {t("common.cancel")}
+      </Button>
     );
 
   return (
@@ -367,57 +295,37 @@ export function AddProviderDialog({
       title={t("provider.addNewProvider")}
       onClose={() => onOpenChange(false)}
       footer={footer}
-      contentClassName="pt-3"
+      contentClassName={providerPanelContentClassName}
+      footerClassName={providerPanelFooterClassName}
     >
-      {showUniversalTab ? (
-        <Tabs
-          value={activeTab}
-          onValueChange={(v) => setActiveTab(v as "app-specific" | "universal")}
-        >
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="app-specific">
-              {t(`apps.${appId}`)} {t("provider.tabProvider")}
-            </TabsTrigger>
-            <TabsTrigger value="universal">
-              {t("provider.tabUniversal")}
-            </TabsTrigger>
-          </TabsList>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as "app-specific" | "universal")}
+      >
+        <TabsList className="mb-4 grid h-10 w-full grid-cols-2 rounded-md bg-muted/50 p-1">
+          <TabsTrigger value="app-specific">
+            {t(`apps.${appId}`)} {t("provider.tabProvider")}
+          </TabsTrigger>
+          <TabsTrigger value="universal">
+            {t("provider.tabUniversal")}
+          </TabsTrigger>
+        </TabsList>
 
-          <TabsContent value="app-specific" className="mt-0">
-            <ProviderForm
-              appId={appId}
-              submitLabel={t("common.add")}
-              onSubmit={handleSubmit}
-              onCancel={() => onOpenChange(false)}
-              onSubmittingChange={setIsFormSubmitting}
-              showButtons={false}
-            />
-          </TabsContent>
+        <TabsContent value="app-specific" className="mt-0">
+          <ProviderForm
+            appId={appId}
+            submitLabel={t("common.add")}
+            onSubmit={handleSubmit}
+            onCancel={() => onOpenChange(false)}
+            onSubmittingChange={setIsFormSubmitting}
+            showButtons={false}
+          />
+        </TabsContent>
 
-          <TabsContent value="universal" className="mt-0">
-            <UniversalProviderPanel />
-          </TabsContent>
-        </Tabs>
-      ) : (
-        // OpenCode/OpenClaw: directly show form without tabs
-        <ProviderForm
-          appId={appId}
-          submitLabel={t("common.add")}
-          onSubmit={handleSubmit}
-          onCancel={() => onOpenChange(false)}
-          onSubmittingChange={setIsFormSubmitting}
-          showButtons={false}
-        />
-      )}
-
-      {showUniversalTab && (
-        <UniversalProviderFormModal
-          isOpen={universalFormOpen}
-          onClose={handleUniversalFormClose}
-          onSave={handleUniversalProviderSave}
-          initialPreset={selectedUniversalPreset}
-        />
-      )}
+        <TabsContent value="universal" className="mt-0">
+          <UniversalProviderPanel />
+        </TabsContent>
+      </Tabs>
     </FullScreenPanel>
   );
 }

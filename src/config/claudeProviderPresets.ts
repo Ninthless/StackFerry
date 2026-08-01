@@ -2,6 +2,7 @@
  * 预设供应商配置模板
  */
 import { ProviderCategory } from "../types";
+import { XFCODE_PROVIDER } from "./xfcodeProvider";
 
 export interface TemplateValueConfig {
   label: string;
@@ -1233,6 +1234,25 @@ export const providerPresets: ProviderPreset[] = [
     },
     category: "aggregator",
     endpointCandidates: ["https://api.therouter.ai"],
+  },
+  {
+    name: XFCODE_PROVIDER.name,
+    icon: XFCODE_PROVIDER.icon,
+    websiteUrl: XFCODE_PROVIDER.websiteUrl,
+    apiKeyUrl: XFCODE_PROVIDER.apiKeyUrl,
+    settingsConfig: {
+      env: {
+        ANTHROPIC_BASE_URL: XFCODE_PROVIDER.apiBaseUrl,
+        ANTHROPIC_AUTH_TOKEN: "",
+        ANTHROPIC_API_KEY: "",
+        ANTHROPIC_MODEL: XFCODE_PROVIDER.models.claudeSonnet,
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: XFCODE_PROVIDER.models.claudeHaiku,
+        ANTHROPIC_DEFAULT_SONNET_MODEL: XFCODE_PROVIDER.models.claudeSonnet,
+        ANTHROPIC_DEFAULT_OPUS_MODEL: XFCODE_PROVIDER.models.claudeOpus,
+      },
+    },
+    category: "aggregator",
+    endpointCandidates: [XFCODE_PROVIDER.apiBaseUrl],
   },
   {
     name: "Novita AI",

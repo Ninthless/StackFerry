@@ -1,10 +1,12 @@
 import { isTauri, type InvokeArgs } from "@tauri-apps/api/core";
-import type { Settings } from "@/types";
+import type { Provider, Settings, UniversalProvider } from "@/types";
+import type { AppId } from "@/lib/api/types";
 
 const visibleApps = {
   claude: true,
   "claude-desktop": true,
   codex: true,
+  pi: true,
   gemini: true,
   grokbuild: true,
   opencode: true,
@@ -136,6 +138,16 @@ const cloneSettings = (settings: Settings): Settings => ({
 
 export const createBrowserPreviewCommandHandler = () => {
   let settings = cloneSettings(browserPreviewSettings);
+  const providers = Object.fromEntries(
+    Object.keys(visibleApps).map((appId) => [appId, {}]),
+  ) as Record<AppId, Record<string, Provider>>;
+  const currentProviders = Object.fromEntries(
+    Object.keys(visibleApps).map((appId) => [appId, ""]),
+  ) as Record<AppId, string>;
+  const liveProviderIds = Object.fromEntries(
+    Object.keys(visibleApps).map((appId) => [appId, [] as string[]]),
+  ) as Record<AppId, string[]>;
+  const universalProviders: Record<string, UniversalProvider> = {};
 
   return (command: string, payload: InvokeArgs = {}): unknown => {
     const args = Array.isArray(payload)
@@ -178,12 +190,88 @@ export const createBrowserPreviewCommandHandler = () => {
         return (args.paths as string[] | undefined)?.join("\\") ?? "";
       case "plugin:app|version":
         return "0.1.0";
-      case "get_providers":
+      case "get_providers": {
+        const appId = args.app as AppId;
+        return { ...providers[appId] };
+      }
+      case "add_provider": {
+        const appId = args.app as AppId;
+        const provider = args.provider as Provider;
+        providers[appId][provider.id] = provider;
+        if (args.addToLive === true) {
+          liveProviderIds[appId] = Array.from(
+            new Set([...liveProviderIds[appId], provider.id]),
+          );
+        }
+        return true;
+      }
+      case "update_provider": {
+        const appId = args.app as AppId;
+        const provider = args.provider as Provider;
+        const originalId = String(args.originalId ?? provider.id);
+        if (originalId !== provider.id) {
+          delete providers[appId][originalId];
+        }
+        providers[appId][provider.id] = provider;
+        return true;
+      }
+      case "delete_provider": {
+        const appId = args.app as AppId;
+        const providerId = String(args.id);
+        delete providers[appId][providerId];
+        liveProviderIds[appId] = liveProviderIds[appId].filter(
+          (id) => id !== providerId,
+        );
+        if (currentProviders[appId] === providerId) {
+          currentProviders[appId] = "";
+        }
+        return true;
+      }
+      case "switch_provider": {
+        const appId = args.app as AppId;
+        const providerId = String(args.id);
+        currentProviders[appId] = providerId;
+        liveProviderIds[appId] = Array.from(
+          new Set([...liveProviderIds[appId], providerId]),
+        );
+        return { warnings: [] };
+      }
+      case "update_providers_sort_order": {
+        const appId = args.app as AppId;
+        const updates = (args.updates ?? []) as Array<{
+          id: string;
+          sortIndex: number;
+        }>;
+        for (const update of updates) {
+          const provider = providers[appId][update.id];
+          if (provider) {
+            providers[appId][update.id] = {
+              ...provider,
+              sortIndex: update.sortIndex,
+            };
+          }
+        }
+        return true;
+      }
       case "get_universal_providers":
+        return { ...universalProviders };
+      case "get_universal_provider":
+        return universalProviders[String(args.id)] ?? null;
+      case "upsert_universal_provider": {
+        const provider = args.provider as UniversalProvider;
+        universalProviders[provider.id] = provider;
+        return true;
+      }
+      case "delete_universal_provider":
+        delete universalProviders[String(args.id)];
+        return true;
+      case "sync_universal_provider":
+        return true;
       case "get_prompts":
       case "get_mcp_servers":
         return {};
       case "get_current_provider":
+        return currentProviders[args.app as AppId];
       case "get_current_omo_provider_id":
       case "get_current_omo_slim_provider_id":
         return "";
@@ -199,6 +287,7 @@ export const createBrowserPreviewCommandHandler = () => {
       case "list_profiles":
       case "list_db_backups":
       case "check_env_conflicts":
+      case "scan_openclaw_config_health":
       case "scan_local_proxies":
       case "get_model_pricing":
       case "get_usage_summary_by_app":
@@ -208,12 +297,19 @@ export const createBrowserPreviewCommandHandler = () => {
       case "get_usage_data_sources":
       case "get_available_providers_for_failover":
       case "get_failover_queue":
-      case "get_opencode_live_provider_ids":
-      case "get_openclaw_live_provider_ids":
-      case "get_hermes_live_provider_ids":
       case "auth_list_accounts":
       case "copilot_list_accounts":
         return [];
+      case "get_opencode_live_provider_ids":
+        return [...liveProviderIds.opencode];
+      case "get_openclaw_live_provider_ids":
+        return [...liveProviderIds.openclaw];
+      case "get_hermes_live_provider_ids":
+        return [...liveProviderIds.hermes];
+      case "get_pi_live_provider_ids":
+        return [...liveProviderIds.pi];
+      case "get_pi_default_provider":
+        return currentProviders.pi || null;
       case "get_tool_versions":
         return ((args.tools as string[] | undefined) ?? []).map((name) => ({
           name,

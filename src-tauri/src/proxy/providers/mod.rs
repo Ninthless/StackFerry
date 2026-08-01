@@ -59,9 +59,9 @@ pub use codex::CodexAdapter;
 pub use codex::{
     apply_codex_chat_upstream_model, apply_codex_upstream_model, codex_provider_upstream_model,
     inject_codex_chat_prompt_cache_key, is_codex_official_provider,
-    provider_needs_responses_namespace_flatten, resolve_codex_catalog_tool_profile,
-    resolve_codex_chat_reasoning_config, should_convert_codex_responses_to_anthropic,
-    should_convert_codex_responses_to_chat,
+    provider_needs_responses_namespace_flatten, resolve_codex_auxiliary_url,
+    resolve_codex_catalog_tool_profile, resolve_codex_chat_reasoning_config,
+    should_convert_codex_responses_to_anthropic, should_convert_codex_responses_to_chat,
 };
 pub use gemini::GeminiAdapter;
 
@@ -206,6 +206,15 @@ impl ProviderType {
             }
             AppType::GrokBuild => ProviderType::Codex,
             AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => ProviderType::Codex,
+            AppType::Pi => match provider
+                .settings_config
+                .get("api")
+                .and_then(|value| value.as_str())
+            {
+                Some("anthropic-messages") => ProviderType::Claude,
+                Some("google-generative-ai") => ProviderType::Gemini,
+                _ => ProviderType::Codex,
+            },
         }
     }
 
@@ -260,6 +269,7 @@ pub fn get_adapter(app_type: &AppType) -> Box<dyn ProviderAdapter> {
         AppType::Gemini => Box::new(GeminiAdapter::new()),
         AppType::GrokBuild => Box::new(CodexAdapter::new()),
         AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => Box::new(CodexAdapter::new()),
+        AppType::Pi => Box::new(CodexAdapter::new()),
     }
 }
 

@@ -6,7 +6,7 @@ use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::{
     extract_session_id,
-    forwarder::RequestForwarder,
+    forwarder::{CodexAuxiliaryEndpoint, RequestForwarder},
     server::ProxyState,
     types::{AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, RectifierConfig},
     ProxyError,
@@ -93,6 +93,37 @@ impl RequestContext {
         tag: &'static str,
         app_type_str: &'static str,
     ) -> Result<Self, ProxyError> {
+        Self::new_with_provider_selection(state, body, headers, app_type, tag, app_type_str, false)
+            .await
+    }
+
+    pub async fn new_for_codex_auxiliary(
+        state: &ProxyState,
+        body: &serde_json::Value,
+        headers: &HeaderMap,
+        endpoint: CodexAuxiliaryEndpoint,
+    ) -> Result<Self, ProxyError> {
+        Self::new_with_provider_selection(
+            state,
+            body,
+            headers,
+            AppType::Codex,
+            "Codex",
+            "codex",
+            endpoint.is_paid_image_operation(),
+        )
+        .await
+    }
+
+    async fn new_with_provider_selection(
+        state: &ProxyState,
+        body: &serde_json::Value,
+        headers: &HeaderMap,
+        app_type: AppType,
+        tag: &'static str,
+        app_type_str: &'static str,
+        paid_image_operation: bool,
+    ) -> Result<Self, ProxyError> {
         let start_time = Instant::now();
 
         // 从数据库读取应用级代理配置（per-app）
@@ -131,17 +162,35 @@ impl RequestContext {
 
         // 使用共享的 ProviderRouter 选择 Provider（熔断器状态跨请求保持）
         // 注意：只在这里调用一次，结果传递给 forwarder，避免重复消耗 HalfOpen 名额
-        let providers = state
-            .provider_router
-            .select_providers(app_type_str)
-            .await
-            .map_err(|e| match e {
-                crate::error::AppError::AllProvidersCircuitOpen => {
-                    ProxyError::AllProvidersCircuitOpen
-                }
-                crate::error::AppError::NoProvidersConfigured => ProxyError::NoProvidersConfigured,
-                _ => ProxyError::DatabaseError(e.to_string()),
-            })?;
+        let providers = if paid_image_operation {
+            state
+                .provider_router
+                .select_paid_image_providers(app_type_str)
+                .await
+                .map_err(|error| match error {
+                    crate::error::AppError::AllProvidersCircuitOpen => {
+                        ProxyError::NoSafeProviderForPaidImage
+                    }
+                    crate::error::AppError::NoProvidersConfigured => {
+                        ProxyError::NoProvidersConfigured
+                    }
+                    _ => ProxyError::DatabaseError(error.to_string()),
+                })?
+        } else {
+            state
+                .provider_router
+                .select_providers(app_type_str)
+                .await
+                .map_err(|error| match error {
+                    crate::error::AppError::AllProvidersCircuitOpen => {
+                        ProxyError::AllProvidersCircuitOpen
+                    }
+                    crate::error::AppError::NoProvidersConfigured => {
+                        ProxyError::NoProvidersConfigured
+                    }
+                    _ => ProxyError::DatabaseError(error.to_string()),
+                })?
+        };
 
         let provider = providers
             .first()

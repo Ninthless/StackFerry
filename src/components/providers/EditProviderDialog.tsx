@@ -9,6 +9,10 @@ import {
   type ProviderFormValues,
 } from "@/components/providers/forms/ProviderForm";
 import { openclawApi, providersApi, vscodeApi, type AppId } from "@/lib/api";
+import {
+  providerPanelContentClassName,
+  providerPanelFooterClassName,
+} from "@/components/providers/forms/ProviderFormLayout";
 
 interface EditProviderDialogProps {
   open: boolean;
@@ -69,7 +73,7 @@ export function EditProviderDialog({
       // OpenCode uses additive mode - each provider's config is stored independently in DB
       // Reading live config would return the full opencode.json (with $schema, provider, mcp etc.)
       // instead of just the provider fragment, causing incorrect nested structure on save
-      if (appId === "opencode") {
+      if (appId === "opencode" || appId === "pi") {
         if (!cancelled) {
           setLiveSettings(null);
           setHasLoadedLive(true);
@@ -189,7 +193,10 @@ export function EditProviderDialog({
         unknown
       >;
       const nextProviderId =
-        (appId === "opencode" || appId === "openclaw") &&
+        (appId === "opencode" ||
+          appId === "openclaw" ||
+          appId === "hermes" ||
+          appId === "pi") &&
         values.providerKey?.trim()
           ? values.providerKey.trim()
           : provider.id;
@@ -227,16 +234,23 @@ export function EditProviderDialog({
       title={t("provider.editProvider")}
       onClose={() => onOpenChange(false)}
       footer={
-        <Button
-          type="submit"
-          form="provider-form"
-          disabled={isFormSubmitting}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Save className="h-4 w-4 mr-2" />
-          {t("common.save")}
-        </Button>
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            type="submit"
+            form="provider-form"
+            disabled={isFormSubmitting}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Save className="mr-2 h-4 w-4" />
+            {t("common.save")}
+          </Button>
+        </>
       }
+      contentClassName={providerPanelContentClassName}
+      footerClassName={providerPanelFooterClassName}
     >
       <ProviderForm
         appId={appId}

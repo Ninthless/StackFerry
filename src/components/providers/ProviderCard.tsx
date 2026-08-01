@@ -172,7 +172,11 @@ export function ProviderCard({
   // OMO and OMO Slim share the same card behavior
   const isAnyOmo = isOmo || isOmoSlim;
   const handleDisableAnyOmo = isOmoSlim ? onDisableOmoSlim : onDisableOmo;
-  const isAdditiveMode = appId === "opencode" && !isAnyOmo;
+  const isAdditiveMode =
+    (appId === "opencode" && !isAnyOmo) ||
+    appId === "openclaw" ||
+    appId === "hermes" ||
+    appId === "pi";
 
   const { data: health } = useProviderHealth(provider.id, appId);
 
@@ -237,7 +241,10 @@ export function ProviderCard({
   // 获取用量数据以判断是否有多套餐
   // 累加模式应用（OpenCode/OpenClaw/Hermes）：使用 isInConfig 代替 isCurrent
   const shouldAutoQuery =
-    appId === "opencode" || appId === "openclaw" || appId === "hermes"
+    appId === "opencode" ||
+    appId === "openclaw" ||
+    appId === "hermes" ||
+    appId === "pi"
       ? isInConfig
       : isCurrent;
   const autoQueryInterval = shouldAutoQuery
@@ -277,7 +284,7 @@ export function ProviderCard({
   // - 普通模式：isCurrent
   const isActiveProvider = isAnyOmo
     ? isCurrent
-    : appId === "openclaw"
+    : appId === "openclaw" || appId === "pi"
       ? Boolean(isDefaultModel)
       : appId === "opencode"
         ? false

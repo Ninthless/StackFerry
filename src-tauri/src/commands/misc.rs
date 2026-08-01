@@ -111,8 +111,8 @@ pub struct ToolVersion {
     wsl_distro: Option<String>,
 }
 
-const VALID_TOOLS: [&str; 7] = [
-    "claude", "codex", "gemini", "grok", "opencode", "openclaw", "hermes",
+const VALID_TOOLS: [&str; 8] = [
+    "claude", "codex", "gemini", "grok", "opencode", "openclaw", "hermes", "pi",
 ];
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -428,6 +428,7 @@ fn tool_display_name(tool: &str) -> &'static str {
         "opencode" => "OpenCode",
         "openclaw" => "OpenClaw",
         "hermes" => "Hermes",
+        "pi" => "Pi",
         _ => "Unknown",
     }
 }
@@ -508,6 +509,7 @@ fn npm_install_command_for(tool: &str) -> Option<&'static str> {
         "grok" => Some("npm i -g @xai-official/grok@latest"),
         "opencode" => Some("npm i -g opencode-ai@latest"),
         "openclaw" => Some("npm i -g openclaw@latest"),
+        "pi" => Some("npm i -g --ignore-scripts @earendil-works/pi-coding-agent@latest"),
         _ => None,
     }
 }
@@ -802,6 +804,9 @@ async fn get_single_tool_version_impl(
         }
         "openclaw" => fetch_npm_latest_for_tool(&client, "openclaw", tool, local).await,
         "hermes" => fetch_pypi_latest_version(&client, "hermes-agent").await,
+        "pi" => {
+            fetch_npm_latest_for_tool(&client, "@earendil-works/pi-coding-agent", tool, local).await
+        }
         _ => None,
     };
 
@@ -1999,6 +2004,7 @@ fn npm_package_for(tool: &str) -> Option<&'static str> {
         "grok" => Some("@xai-official/grok"),
         "opencode" => Some("opencode-ai"),
         "openclaw" => Some("openclaw"),
+        "pi" => Some("@earendil-works/pi-coding-agent"),
         _ => None,
     }
 }
@@ -2650,6 +2656,7 @@ fn wsl_distro_for_tool(tool: &str) -> Option<String> {
         "opencode" => crate::settings::get_opencode_override_dir(),
         "openclaw" => crate::settings::get_openclaw_override_dir(),
         "hermes" => crate::settings::get_hermes_override_dir(),
+        "pi" => crate::settings::get_pi_override_dir(),
         _ => None,
     }?;
 

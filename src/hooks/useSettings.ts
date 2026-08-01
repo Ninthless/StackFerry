@@ -109,6 +109,7 @@ export function useSettings(): UseSettingsResult {
     resetAllDirectories({
       claude: sanitizeDir(data?.claudeConfigDir),
       codex: sanitizeDir(data?.codexConfigDir),
+      pi: sanitizeDir(data?.piConfigDir),
       gemini: sanitizeDir(data?.geminiConfigDir),
       grokbuild: sanitizeDir(data?.grokConfigDir),
       opencode: sanitizeDir(data?.opencodeConfigDir),
@@ -187,6 +188,7 @@ export function useSettings(): UseSettingsResult {
       try {
         const sanitizedClaudeDir = sanitizeDir(mergedSettings.claudeConfigDir);
         const sanitizedCodexDir = sanitizeDir(mergedSettings.codexConfigDir);
+        const sanitizedPiDir = sanitizeDir(mergedSettings.piConfigDir);
         const sanitizedGeminiDir = sanitizeDir(mergedSettings.geminiConfigDir);
         const sanitizedGrokDir = sanitizeDir(mergedSettings.grokConfigDir);
         const sanitizedOpencodeDir = sanitizeDir(
@@ -205,6 +207,7 @@ export function useSettings(): UseSettingsResult {
           ...restSettings,
           claudeConfigDir: sanitizedClaudeDir,
           codexConfigDir: sanitizedCodexDir,
+          piConfigDir: sanitizedPiDir,
           geminiConfigDir: sanitizedGeminiDir,
           grokConfigDir: sanitizedGrokDir,
           opencodeConfigDir: sanitizedOpencodeDir,
@@ -320,6 +323,7 @@ export function useSettings(): UseSettingsResult {
         const sanitizedAppDir = sanitizeDir(appConfigDir);
         const sanitizedClaudeDir = sanitizeDir(mergedSettings.claudeConfigDir);
         const sanitizedCodexDir = sanitizeDir(mergedSettings.codexConfigDir);
+        const sanitizedPiDir = sanitizeDir(mergedSettings.piConfigDir);
         const sanitizedGeminiDir = sanitizeDir(mergedSettings.geminiConfigDir);
         const sanitizedGrokDir = sanitizeDir(mergedSettings.grokConfigDir);
         const sanitizedOpencodeDir = sanitizeDir(
@@ -331,6 +335,7 @@ export function useSettings(): UseSettingsResult {
         const previousAppDir = initialAppConfigDir;
         const previousClaudeDir = sanitizeDir(data?.claudeConfigDir);
         const previousCodexDir = sanitizeDir(data?.codexConfigDir);
+        const previousPiDir = sanitizeDir(data?.piConfigDir);
         const previousGeminiDir = sanitizeDir(data?.geminiConfigDir);
         const previousGrokDir = sanitizeDir(data?.grokConfigDir);
         const previousOpencodeDir = sanitizeDir(data?.opencodeConfigDir);
@@ -345,6 +350,7 @@ export function useSettings(): UseSettingsResult {
           ...restSettings,
           claudeConfigDir: sanitizedClaudeDir,
           codexConfigDir: sanitizedCodexDir,
+          piConfigDir: sanitizedPiDir,
           geminiConfigDir: sanitizedGeminiDir,
           grokConfigDir: sanitizedGrokDir,
           opencodeConfigDir: sanitizedOpencodeDir,
@@ -432,6 +438,7 @@ export function useSettings(): UseSettingsResult {
         // 如果插件同步已经执行过 syncCurrentProvidersLiveSafe，则跳过避免重复
         const claudeDirChanged = sanitizedClaudeDir !== previousClaudeDir;
         const codexDirChanged = sanitizedCodexDir !== previousCodexDir;
+        const piDirChanged = sanitizedPiDir !== previousPiDir;
         const geminiDirChanged = sanitizedGeminiDir !== previousGeminiDir;
         const grokDirChanged = sanitizedGrokDir !== previousGrokDir;
         const opencodeDirChanged = sanitizedOpencodeDir !== previousOpencodeDir;
@@ -440,6 +447,7 @@ export function useSettings(): UseSettingsResult {
           !pluginSynced &&
           (claudeDirChanged ||
             codexDirChanged ||
+            piDirChanged ||
             geminiDirChanged ||
             grokDirChanged ||
             opencodeDirChanged ||

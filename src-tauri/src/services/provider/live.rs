@@ -186,6 +186,8 @@ pub(crate) fn provider_exists_in_live_config(
             .map(|providers| providers.contains_key(provider_id)),
         AppType::Hermes => crate::hermes_config::get_providers()
             .map(|providers| providers.contains_key(provider_id)),
+        AppType::Pi => crate::pi_config::get_live_provider_ids()
+            .map(|providers| providers.iter().any(|id| id == provider_id)),
         _ => Ok(false),
     }
 }
@@ -527,6 +529,7 @@ fn settings_contain_common_config(app_type: &AppType, settings: &Value, snippet:
         | AppType::OpenCode
         | AppType::OpenClaw
         | AppType::Hermes
+        | AppType::Pi
         | AppType::ClaudeDesktop => false,
     }
 }
@@ -601,6 +604,7 @@ pub(crate) fn remove_common_config_from_settings(
         | AppType::OpenCode
         | AppType::OpenClaw
         | AppType::Hermes
+        | AppType::Pi
         | AppType::ClaudeDesktop => Ok(settings.clone()),
     }
 }
@@ -660,6 +664,7 @@ fn apply_common_config_to_settings(
         | AppType::OpenCode
         | AppType::OpenClaw
         | AppType::Hermes
+        | AppType::Pi
         | AppType::ClaudeDesktop => Ok(settings.clone()),
     }
 }
@@ -1162,6 +1167,9 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
             crate::hermes_config::set_provider(&provider.id, provider.settings_config.clone())?;
             log::debug!("Hermes provider '{}' written to live config", provider.id);
         }
+        AppType::Pi => {
+            crate::pi_config::set_provider(&provider.id, &provider.settings_config)?;
+        }
     }
     Ok(())
 }
@@ -1417,6 +1425,7 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
             let config = crate::hermes_config::yaml_to_json(&yaml_config)?;
             Ok(config)
         }
+        AppType::Pi => crate::pi_config::read_settings(),
     }
 }
 
@@ -1526,7 +1535,7 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
             })
         }
         // OpenCode, OpenClaw and Hermes use additive mode and are handled by early return above
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
+        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::Pi => {
             unreachable!("additive mode apps are handled by early return")
         }
     };
@@ -1971,6 +1980,57 @@ pub fn remove_openclaw_provider_from_live(provider_id: &str) -> Result<(), AppEr
     log::info!("OpenClaw provider '{provider_id}' removed from live config");
 
     Ok(())
+}
+
+pub fn remove_pi_provider_from_live(provider_id: &str) -> Result<(), AppError> {
+    if !crate::pi_config::get_pi_dir().exists() {
+        return Ok(());
+    }
+    crate::pi_config::remove_provider(provider_id)
+}
+
+pub fn import_pi_providers_from_live(state: &AppState) -> Result<usize, AppError> {
+    let providers = crate::pi_config::get_providers()?;
+    if providers.is_empty() {
+        return Ok(0);
+    }
+
+    let existing_ids = state.db.get_provider_ids("pi")?;
+    let mut changed = 0;
+    for (id, settings_config) in providers {
+        if id.trim().is_empty()
+            || settings_config
+                .get("models")
+                .and_then(Value::as_array)
+                .is_none()
+        {
+            continue;
+        }
+        if existing_ids.contains(&id) {
+            if let Some(mut provider) = state.db.get_provider_by_id(&id, "pi")? {
+                if provider.settings_config != settings_config {
+                    provider.settings_config = settings_config;
+                    state.db.save_provider("pi", &provider)?;
+                    changed += 1;
+                }
+            }
+            continue;
+        }
+
+        let display_name = settings_config
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or(&id)
+            .to_string();
+        let mut provider = Provider::with_id(id.clone(), display_name, settings_config, None);
+        provider.meta = Some(crate::provider::ProviderMeta {
+            live_config_managed: Some(true),
+            ..Default::default()
+        });
+        state.db.save_provider("pi", &provider)?;
+        changed += 1;
+    }
+    Ok(changed)
 }
 
 #[cfg(test)]

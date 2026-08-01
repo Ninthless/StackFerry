@@ -57,8 +57,9 @@ pub async fn fetch_models(
     is_full_url: bool,
     models_url_override: Option<&str>,
     user_agent: Option<HeaderValue>,
+    send_authorization: bool,
 ) -> Result<Vec<FetchedModel>, String> {
-    if api_key.is_empty() {
+    if send_authorization && api_key.is_empty() {
         return Err("API Key is required to fetch models".to_string());
     }
 
@@ -74,8 +75,10 @@ pub async fn fetch_models(
         );
         let mut request = client
             .get(url)
-            .header("Authorization", format!("Bearer {api_key}"))
             .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS));
+        if send_authorization {
+            request = request.header("Authorization", format!("Bearer {api_key}"));
+        }
         // 自定义 User-Agent：部分 /models 端点同样有 UA 白名单（如 Kimi Coding Plan），
         // 与转发 / 检测路径共用同一 UA，避免"代理可用但取模型失败"。
         if let Some(ua) = &user_agent {
@@ -477,5 +480,52 @@ mod tests {
         let json = r#"{"object":"list","data":[]}"#;
         let resp: ModelsResponse = serde_json::from_str(json).unwrap();
         assert!(resp.data.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn fetch_models_supports_keyless_local_endpoints() {
+        use axum::{
+            http::{header::AUTHORIZATION, HeaderMap},
+            routing::get,
+            Json, Router,
+        };
+        use serde_json::json;
+
+        let app = Router::new().route(
+            "/v1/models",
+            get(|headers: HeaderMap| async move {
+                assert!(!headers.contains_key(AUTHORIZATION));
+                Json(json!({
+                    "data": [{ "id": "local-model", "owned_by": "local" }]
+                }))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind model server");
+        let address = listener.local_addr().expect("model server address");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("serve model response");
+        });
+
+        let models = fetch_models(&format!("http://{address}"), "", false, None, None, false)
+            .await
+            .expect("fetch keyless models");
+        server.abort();
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "local-model");
+        assert_eq!(models[0].owned_by.as_deref(), Some("local"));
+    }
+
+    #[tokio::test]
+    async fn fetch_models_still_requires_a_key_when_authorization_is_enabled() {
+        let error = fetch_models("http://127.0.0.1:1", "", false, None, None, true)
+            .await
+            .expect_err("missing key should fail");
+
+        assert_eq!(error, "API Key is required to fetch models");
     }
 }

@@ -75,6 +75,53 @@ pub struct ForwardError {
     pub provider: Option<Provider>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexAuxiliaryEndpoint {
+    AlphaSearch,
+    ImageGeneration,
+    ImageEdit,
+}
+
+impl CodexAuxiliaryEndpoint {
+    pub const fn canonical_path(self) -> &'static str {
+        match self {
+            Self::AlphaSearch => "/alpha/search",
+            Self::ImageGeneration => "/images/generations",
+            Self::ImageEdit => "/images/edits",
+        }
+    }
+
+    pub const fn is_paid_image_operation(self) -> bool {
+        matches!(self, Self::ImageGeneration | Self::ImageEdit)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ForwardRequestKind {
+    Standard,
+    CodexAuxiliary(CodexAuxiliaryEndpoint),
+}
+
+impl ForwardRequestKind {
+    const fn is_codex_auxiliary(self) -> bool {
+        matches!(self, Self::CodexAuxiliary(_))
+    }
+
+    const fn auxiliary_endpoint(self) -> Option<CodexAuxiliaryEndpoint> {
+        match self {
+            Self::CodexAuxiliary(endpoint) => Some(endpoint),
+            Self::Standard => None,
+        }
+    }
+
+    const fn paid_image_endpoint(self) -> Option<CodexAuxiliaryEndpoint> {
+        match self.auxiliary_endpoint() {
+            Some(endpoint) if endpoint.is_paid_image_operation() => Some(endpoint),
+            _ => None,
+        }
+    }
+}
+
 /// 活跃连接 RAII guard
 ///
 /// 构造时把 `ProxyStatus.active_connections` +1；Drop 时在 tokio runtime 上调度
@@ -354,6 +401,55 @@ impl RequestForwarder {
         extensions: Extensions,
         providers: Vec<Provider>,
     ) -> Result<ForwardResult, ForwardError> {
+        self.forward_with_retry_kind(
+            app_type,
+            method,
+            endpoint,
+            body,
+            headers,
+            extensions,
+            providers,
+            ForwardRequestKind::Standard,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn forward_codex_auxiliary_with_retry(
+        &self,
+        method: http::Method,
+        endpoint: &str,
+        body: Value,
+        headers: axum::http::HeaderMap,
+        extensions: Extensions,
+        providers: Vec<Provider>,
+        auxiliary_endpoint: CodexAuxiliaryEndpoint,
+    ) -> Result<ForwardResult, ForwardError> {
+        self.forward_with_retry_kind(
+            &AppType::Codex,
+            method,
+            endpoint,
+            body,
+            headers,
+            extensions,
+            providers,
+            ForwardRequestKind::CodexAuxiliary(auxiliary_endpoint),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn forward_with_retry_kind(
+        &self,
+        app_type: &AppType,
+        method: http::Method,
+        endpoint: &str,
+        body: Value,
+        headers: axum::http::HeaderMap,
+        extensions: Extensions,
+        providers: Vec<Provider>,
+        request_kind: ForwardRequestKind,
+    ) -> Result<ForwardResult, ForwardError> {
         let guard = ActiveConnectionGuard::acquire(self.status.clone()).await;
         {
             let mut s = self.status.write().await;
@@ -362,7 +458,14 @@ impl RequestForwarder {
         }
         let result = self
             .forward_with_retry_inner(
-                app_type, method, endpoint, body, headers, extensions, providers,
+                app_type,
+                method,
+                endpoint,
+                body,
+                headers,
+                extensions,
+                providers,
+                request_kind,
             )
             .await;
         // 把 guard 注入到 Ok 结果，让它随响应一起流转到 response_processor，
@@ -393,6 +496,7 @@ impl RequestForwarder {
         headers: axum::http::HeaderMap,
         extensions: Extensions,
         providers: Vec<Provider>,
+        request_kind: ForwardRequestKind,
     ) -> Result<ForwardResult, ForwardError> {
         // 获取适配器
         let adapter = get_adapter(app_type);
@@ -408,6 +512,7 @@ impl RequestForwarder {
         let mut last_error = None;
         let mut last_provider = None;
         let mut attempted_providers = 0usize;
+        let paid_image_endpoint = request_kind.paid_image_endpoint();
 
         // 单 Provider 场景下跳过熔断器检查（故障转移关闭时）
         let bypass_circuit_breaker = providers.len() == 1;
@@ -433,7 +538,21 @@ impl RequestForwarder {
 
             // 发起请求前先获取熔断器放行许可（HalfOpen 会占用探测名额）
             // 单 Provider 场景下跳过此检查，避免熔断器阻塞所有请求
-            let (allowed, used_half_open_permit) = if bypass_circuit_breaker {
+            let (allowed, used_half_open_permit) = if paid_image_endpoint.is_some() {
+                match self
+                    .router
+                    .is_provider_safe_for_paid_image(provider, app_type_str)
+                    .await
+                {
+                    Ok(allowed) => (allowed, false),
+                    Err(error) => {
+                        return Err(ForwardError {
+                            error: ProxyError::DatabaseError(error.to_string()),
+                            provider: None,
+                        });
+                    }
+                }
+            } else if bypass_circuit_breaker {
                 (true, false)
             } else {
                 let permit = self
@@ -449,19 +568,21 @@ impl RequestForwarder {
 
             // PRE-SEND 优化器：每个 provider 独立决定是否优化
             // clone body 以避免 Bedrock 优化字段泄漏到非 Bedrock provider（failover 场景）
-            let mut provider_body =
-                if self.optimizer_config.enabled && is_bedrock_provider(provider) {
-                    let mut b = body.clone();
-                    if self.optimizer_config.thinking_optimizer {
-                        super::thinking_optimizer::optimize(&mut b, &self.optimizer_config);
-                    }
-                    if self.optimizer_config.cache_injection {
-                        super::cache_injector::inject(&mut b, &self.optimizer_config);
-                    }
-                    b
-                } else {
-                    body.clone()
-                };
+            let mut provider_body = if !request_kind.is_codex_auxiliary()
+                && self.optimizer_config.enabled
+                && is_bedrock_provider(provider)
+            {
+                let mut b = body.clone();
+                if self.optimizer_config.thinking_optimizer {
+                    super::thinking_optimizer::optimize(&mut b, &self.optimizer_config);
+                }
+                if self.optimizer_config.cache_injection {
+                    super::cache_injector::inject(&mut b, &self.optimizer_config);
+                }
+                b
+            } else {
+                body.clone()
+            };
 
             attempted_providers += 1;
 
@@ -470,7 +591,7 @@ impl RequestForwarder {
             // total_requests / last_request_at / active_connections 已由
             // forward_with_retry wrapper 在客户端请求维度统一处理，这里只刷
             // 新「正在尝试哪个 provider」的展示字段。
-            {
+            if !request_kind.is_codex_auxiliary() {
                 let mut status = self.status.write().await;
                 status.current_provider = Some(provider.name.clone());
                 status.current_provider_id = Some(provider.id.clone());
@@ -487,6 +608,7 @@ impl RequestForwarder {
                     &headers,
                     &extensions,
                     adapter.as_ref(),
+                    request_kind,
                 )
                 .await
             {
@@ -497,7 +619,7 @@ impl RequestForwarder {
                         .await;
 
                     // 更新当前应用类型使用的 provider
-                    {
+                    if !request_kind.is_codex_auxiliary() {
                         let mut current_providers = self.current_providers.write().await;
                         current_providers.insert(
                             app_type_str.to_string(),
@@ -510,8 +632,8 @@ impl RequestForwarder {
                         let mut status = self.status.write().await;
                         status.success_requests += 1;
                         status.last_error = None;
-                        let should_switch =
-                            self.current_provider_id_at_start.as_str() != provider.id.as_str();
+                        let should_switch = !request_kind.is_codex_auxiliary()
+                            && self.current_provider_id_at_start.as_str() != provider.id.as_str();
                         if should_switch {
                             status.failover_count += 1;
 
@@ -545,18 +667,21 @@ impl RequestForwarder {
                 Err(e) => {
                     // 检测是否需要触发整流器（仅 Claude/ClaudeAuth 供应商）
                     let provider_type = ProviderType::from_app_type_and_config(app_type, provider);
-                    let is_anthropic_provider = matches!(
-                        provider_type,
-                        ProviderType::Claude | ProviderType::ClaudeAuth
-                    );
+                    let is_anthropic_provider = !request_kind.is_codex_auxiliary()
+                        && matches!(
+                            provider_type,
+                            ProviderType::Claude | ProviderType::ClaudeAuth
+                        );
                     let mut signature_rectifier_non_retryable_client_error = false;
 
-                    if self.media_retry_should_trigger(
-                        adapter.name(),
-                        media_rectifier_retried,
-                        &provider_body,
-                        &e,
-                    ) {
+                    if !request_kind.is_codex_auxiliary()
+                        && self.media_retry_should_trigger(
+                            adapter.name(),
+                            media_rectifier_retried,
+                            &provider_body,
+                            &e,
+                        )
+                    {
                         let mut media_body = provider_body.clone();
                         let replaced_images =
                             super::media_sanitizer::replace_image_blocks_with_marker(
@@ -586,6 +711,7 @@ impl RequestForwarder {
                                     &headers,
                                     &extensions,
                                     adapter.as_ref(),
+                                    request_kind,
                                 )
                                 .await
                             {
@@ -732,6 +858,7 @@ impl RequestForwarder {
                                         &headers,
                                         &extensions,
                                         adapter.as_ref(),
+                                        request_kind,
                                     )
                                     .await
                                 {
@@ -898,6 +1025,7 @@ impl RequestForwarder {
                                     &headers,
                                     &extensions,
                                     adapter.as_ref(),
+                                    request_kind,
                                 )
                                 .await
                             {
@@ -1000,6 +1128,25 @@ impl RequestForwarder {
                         });
                     }
 
+                    if request_kind.is_codex_auxiliary() && is_auxiliary_capability_miss(&e) {
+                        self.router
+                            .release_permit_neutral(
+                                &provider.id,
+                                app_type_str,
+                                used_half_open_permit,
+                            )
+                            .await;
+                        log::info!(
+                            "[{app_type_str}] Auxiliary capability miss: provider={}, endpoint={}, error={}",
+                            provider.id,
+                            endpoint.split_once('?').map_or(endpoint, |(path, _)| path),
+                            codex_auxiliary_error_message_for_log(&e),
+                        );
+                        last_error = Some(e);
+                        last_provider = Some(provider.clone());
+                        continue;
+                    }
+
                     // 先分类错误，决定是否计入 provider 健康度
                     // —— NonRetryable / ClientAbort 是客户端层错误，无论换哪家 provider 都会被拒绝，
                     //    不应污染熔断器和数据库健康度（与 release_permit_neutral 同语义）。
@@ -1007,6 +1154,43 @@ impl RequestForwarder {
 
                     match category {
                         ErrorCategory::Retryable => {
+                            if let Some(image_endpoint) = request_kind
+                                .paid_image_endpoint()
+                                .filter(|_| !paid_image_failure_is_known_not_accepted(&e))
+                            {
+                                let observable_error = codex_auxiliary_error_message_for_log(&e);
+                                let _ = self
+                                    .router
+                                    .record_result(
+                                        &provider.id,
+                                        app_type_str,
+                                        used_half_open_permit,
+                                        false,
+                                        Some(observable_error.clone()),
+                                    )
+                                    .await;
+                                let replay_error =
+                                    ambiguous_image_replay_error(image_endpoint, &observable_error);
+                                {
+                                    let mut status = self.status.write().await;
+                                    status.failed_requests += 1;
+                                    status.last_error = Some(replay_error.to_string());
+                                    if status.total_requests > 0 {
+                                        status.success_rate = (status.success_requests as f32
+                                            / status.total_requests as f32)
+                                            * 100.0;
+                                    }
+                                }
+                                return Err(ForwardError {
+                                    error: replay_error,
+                                    provider: Some(provider.clone()),
+                                });
+                            }
+
+                            let observable_error = error_message_for_observability(
+                                &e,
+                                request_kind.is_codex_auxiliary(),
+                            );
                             // 可重试：真正的 provider 故障 → 记录失败并更新熔断器/DB 健康度
                             let _ = self
                                 .router
@@ -1015,14 +1199,16 @@ impl RequestForwarder {
                                     app_type_str,
                                     used_half_open_permit,
                                     false,
-                                    Some(e.to_string()),
+                                    Some(observable_error.clone()),
                                 )
                                 .await;
 
                             {
                                 let mut status = self.status.write().await;
-                                status.last_error =
-                                    Some(format!("Provider {} 失败: {}", provider.name, e));
+                                status.last_error = Some(format!(
+                                    "Provider {} 失败: {}",
+                                    provider.name, observable_error
+                                ));
                             }
 
                             let (log_code, log_message) = build_retryable_failure_log(
@@ -1030,6 +1216,7 @@ impl RequestForwarder {
                                 attempted_providers,
                                 providers.len(),
                                 &e,
+                                request_kind.is_codex_auxiliary(),
                             );
                             log::warn!("[{app_type_str}] [{log_code}] {log_message}");
 
@@ -1050,7 +1237,10 @@ impl RequestForwarder {
                             {
                                 let mut status = self.status.write().await;
                                 status.failed_requests += 1;
-                                status.last_error = Some(e.to_string());
+                                status.last_error = Some(error_message_for_observability(
+                                    &e,
+                                    request_kind.is_codex_auxiliary(),
+                                ));
                                 if status.total_requests > 0 {
                                     status.success_rate = (status.success_requests as f32
                                         / status.total_requests as f32)
@@ -1068,18 +1258,23 @@ impl RequestForwarder {
         }
 
         if attempted_providers == 0 {
+            let error = if paid_image_endpoint.is_some() {
+                ProxyError::NoSafeProviderForPaidImage
+            } else {
+                ProxyError::NoAvailableProvider
+            };
             // providers 列表非空，但全部被熔断器拒绝（典型：HalfOpen 探测名额被占用）
             {
                 let mut status = self.status.write().await;
                 status.failed_requests += 1;
-                status.last_error = Some("所有供应商暂时不可用（熔断器限制）".to_string());
+                status.last_error = Some(error.to_string());
                 if status.total_requests > 0 {
                     status.success_rate =
                         (status.success_requests as f32 / status.total_requests as f32) * 100.0;
                 }
             }
             return Err(ForwardError {
-                error: ProxyError::NoAvailableProvider,
+                error,
                 provider: None,
             });
         }
@@ -1088,16 +1283,26 @@ impl RequestForwarder {
         {
             let mut status = self.status.write().await;
             status.failed_requests += 1;
-            status.last_error = Some("所有供应商都失败".to_string());
+            status.last_error = Some(if request_kind.is_codex_auxiliary() {
+                last_error
+                    .as_ref()
+                    .map(codex_auxiliary_error_message_for_log)
+                    .unwrap_or_else(|| "所有辅助端点供应商都失败".to_string())
+            } else {
+                "所有供应商都失败".to_string()
+            });
             if status.total_requests > 0 {
                 status.success_rate =
                     (status.success_requests as f32 / status.total_requests as f32) * 100.0;
             }
         }
 
-        if let Some((log_code, log_message)) =
-            build_terminal_failure_log(attempted_providers, providers.len(), last_error.as_ref())
-        {
+        if let Some((log_code, log_message)) = build_terminal_failure_log(
+            attempted_providers,
+            providers.len(),
+            last_error.as_ref(),
+            request_kind.is_codex_auxiliary(),
+        ) {
             log::warn!("[{app_type_str}] [{log_code}] {log_message}");
         }
 
@@ -1122,6 +1327,7 @@ impl RequestForwarder {
         headers: &axum::http::HeaderMap,
         extensions: &Extensions,
         adapter: &dyn ProviderAdapter,
+        request_kind: ForwardRequestKind,
     ) -> Result<(ProxyResponse, Option<String>, Option<String>), ProxyError> {
         // 使用适配器提取 base_url
         let mut base_url = adapter.extract_base_url(provider)?;
@@ -1159,7 +1365,9 @@ impl RequestForwarder {
         // 应用模型映射（独立于格式转换）
         // Claude Desktop proxy 模式必须先把 Desktop 可见的 claude-* route
         // 映射成真实上游模型名，并且未知 route 要直接报错，不能使用默认模型兜底。
-        let mapped_body = if matches!(app_type, AppType::ClaudeDesktop) {
+        let mapped_body = if request_kind.paid_image_endpoint().is_some() {
+            body.clone()
+        } else if matches!(app_type, AppType::ClaudeDesktop) {
             crate::claude_desktop_config::map_proxy_request_model(body.clone(), provider)
                 .map_err(|e| ProxyError::InvalidRequest(e.to_string()))?
         } else {
@@ -1169,27 +1377,31 @@ impl RequestForwarder {
         };
 
         // 与 CCH 对齐：请求前不做 thinking 主动改写（仅保留兼容入口）
-        let mut mapped_body = normalize_thinking_type(mapped_body);
+        let mut mapped_body = if request_kind.is_codex_auxiliary() {
+            mapped_body
+        } else {
+            normalize_thinking_type(mapped_body)
+        };
 
         // Grok Build exposes a stable client-side model profile in config.toml.
         // Route requests to the provider's real upstream model before applying
         // the optional Responses -> Chat/Anthropic bridge.
-        if matches!(app_type, AppType::GrokBuild) {
+        if !request_kind.is_codex_auxiliary() && matches!(app_type, AppType::GrokBuild) {
             super::providers::apply_codex_upstream_model(provider, &mut mapped_body);
         }
 
-        if is_copilot {
-            mapped_body =
-                super::providers::copilot_model_map::apply_copilot_model_normalization(mapped_body);
-            self.apply_copilot_live_model_resolution(provider, &mut mapped_body)
-                .await;
-        } else if !codex_responses_to_anthropic {
-            // Skip on the Codex→Anthropic path: stripping [1m] here would break both the
-            // model-catalog match (apply_codex_upstream_model) and the transform's own
-            // strip+`context-1m` beta detection. The marker is stripped later, on the
-            // final anthropic_body.
-            mapped_body =
-                super::model_mapper::strip_one_m_suffix_for_upstream_from_body(mapped_body);
+        if !request_kind.is_codex_auxiliary() {
+            if is_copilot {
+                mapped_body =
+                    super::providers::copilot_model_map::apply_copilot_model_normalization(
+                        mapped_body,
+                    );
+                self.apply_copilot_live_model_resolution(provider, &mut mapped_body)
+                    .await;
+            } else if !codex_responses_to_anthropic {
+                mapped_body =
+                    super::model_mapper::strip_one_m_suffix_for_upstream_from_body(mapped_body);
+            }
         }
 
         // --- Copilot 优化器：分类 + 请求体优化（在格式转换之前执行） ---
@@ -1199,7 +1411,10 @@ impl RequestForwarder {
         //   1. 先在原始 body 上分类（保留 tool_result 语义，避免误判为 user）
         //   2. 再清洗孤立 tool_result（防止上游 API 报错）
         //   3. 再合并 tool_result + text（减少 premium 计费）
-        let copilot_optimization = if is_copilot && self.copilot_optimizer_config.enabled {
+        let copilot_optimization = if !request_kind.is_codex_auxiliary()
+            && is_copilot
+            && self.copilot_optimizer_config.enabled
+        {
             // 1. 在原始 body 上分类 — 必须在清洗/合并之前执行
             //    孤立 tool_result 仍保持 tool_result 类型，分类能正确识别为 agent
             let has_anthropic_beta = headers.contains_key("anthropic-beta");
@@ -1341,9 +1556,13 @@ impl RequestForwarder {
                 self.apply_media_prevention(&mut mapped_body, provider);
             }
         }
-        let needs_transform = match resolved_claude_api_format.as_deref() {
-            Some(api_format) => super::providers::claude_api_format_needs_transform(api_format),
-            None => adapter.needs_transform(provider),
+        let needs_transform = if request_kind.is_codex_auxiliary() {
+            false
+        } else {
+            match resolved_claude_api_format.as_deref() {
+                Some(api_format) => super::providers::claude_api_format_needs_transform(api_format),
+                None => adapter.needs_transform(provider),
+            }
         };
         // Codex → Anthropic: Claude Code emulation is off by default and only
         // enabled when the user explicitly turns it on in the UI, so requests can
@@ -1386,7 +1605,13 @@ impl RequestForwarder {
         let codex_anthropic_base_is_full_endpoint =
             codex_responses_to_anthropic && base_url_is_full_endpoint(&base_url, "/v1/messages");
 
-        let url = if matches!(resolved_claude_api_format.as_deref(), Some("gemini_native")) {
+        let url = if request_kind.is_codex_auxiliary() {
+            super::providers::resolve_codex_auxiliary_url(
+                &base_url,
+                &effective_endpoint,
+                is_full_url,
+            )?
+        } else if matches!(resolved_claude_api_format.as_deref(), Some("gemini_native")) {
             super::gemini_url::resolve_gemini_native_url(
                 &base_url,
                 &effective_endpoint,
@@ -1528,7 +1753,8 @@ impl RequestForwarder {
         // above already unwrap namespaces, so this only fires on the native
         // passthrough. The response handler restores the flat names using a map
         // re-derived from the same request tools.
-        if matches!(app_type, AppType::Codex | AppType::GrokBuild)
+        if !request_kind.is_codex_auxiliary()
+            && matches!(app_type, AppType::Codex | AppType::GrokBuild)
             && !codex_responses_to_chat
             && !codex_responses_to_anthropic
             && super::providers::provider_needs_responses_namespace_flatten(provider)
@@ -1549,7 +1775,8 @@ impl RequestForwarder {
         // xAI OAuth path, so the prompt-cache prefix stays stable and no other
         // provider is affected. Runs after the flatten above so lifted
         // `namespace` tools survive the tool-type whitelist.
-        if matches!(app_type, AppType::Codex | AppType::GrokBuild)
+        if !request_kind.is_codex_auxiliary()
+            && matches!(app_type, AppType::Codex | AppType::GrokBuild)
             && !codex_responses_to_chat
             && !codex_responses_to_anthropic
             && super::providers::provider_needs_responses_namespace_flatten(provider)
@@ -1563,20 +1790,28 @@ impl RequestForwarder {
             );
         }
 
-        if matches!(app_type, AppType::Codex | AppType::GrokBuild) {
+        if !request_kind.is_codex_auxiliary()
+            && matches!(app_type, AppType::Codex | AppType::GrokBuild)
+        {
             self.apply_media_prevention(&mut request_body, provider);
         }
 
         // 过滤私有参数（以 `_` 开头的字段），防止内部信息泄露到上游
         // 默认使用空白名单，过滤所有 _ 前缀字段
-        let mut filtered_body = prepare_upstream_request_body(request_body);
+        let mut filtered_body = if request_kind.is_codex_auxiliary() {
+            request_body
+        } else {
+            prepare_upstream_request_body(request_body)
+        };
         if !is_copilot {
             if let Some(overrides) = provider
                 .meta
                 .as_ref()
                 .and_then(|meta| meta.local_proxy_request_overrides.as_ref())
             {
-                if apply_local_proxy_body_overrides(&mut filtered_body, overrides) {
+                if apply_local_proxy_body_overrides(&mut filtered_body, overrides)
+                    && !request_kind.is_codex_auxiliary()
+                {
                     filtered_body = prepare_upstream_request_body(filtered_body);
                 }
             }
@@ -2700,6 +2935,52 @@ fn extract_error_message(error: &ProxyError) -> Option<String> {
     }
 }
 
+fn is_auxiliary_capability_miss(error: &ProxyError) -> bool {
+    matches!(
+        error,
+        ProxyError::UpstreamError {
+            status: 404 | 405 | 501,
+            ..
+        }
+    )
+}
+
+fn paid_image_failure_is_known_not_accepted(error: &ProxyError) -> bool {
+    match error {
+        ProxyError::ConfigError(_)
+        | ProxyError::AuthError(_)
+        | ProxyError::ProviderUnhealthy(_) => true,
+        ProxyError::UpstreamError { status, .. } => {
+            matches!(*status, 401 | 403 | 404 | 405 | 413 | 415 | 422 | 429 | 501)
+        }
+        ProxyError::ForwardFailed(message) => {
+            let message = message.to_ascii_lowercase();
+            [
+                "invalid upstream url",
+                "uri has no host",
+                "上游连接失败",
+                "tcp connect failed",
+                "tls handshake failed",
+                "proxy tcp connect failed",
+                "invalid proxy url",
+            ]
+            .iter()
+            .any(|marker| message.contains(marker))
+        }
+        _ => false,
+    }
+}
+
+fn ambiguous_image_replay_error(
+    endpoint: CodexAuxiliaryEndpoint,
+    observable_error: &str,
+) -> ProxyError {
+    ProxyError::ForwardFailed(format!(
+        "图片请求发送后结果不确定（endpoint={}, {observable_error}）；为避免重复生成、重复编辑或重复计费，未自动重放到下一供应商。请先检查上游任务或账单，再决定是否手动重试",
+        endpoint.canonical_path(),
+    ))
+}
+
 /// 检测 Provider 是否为 Bedrock（通过 CLAUDE_CODE_USE_BEDROCK 环境变量判断）
 fn is_bedrock_provider(provider: &Provider) -> bool {
     provider
@@ -2716,8 +2997,13 @@ fn build_retryable_failure_log(
     attempted_providers: usize,
     total_providers: usize,
     error: &ProxyError,
+    redact_upstream_body: bool,
 ) -> (&'static str, String) {
-    let error_summary = summarize_proxy_error(error);
+    let error_summary = if redact_upstream_body {
+        error_message_for_observability(error, true)
+    } else {
+        summarize_proxy_error(error)
+    };
 
     if total_providers <= 1 {
         (
@@ -2738,13 +3024,20 @@ fn build_terminal_failure_log(
     attempted_providers: usize,
     total_providers: usize,
     last_error: Option<&ProxyError>,
+    redact_upstream_body: bool,
 ) -> Option<(&'static str, String)> {
     if total_providers <= 1 {
         return None;
     }
 
     let error_summary = last_error
-        .map(summarize_proxy_error)
+        .map(|error| {
+            if redact_upstream_body {
+                error_message_for_observability(error, true)
+            } else {
+                summarize_proxy_error(error)
+            }
+        })
         .unwrap_or_else(|| "未知错误".to_string());
 
     Some((
@@ -2753,6 +3046,21 @@ fn build_terminal_failure_log(
             "已尝试 {attempted_providers}/{total_providers} 个 Provider，均失败。最后错误: {error_summary}"
         ),
     ))
+}
+
+pub(crate) fn codex_auxiliary_error_message_for_log(error: &ProxyError) -> String {
+    error_message_for_observability(error, true)
+}
+
+fn error_message_for_observability(error: &ProxyError, redact_upstream_body: bool) -> String {
+    if !redact_upstream_body {
+        return error.to_string();
+    }
+
+    match error {
+        ProxyError::UpstreamError { status, .. } => format!("上游 HTTP {status}"),
+        _ => summarize_proxy_error(error),
+    }
 }
 
 fn summarize_proxy_error(error: &ProxyError) -> String {
@@ -3631,7 +3939,8 @@ mod tests {
             body: Some(r#"{"error":{"message":"rate limit exceeded"}}"#.to_string()),
         };
 
-        let (code, message) = build_retryable_failure_log("PackyCode-response", 1, 1, &error);
+        let (code, message) =
+            build_retryable_failure_log("PackyCode-response", 1, 1, &error, false);
 
         assert_eq!(code, log_fwd::SINGLE_PROVIDER_FAILED);
         assert!(message.contains("Provider PackyCode-response 请求失败"));
@@ -3645,7 +3954,7 @@ mod tests {
     fn multi_provider_retryable_log_keeps_failover_wording() {
         let error = ProxyError::Timeout("upstream timed out after 30s".to_string());
 
-        let (code, message) = build_retryable_failure_log("primary", 1, 3, &error);
+        let (code, message) = build_retryable_failure_log("primary", 1, 3, &error, false);
 
         assert_eq!(code, log_fwd::PROVIDER_FAILED_RETRY);
         assert!(message.contains("继续尝试下一个 (1/3)"));
@@ -3654,7 +3963,7 @@ mod tests {
 
     #[test]
     fn single_provider_has_no_terminal_all_failed_log() {
-        assert!(build_terminal_failure_log(1, 1, None).is_none());
+        assert!(build_terminal_failure_log(1, 1, None, false).is_none());
     }
 
     #[test]
@@ -3662,11 +3971,60 @@ mod tests {
         let error = ProxyError::ForwardFailed("connection reset by peer".to_string());
 
         let (code, message) =
-            build_terminal_failure_log(2, 2, Some(&error)).expect("expected terminal log");
+            build_terminal_failure_log(2, 2, Some(&error), false).expect("expected terminal log");
 
         assert_eq!(code, log_fwd::ALL_PROVIDERS_FAILED);
         assert!(message.contains("已尝试 2/2 个 Provider，均失败"));
         assert!(message.contains("connection reset by peer"));
+    }
+
+    #[test]
+    fn auxiliary_errors_redact_upstream_payloads() {
+        let error = ProxyError::UpstreamError {
+            status: 503,
+            body: Some(
+                r#"{"error":"client-secret prompt-text data:image/png;base64,AAAA"}"#.to_string(),
+            ),
+        };
+
+        let summary = codex_auxiliary_error_message_for_log(&error);
+        assert_eq!(summary, "上游 HTTP 503");
+        assert!(!summary.contains("client-secret"));
+        assert!(!summary.contains("prompt-text"));
+        assert!(!summary.contains("base64"));
+
+        let (_, retry_log) = build_retryable_failure_log("provider", 1, 2, &error, true);
+        assert!(!retry_log.contains("client-secret"));
+        assert!(!retry_log.contains("prompt-text"));
+        assert!(!retry_log.contains("base64"));
+    }
+
+    #[test]
+    fn auxiliary_failure_boundaries_keep_capability_and_replay_semantics() {
+        for status in [404, 405, 501] {
+            assert!(is_auxiliary_capability_miss(&ProxyError::UpstreamError {
+                status,
+                body: None,
+            }));
+        }
+        assert!(!is_auxiliary_capability_miss(&ProxyError::UpstreamError {
+            status: 500,
+            body: None,
+        }));
+        assert!(paid_image_failure_is_known_not_accepted(
+            &ProxyError::UpstreamError {
+                status: 429,
+                body: None,
+            }
+        ));
+        assert!(!paid_image_failure_is_known_not_accepted(
+            &ProxyError::Timeout("response body timed out".to_string(),)
+        ));
+
+        let error =
+            ambiguous_image_replay_error(CodexAuxiliaryEndpoint::ImageGeneration, "上游 HTTP 500");
+        assert!(error.to_string().contains("/images/generations"));
+        assert!(error.to_string().contains("未自动重放"));
     }
 
     #[test]

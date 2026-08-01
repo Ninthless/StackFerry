@@ -82,6 +82,7 @@ export function UniversalProviderPanel() {
             defaultValue: "保存统一供应商失败",
           }),
         );
+        throw error;
       }
     },
     [editingProvider, loadProviders, t],
@@ -107,6 +108,7 @@ export function UniversalProviderPanel() {
             defaultValue: "保存并同步失败",
           }),
         );
+        throw error;
       }
     },
     [loadProviders, t],
@@ -220,13 +222,13 @@ export function UniversalProviderPanel() {
   const providerList = Object.values(providers);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 border-b border-border pb-3">
-        <Layers className="h-5 w-5 text-primary" />
+    <div className="mx-auto w-full max-w-5xl space-y-4">
+      <div className="flex items-center gap-2 border-b border-border-default pb-4 pt-1">
+        <Layers className="h-5 w-5 text-foreground" />
         <h2 className="text-lg font-semibold">
           {t("universalProvider.title", { defaultValue: "统一供应商" })}
         </h2>
-        <span className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+        <span className="rounded-md border border-border-default bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
           {providerList.length}
         </span>
         <Button
@@ -243,7 +245,7 @@ export function UniversalProviderPanel() {
       <p className="text-sm text-muted-foreground">
         {t("universalProvider.description", {
           defaultValue:
-            "统一供应商可以同时管理 Claude、Codex 和 Gemini 的配置。修改后会自动同步到所有启用的应用。",
+            "统一维护连接信息，并为每个已启用的 AI 应用生成原生供应商配置。",
         })}
       </p>
 
@@ -313,7 +315,7 @@ export function UniversalProviderPanel() {
           defaultValue: "同步统一供应商",
         })}
         message={t("universalProvider.syncConfirmDescription", {
-          defaultValue: `同步 "${syncConfirm.name}" 将会覆盖 Claude、Codex 和 Gemini 中关联的供应商配置。确定要继续吗？`,
+          defaultValue: `同步 "${syncConfirm.name}" 将会更新所有已启用应用中的关联供应商配置。确定要继续吗？`,
           name: syncConfirm.name,
         })}
         confirmText={t("universalProvider.syncConfirm", {

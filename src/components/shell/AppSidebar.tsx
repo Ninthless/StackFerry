@@ -100,12 +100,16 @@ export function AppSidebar({
           },
         ]
       : []),
-    {
-      key: "mcp",
-      label: t("mcp.title", { defaultValue: "MCP servers" }),
-      icon: Cable,
-      view: "mcp",
-    },
+    ...(activeApp !== "pi"
+      ? [
+          {
+            key: "mcp",
+            label: t("mcp.title", { defaultValue: "MCP servers" }),
+            icon: Cable,
+            view: "mcp" as AppView,
+          },
+        ]
+      : []),
   ];
 
   const openClawItems: NavItem[] = [

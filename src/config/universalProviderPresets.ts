@@ -46,12 +46,33 @@ const NEWAPI_DEFAULT_MODELS: UniversalProviderModels = {
     sonnetModel: "claude-sonnet-5",
     opusModel: "claude-opus-5",
   },
+  "claude-desktop": {
+    model: "claude-sonnet-5",
+    haikuModel: "claude-haiku-4-5-20251001",
+    sonnetModel: "claude-sonnet-5",
+    opusModel: "claude-opus-5",
+  },
   codex: {
     model: "gpt-5.6-sol",
     reasoningEffort: "high",
   },
+  pi: {
+    model: "gpt-5.6-sol",
+  },
   gemini: {
     model: "gemini-3.6-flash",
+  },
+  grokbuild: {
+    model: "gpt-5.6-sol",
+  },
+  opencode: {
+    model: "gpt-5.6-sol",
+  },
+  openclaw: {
+    model: "gpt-5.6-sol",
+  },
+  hermes: {
+    model: "gpt-5.6-sol",
   },
 };
 
@@ -64,8 +85,14 @@ export const universalProviderPresets: UniversalProviderPreset[] = [
     providerType: "newapi",
     defaultApps: {
       claude: true,
+      "claude-desktop": true,
       codex: true,
+      pi: true,
       gemini: true,
+      grokbuild: true,
+      opencode: true,
+      openclaw: true,
+      hermes: true,
     },
     defaultModels: NEWAPI_DEFAULT_MODELS,
     websiteUrl: "https://www.newapi.pro",
@@ -79,12 +106,18 @@ export const universalProviderPresets: UniversalProviderPreset[] = [
     providerType: "custom_gateway",
     defaultApps: {
       claude: true,
+      "claude-desktop": true,
       codex: true,
+      pi: true,
       gemini: true,
+      grokbuild: true,
+      opencode: true,
+      openclaw: true,
+      hermes: true,
     },
     defaultModels: NEWAPI_DEFAULT_MODELS,
     icon: "openai",
-    iconColor: "#6366F1",
+    iconColor: "currentColor",
     description: "自定义配置的 API 网关",
     isCustomTemplate: true,
   },
