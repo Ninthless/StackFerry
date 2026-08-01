@@ -39,27 +39,16 @@ const previousTag = tags.find((tag) => {
 });
 
 const range = previousTag ? `${previousTag}..${currentRef}` : currentRef;
-const commitLines = runGit([
-  "log",
-  "--reverse",
-  "--format=%H%x09%h%x09%s%x09%an",
-  range,
-])
+const commitLines = runGit(["log", "--format=%H%x09%h%x09%s%x09%an", range])
   .split("\n")
   .filter(Boolean);
 
 const commits = commitLines.map((line) => {
   const [sha, shortSha, subject, author] = line.split("\t");
-  return { sha, shortSha, subject, author };
+  return { sha, shortSha, subject, author, githubLogin: "" };
 });
 
-const contributors = new Map();
-for (const commit of commits) {
-  if (!contributors.has(commit.author))
-    contributors.set(commit.author, commit.author);
-}
-
-let githubContributors = [];
+const githubAuthorsBySha = new Map();
 if (previousTag) {
   try {
     const output = execFileSync(
@@ -69,62 +58,101 @@ if (previousTag) {
         "--paginate",
         `repos/${repository}/compare/${previousTag}...${currentRef}`,
         "--jq",
-        ".commits[] | select(.author.login != null) | .author.login",
+        '.commits[] | [.sha, (.author.login // "")] | @tsv',
       ],
       { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
     );
-    githubContributors = [...new Set(output.split("\n").filter(Boolean))];
+    for (const line of output.split("\n").filter(Boolean)) {
+      const [sha, login] = line.split("\t");
+      if (sha && login) githubAuthorsBySha.set(sha, login);
+    }
   } catch {
-    githubContributors = [];
+    githubAuthorsBySha.clear();
   }
 }
 
-const body = readFileSync(notesPath, "utf8").trim();
-const downloadSection = `## Downloads
+for (const commit of commits) {
+  commit.githubLogin = githubAuthorsBySha.get(commit.sha) ?? "";
+}
 
-- **macOS**: \`StackFerry-${currentRef}-macOS.dmg\` or \`StackFerry-${currentRef}-macOS.zip\`
-- **Windows (x86_64)**: \`StackFerry-${currentRef}-Windows.msi\` or \`StackFerry-${currentRef}-Windows-Portable.zip\`
-- **Windows (ARM64)**: \`StackFerry-${currentRef}-Windows-arm64.msi\` or \`StackFerry-${currentRef}-Windows-arm64-Portable.zip\`
-- **Linux (x86_64)**: \`StackFerry-${currentRef}-Linux-x86_64.AppImage\`, \`.deb\`, or \`.rpm\`
-- **Linux (ARM64)**: \`StackFerry-${currentRef}-Linux-arm64.AppImage\`, \`.deb\`, or \`.rpm\`
+const contributorEntries = [];
+const contributorKeys = new Set();
+for (const commit of commits) {
+  const value = commit.githubLogin || commit.author;
+  const key = value.toLocaleLowerCase();
+  if (!value || contributorKeys.has(key)) continue;
+  contributorKeys.add(key);
+  contributorEntries.push({
+    value,
+    isGithubLogin: Boolean(commit.githubLogin),
+  });
+}
 
-macOS builds use Ad-hoc signing without Apple notarization. The first launch may require approval in System Settings. In-app updates continue to verify the StackFerry updater signature.`;
+const formatCommit = ({ sha, shortSha, subject, author, githubLogin }) => {
+  const commitLink = `https://github.com/${repository}/commit/${sha}`;
+  const authorLabel = githubLogin ? `@${githubLogin}` : author;
+  return `- ${subject}（[${shortSha}](${commitLink})） ${authorLabel}`;
+};
 
 const commitLinesForRelease =
   commits.length > 0
-    ? commits.map(
-        ({ sha, shortSha, subject }) =>
-          `- [\`${shortSha}\`](https://github.com/${repository}/commit/${sha}) ${subject}`,
+    ? commits.map(formatCommit)
+    : ["- No commits found for this release."];
+const contributorLines =
+  contributorEntries.length > 0
+    ? contributorEntries.map(({ value, isGithubLogin }) =>
+        isGithubLogin ? `- @${value}` : `- ${value}`,
       )
-    : ["No commits found for this release."];
-
-const contributorNames =
-  githubContributors.length > 0
-    ? githubContributors.map((login) => `@${login}`)
-    : [...contributors.keys()];
-const contributorSection = `## Contributors
-
-${contributorNames.length > 0 ? contributorNames.map((name) => `- ${name}`).join("\n") : "- None listed"}`;
+    : ["- None listed"];
+const body = readFileSync(notesPath, "utf8").trim();
 const changelogAssetName = `StackFerry-${currentRef}-changelog.md`;
 const changelogUrl = `https://github.com/${repository}/releases/download/${currentRef}/${changelogAssetName}`;
-const fullCommitSection = `## Changes since ${previousTag ?? "the beginning"}\n\n${commitLinesForRelease.join("\n")}`;
-const fullChangelog = `${body}\n\n${downloadSection}\n\n${fullCommitSection}\n\n${contributorSection}\n`;
-if (changelogPath) writeFileSync(changelogPath, fullChangelog);
+const fullCommitSection = `### Commits\n\n${commitLinesForRelease.join("\n")}`;
+const fullContributorSection = `### Contributors\n\n${contributorLines.join("\n")}`;
+const completeBody = `${body}\n\n${fullCommitSection}\n\n${fullContributorSection}`;
+
+if (changelogPath) writeFileSync(changelogPath, `${completeBody}\n`);
 
 const maxBodyLength = 60000;
-const fixedBody = `${body}\n\n${downloadSection}\n\n## Complete changelog\n\n[Download the complete commit changelog](${changelogUrl}).\n\n${contributorSection}`;
-const availableCommitLength = maxBodyLength - fixedBody.length - 120;
 const visibleCommitLines = [];
-let visibleCommitLength = 0;
+const visibleContributorLines = [...contributorLines];
+
+const buildReleaseBody = (commitLines, contributors) => {
+  const omittedCommitCount = commitLinesForRelease.length - commitLines.length;
+  const omittedContributorCount = contributorLines.length - contributors.length;
+  const commitSection = `### Commits\n\n${commitLines.join("\n")}${
+    omittedCommitCount > 0
+      ? `\n\n_${omittedCommitCount} additional commits are included in the complete changelog attachment: [${changelogAssetName}](${changelogUrl})._`
+      : ""
+  }`;
+  const contributorSection = `### Contributors\n\n${contributors.join("\n")}${
+    omittedContributorCount > 0
+      ? `\n\n_${omittedContributorCount} additional contributors are included in the complete changelog attachment: [${changelogAssetName}](${changelogUrl})._`
+      : ""
+  }`;
+  return `${body}\n\n${commitSection}\n\n${contributorSection}\n`;
+};
+
 for (const line of commitLinesForRelease) {
-  if (visibleCommitLength + line.length + 1 > availableCommitLength) break;
   visibleCommitLines.push(line);
-  visibleCommitLength += line.length + 1;
 }
-const omittedCommitCount =
-  commitLinesForRelease.length - visibleCommitLines.length;
-const visibleCommitSection = `## Changes since ${previousTag ?? "the beginning"}\n\n${visibleCommitLines.join("\n")}${omittedCommitCount > 0 ? `\n\n_${omittedCommitCount} additional commits are included in the complete changelog attachment._` : ""}`;
+
+while (
+  buildReleaseBody(visibleCommitLines, visibleContributorLines).length >
+    maxBodyLength &&
+  visibleCommitLines.length > 0
+) {
+  visibleCommitLines.pop();
+}
+
+while (
+  buildReleaseBody(visibleCommitLines, visibleContributorLines).length >
+    maxBodyLength &&
+  visibleContributorLines.length > 1
+) {
+  visibleContributorLines.pop();
+}
 
 process.stdout.write(
-  `${body}\n\n${downloadSection}\n\n${visibleCommitSection}\n\n## Complete changelog\n\n[Download the complete commit changelog](${changelogUrl}).\n\n${contributorSection}\n`,
+  buildReleaseBody(visibleCommitLines, visibleContributorLines),
 );

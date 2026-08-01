@@ -461,7 +461,7 @@ jobs:
 
           jq -n \
             --arg version "$version" \
-            --arg notes "See the GitHub Release page for the complete changelog and contributor list." \
+            --arg notes "StackFerry ${GITHUB_REF_NAME} release. See the GitHub Release page for the bilingual notes." \
             --arg pub_date "$published_at" \
             '{version: $version, notes: $notes, pub_date: $pub_date, platforms: {}}' \
             > release-assets/latest.json
