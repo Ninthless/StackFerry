@@ -21,6 +21,7 @@ import type {
   CodexApiFormat,
   CodexCatalogModel,
   CodexChatReasoning,
+  CodexReasoningEffort,
   PromptCacheRoutingMode,
   ClaudeApiKeyField,
   OpenCodeModel,
@@ -147,6 +148,16 @@ type PresetEntry = {
 const isJsonObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
+const codexReasoningEfforts: readonly CodexReasoningEffort[] = [
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+];
+
 export const serializeGeminiSettingsForSave = (
   env: Record<string, string>,
   config: string,
@@ -183,6 +194,18 @@ export const normalizeCodexCatalogModelsForSave = (
     );
 
     const baseInstructions = item.baseInstructions?.trim();
+    const supportedReasoningLevels = Array.from(
+      new Set(
+        (item.supportedReasoningLevels ?? []).filter((effort) =>
+          codexReasoningEfforts.includes(effort),
+        ),
+      ),
+    );
+    const defaultReasoningLevel =
+      item.defaultReasoningLevel &&
+      supportedReasoningLevels.includes(item.defaultReasoningLevel)
+        ? item.defaultReasoningLevel
+        : undefined;
 
     normalized.push({
       model,
@@ -196,6 +219,10 @@ export const normalizeCodexCatalogModelsForSave = (
         ? { inputModalities }
         : {}),
       ...(baseInstructions ? { baseInstructions } : {}),
+      ...(defaultReasoningLevel ? { defaultReasoningLevel } : {}),
+      ...(supportedReasoningLevels.length > 0
+        ? { supportedReasoningLevels }
+        : {}),
     });
   }
 

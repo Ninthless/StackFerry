@@ -21,6 +21,24 @@ pub const STACKFERRY_CODEX_MODEL_PROVIDER_ID: &str = "custom";
 pub const STACKFERRY_CODEX_OFFICIAL_PROXY_PROVIDER_ID: &str = "stackferry-official";
 pub const STACKFERRY_CODEX_MODEL_CATALOG_FILENAME: &str = "stackferry-model-catalog.json";
 const CODEX_PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
+const XFCODE_CODEX_BASE_URL: &str = "https://api.orangecc.cc/v1";
+const CODEX_REASONING_LEVELS: &[&str] = &["none", "low", "medium", "high", "xhigh", "max", "ultra"];
+const CODEX_REASONING_LOW_TO_XHIGH: &[&str] = &["low", "medium", "high", "xhigh"];
+const CODEX_REASONING_LOW_TO_MAX: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+const CODEX_REASONING_LOW_TO_ULTRA: &[&str] = &["low", "medium", "high", "xhigh", "max", "ultra"];
+const XFCODE_CODEX_MODELS: &[(&str, &str, Option<u64>)] = &[
+    ("gpt-5.6-sol", "GPT-5.6 Sol", Some(272_000)),
+    ("gpt-5.6-terra", "GPT-5.6 Terra", Some(272_000)),
+    ("gpt-5.6-luna", "GPT-5.6 Luna", Some(272_000)),
+    ("gpt-5.6", "GPT-5.6", None),
+    ("gpt-5.5", "GPT-5.5", Some(272_000)),
+    ("gpt-5.5-openai-compact", "GPT-5.5 Compact", None),
+    ("gpt-5.4", "GPT-5.4", Some(272_000)),
+    ("gpt-5.4-mini", "GPT-5.4 Mini", Some(272_000)),
+    ("gpt-5.4-openai-compact", "GPT-5.4 Compact", None),
+    ("gpt-5.3-codex-spark", "GPT-5.3 Codex Spark", None),
+    ("codex-auto-review", "Codex Auto Review", Some(272_000)),
+];
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -35,6 +53,9 @@ static CODEX_MODEL_CATALOG_TEMPLATE_CACHE: OnceCell<Value> = OnceCell::new();
 
 /// Top-level `config.toml` key that controls Codex's built-in web-search tool.
 pub(crate) const CODEX_WEB_SEARCH_FIELD: &str = "web_search";
+const CODEX_WEB_SEARCH_LIVE: &str = "live";
+const CODEX_CUSTOM_ACTOR_HEADER: &str = "x-openai-actor-authorization";
+const CODEX_CUSTOM_ACTOR_VALUE: &str = "custom";
 /// Value that disables the web-search tool. Some native `/responses` gateways
 /// reject a `web_search` tool with `responses_feature_not_supported` ("tool type
 /// 'web_search' is not supported by this gateway phase"), so for those we write
@@ -461,6 +482,132 @@ fn codex_catalog_input_modalities(
     modalities.iter().map(|item| (*item).to_string()).collect()
 }
 
+fn is_codex_reasoning_level(value: &str) -> bool {
+    CODEX_REASONING_LEVELS.contains(&value)
+}
+
+fn parse_codex_reasoning_levels(value: Option<&Value>) -> Vec<String> {
+    let Some(items) = value.and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut seen = HashSet::new();
+    items
+        .iter()
+        .filter_map(|item| {
+            item.as_str()
+                .or_else(|| item.get("effort").and_then(Value::as_str))
+        })
+        .map(str::trim)
+        .filter(|effort| is_codex_reasoning_level(effort))
+        .filter(|effort| seen.insert((*effort).to_string()))
+        .map(str::to_string)
+        .collect()
+}
+
+fn inferred_codex_reasoning(model: &str) -> Option<(&'static str, &'static [&'static str])> {
+    let model = normalized_codex_model_slug(model);
+
+    match model.as_str() {
+        "gpt-5.6-sol" => Some(("low", CODEX_REASONING_LOW_TO_ULTRA)),
+        "gpt-5.6-terra" => Some(("medium", CODEX_REASONING_LOW_TO_ULTRA)),
+        "gpt-5.6-luna" => Some(("medium", CODEX_REASONING_LOW_TO_MAX)),
+        "codex-auto-review" => Some(("medium", CODEX_REASONING_LOW_TO_XHIGH)),
+        _ if model.starts_with("gpt-5.6") => Some(("medium", CODEX_REASONING_LOW_TO_MAX)),
+        _ if model.starts_with("gpt-5.5")
+            || model.starts_with("gpt-5.4")
+            || model.starts_with("gpt-5.3")
+            || model.starts_with("gpt-5.2") =>
+        {
+            Some(("medium", CODEX_REASONING_LOW_TO_XHIGH))
+        }
+        _ => None,
+    }
+}
+
+fn normalized_codex_model_slug(model: &str) -> String {
+    model
+        .rsplit('/')
+        .next()
+        .unwrap_or(model)
+        .trim()
+        .to_ascii_lowercase()
+}
+
+fn is_known_openai_codex_model(model: &str) -> bool {
+    let model = normalized_codex_model_slug(model);
+    model == "codex-auto-review"
+        || model.starts_with("gpt-5.2")
+        || model.starts_with("gpt-5.3")
+        || model.starts_with("gpt-5.4")
+        || model.starts_with("gpt-5.5")
+        || model.starts_with("gpt-5.6")
+}
+
+fn codex_known_max_context_window(model: &str, context_window: u64) -> u64 {
+    match normalized_codex_model_slug(model).as_str() {
+        "gpt-5.4" | "codex-auto-review" => 1_000_000,
+        _ => context_window,
+    }
+}
+
+fn codex_reasoning_description(effort: &str) -> &'static str {
+    match effort {
+        "none" => "Disable Thinking",
+        "low" => "Fast responses with lighter reasoning",
+        "medium" => "Balances speed and reasoning depth for everyday tasks",
+        "high" => "Greater reasoning depth for complex problems",
+        "xhigh" => "Extra high reasoning depth for complex problems",
+        "max" => "Maximum reasoning depth for the hardest problems",
+        "ultra" => "Maximum reasoning with automatic task delegation",
+        _ => "Reasoning effort",
+    }
+}
+
+fn codex_catalog_reasoning(template: &Value, spec: &CodexCatalogModelSpec) -> (String, Vec<Value>) {
+    let inferred = inferred_codex_reasoning(&spec.model);
+    let mut supported = spec
+        .supported_reasoning_levels
+        .clone()
+        .filter(|levels| !levels.is_empty())
+        .or_else(|| {
+            inferred.map(|(_, levels)| levels.iter().map(|level| (*level).to_string()).collect())
+        })
+        .unwrap_or_else(|| {
+            parse_codex_reasoning_levels(template.get("supported_reasoning_levels"))
+        });
+    if supported.is_empty() {
+        supported.push("high".to_string());
+    }
+
+    let explicit_default = spec
+        .default_reasoning_level
+        .as_deref()
+        .filter(|level| supported.iter().any(|item| item == level));
+    let inferred_default = inferred
+        .map(|(level, _)| level)
+        .filter(|level| supported.iter().any(|item| item == level));
+    let template_default = template
+        .get("default_reasoning_level")
+        .and_then(Value::as_str)
+        .filter(|level| supported.iter().any(|item| item == level));
+    let default = explicit_default
+        .or(inferred_default)
+        .or(template_default)
+        .unwrap_or(&supported[0])
+        .to_string();
+    let entries = supported
+        .iter()
+        .map(|effort| {
+            json!({
+                "effort": effort,
+                "description": codex_reasoning_description(effort),
+            })
+        })
+        .collect();
+
+    (default, entries)
+}
+
 fn codex_catalog_model_entry(
     template: &Value,
     spec: &CodexCatalogModelSpec,
@@ -476,12 +623,38 @@ fn codex_catalog_model_entry(
     entry_obj.insert("display_name".to_string(), json!(spec.display_name));
     entry_obj.insert("description".to_string(), json!(spec.display_name));
     entry_obj.insert("context_window".to_string(), json!(spec.context_window));
-    entry_obj.insert("max_context_window".to_string(), json!(spec.context_window));
+    entry_obj.insert(
+        "max_context_window".to_string(),
+        json!(codex_known_max_context_window(
+            &spec.model,
+            spec.context_window
+        )),
+    );
     entry_obj.insert("priority".to_string(), json!(1000 + priority));
     entry_obj.insert("additional_speed_tiers".to_string(), json!([]));
     entry_obj.insert("service_tiers".to_string(), json!([]));
     entry_obj.insert("availability_nux".to_string(), Value::Null);
     entry_obj.insert("upgrade".to_string(), Value::Null);
+    let (default_reasoning_level, supported_reasoning_levels) =
+        codex_catalog_reasoning(template, spec);
+    entry_obj.insert(
+        "default_reasoning_level".to_string(),
+        json!(default_reasoning_level),
+    );
+    entry_obj.insert(
+        "supported_reasoning_levels".to_string(),
+        json!(supported_reasoning_levels),
+    );
+    if is_known_openai_codex_model(&spec.model) {
+        entry_obj.insert("supports_parallel_tool_calls".to_string(), json!(true));
+        entry_obj.insert("support_verbosity".to_string(), json!(true));
+        entry_obj.insert("default_verbosity".to_string(), json!("low"));
+        entry_obj.insert("supports_search_tool".to_string(), json!(true));
+        entry_obj.insert(
+            "supports_image_detail_original".to_string(),
+            json!(!normalized_codex_model_slug(&spec.model).starts_with("gpt-5.2")),
+        );
+    }
 
     // Image support is a model capability, not a tool-profile capability.
     // Trust hidden preset metadata first, then the confirmed text-only registry;
@@ -550,6 +723,41 @@ struct CodexCatalogModelSpec {
     /// back to the template default when absent. Only consulted for
     /// `NativeResponses`.
     base_instructions: Option<String>,
+    default_reasoning_level: Option<String>,
+    supported_reasoning_levels: Option<Vec<String>>,
+}
+
+fn is_legacy_xfcode_catalog(models: &[Value], config_text: &str) -> bool {
+    if models.len() != 1
+        || extract_codex_base_url(config_text)
+            .as_deref()
+            .map(|url| url.trim_end_matches('/'))
+            != Some(XFCODE_CODEX_BASE_URL)
+    {
+        return false;
+    }
+
+    models[0].as_object().is_some_and(|entry| {
+        entry.len() == 1 && entry.get("model").and_then(Value::as_str) == Some("gpt-5.6-sol")
+    })
+}
+
+fn xfcode_catalog_model_specs(default_context_window: u64) -> Vec<CodexCatalogModelSpec> {
+    XFCODE_CODEX_MODELS
+        .iter()
+        .map(
+            |(model, display_name, context_window)| CodexCatalogModelSpec {
+                model: (*model).to_string(),
+                display_name: (*display_name).to_string(),
+                context_window: context_window.unwrap_or(default_context_window),
+                supports_parallel_tool_calls: None,
+                input_modalities: None,
+                base_instructions: None,
+                default_reasoning_level: None,
+                supported_reasoning_levels: None,
+            },
+        )
+        .collect()
 }
 
 fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCatalogModelSpec> {
@@ -563,6 +771,9 @@ fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCa
 
     let default_context_window =
         extract_codex_top_level_u64(config_text, "model_context_window").unwrap_or(128_000);
+    if is_legacy_xfcode_catalog(models, config_text) {
+        return xfcode_catalog_model_specs(default_context_window);
+    }
     let mut seen = std::collections::HashSet::new();
     let mut specs = Vec::new();
 
@@ -618,6 +829,21 @@ fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCa
             .map(str::trim)
             .filter(|text| !text.is_empty())
             .map(str::to_string);
+        let default_reasoning_level = model_config
+            .get("defaultReasoningLevel")
+            .or_else(|| model_config.get("default_reasoning_level"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|level| is_codex_reasoning_level(level))
+            .map(str::to_string);
+        let supported_reasoning_levels = {
+            let levels = parse_codex_reasoning_levels(
+                model_config
+                    .get("supportedReasoningLevels")
+                    .or_else(|| model_config.get("supported_reasoning_levels")),
+            );
+            (!levels.is_empty()).then_some(levels)
+        };
 
         specs.push(CodexCatalogModelSpec {
             model: model.to_string(),
@@ -626,6 +852,8 @@ fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCa
             supports_parallel_tool_calls,
             input_modalities,
             base_instructions,
+            default_reasoning_level,
+            supported_reasoning_levels,
         });
     }
 
@@ -1068,6 +1296,84 @@ fn set_codex_native_web_search_field(config_text: &str, disable: bool) -> Result
     Ok(doc.to_string())
 }
 
+fn set_codex_web_search_live_if_unset(config_text: &str) -> Result<String, AppError> {
+    let mut doc = config_text
+        .parse::<DocumentMut>()
+        .map_err(|e| AppError::Message(format!("Invalid Codex config.toml: {e}")))?;
+    let current = doc
+        .get(CODEX_WEB_SEARCH_FIELD)
+        .and_then(|item| item.as_str());
+    if current.is_none() || current == Some(CODEX_WEB_SEARCH_DISABLED) {
+        doc[CODEX_WEB_SEARCH_FIELD] = toml_edit::value(CODEX_WEB_SEARCH_LIVE);
+    }
+    Ok(doc.to_string())
+}
+
+fn normalize_codex_third_party_provider_config(config_text: &str) -> Result<String, AppError> {
+    let mut doc = config_text
+        .parse::<DocumentMut>()
+        .map_err(|e| AppError::Message(format!("Invalid Codex config.toml: {e}")))?;
+    let Some(provider_id) = active_codex_model_provider_id(&doc) else {
+        return Ok(config_text.to_string());
+    };
+    if !is_custom_codex_model_provider_id(&provider_id) {
+        return Ok(config_text.to_string());
+    }
+
+    let Some(provider) = doc
+        .get_mut("model_providers")
+        .and_then(toml_edit::Item::as_table_like_mut)
+        .and_then(|providers| providers.get_mut(&provider_id))
+        .and_then(toml_edit::Item::as_table_like_mut)
+    else {
+        return Ok(config_text.to_string());
+    };
+    let is_official = provider.get("name").and_then(|item| item.as_str()) == Some("OpenAI");
+    let has_base_url = provider
+        .get("base_url")
+        .and_then(|item| item.as_str())
+        .is_some_and(|url| !url.trim().is_empty());
+    if is_official || !has_base_url {
+        return Ok(config_text.to_string());
+    }
+
+    provider.insert("requires_openai_auth", toml_edit::value(false));
+    if provider
+        .get("http_headers")
+        .is_none_or(|item| item.as_table_like().is_none())
+    {
+        provider.insert(
+            "http_headers",
+            toml_edit::Item::Value(toml_edit::Value::InlineTable(toml_edit::InlineTable::new())),
+        );
+    }
+    if let Some(headers) = provider
+        .get_mut("http_headers")
+        .and_then(toml_edit::Item::as_table_like_mut)
+    {
+        headers.insert(
+            CODEX_CUSTOM_ACTOR_HEADER,
+            toml_edit::value(CODEX_CUSTOM_ACTOR_VALUE),
+        );
+    }
+
+    Ok(doc.to_string())
+}
+
+fn prepare_codex_web_search_config(
+    config_text: &str,
+    profile: CodexCatalogToolProfile,
+) -> Result<String, AppError> {
+    let disable = profile == CodexCatalogToolProfile::Anthropic
+        || (profile == CodexCatalogToolProfile::NativeResponses
+            && codex_native_gateway_rejects_web_search(config_text));
+    if disable {
+        set_codex_native_web_search_field(config_text, true)
+    } else {
+        set_codex_web_search_live_if_unset(config_text)
+    }
+}
+
 /// Generate Codex `model_catalog_json` from provider settings and inject/remove
 /// the top-level TOML field that points Codex to the generated file.
 pub fn prepare_codex_config_text_with_model_catalog(
@@ -1076,32 +1382,23 @@ pub fn prepare_codex_config_text_with_model_catalog(
     profile: CodexCatalogToolProfile,
 ) -> Result<String, AppError> {
     let catalog_path = get_codex_model_catalog_path();
+    let config_text = normalize_codex_third_party_provider_config(config_text)?;
 
-    if let Some(catalog) = codex_model_catalog_from_settings(settings, config_text, profile)? {
-        let config_text = set_codex_model_catalog_json_field(config_text, Some(&catalog_path))?;
+    if let Some(catalog) = codex_model_catalog_from_settings(settings, &config_text, profile)? {
+        let config_text = set_codex_model_catalog_json_field(&config_text, Some(&catalog_path))?;
         // Disable web_search only for native gateways on the reject blacklist
         // (MiMo/LongCat/MiniMax by host or model brand; Qwen3-Coder by model).
         // Everything else — relays, DouBao, web-search-capable Qwen models,
         // unknown providers — keeps Codex's default.
-        let disable_web_search = match profile {
-            // The Responses→Anthropic transform silently drops the Codex web_search
-            // hosted tool, so always disable it here rather than present a dead tool.
-            CodexCatalogToolProfile::Anthropic => true,
-            CodexCatalogToolProfile::NativeResponses => {
-                codex_native_gateway_rejects_web_search(&config_text)
-            }
-            CodexCatalogToolProfile::ProxyChat => false,
-        };
-        let config_text = set_codex_native_web_search_field(&config_text, disable_web_search)?;
+        let config_text = prepare_codex_web_search_config(&config_text, profile)?;
         write_json_file(&catalog_path, &catalog)?;
         Ok(config_text)
     } else {
-        let config_text = set_codex_model_catalog_json_field(config_text, None)?;
+        let config_text = set_codex_model_catalog_json_field(&config_text, None)?;
         // Even without a generated catalog, the Responses→Anthropic transform drops the
         // Codex web_search hosted tool, so keep the invariant that an Anthropic provider
         // never presents it as a dead tool.
-        let disable_web_search = profile == CodexCatalogToolProfile::Anthropic;
-        set_codex_native_web_search_field(&config_text, disable_web_search)
+        prepare_codex_web_search_config(&config_text, profile)
     }
 }
 
@@ -1236,6 +1533,24 @@ fn build_simplified_catalog_from_texts(config_text: &str, catalog_text: &str) ->
             if !mods.is_empty() && mods != inferred {
                 obj.insert("inputModalities".to_string(), json!(mods));
             }
+        }
+        let supported_reasoning_levels =
+            parse_codex_reasoning_levels(entry.get("supported_reasoning_levels"));
+        if !supported_reasoning_levels.is_empty() {
+            if let Some(default_reasoning_level) = entry
+                .get("default_reasoning_level")
+                .and_then(Value::as_str)
+                .filter(|level| supported_reasoning_levels.iter().any(|item| item == level))
+            {
+                obj.insert(
+                    "defaultReasoningLevel".to_string(),
+                    json!(default_reasoning_level),
+                );
+            }
+            obj.insert(
+                "supportedReasoningLevels".to_string(),
+                json!(supported_reasoning_levels),
+            );
         }
 
         entries.push(Value::Object(obj));
@@ -2840,6 +3155,8 @@ base_url = "https://production.api/v1"
             supports_parallel_tool_calls: None,
             input_modalities: None,
             base_instructions: None,
+            default_reasoning_level: None,
+            supported_reasoning_levels: None,
         }];
         let catalog =
             codex_model_catalog_from_specs(&specs, &template, CodexCatalogToolProfile::ProxyChat);
@@ -2952,6 +3269,121 @@ base_url = "https://production.api/v1"
     }
 
     #[test]
+    fn model_catalog_uses_model_specific_reasoning_capabilities() {
+        let settings = json!({
+            "modelCatalog": {
+                "models": [
+                    { "model": "gpt-5.6-sol" },
+                    { "model": "gpt-5.6-terra" },
+                    { "model": "gpt-5.6-luna" },
+                    { "model": "unknown-model" },
+                    {
+                        "model": "custom-model",
+                        "defaultReasoningLevel": "ultra",
+                        "supportedReasoningLevels": ["none", "medium", "ultra", "invalid", "medium"]
+                    }
+                ]
+            }
+        });
+        let specs = codex_catalog_model_specs(&settings, "");
+        let template = load_codex_native_responses_template();
+        let catalog = codex_model_catalog_from_specs(
+            &specs,
+            &template,
+            CodexCatalogToolProfile::NativeResponses,
+        );
+        let models = catalog["models"].as_array().unwrap();
+        let entry = |slug: &str| models.iter().find(|item| item["slug"] == slug).unwrap();
+        let efforts = |slug: &str| {
+            entry(slug)["supported_reasoning_levels"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|item| item["effort"].as_str())
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(entry("gpt-5.6-sol")["default_reasoning_level"], "low");
+        assert_eq!(entry("gpt-5.6-sol")["supports_parallel_tool_calls"], true);
+        assert_eq!(entry("gpt-5.6-sol")["support_verbosity"], true);
+        assert_eq!(entry("gpt-5.6-sol")["supports_search_tool"], true);
+        assert_eq!(entry("gpt-5.6-sol")["supports_image_detail_original"], true);
+        assert_eq!(
+            efforts("gpt-5.6-sol"),
+            vec!["low", "medium", "high", "xhigh", "max", "ultra"]
+        );
+        assert_eq!(entry("gpt-5.6-terra")["default_reasoning_level"], "medium");
+        assert_eq!(
+            efforts("gpt-5.6-terra"),
+            vec!["low", "medium", "high", "xhigh", "max", "ultra"]
+        );
+        assert_eq!(entry("gpt-5.6-luna")["default_reasoning_level"], "medium");
+        assert_eq!(
+            efforts("gpt-5.6-luna"),
+            vec!["low", "medium", "high", "xhigh", "max"]
+        );
+        assert_eq!(entry("unknown-model")["default_reasoning_level"], "high");
+        assert_eq!(efforts("unknown-model"), vec!["none", "high"]);
+        assert_eq!(
+            entry("unknown-model")["supports_parallel_tool_calls"],
+            false
+        );
+        assert_eq!(entry("unknown-model")["supports_search_tool"], false);
+        assert_eq!(entry("custom-model")["default_reasoning_level"], "ultra");
+        assert_eq!(efforts("custom-model"), vec!["none", "medium", "ultra"]);
+    }
+
+    #[test]
+    fn legacy_xfcode_catalog_expands_without_overwriting_custom_mappings() {
+        let config = r#"model_provider = "custom"
+
+[model_providers.custom]
+base_url = "https://api.orangecc.cc/v1"
+"#;
+        let legacy = json!({
+            "modelCatalog": { "models": [{ "model": "gpt-5.6-sol" }] }
+        });
+        let expanded = codex_catalog_model_specs(&legacy, config);
+        assert_eq!(expanded.len(), XFCODE_CODEX_MODELS.len());
+        assert_eq!(expanded[0].model, "gpt-5.6-sol");
+        assert!(expanded.iter().any(|spec| spec.model == "gpt-5.6-terra"));
+        assert!(expanded
+            .iter()
+            .any(|spec| spec.model == "codex-auto-review"));
+
+        let customized = json!({
+            "modelCatalog": {
+                "models": [{ "model": "gpt-5.6-sol", "displayName": "Only Sol" }]
+            }
+        });
+        let preserved = codex_catalog_model_specs(&customized, config);
+        assert_eq!(preserved.len(), 1);
+        assert_eq!(preserved[0].display_name, "Only Sol");
+    }
+
+    #[test]
+    fn simplified_catalog_round_trips_reasoning_capabilities() {
+        let catalog = json!({
+            "models": [{
+                "slug": "custom-model",
+                "display_name": "Custom Model",
+                "context_window": 128000,
+                "default_reasoning_level": "xhigh",
+                "supported_reasoning_levels": [
+                    { "effort": "low", "description": "Low" },
+                    { "effort": "xhigh", "description": "Extra high" }
+                ]
+            }]
+        });
+        let result = build_simplified_catalog_from_texts("", &catalog.to_string()).unwrap();
+        assert_eq!(result["models"][0]["defaultReasoningLevel"], "xhigh");
+        assert_eq!(
+            result["models"][0]["supportedReasoningLevels"],
+            json!(["low", "xhigh"])
+        );
+    }
+
+    #[test]
     fn native_responses_profile_suppresses_apply_patch_and_keeps_shell() {
         // Native (direct) /responses providers must NOT emit a freeform
         // apply_patch (type=="custom") tool — gateways like MiMo reject it.
@@ -3038,6 +3470,8 @@ base_url = "https://production.api/v1"
                 supports_parallel_tool_calls: None,
                 input_modalities: None,
                 base_instructions: None,
+                default_reasoning_level: None,
+                supported_reasoning_levels: None,
             },
             CodexCatalogModelSpec {
                 model: "deepseek/deepseek-v4-pro".to_string(),
@@ -3046,6 +3480,8 @@ base_url = "https://production.api/v1"
                 supports_parallel_tool_calls: None,
                 input_modalities: None,
                 base_instructions: None,
+                default_reasoning_level: None,
+                supported_reasoning_levels: None,
             },
             CodexCatalogModelSpec {
                 model: "glm-5.2v".to_string(),
@@ -3054,6 +3490,8 @@ base_url = "https://production.api/v1"
                 supports_parallel_tool_calls: None,
                 input_modalities: None,
                 base_instructions: None,
+                default_reasoning_level: None,
+                supported_reasoning_levels: None,
             },
             CodexCatalogModelSpec {
                 model: "deepseek-v4-flash".to_string(),
@@ -3062,6 +3500,8 @@ base_url = "https://production.api/v1"
                 supports_parallel_tool_calls: None,
                 input_modalities: Some(vec!["text".to_string(), "image".to_string()]),
                 base_instructions: None,
+                default_reasoning_level: None,
+                supported_reasoning_levels: None,
             },
             CodexCatalogModelSpec {
                 model: "custom-text-alias".to_string(),
@@ -3070,6 +3510,8 @@ base_url = "https://production.api/v1"
                 supports_parallel_tool_calls: None,
                 input_modalities: Some(vec!["text".to_string()]),
                 base_instructions: None,
+                default_reasoning_level: None,
+                supported_reasoning_levels: None,
             },
         ];
 
@@ -3141,6 +3583,8 @@ base_url = "https://production.api/v1"
             supports_parallel_tool_calls: None,
             input_modalities: None,
             base_instructions: None,
+            default_reasoning_level: None,
+            supported_reasoning_levels: None,
         }];
         // Using a gpt-5.5-shaped template under ProxyChat must NOT strip
         // apply_patch_tool_type. (The native template lacks it, so synthesize
@@ -3245,6 +3689,45 @@ web_search = "disabled"
     }
 
     #[test]
+    fn third_party_provider_config_uses_custom_actor_auth_without_dropping_headers() {
+        let input = r#"model_provider = "custom"
+
+[model_providers.custom]
+name = "Gateway"
+base_url = "https://gateway.example/v1"
+wire_api = "responses"
+requires_openai_auth = true
+http_headers = { "x-existing" = "kept" }
+"#;
+        let result = normalize_codex_third_party_provider_config(input).unwrap();
+        let parsed: toml::Value = toml::from_str(&result).unwrap();
+        let provider = &parsed["model_providers"]["custom"];
+        assert_eq!(provider["requires_openai_auth"].as_bool(), Some(false));
+        assert_eq!(
+            provider["http_headers"][CODEX_CUSTOM_ACTOR_HEADER].as_str(),
+            Some(CODEX_CUSTOM_ACTOR_VALUE)
+        );
+        assert_eq!(
+            provider["http_headers"]["x-existing"].as_str(),
+            Some("kept")
+        );
+    }
+
+    #[test]
+    fn third_party_provider_normalization_does_not_change_official_route() {
+        let input = r#"model_provider = "stackferry-official"
+
+[model_providers.stackferry-official]
+name = "OpenAI"
+base_url = "http://127.0.0.1:15721/codex"
+wire_api = "responses"
+requires_openai_auth = true
+"#;
+        let result = normalize_codex_third_party_provider_config(input).unwrap();
+        assert_eq!(result, input);
+    }
+
+    #[test]
     fn anthropic_profile_disables_web_search_without_catalog() {
         // Regression: even when no model catalog is generated (empty/absent
         // modelCatalog), an Anthropic provider must still disable web_search — the
@@ -3266,7 +3749,6 @@ web_search = "disabled"
             "Anthropic profile must disable web_search even with no catalog"
         );
 
-        // ProxyChat on the same no-catalog path must NOT add a disable line.
         let proxy = prepare_codex_config_text_with_model_catalog(
             &settings,
             config,
@@ -3274,9 +3756,9 @@ web_search = "disabled"
         )
         .unwrap();
         let parsed: toml::Value = toml::from_str(&proxy).unwrap();
-        assert!(
-            parsed.get("web_search").is_none(),
-            "ProxyChat profile must not disable web_search on the no-catalog path"
+        assert_eq!(
+            parsed.get("web_search").and_then(|value| value.as_str()),
+            Some("live")
         );
     }
 

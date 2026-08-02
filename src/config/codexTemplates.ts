@@ -15,13 +15,15 @@ export interface CodexTemplate {
 export function getCodexCustomTemplate(): CodexTemplate {
   const config = `model_provider = "custom"
 model = "gpt-5.6-sol"
-model_reasoning_effort = "high"
+model_reasoning_effort = "low"
 disable_response_storage = true
+web_search = "live"
 
 [model_providers.custom]
 name = "custom"
 wire_api = "responses"
-requires_openai_auth = true`;
+requires_openai_auth = false
+http_headers = { "x-openai-actor-authorization" = "custom" }`;
 
   return {
     auth: { OPENAI_API_KEY: "" },

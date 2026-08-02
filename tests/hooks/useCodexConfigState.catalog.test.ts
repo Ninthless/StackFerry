@@ -23,6 +23,8 @@ describe("useCodexConfigState catalog load", () => {
               supportsParallelToolCalls: true,
               inputModalities: ["text", "image"],
               baseInstructions: "You are Codex, based on MiniMax-M3.",
+              defaultReasoningLevel: "ultra",
+              supportedReasoningLevels: ["low", "high", "ultra"],
             },
           ],
         },
@@ -39,6 +41,8 @@ describe("useCodexConfigState catalog load", () => {
         supportsParallelToolCalls: true,
         inputModalities: ["text", "image"],
         baseInstructions: "You are Codex, based on MiniMax-M3.",
+        defaultReasoningLevel: "ultra",
+        supportedReasoningLevels: ["low", "high", "ultra"],
       },
     ]);
   });
@@ -57,6 +61,8 @@ describe("useCodexConfigState catalog load", () => {
               supports_parallel_tool_calls: false,
               input_modalities: ["text"],
               base_instructions: "You are MiMo, developed by Xiaomi.",
+              default_reasoning_level: "xhigh",
+              supported_reasoning_levels: ["low", "medium", "high", "xhigh"],
             },
           ],
         },
@@ -73,6 +79,8 @@ describe("useCodexConfigState catalog load", () => {
         supportsParallelToolCalls: false,
         inputModalities: ["text"],
         baseInstructions: "You are MiMo, developed by Xiaomi.",
+        defaultReasoningLevel: "xhigh",
+        supportedReasoningLevels: ["low", "medium", "high", "xhigh"],
       },
     ]);
   });

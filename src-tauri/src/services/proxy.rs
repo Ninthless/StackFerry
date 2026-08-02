@@ -2916,7 +2916,7 @@ impl ProxyService {
                 .map(crate::proxy::providers::resolve_codex_catalog_tool_profile)
                 .unwrap_or(crate::codex_config::CodexCatalogToolProfile::ProxyChat);
             let prepared_config =
-                crate::codex_config::prepare_codex_live_config_text_with_optional_catalog(
+                crate::codex_config::prepare_codex_config_text_with_model_catalog(
                     config, config_str, profile,
                 )
                 .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;

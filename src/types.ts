@@ -256,6 +256,15 @@ export type ClaudeApiFormat =
 // - "anthropic": native Anthropic Messages format, needs local routing to convert to Responses
 export type CodexApiFormat = "openai_responses" | "openai_chat" | "anthropic";
 
+export type CodexReasoningEffort =
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max"
+  | "ultra";
+
 export interface CodexCatalogModel {
   model: string;
   displayName?: string;
@@ -269,6 +278,8 @@ export interface CodexCatalogModel {
   // Codex requires this field in every catalog entry; when omitted the backend
   // falls back to a neutral default. e.g. MiMo "developed by Xiaomi".
   baseInstructions?: string;
+  defaultReasoningLevel?: CodexReasoningEffort;
+  supportedReasoningLevels?: CodexReasoningEffort[];
 }
 
 // Claude 认证字段类型

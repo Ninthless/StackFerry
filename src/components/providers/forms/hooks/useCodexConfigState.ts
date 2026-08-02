@@ -8,7 +8,8 @@ import {
   updateCodexExperimentalBearerToken,
 } from "@/utils/providerConfigUtils";
 import { normalizeTomlText } from "@/utils/textNormalization";
-import type { CodexCatalogModel } from "@/types";
+import type { CodexCatalogModel, CodexReasoningEffort } from "@/types";
+import { upgradeLegacyXfcodeCodexCatalog } from "@/config/xfcodeProvider";
 
 interface UseCodexConfigStateProps {
   initialData?: {
@@ -76,58 +77,78 @@ export function useCodexConfigState({ initialData }: UseCodexConfigStateProps) {
       const rawCatalogModels = Array.isArray(modelCatalog?.models)
         ? modelCatalog.models
         : [];
-      setCodexCatalogModels(
-        rawCatalogModels
-          .map((item: any) => {
-            // 隐藏字段（原生 Responses profile 用）不在行 UI 暴露，但必须 load→save
-            // 原样保留，否则编辑保存 MiMo/MiniMax 等会丢官方 base_instructions、
-            // 并行工具、图像模态。DB SSOT 为 camelCase、live 反解兜底可能为 snake_case，
-            // 双格式兼容（与 displayName/contextWindow 一致）。
-            const supportsParallelToolCalls =
-              typeof item?.supportsParallelToolCalls === "boolean"
-                ? item.supportsParallelToolCalls
-                : typeof item?.supports_parallel_tool_calls === "boolean"
-                  ? item.supports_parallel_tool_calls
-                  : undefined;
-            const inputModalities = Array.isArray(item?.inputModalities)
-              ? item.inputModalities
-              : Array.isArray(item?.input_modalities)
-                ? item.input_modalities
+      const initialBaseUrl = extractCodexBaseUrl(configStr);
+      const catalogModels = rawCatalogModels
+        .map((item: any) => {
+          // 隐藏字段（原生 Responses profile 用）不在行 UI 暴露，但必须 load→save
+          // 原样保留，否则编辑保存 MiMo/MiniMax 等会丢官方 base_instructions、
+          // 并行工具、图像模态。DB SSOT 为 camelCase、live 反解兜底可能为 snake_case，
+          // 双格式兼容（与 displayName/contextWindow 一致）。
+          const supportsParallelToolCalls =
+            typeof item?.supportsParallelToolCalls === "boolean"
+              ? item.supportsParallelToolCalls
+              : typeof item?.supports_parallel_tool_calls === "boolean"
+                ? item.supports_parallel_tool_calls
                 : undefined;
-            const baseInstructions =
-              typeof item?.baseInstructions === "string"
-                ? item.baseInstructions
-                : typeof item?.base_instructions === "string"
-                  ? item.base_instructions
-                  : undefined;
-            return {
-              model: typeof item?.model === "string" ? item.model : "",
-              displayName:
-                typeof item?.displayName === "string"
-                  ? item.displayName
-                  : typeof item?.display_name === "string"
-                    ? item.display_name
-                    : "",
-              contextWindow:
-                typeof item?.contextWindow === "string" ||
-                typeof item?.contextWindow === "number"
-                  ? item.contextWindow
-                  : typeof item?.context_window === "string" ||
-                      typeof item?.context_window === "number"
-                    ? item.context_window
-                    : "",
-              ...(supportsParallelToolCalls !== undefined
-                ? { supportsParallelToolCalls }
-                : {}),
-              ...(inputModalities ? { inputModalities } : {}),
-              ...(baseInstructions ? { baseInstructions } : {}),
-            };
-          })
-          .filter((item: CodexCatalogModel) => item.model.trim()),
+          const inputModalities = Array.isArray(item?.inputModalities)
+            ? item.inputModalities
+            : Array.isArray(item?.input_modalities)
+              ? item.input_modalities
+              : undefined;
+          const baseInstructions =
+            typeof item?.baseInstructions === "string"
+              ? item.baseInstructions
+              : typeof item?.base_instructions === "string"
+                ? item.base_instructions
+                : undefined;
+          const defaultReasoningLevel =
+            typeof item?.defaultReasoningLevel === "string"
+              ? (item.defaultReasoningLevel as CodexReasoningEffort)
+              : typeof item?.default_reasoning_level === "string"
+                ? (item.default_reasoning_level as CodexReasoningEffort)
+                : undefined;
+          const rawSupportedReasoningLevels = Array.isArray(
+            item?.supportedReasoningLevels,
+          )
+            ? item.supportedReasoningLevels
+            : Array.isArray(item?.supported_reasoning_levels)
+              ? item.supported_reasoning_levels
+              : undefined;
+          const supportedReasoningLevels = rawSupportedReasoningLevels?.filter(
+            (effort: unknown): effort is CodexReasoningEffort =>
+              typeof effort === "string",
+          );
+          return {
+            model: typeof item?.model === "string" ? item.model : "",
+            displayName:
+              typeof item?.displayName === "string"
+                ? item.displayName
+                : typeof item?.display_name === "string"
+                  ? item.display_name
+                  : "",
+            contextWindow:
+              typeof item?.contextWindow === "string" ||
+              typeof item?.contextWindow === "number"
+                ? item.contextWindow
+                : typeof item?.context_window === "string" ||
+                    typeof item?.context_window === "number"
+                  ? item.context_window
+                  : "",
+            ...(supportsParallelToolCalls !== undefined
+              ? { supportsParallelToolCalls }
+              : {}),
+            ...(inputModalities ? { inputModalities } : {}),
+            ...(baseInstructions ? { baseInstructions } : {}),
+            ...(defaultReasoningLevel ? { defaultReasoningLevel } : {}),
+            ...(supportedReasoningLevels ? { supportedReasoningLevels } : {}),
+          };
+        })
+        .filter((item: CodexCatalogModel) => item.model.trim());
+      setCodexCatalogModels(
+        upgradeLegacyXfcodeCodexCatalog(catalogModels, initialBaseUrl),
       );
 
       // 提取 Base URL
-      const initialBaseUrl = extractCodexBaseUrl(configStr);
       if (initialBaseUrl) {
         setCodexBaseUrl(initialBaseUrl);
       }

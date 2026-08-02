@@ -27,6 +27,8 @@ describe("ProviderForm Codex catalog helpers", () => {
           inputModalities: ["text", "image"],
           baseInstructions:
             "  You are Codex, a coding agent based on MiniMax-M3.  ",
+          defaultReasoningLevel: "ultra",
+          supportedReasoningLevels: ["low", "ultra", "low"],
         },
         // false must be preserved (not dropped as falsy); empty modalities dropped;
         // empty/whitespace baseInstructions dropped
@@ -45,6 +47,8 @@ describe("ProviderForm Codex catalog helpers", () => {
         supportsParallelToolCalls: true,
         inputModalities: ["text", "image"],
         baseInstructions: "You are Codex, a coding agent based on MiniMax-M3.",
+        defaultReasoningLevel: "ultra",
+        supportedReasoningLevels: ["low", "ultra"],
       },
       { model: "mimo-v2.5-pro", supportsParallelToolCalls: false },
     ]);

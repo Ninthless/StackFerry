@@ -412,7 +412,7 @@ fn build_codex_settings(request: &DeepLinkImportRequest) -> serde_json::Value {
     let model_name = request
         .model
         .as_deref()
-        .unwrap_or("gpt-5-codex")
+        .unwrap_or("gpt-5.6-sol")
         .to_string();
 
     // Endpoint: normalize trailing slashes (use primary endpoint only)
@@ -429,14 +429,16 @@ fn build_codex_settings(request: &DeepLinkImportRequest) -> serde_json::Value {
     let config_toml = format!(
         r#"model_provider = "custom"
 model = {model_name}
-model_reasoning_effort = "high"
+model_reasoning_effort = "low"
 disable_response_storage = true
+web_search = "live"
 
 [model_providers.custom]
 name = {provider_display_name}
 base_url = {endpoint}
 wire_api = "responses"
-requires_openai_auth = true
+requires_openai_auth = false
+http_headers = {{ "x-openai-actor-authorization" = "custom" }}
 "#
     );
 
@@ -1168,6 +1170,16 @@ mod tests {
                 .and_then(|value| value.as_str()),
             Some("custom")
         );
+        assert_eq!(
+            settings
+                .pointer("/auth/OPENAI_API_KEY")
+                .and_then(|value| value.as_str()),
+            Some("sk-test")
+        );
+        assert_eq!(
+            parsed.get("web_search").and_then(|value| value.as_str()),
+            Some("live")
+        );
         let custom_provider = parsed
             .get("model_providers")
             .and_then(|value| value.get("custom"))
@@ -1182,6 +1194,40 @@ mod tests {
                 .and_then(|value| value.as_str()),
             Some("https://api.example.com/v1")
         );
+        assert_eq!(
+            custom_provider
+                .get("requires_openai_auth")
+                .and_then(|value| value.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            custom_provider
+                .get("http_headers")
+                .and_then(|value| value.get("x-openai-actor-authorization"))
+                .and_then(|value| value.as_str()),
+            Some("custom")
+        );
+    }
+
+    #[test]
+    fn build_codex_settings_defaults_to_current_sol() {
+        let request = DeepLinkImportRequest {
+            resource: "provider".to_string(),
+            app: Some("codex".to_string()),
+            endpoint: Some("https://api.example.com/v1".to_string()),
+            api_key: Some("sk-test".to_string()),
+            ..Default::default()
+        };
+
+        let settings = build_codex_settings(&request);
+        let config_text = settings
+            .get("config")
+            .and_then(|value| value.as_str())
+            .expect("config text");
+        let parsed: toml::Value = toml::from_str(config_text).expect("valid Codex config");
+
+        assert_eq!(parsed["model"].as_str(), Some("gpt-5.6-sol"));
+        assert_eq!(parsed["model_reasoning_effort"].as_str(), Some("low"));
     }
 
     #[test]

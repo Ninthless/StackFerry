@@ -6,6 +6,7 @@ import type {
   CodexApiFormat,
   CodexCatalogModel,
   CodexChatReasoning,
+  CodexReasoningEffort,
   PromptCacheRoutingMode,
 } from "../types";
 import type { PresetTheme } from "./claudeProviderPresets";
@@ -62,23 +63,26 @@ export function generateThirdPartyConfig(
   providerName: string,
   baseUrl: string,
   modelName = "gpt-5.6-sol",
+  reasoningEffort: CodexReasoningEffort = "low",
 ): string {
   const tomlString = (value: string) => JSON.stringify(value);
 
   return `model_provider = "custom"
 model = ${tomlString(modelName)}
-model_reasoning_effort = "high"
+model_reasoning_effort = ${tomlString(reasoningEffort)}
 disable_response_storage = true
+web_search = "live"
 
 [model_providers.custom]
 name = ${tomlString(providerName)}
 base_url = ${tomlString(baseUrl)}
 wire_api = "responses"
-requires_openai_auth = true`;
+requires_openai_auth = false
+http_headers = { "x-openai-actor-authorization" = "custom" }`;
 }
 
 function modelCatalog(
-  models: Array<
+  models: ReadonlyArray<
     | string
     | {
         model: string;
@@ -93,6 +97,8 @@ function modelCatalog(
         // Vendor's OFFICIAL base_instructions; omit to inherit the neutral
         // template default. Required by Codex, so the backend always emits one.
         baseInstructions?: string;
+        defaultReasoningLevel?: CodexReasoningEffort;
+        supportedReasoningLevels?: CodexReasoningEffort[];
       }
   >,
 ): CodexCatalogModel[] {
@@ -106,6 +112,8 @@ function modelCatalog(
           supportsParallelToolCalls: entry.supportsParallelToolCalls,
           inputModalities: entry.inputModalities,
           baseInstructions: entry.baseInstructions,
+          defaultReasoningLevel: entry.defaultReasoningLevel,
+          supportedReasoningLevels: entry.supportedReasoningLevels,
         },
   );
 }
@@ -241,14 +249,16 @@ export const codexProviderPresets: CodexProviderPreset[] = [
     config: `model_provider = "custom"
 model = "gpt-5.6-sol"
 review_model = "gpt-5.6-sol"
-model_reasoning_effort = "high"
+model_reasoning_effort = "low"
 disable_response_storage = true
+web_search = "live"
 
 [model_providers.custom]
 name = "APINebula"
 base_url = "https://apinebula.ai/v1"
 wire_api = "responses"
-requires_openai_auth = true`,
+requires_openai_auth = false
+http_headers = { "x-openai-actor-authorization" = "custom" }`,
     endpointCandidates: ["https://apinebula.ai/v1"],
     apiFormat: "openai_responses",
     isPartner: true,
@@ -411,14 +421,16 @@ requires_openai_auth = true`,
     config: `model_provider = "custom"
 model = "gpt-5.6-sol"
 review_model = "gpt-5.6-sol"
-model_reasoning_effort = "high"
+model_reasoning_effort = "low"
 disable_response_storage = true
+web_search = "live"
 
 [model_providers.custom]
 name = "APIKEY.FUN"
 base_url = "https://api.apikey.fun/v1"
 wire_api = "responses"
-requires_openai_auth = true`,
+requires_openai_auth = false
+http_headers = { "x-openai-actor-authorization" = "custom" }`,
     endpointCandidates: [
       "https://api.apikey.fun/v1",
       "https://slb.apikey.fun/v1",
@@ -653,12 +665,14 @@ requires_openai_auth = true`,
     config: `model_provider = "custom"
 model = "zai-org/glm-5.1"
 disable_response_storage = true
+web_search = "live"
 
 [model_providers.custom]
 name = "AtlasCloud"
 base_url = "https://api.atlascloud.ai/v1"
 wire_api = "responses"
-requires_openai_auth = true`,
+requires_openai_auth = false
+http_headers = { "x-openai-actor-authorization" = "custom" }`,
     endpointCandidates: ["https://api.atlascloud.ai/v1"],
     apiFormat: "openai_chat",
     modelCatalog: modelCatalog([
@@ -879,14 +893,16 @@ requires_openai_auth = true`,
     config: `model_provider = "custom"
 model = "gpt-5.6-sol"
 review_model = "gpt-5.6-sol"
-model_reasoning_effort = "high"
+model_reasoning_effort = "low"
 disable_response_storage = true
+web_search = "live"
 
 [model_providers.custom]
 name = "SudoCode"
 base_url = "https://api.sudocode.chat/v1"
 wire_api = "responses"
-requires_openai_auth = true`,
+requires_openai_auth = false
+http_headers = { "x-openai-actor-authorization" = "custom" }`,
     endpointCandidates: ["https://api.sudocode.chat/v1"],
     apiFormat: "openai_responses",
     isPartner: true,
@@ -902,15 +918,17 @@ requires_openai_auth = true`,
     config: `model_provider = "custom"
 model = "gpt-5.6-sol"
 review_model = "gpt-5.6-sol"
-model_reasoning_effort = "high"
+model_reasoning_effort = "low"
 disable_response_storage = true
 model_verbosity = "high"
+web_search = "live"
 
 [model_providers.custom]
 name = "sudocode"
 base_url = "https://sudocode.us/v1"
 wire_api = "responses"
-requires_openai_auth = true`,
+requires_openai_auth = false
+http_headers = { "x-openai-actor-authorization" = "custom" }`,
     endpointCandidates: ["https://sudocode.us/v1", "https://sudocode.run/v1"],
     apiFormat: "openai_responses",
     isPartner: true,
@@ -940,8 +958,9 @@ requires_openai_auth = true`,
     auth: generateThirdPartyAuth(""),
     config: `model_provider = "custom"
 model = "gpt-5.6-sol"
-model_reasoning_effort = "high"
+model_reasoning_effort = "low"
 disable_response_storage = true
+web_search = "live"
 
 [model_providers.custom]
 name = "Azure OpenAI"
@@ -949,7 +968,8 @@ base_url = "https://YOUR_RESOURCE_NAME.openai.azure.com/openai"
 env_key = "OPENAI_API_KEY"
 query_params = { "api-version" = "2025-04-01-preview" }
 wire_api = "responses"
-requires_openai_auth = true`,
+requires_openai_auth = false
+http_headers = { "x-openai-actor-authorization" = "custom" }`,
     endpointCandidates: ["https://YOUR_RESOURCE_NAME.openai.azure.com/openai"],
     theme: {
       icon: "codex",
@@ -1576,15 +1596,17 @@ requires_openai_auth = true`,
     },
     config: `model_provider = "custom"
 model = "gpt-5.6-sol"
-model_reasoning_effort = "high"
+model_reasoning_effort = "low"
 disable_response_storage = true
 personality = "pragmatic"
+web_search = "live"
 
 [model_providers.custom]
 name = "E-FlowCode"
 base_url = "https://e-flowcode.cc/v1"
 wire_api = "responses"
-requires_openai_auth = true
+requires_openai_auth = false
+http_headers = { "x-openai-actor-authorization" = "custom" }
 model_context_window = 1000000
 model_auto_compact_token_limit = 9000000`,
     category: "third_party",
@@ -1603,11 +1625,13 @@ model_auto_compact_token_limit = 9000000`,
 model = "gpt-5.6-sol"
 model_reasoning_effort = "medium"
 disable_response_storage = true
+web_search = "live"
 
 [model_providers.custom]
 name = "PIPELLM"
 wire_api = "responses"
-requires_openai_auth = true
+requires_openai_auth = false
+http_headers = { "x-openai-actor-authorization" = "custom" }
 base_url = "https://cc-api.pipellm.ai/v1"`,
     category: "aggregator",
     endpointCandidates: ["https://cc-api.pipellm.ai/v1"],
@@ -1650,10 +1674,11 @@ base_url = "https://cc-api.pipellm.ai/v1"`,
       XFCODE_PROVIDER.providerKey,
       XFCODE_PROVIDER.openAiBaseUrl,
       XFCODE_PROVIDER.models.openAi,
+      "low",
     ),
     endpointCandidates: [XFCODE_PROVIDER.openAiBaseUrl],
     apiFormat: "openai_responses",
-    modelCatalog: modelCatalog([XFCODE_PROVIDER.models.openAi]),
+    modelCatalog: modelCatalog(XFCODE_PROVIDER.codexModels),
     category: "aggregator",
   },
 ];

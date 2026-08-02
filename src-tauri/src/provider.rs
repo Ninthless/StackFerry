@@ -878,10 +878,10 @@ impl UniversalProvider {
         let models = self.models.codex.as_ref();
         let model = models
             .and_then(|m| m.model.clone())
-            .unwrap_or_else(|| "gpt-4o".to_string());
+            .unwrap_or_else(|| "gpt-5.6-sol".to_string());
         let reasoning_effort = models
             .and_then(|m| m.reasoning_effort.clone())
-            .unwrap_or_else(|| "high".to_string());
+            .unwrap_or_else(|| "low".to_string());
 
         let model = serde_json::to_string(&model).ok()?;
         let reasoning_effort = serde_json::to_string(&reasoning_effort).ok()?;
@@ -892,12 +892,14 @@ impl UniversalProvider {
 model = {model}
 model_reasoning_effort = {reasoning_effort}
 disable_response_storage = true
+web_search = "live"
 
 [model_providers.custom]
 name = {provider_name}
 base_url = {codex_base_url}
 wire_api = "responses"
-requires_openai_auth = true"#
+requires_openai_auth = false
+http_headers = {{ "x-openai-actor-authorization" = "custom" }}"#
         );
 
         let settings_config = serde_json::json!({
@@ -1442,8 +1444,16 @@ mod tests {
             .get("config")
             .and_then(|item| item.as_str())
             .expect("config toml");
+        let parsed: toml::Value = toml::from_str(config).expect("valid Codex config");
+        let custom = &parsed["model_providers"]["custom"];
 
         assert!(config.contains("base_url = \"https://api.example.com/v1\""));
+        assert_eq!(parsed["web_search"].as_str(), Some("live"));
+        assert_eq!(custom["requires_openai_auth"].as_bool(), Some(false));
+        assert_eq!(
+            custom["http_headers"]["x-openai-actor-authorization"].as_str(),
+            Some("custom")
+        );
         assert_eq!(
             provider
                 .settings_config
@@ -1470,8 +1480,11 @@ mod tests {
             .get("config")
             .and_then(|item| item.as_str())
             .expect("config toml");
+        let parsed: toml::Value = toml::from_str(config).expect("valid Codex config");
 
         assert!(config.contains("base_url = \"https://api.example.com/v1\""));
+        assert_eq!(parsed["model"].as_str(), Some("gpt-5.6-sol"));
+        assert_eq!(parsed["model_reasoning_effort"].as_str(), Some("low"));
     }
 
     #[test]
