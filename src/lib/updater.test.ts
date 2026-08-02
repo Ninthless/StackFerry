@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { checkForUpdate, relaunchApp } from "./updater";
+import { APP_VERSION } from "./appVersion";
+import { checkForUpdate, getCurrentVersion, relaunchApp } from "./updater";
 
 const { checkMock, getVersionMock, relaunchMock } = vi.hoisted(() => ({
   checkMock: vi.fn(),
@@ -68,6 +69,24 @@ describe("checkForUpdate", () => {
     checkMock.mockRejectedValue(new Error("updater unavailable"));
 
     await expect(checkForUpdate()).rejects.toThrow("updater unavailable");
+  });
+});
+
+describe("getCurrentVersion", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns the desktop runtime version", async () => {
+    getVersionMock.mockResolvedValue("0.1.2");
+
+    await expect(getCurrentVersion()).resolves.toBe("0.1.2");
+  });
+
+  it("falls back to the build version outside Tauri", async () => {
+    getVersionMock.mockRejectedValue(new Error("Tauri unavailable"));
+
+    await expect(getCurrentVersion()).resolves.toBe(APP_VERSION);
   });
 });
 

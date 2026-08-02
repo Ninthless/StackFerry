@@ -16,9 +16,11 @@ import {
   Wrench,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { AppId } from "@/lib/api";
 import type { VisibleApps } from "@/types";
+import { APP_VERSION } from "@/lib/appVersion";
+import { getCurrentVersion } from "@/lib/updater";
 import { cn } from "@/lib/utils";
 import { AppSwitcher } from "@/components/AppSwitcher";
 import { UpdateBadge } from "@/components/UpdateBadge";
@@ -63,6 +65,19 @@ export function AppSidebar({
   onOpenUpdate,
 }: AppSidebarProps) {
   const { t } = useTranslation();
+  const [appVersion, setAppVersion] = useState(APP_VERSION);
+
+  useEffect(() => {
+    let mounted = true;
+
+    void getCurrentVersion().then((version) => {
+      if (mounted) setAppVersion(version);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const coreItems: NavItem[] = [
     {
@@ -292,7 +307,7 @@ export function AppSidebar({
         </div>
         <div className="mt-2 flex items-center gap-2 px-2.5 text-[10px] text-sidebar-foreground/35">
           <SlidersHorizontal className="h-3 w-3" />
-          <span>v0.1.0</span>
+          <span>v{appVersion}</span>
         </div>
       </div>
     </aside>

@@ -1,6 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import type { Update } from "@tauri-apps/plugin-updater";
+import { APP_VERSION } from "./appVersion";
 import { isUpdateAvailable } from "./version";
 
 export interface UpdateInfo {
@@ -23,7 +24,7 @@ export async function getCurrentVersion(): Promise<string> {
   try {
     return await getVersion();
   } catch {
-    return "";
+    return APP_VERSION;
   }
 }
 

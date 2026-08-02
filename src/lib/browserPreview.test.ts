@@ -3,6 +3,7 @@ import {
   browserPreviewSettings,
   createBrowserPreviewCommandHandler,
 } from "./browserPreview";
+import { APP_VERSION } from "./appVersion";
 
 describe("browser preview IPC", () => {
   it("returns complete settings and preserves saves", () => {
@@ -40,6 +41,7 @@ describe("browser preview IPC", () => {
     );
     expect(invoke("get_app_config_dir_override")).toBeNull();
     expect(invoke("is_portable_mode")).toBe(false);
+    expect(invoke("plugin:app|version")).toBe(APP_VERSION);
   });
 
   it("persists provider CRUD independently for each app", () => {

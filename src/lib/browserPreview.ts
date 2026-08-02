@@ -1,6 +1,7 @@
 import { isTauri, type InvokeArgs } from "@tauri-apps/api/core";
 import type { Provider, Settings, UniversalProvider } from "@/types";
 import type { AppId } from "@/lib/api/types";
+import { APP_VERSION } from "@/lib/appVersion";
 
 const visibleApps = {
   claude: true,
@@ -189,7 +190,7 @@ export const createBrowserPreviewCommandHandler = () => {
       case "plugin:path|join":
         return (args.paths as string[] | undefined)?.join("\\") ?? "";
       case "plugin:app|version":
-        return "0.1.0";
+        return APP_VERSION;
       case "get_providers": {
         const appId = args.app as AppId;
         return { ...providers[appId] };
