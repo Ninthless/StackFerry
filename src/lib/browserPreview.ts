@@ -25,7 +25,6 @@ export const browserPreviewSettings: Settings = {
   silentStartup: false,
   enableLocalProxy: false,
   enableFailoverToggle: false,
-  showProfileSwitcher: true,
   preserveCodexOfficialAuthOnSwitch: false,
   unifyCodexSessionHistory: false,
   proxyConfirmed: true,

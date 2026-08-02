@@ -954,9 +954,7 @@ function App() {
                   )}
               </div>
             )}
-          {(settingsData?.showProfileSwitcher ?? true) && (
-            <ProfileSwitcher activeApp={activeApp} />
-          )}
+          <ProfileSwitcher activeApp={activeApp} />
           <Button type="button" size="sm" onClick={() => setIsAddOpen(true)}>
             <Plus className="h-4 w-4" />
             <span>{t("provider.addProvider")}</span>
