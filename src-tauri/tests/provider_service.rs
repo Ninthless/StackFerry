@@ -485,7 +485,16 @@ requires_openai_auth = true
             .and_then(|v| v.get("aihubmix"))
             .and_then(|v| v.get("requires_openai_auth"))
             .and_then(|v| v.as_bool()),
-        Some(true)
+        Some(false)
+    );
+    assert_eq!(
+        parsed_live
+            .get("model_providers")
+            .and_then(|v| v.get("aihubmix"))
+            .and_then(|v| v.get("http_headers"))
+            .and_then(|v| v.get("x-openai-actor-authorization"))
+            .and_then(|v| v.as_str()),
+        Some("custom")
     );
 
     ProviderService::switch(&state, AppType::Codex, "plain-provider")
