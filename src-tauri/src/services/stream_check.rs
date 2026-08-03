@@ -181,6 +181,7 @@ impl StreamCheckService {
             }
             AppType::OpenClaw => Self::extract_openclaw_base_url(provider),
             AppType::Hermes => Self::extract_hermes_base_url(provider),
+            AppType::Pi => Self::extract_pi_base_url(provider),
             AppType::ClaudeDesktop => ClaudeAdapter::new()
                 .extract_base_url(provider)
                 .map_err(|e| AppError::Message(format!("Failed to extract base_url: {e}"))),
@@ -319,6 +320,23 @@ impl StreamCheckService {
                     "hermes_base_url_missing",
                     "Hermes 供应商缺少 base_url",
                     "Hermes provider is missing `base_url`",
+                )
+            })
+    }
+
+    /// Pi: `{ baseUrl, apiKey, api, models, ... }`（camelCase）
+    fn extract_pi_base_url(provider: &Provider) -> Result<String, AppError> {
+        provider
+            .settings_config
+            .get("baseUrl")
+            .and_then(|value| value.as_str())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                AppError::localized(
+                    "pi_base_url_missing",
+                    "Pi 供应商缺少 baseUrl",
+                    "Pi provider is missing `baseUrl`",
                 )
             })
     }
@@ -499,6 +517,42 @@ mod tests {
             StreamCheckService::extract_openclaw_base_url(&p2).unwrap(),
             "https://api.deepseek.com/v1"
         );
+    }
+
+    #[test]
+    fn test_resolve_pi_base_url_for_supported_apis() {
+        for api in [
+            "openai-completions",
+            "openai-responses",
+            "anthropic-messages",
+            "google-generative-ai",
+        ] {
+            let provider = make_provider(serde_json::json!({
+                "baseUrl": "  https://api.example.com/v1  ",
+                "api": api,
+            }));
+
+            assert_eq!(
+                StreamCheckService::resolve_base_url(&AppType::Pi, &provider).unwrap(),
+                "https://api.example.com/v1"
+            );
+        }
+    }
+
+    #[test]
+    fn test_resolve_pi_base_url_missing_or_empty_errors() {
+        for settings_config in [
+            serde_json::json!({ "api": "openai-completions" }),
+            serde_json::json!({ "baseUrl": "   ", "api": "openai-completions" }),
+        ] {
+            let provider = make_provider(settings_config);
+            let error = StreamCheckService::resolve_base_url(&AppType::Pi, &provider)
+                .unwrap_err()
+                .to_string();
+
+            assert!(error.contains("Pi"));
+            assert!(error.contains("baseUrl"));
+        }
     }
 
     #[test]
