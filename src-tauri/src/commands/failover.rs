@@ -1,6 +1,6 @@
 //! 故障转移队列命令
 //!
-//! 管理代理模式下的故障转移队列（基于 providers 表的 in_failover_queue 字段）
+//! 管理代理模式下的故障转移队列
 
 use crate::database::FailoverQueueItem;
 use crate::provider::Provider;

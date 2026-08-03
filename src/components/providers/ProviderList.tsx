@@ -157,6 +157,9 @@ export function ProviderList({
   const { data: failoverQueue } = useFailoverQueue(appId);
   const addToQueue = useAddToFailoverQueue();
   const removeFromQueue = useRemoveFromFailoverQueue();
+  const failoverMutationPendingRef = useRef(false);
+  const isFailoverMutationPending =
+    addToQueue.isPending || removeFromQueue.isPending;
 
   const isFailoverModeActive =
     isProxyTakeover === true && isAutoFailoverEnabled === true;
@@ -168,10 +171,8 @@ export function ProviderList({
   const getFailoverPriority = useCallback(
     (providerId: string): number | undefined => {
       if (!isFailoverModeActive || !failoverQueue) return undefined;
-      const index = failoverQueue.findIndex(
-        (item) => item.providerId === providerId,
-      );
-      return index >= 0 ? index + 1 : undefined;
+      const item = failoverQueue.find((item) => item.providerId === providerId);
+      return item?.queueOrder;
     },
     [isFailoverModeActive, failoverQueue],
   );
@@ -185,14 +186,30 @@ export function ProviderList({
   );
 
   const handleToggleFailover = useCallback(
-    (providerId: string, enabled: boolean) => {
-      if (enabled) {
-        addToQueue.mutate({ appType: appId, providerId });
-      } else {
-        removeFromQueue.mutate({ appType: appId, providerId });
+    async (providerId: string, enabled: boolean) => {
+      if (failoverMutationPendingRef.current) return;
+      failoverMutationPendingRef.current = true;
+
+      try {
+        if (enabled) {
+          await addToQueue.mutateAsync({ appType: appId, providerId });
+        } else {
+          await removeFromQueue.mutateAsync({ appType: appId, providerId });
+        }
+      } catch (error) {
+        toast.error(
+          extractErrorMessage(error) ||
+            t(
+              enabled
+                ? "proxy.failoverQueue.addFailed"
+                : "proxy.failoverQueue.removeFailed",
+            ),
+        );
+      } finally {
+        failoverMutationPendingRef.current = false;
       }
     },
-    [appId, addToQueue, removeFromQueue],
+    [appId, addToQueue, removeFromQueue, t],
   );
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -443,6 +460,7 @@ export function ProviderList({
                 isAutoFailoverEnabled={isFailoverModeActive}
                 failoverPriority={getFailoverPriority(provider.id)}
                 isInFailoverQueue={isInFailoverQueue(provider.id)}
+                isFailoverMutationPending={isFailoverMutationPending}
                 onToggleFailover={(enabled) =>
                   handleToggleFailover(provider.id, enabled)
                 }
@@ -584,6 +602,7 @@ interface SortableProviderCardProps {
   isAutoFailoverEnabled: boolean;
   failoverPriority?: number;
   isInFailoverQueue: boolean;
+  isFailoverMutationPending: boolean;
   onToggleFailover: (enabled: boolean) => void;
   activeProviderId?: string;
   // OpenClaw: default model
@@ -615,6 +634,7 @@ function SortableProviderCard({
   isAutoFailoverEnabled,
   failoverPriority,
   isInFailoverQueue,
+  isFailoverMutationPending,
   onToggleFailover,
   activeProviderId,
   isDefaultModel,
@@ -667,6 +687,7 @@ function SortableProviderCard({
         isAutoFailoverEnabled={isAutoFailoverEnabled}
         failoverPriority={failoverPriority}
         isInFailoverQueue={isInFailoverQueue}
+        isFailoverMutationPending={isFailoverMutationPending}
         onToggleFailover={onToggleFailover}
         activeProviderId={activeProviderId}
         // OpenClaw: default model

@@ -39,6 +39,7 @@ impl Database {
                 meta TEXT NOT NULL DEFAULT '{}',
                 is_current BOOLEAN NOT NULL DEFAULT 0,
                 in_failover_queue BOOLEAN NOT NULL DEFAULT 0,
+                failover_order INTEGER,
                 PRIMARY KEY (id, app_type)
             )",
             [],
@@ -399,7 +400,7 @@ impl Database {
         // 为故障转移队列创建索引（基于 providers 表）
         let _ = conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_providers_failover
-             ON providers(app_type, in_failover_queue, sort_index)",
+             ON providers(app_type, in_failover_queue, failover_order)",
             [],
         );
 
@@ -516,6 +517,11 @@ impl Database {
                         log::info!("迁移数据库从 v16 到 v17（Skills 添加 Pi 支持）");
                         Self::migrate_v16_to_v17(conn)?;
                         Self::set_user_version(conn, 17)?;
+                    }
+                    17 => {
+                        log::info!("迁移数据库从 v17 到 v18（故障转移队列使用独立加入顺序）");
+                        Self::migrate_v17_to_v18(conn)?;
+                        Self::set_user_version(conn, 18)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1538,6 +1544,54 @@ impl Database {
                 "BOOLEAN NOT NULL DEFAULT 0",
             )?;
         }
+        Ok(())
+    }
+
+    fn migrate_v17_to_v18(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "providers")? {
+            return Ok(());
+        }
+
+        Self::add_column_if_missing(conn, "providers", "sort_index", "INTEGER")?;
+        Self::add_column_if_missing(
+            conn,
+            "providers",
+            "in_failover_queue",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+        Self::add_column_if_missing(conn, "providers", "failover_order", "INTEGER")?;
+
+        conn.execute(
+            "UPDATE providers
+             SET failover_order = (
+                 SELECT COUNT(*)
+                 FROM providers AS candidate
+                 WHERE candidate.app_type = providers.app_type
+                   AND candidate.in_failover_queue = 1
+                   AND (
+                       COALESCE(candidate.sort_index, 9223372036854775807)
+                           < COALESCE(providers.sort_index, 9223372036854775807)
+                       OR (
+                           COALESCE(candidate.sort_index, 9223372036854775807)
+                               = COALESCE(providers.sort_index, 9223372036854775807)
+                           AND candidate.id <= providers.id
+                       )
+                   )
+             )
+             WHERE in_failover_queue = 1",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("回填故障转移队列顺序失败: {e}")))?;
+
+        conn.execute("DROP INDEX IF EXISTS idx_providers_failover", [])
+            .map_err(|e| AppError::Database(format!("删除旧故障转移索引失败: {e}")))?;
+        conn.execute(
+            "CREATE INDEX idx_providers_failover
+             ON providers(app_type, in_failover_queue, failover_order)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建故障转移索引失败: {e}")))?;
+
         Ok(())
     }
 
@@ -3134,6 +3188,67 @@ mod tests {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         assert_eq!(values, (1, 0));
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v17_to_v18_backfills_existing_failover_order() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE providers (
+                id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                sort_index INTEGER,
+                in_failover_queue BOOLEAN NOT NULL DEFAULT 0,
+                PRIMARY KEY (id, app_type)
+            );
+            INSERT INTO providers (id, app_type, sort_index, in_failover_queue) VALUES
+                ('late-home', 'codex', 20, 1),
+                ('early-home', 'codex', 10, 1),
+                ('unsorted', 'codex', NULL, 1),
+                ('not-queued', 'codex', 0, 0),
+                ('other-app', 'claude', 5, 1);",
+        )?;
+        Database::set_user_version(&conn, 17)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        assert!(Database::has_column(&conn, "providers", "failover_order")?);
+
+        let mut stmt = conn.prepare(
+            "SELECT id, failover_order
+             FROM providers
+             WHERE app_type = 'codex' AND in_failover_queue = 1
+             ORDER BY failover_order",
+        )?;
+        let queued = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(
+            queued,
+            vec![
+                ("early-home".to_string(), 1),
+                ("late-home".to_string(), 2),
+                ("unsorted".to_string(), 3),
+            ]
+        );
+
+        let not_queued_order: Option<i64> = conn.query_row(
+            "SELECT failover_order FROM providers WHERE id = 'not-queued'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(not_queued_order, None);
+        let other_app_order: i64 = conn.query_row(
+            "SELECT failover_order FROM providers WHERE id = 'other-app'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(other_app_order, 1);
+
         Ok(())
     }
 }

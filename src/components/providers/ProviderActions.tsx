@@ -50,6 +50,7 @@ interface ProviderActionsProps {
   onOpenTerminal?: () => void;
   isAutoFailoverEnabled?: boolean;
   isInFailoverQueue?: boolean;
+  isFailoverMutationPending?: boolean;
   onToggleFailover?: (enabled: boolean) => void;
   isOfficialBlockedByProxy?: boolean;
   isReadOnly?: boolean;
@@ -84,6 +85,7 @@ export function ProviderActions({
   onOpenTerminal,
   isAutoFailoverEnabled = false,
   isInFailoverQueue = false,
+  isFailoverMutationPending = false,
   onToggleFailover,
   isOfficialBlockedByProxy = false,
   isReadOnly = false,
@@ -176,6 +178,15 @@ export function ProviderActions({
     }
 
     if (isFailoverMode) {
+      if (isFailoverMutationPending) {
+        return {
+          disabled: true,
+          variant: "secondary",
+          className: "bg-primary/10 text-primary",
+          icon: <Loader2 className="h-4 w-4 animate-spin" />,
+          text: t(isInFailoverQueue ? "failover.inQueue" : "failover.addQueue"),
+        };
+      }
       if (isInFailoverQueue) {
         return {
           disabled: false,

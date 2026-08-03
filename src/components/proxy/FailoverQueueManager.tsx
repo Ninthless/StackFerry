@@ -3,7 +3,7 @@
  *
  * 允许用户管理代理模式下的故障转移队列，支持：
  * - 添加/移除供应商
- * - 队列顺序基于首页供应商列表的 sort_index
+ * - 队列优先级基于供应商加入顺序
  */
 
 import { useState } from "react";
@@ -158,7 +158,7 @@ export function FailoverQueueManager({
         <AlertDescription className="text-sm">
           {t(
             "proxy.failoverQueue.info",
-            "队列顺序与首页供应商列表顺序一致。当请求失败时，系统会按顺序依次尝试队列中的供应商。",
+            "先加入的供应商优先级更高。当请求失败时，系统会按加入顺序依次尝试队列中的供应商。",
           )}
         </AlertDescription>
       </Alert>
@@ -225,11 +225,10 @@ export function FailoverQueueManager({
         </div>
       ) : (
         <div className="space-y-2">
-          {queue.map((item, index) => (
+          {queue.map((item) => (
             <QueueItem
               key={item.providerId}
               item={item}
-              index={index}
               disabled={disabled}
               onRemove={handleRemoveProvider}
               isRemoving={removeFromQueue.isPending}
@@ -243,7 +242,7 @@ export function FailoverQueueManager({
         <p className="text-xs text-muted-foreground">
           {t(
             "proxy.failoverQueue.orderHint",
-            "队列顺序与首页供应商列表顺序一致，可在首页拖拽调整顺序。",
+            "优先级按加入顺序确定：最先加入的是 P1，之后依次为 P2、P3。",
           )}
         </p>
       )}
@@ -253,19 +252,12 @@ export function FailoverQueueManager({
 
 interface QueueItemProps {
   item: FailoverQueueItem;
-  index: number;
   disabled: boolean;
   onRemove: (providerId: string) => void;
   isRemoving: boolean;
 }
 
-function QueueItem({
-  item,
-  index,
-  disabled,
-  onRemove,
-  isRemoving,
-}: QueueItemProps) {
+function QueueItem({ item, disabled, onRemove, isRemoving }: QueueItemProps) {
   const { t } = useTranslation();
 
   return (
@@ -276,7 +268,7 @@ function QueueItem({
     >
       {/* 序号 */}
       <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-medium">
-        {index + 1}
+        {item.queueOrder}
       </div>
 
       {/* 供应商名称 */}

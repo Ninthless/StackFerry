@@ -113,7 +113,7 @@ export interface FailoverQueueItem {
   providerId: string;
   providerName: string;
   providerNotes?: string;
-  sortIndex?: number;
+  queueOrder: number;
 }
 
 // 全局代理配置（统一字段，三行镜像）

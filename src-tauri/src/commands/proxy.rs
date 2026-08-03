@@ -366,18 +366,18 @@ pub async fn reset_circuit_breaker(
                 .get_failover_queue(&app_type)
                 .map_err(|e| e.to_string())?;
 
-            // 找到恢复的供应商和当前供应商在队列中的位置（使用 sort_index）
+            // 找到恢复的供应商和当前供应商在队列中的位置
             let restored_order = queue
                 .iter()
                 .find(|item| item.provider_id == provider_id)
-                .and_then(|item| item.sort_index);
+                .map(|item| item.queue_order);
 
             let current_order = queue
                 .iter()
                 .find(|item| item.provider_id == current_id)
-                .and_then(|item| item.sort_index);
+                .map(|item| item.queue_order);
 
-            // 如果恢复的供应商优先级更高（sort_index 更小），则切换
+            // 如果恢复的供应商优先级更高，则切换
             if let (Some(restored), Some(current)) = (restored_order, current_order) {
                 if restored < current {
                     log::info!(

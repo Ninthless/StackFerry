@@ -476,7 +476,7 @@ mod tests {
         let _home = TempHome::new();
         let db = Arc::new(Database::memory().unwrap());
 
-        // 设置 sort_index 来控制顺序：b=1, a=2
+        // 首页顺序为 b、a，故障转移加入顺序为 a、b
         let mut provider_a =
             Provider::with_id("a".to_string(), "Provider A".to_string(), json!({}), None);
         provider_a.sort_index = Some(2);
@@ -488,8 +488,8 @@ mod tests {
         db.save_provider("claude", &provider_b).unwrap();
         db.set_current_provider("claude", "a").unwrap();
 
-        db.add_to_failover_queue("claude", "b").unwrap();
         db.add_to_failover_queue("claude", "a").unwrap();
+        db.add_to_failover_queue("claude", "b").unwrap();
 
         // 启用自动故障转移（使用新的 proxy_config API）
         let mut config = db.get_proxy_config_for_app("claude").await.unwrap();
@@ -500,9 +500,9 @@ mod tests {
         let providers = router.select_providers("claude").await.unwrap();
 
         assert_eq!(providers.len(), 2);
-        // 故障转移开启时：仅按队列顺序选择（忽略当前供应商）
-        assert_eq!(providers[0].id, "b");
-        assert_eq!(providers[1].id, "a");
+        // 故障转移开启时：仅按加入顺序选择（忽略首页顺序和当前供应商）
+        assert_eq!(providers[0].id, "a");
+        assert_eq!(providers[1].id, "b");
     }
 
     #[tokio::test]
