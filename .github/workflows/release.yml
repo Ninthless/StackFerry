@@ -453,22 +453,20 @@ jobs:
 
           $tag = "${{ github.ref_name }}"
           $stableTagPattern = '^v\d+\.\d+\.\d+$'
-          $tagExists = $null -ne (git tag --list $tag | Select-Object -First 1)
-
-          if ($tagExists) {
-            $rangeEnd = "$tag^"
-          } else {
-            $rangeEnd = "HEAD"
-          }
-
-          $previousTag = git tag --merged $rangeEnd --sort=-creatordate |
-            Where-Object { $_ -match $stableTagPattern -and $_ -ne $tag } |
+          $previousTag = git tag --list --sort=-version:refname |
+            Where-Object {
+              $_ -match $stableTagPattern -and $_ -ne $tag
+            } |
+            Where-Object {
+              git merge-base --is-ancestor $_ $tag 2>$null
+              $LASTEXITCODE -eq 0
+            } |
             Select-Object -First 1
 
           if ($previousTag) {
-            $range = "$previousTag..HEAD"
+            $range = "$previousTag..$tag"
           } else {
-            $range = "HEAD"
+            $range = $tag
           }
 
           $repository = "${{ github.repository }}"
