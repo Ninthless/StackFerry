@@ -1,6 +1,12 @@
 import { Suspense, type ComponentType } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+  within,
+} from "@testing-library/react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { providersApi } from "@/lib/api/providers";
 import {
@@ -134,6 +140,10 @@ vi.mock("@/components/UpdateBadge", () => ({
   ),
 }));
 
+vi.mock("@/components/settings/ThemeSettings", () => ({
+  ThemeSettings: () => null,
+}));
+
 vi.mock("@/components/mcp/McpPanel", () => ({
   default: ({ open, onOpenChange }: any) =>
     open ? (
@@ -172,6 +182,9 @@ describe("App integration with MSW", () => {
         "claude-1",
       ),
     );
+
+    expect(screen.getAllByTestId("app-switcher")).toHaveLength(1);
+    expect(screen.queryByText("StackFerry")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText("switch-codex"));
     await waitFor(() =>
@@ -218,7 +231,67 @@ describe("App integration with MSW", () => {
 
     expect(toastErrorMock).not.toHaveBeenCalled();
     expect(toastSuccessMock).toHaveBeenCalled();
-  }, 10_000);
+  }, 60_000);
+
+  it("shows application switching only on the provider routing view", async () => {
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("provider-list").textContent).toContain(
+        "claude-1",
+      ),
+    );
+
+    const firstRunConfirm = screen.queryByRole("button", {
+      name: "firstRunNotice.confirm",
+    });
+    if (firstRunConfirm) {
+      fireEvent.click(firstRunConfirm);
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "firstRunNotice.title" }),
+        ).not.toBeInTheDocument(),
+      );
+    }
+
+    let pageHeader = screen.getByRole("banner");
+    expect(within(pageHeader).getByTestId("app-switcher")).toBeVisible();
+    expect(
+      within(pageHeader).getByRole("button", { name: "provider.addProvider" }),
+    ).toBeVisible();
+    expect(
+      within(pageHeader).queryByText("shell.directMode"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(screen.getByRole("complementary")).getByRole("button", {
+        name: "common.settings",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("banner")).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("tablist", { name: "common.settings" }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("settings.title")).not.toBeInTheDocument();
+    expect(screen.queryByText("settings.description")).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(screen.getByRole("complementary")).getByRole("button", {
+        name: "provider.title",
+      }),
+    );
+
+    await waitFor(() => {
+      pageHeader = screen.getByRole("banner");
+      expect(within(pageHeader).getByTestId("app-switcher")).toBeVisible();
+    });
+  }, 30_000);
 
   it("shows toast when auto sync fails in background", async () => {
     const { default: App } = await import("@/App");

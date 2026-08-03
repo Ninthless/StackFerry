@@ -4,12 +4,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  isWindows,
-  isLinux,
-  DRAG_REGION_ATTR,
-  DRAG_REGION_STYLE,
-} from "@/lib/platform";
 import { isTextEditableTarget } from "@/utils/domUtils";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +21,6 @@ interface FullScreenPanelProps {
   footerClassName?: string;
 }
 
-const DRAG_BAR_HEIGHT = isWindows() || isLinux() ? 0 : 28; // px - match App.tsx
 const HEADER_HEIGHT = 64; // px - match App.tsx
 
 /**
@@ -96,40 +89,23 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-[60] flex flex-col"
-          style={{ backgroundColor: "hsl(var(--background))" }}
+          className="fixed inset-x-0 bottom-0 z-[60] flex flex-col"
+          style={{
+            backgroundColor: "hsl(var(--background))",
+            top: "var(--window-titlebar-height, 0px)",
+          }}
         >
-          {/* Drag region - match App.tsx. Linux 上 DRAG_BAR_HEIGHT=0，
-              直接跳过整个元素；macOS 保留 28px 拖拽占位。 */}
-          {DRAG_BAR_HEIGHT > 0 && (
-            <div
-              data-tauri-drag-region
-              style={
-                {
-                  WebkitAppRegion: "drag",
-                  height: DRAG_BAR_HEIGHT,
-                } as React.CSSProperties
-              }
-            />
-          )}
-
           {/* Header - match App.tsx */}
           <div
             className="flex-shrink-0 flex items-center"
-            {...DRAG_REGION_ATTR}
             style={
               {
-                ...DRAG_REGION_STYLE,
                 backgroundColor: "hsl(var(--background))",
                 height: HEADER_HEIGHT,
               } as React.CSSProperties
             }
           >
-            <div
-              className="px-6 w-full flex items-center gap-4"
-              {...DRAG_REGION_ATTR}
-              style={{ ...DRAG_REGION_STYLE } as React.CSSProperties}
-            >
+            <div className="px-6 w-full flex items-center gap-4">
               <Button
                 type="button"
                 variant="outline"

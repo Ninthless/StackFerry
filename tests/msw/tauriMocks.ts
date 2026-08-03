@@ -2,6 +2,35 @@ import "cross-fetch/polyfill";
 import { vi } from "vitest";
 import { server } from "./server";
 
+const tauriWindowMock = vi.hoisted(() => {
+  type WindowEventHandler<T> = (event: { payload: T }) => void;
+  const unlisten = (): void => undefined;
+
+  return {
+    close: vi.fn(async (): Promise<void> => undefined),
+    isDecorated: vi.fn(async (): Promise<boolean> => true),
+    isFullscreen: vi.fn(async (): Promise<boolean> => false),
+    isMaximized: vi.fn(async (): Promise<boolean> => false),
+    minimize: vi.fn(async (): Promise<void> => undefined),
+    onFocusChanged: vi.fn(
+      async (_handler: WindowEventHandler<boolean>): Promise<() => void> =>
+        unlisten,
+    ),
+    onResized: vi.fn(
+      async (_handler: WindowEventHandler<unknown>): Promise<() => void> =>
+        unlisten,
+    ),
+    onScaleChanged: vi.fn(
+      async (_handler: WindowEventHandler<unknown>): Promise<() => void> =>
+        unlisten,
+    ),
+    setDecorations: vi.fn(async (_decorated: boolean): Promise<void> => undefined),
+    toggleMaximize: vi.fn(async (): Promise<void> => undefined),
+  };
+});
+
+export const getTauriWindowMock = () => tauriWindowMock;
+
 const TAURI_ENDPOINT = "http://tauri.local";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -57,14 +86,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({
-    close: async () => undefined,
-    isMaximized: async () => false,
-    minimize: async () => undefined,
-    onResized: async () => () => undefined,
-    setDecorations: async () => undefined,
-    toggleMaximize: async () => undefined,
-  }),
+  getCurrentWindow: () => tauriWindowMock,
 }));
 
 // Ensure the MSW server is referenced so tree shaking doesn't remove imports

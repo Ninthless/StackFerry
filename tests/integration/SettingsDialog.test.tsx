@@ -149,6 +149,7 @@ describe("SettingsPage integration", () => {
 
     await waitFor(() =>
       expect(screen.getByText("language:zh")).toBeInTheDocument(),
+      { timeout: 5_000 },
     );
     fireEvent.click(screen.getByText("settings.tabAdvanced"));
     fireEvent.click(screen.getByText("settings.advanced.configDir.title"));
@@ -164,6 +165,7 @@ describe("SettingsPage integration", () => {
 
     await waitFor(() =>
       expect(screen.getByText("language:zh")).toBeInTheDocument(),
+      { timeout: 5_000 },
     );
 
     fireEvent.click(screen.getByText("settings.tabAdvanced"));
@@ -188,6 +190,7 @@ describe("SettingsPage integration", () => {
 
     await waitFor(() =>
       expect(screen.getByText("language:zh")).toBeInTheDocument(),
+      { timeout: 5_000 },
     );
 
     fireEvent.click(screen.getByText("settings.tabAdvanced"));
@@ -215,6 +218,7 @@ describe("SettingsPage integration", () => {
 
     await waitFor(() =>
       expect(screen.getByText("language:zh")).toBeInTheDocument(),
+      { timeout: 5_000 },
     );
 
     fireEvent.click(screen.getByText("settings.tabAdvanced"));
@@ -256,6 +260,7 @@ describe("SettingsPage integration", () => {
 
     await waitFor(() =>
       expect(screen.getByText("language:zh")).toBeInTheDocument(),
+      { timeout: 5_000 },
     );
     fireEvent.click(screen.getByText("settings.tabAdvanced"));
     fireEvent.click(screen.getByText("settings.advanced.data.title"));

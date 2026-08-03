@@ -7,16 +7,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
   ArrowLeft,
-  Minus,
-  Maximize2,
-  Minimize2,
-  X,
   History,
   Download,
   FolderArchive,
   Search,
 } from "lucide-react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Provider, VisibleApps } from "@/types";
 import type { EnvConflict } from "@/types/env";
 import { useProvidersQuery, useSettingsQuery } from "@/lib/query";
@@ -40,7 +35,6 @@ import { useScanUnmanagedSkills } from "@/hooks/useSkills";
 import { extractErrorMessage } from "@/utils/errorUtils";
 import { isTextEditableTarget } from "@/utils/domUtils";
 import { deepClone } from "@/utils/deepClone";
-import { isWindows, isLinux } from "@/lib/platform";
 import { ProfileSwitcher } from "@/components/profiles/ProfileSwitcher";
 import { ProviderList } from "@/components/providers/ProviderList";
 import { AddProviderDialog } from "@/components/providers/AddProviderDialog";
@@ -76,6 +70,7 @@ import ToolsPanel from "@/components/openclaw/ToolsPanel";
 import AgentsDefaultsPanel from "@/components/openclaw/AgentsDefaultsPanel";
 import OpenClawHealthBanner from "@/components/openclaw/OpenClawHealthBanner";
 import HermesMemoryPanel from "@/components/hermes/HermesMemoryPanel";
+import { AppSwitcher } from "@/components/AppSwitcher";
 import { AppSidebar } from "@/components/shell/AppSidebar";
 import {
   PageHeader,
@@ -88,8 +83,6 @@ interface SyncStatusUpdatedPayload {
   status?: string;
   error?: string;
 }
-
-const DEFAULT_DRAG_BAR_HEIGHT = isWindows() || isLinux() ? 0 : 28;
 
 const STORAGE_KEY = "stackferry-last-app";
 const VALID_APPS: AppId[] = [
@@ -150,16 +143,12 @@ function App() {
     useState<SkillsPageSource>("repos");
   const [settingsDefaultTab, setSettingsDefaultTab] = useState("general");
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [isWindowMaximized, setIsWindowMaximized] = useState(false);
 
   useEffect(() => {
     localStorage.setItem(VIEW_STORAGE_KEY, currentView);
   }, [currentView]);
 
   const { data: settingsData } = useSettingsQuery();
-  const useAppWindowControls =
-    isLinux() && (settingsData?.useAppWindowControls ?? false);
-  const dragBarHeight = useAppWindowControls ? 32 : DEFAULT_DRAG_BAR_HEIGHT;
   const visibleApps: VisibleApps = settingsData?.visibleApps ?? {
     claude: true,
     "claude-desktop": true,
@@ -421,51 +410,6 @@ function App() {
       );
     },
   );
-
-  useEffect(() => {
-    let active = true;
-    let unlistenResize: (() => void) | undefined;
-
-    const setupWindowStateSync = async () => {
-      try {
-        const currentWindow = getCurrentWindow();
-        const syncWindowMaximizedState = async () => {
-          const maximized = await currentWindow.isMaximized();
-          if (active) {
-            setIsWindowMaximized(maximized);
-          }
-        };
-
-        await syncWindowMaximizedState();
-        unlistenResize = await currentWindow.onResized(() => {
-          void syncWindowMaximizedState();
-        });
-      } catch (error) {
-        console.error("[App] Failed to sync window maximized state", error);
-      }
-    };
-
-    void setupWindowStateSync();
-    return () => {
-      active = false;
-      unlistenResize?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    // settingsData 未加载时跳过，避免用 fallback false 覆盖 Rust 侧已设好的装饰状态
-    if (!settingsData) return;
-
-    const syncWindowDecorations = async () => {
-      try {
-        await getCurrentWindow().setDecorations(!useAppWindowControls);
-      } catch (error) {
-        console.error("[App] Failed to update window decorations", error);
-      }
-    };
-
-    void syncWindowDecorations();
-  }, [useAppWindowControls, settingsData]);
 
   useEffect(() => {
     const checkEnvOnStartup = async () => {
@@ -836,44 +780,6 @@ function App() {
     }
   };
 
-  const notifyWindowControlError = (error: unknown) => {
-    toast.error(
-      t("notifications.windowControlFailed", {
-        defaultValue: "窗口控制失败：{{error}}",
-        error: extractErrorMessage(error),
-      }),
-    );
-  };
-
-  const handleWindowMinimize = async () => {
-    try {
-      await getCurrentWindow().minimize();
-    } catch (error) {
-      console.error("[App] Failed to minimize window", error);
-      notifyWindowControlError(error);
-    }
-  };
-
-  const handleWindowToggleMaximize = async () => {
-    try {
-      const currentWindow = getCurrentWindow();
-      await currentWindow.toggleMaximize();
-      setIsWindowMaximized(await currentWindow.isMaximized());
-    } catch (error) {
-      console.error("[App] Failed to toggle maximize", error);
-      notifyWindowControlError(error);
-    }
-  };
-
-  const handleWindowClose = async () => {
-    try {
-      await getCurrentWindow().close();
-    } catch (error) {
-      console.error("[App] Failed to close window", error);
-      notifyWindowControlError(error);
-    }
-  };
-
   const handleOpenSkillsDiscovery = () => {
     setSkillsDiscoverySource("repos");
     setCurrentView("skillsDiscovery");
@@ -921,13 +827,11 @@ function App() {
   };
 
   const getViewContext = () => {
+    if (currentView === "providers") {
+      return undefined;
+    }
     if (currentView === "settings") {
       return t("settings.description");
-    }
-    if (currentView === "providers") {
-      return isProxyRunning && isCurrentAppTakeoverActive
-        ? t("shell.routingActive")
-        : t("shell.directMode");
     }
     return t(`apps.${sharedFeatureApp}`);
   };
@@ -1236,70 +1140,14 @@ function App() {
   };
 
   return (
-    <div
-      className="flex h-screen flex-col overflow-hidden bg-background text-foreground selection:bg-primary/20"
-      style={{ overflowX: "hidden", paddingTop: dragBarHeight }}
-    >
-      {(dragBarHeight > 0 || useAppWindowControls) && (
-        <div
-          className="fixed left-0 right-0 top-0 z-[70] flex items-center justify-end border-b border-sidebar-border bg-sidebar px-2"
-          data-tauri-drag-region
-          style={{ WebkitAppRegion: "drag", height: dragBarHeight } as any}
-        >
-          {useAppWindowControls && (
-            <div
-              className="flex items-center gap-1"
-              style={{ WebkitAppRegion: "no-drag" } as any}
-            >
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => void handleWindowMinimize()}
-                title={t("header.windowMinimize")}
-                className="h-7 w-7 text-sidebar-foreground/60 hover:bg-sidebar-hover hover:text-sidebar-foreground"
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => void handleWindowToggleMaximize()}
-                title={
-                  isWindowMaximized
-                    ? t("header.windowRestore")
-                    : t("header.windowMaximize")
-                }
-                className="h-7 w-7 text-sidebar-foreground/60 hover:bg-sidebar-hover hover:text-sidebar-foreground"
-              >
-                {isWindowMaximized ? (
-                  <Minimize2 className="h-4 w-4" />
-                ) : (
-                  <Maximize2 className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => void handleWindowClose()}
-                title={t("header.windowClose")}
-                className="h-7 w-7 text-sidebar-foreground/60 hover:bg-destructive/15 hover:text-destructive"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-
+    <div className="flex h-full flex-col overflow-hidden bg-background text-foreground selection:bg-primary/20">
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <AppSidebar
           activeApp={activeApp}
-          visibleApps={visibleApps}
           currentView={currentView}
           isRouteActive={isProxyRunning && isCurrentAppTakeoverActive}
           hasSkillsSupport={hasSkillsSupport}
           hasSessionSupport={hasSessionSupport}
-          onAppSwitch={handleAppSwitch}
           onViewChange={setCurrentView}
           onOpenHermesWebUI={() => void openHermesWebUI()}
           onOpenSettings={() => {
@@ -1317,13 +1165,26 @@ function App() {
         />
 
         <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-workspace">
-          <PageHeader
-            title={getViewTitle()}
-            context={getViewContext()}
-            actions={renderHeaderActions()}
-            overflowActions={getHeaderOverflowActions()}
-            overflowLabel={t("shell.moreActions")}
-          />
+          {currentView !== "settings" && (
+            <PageHeader
+              title={getViewTitle()}
+              context={getViewContext()}
+              appSwitcher={
+                currentView === "providers" ? (
+                  <AppSwitcher
+                    activeApp={activeApp}
+                    onSwitch={handleAppSwitch}
+                    visibleApps={visibleApps}
+                    variant="header"
+                  />
+                ) : undefined
+              }
+              showTitle={currentView !== "providers"}
+              actions={renderHeaderActions()}
+              overflowActions={getHeaderOverflowActions()}
+              overflowLabel={t("shell.moreActions")}
+            />
+          )}
 
           {showEnvBanner && envConflicts.length > 0 && (
             <EnvWarningBanner

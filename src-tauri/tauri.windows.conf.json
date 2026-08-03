@@ -6,6 +6,9 @@
         "label": "main",
         "title": "StackFerry",
         "titleBarStyle": "Visible",
+        "decorations": false,
+        "width": 1200,
+        "height": 760,
         "visible": false,
         "minWidth": 900,
         "minHeight": 600

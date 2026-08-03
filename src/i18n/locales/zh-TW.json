@@ -2683,7 +2683,7 @@
       "selectProvider": "選擇供應商新增至佇列",
       "noAvailableProviders": "沒有可新增的供應商",
       "empty": "故障轉移佇列為空。新增供應商以啟用自動故障轉移。",
-      "orderHint": "佇列順序與首頁供應商清單順序一致，可在首頁拖曳調整順序。",
+      "orderHint": "優先順序依加入順序決定：最先加入的是 P1，之後依序為 P2、P3。",
       "dragHint": "拖曳供應商可調整故障轉移順序，序號越小優先順序越高。",
       "toggleEnabled": "啟用/停用",
       "addSuccess": "已新增至故障轉移佇列",

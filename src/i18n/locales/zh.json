@@ -2712,7 +2712,7 @@
       "selectProvider": "选择供应商添加到队列",
       "noAvailableProviders": "没有可添加的供应商",
       "empty": "故障转移队列为空。添加供应商以启用自动故障转移。",
-      "orderHint": "队列顺序与首页供应商列表顺序一致，可在首页拖拽调整顺序。",
+      "orderHint": "优先级按加入顺序确定：最先加入的是 P1，之后依次为 P2、P3。",
       "dragHint": "拖拽供应商可调整故障转移顺序，序号越小优先级越高。",
       "toggleEnabled": "启用/禁用",
       "addSuccess": "已添加到故障转移队列",

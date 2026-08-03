@@ -65,4 +65,19 @@ describe("AppSwitcher", () => {
     expect(onSwitch).not.toHaveBeenCalled();
     expect(window.localStorage.getItem("stackferry-last-app")).toBeNull();
   });
+
+  it("uses a compact transparent treatment in the page header", () => {
+    render(
+      <AppSwitcher
+        activeApp="codex"
+        onSwitch={vi.fn()}
+        visibleApps={{ ...visibleApps, codex: true }}
+        variant="header"
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "shell.switchApplication" }),
+    ).toHaveClass("h-7", "w-[176px]", "bg-transparent", "text-foreground");
+  });
 });

@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 const APP_BADGE_ICON: Partial<
   Record<AppId, { icon: typeof Terminal; offsetY?: number }>
@@ -21,6 +22,7 @@ interface AppSwitcherProps {
   activeApp: AppId;
   onSwitch: (app: AppId) => void;
   visibleApps?: VisibleApps;
+  variant?: "header" | "sidebar";
 }
 
 const ALL_APPS: AppId[] = [
@@ -40,6 +42,7 @@ export function AppSwitcher({
   activeApp,
   onSwitch,
   visibleApps,
+  variant = "sidebar",
 }: AppSwitcherProps) {
   const { t } = useTranslation();
   const handleSwitch = (app: AppId) => {
@@ -83,7 +86,13 @@ export function AppSwitcher({
         <button
           type="button"
           aria-label={t("shell.switchApplication")}
-          className="flex h-11 w-full min-w-0 items-center gap-2.5 rounded-md border border-sidebar-foreground/20 bg-sidebar-active px-3 text-left text-sm font-medium text-sidebar-foreground transition-colors hover:border-sidebar-foreground/35 hover:bg-sidebar-hover"
+          data-variant={variant}
+          className={cn(
+            "flex min-w-0 items-center gap-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+            variant === "header"
+              ? "h-7 w-[176px] rounded-sm bg-transparent px-1.5 font-semibold text-foreground hover:bg-muted"
+              : "h-11 w-full rounded-md border border-sidebar-foreground/20 bg-sidebar-active px-3 font-medium text-sidebar-foreground hover:border-sidebar-foreground/35 hover:bg-sidebar-hover",
+          )}
         >
           <ProviderIcon
             icon={appIconName[activeApp]}
@@ -91,7 +100,14 @@ export function AppSwitcher({
             size={18}
           />
           <span className="min-w-0 flex-1 truncate">{activeAppName}</span>
-          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-sidebar-foreground/45" />
+          <ChevronsUpDown
+            className={cn(
+              "h-3.5 w-3.5 shrink-0",
+              variant === "header"
+                ? "text-muted-foreground"
+                : "text-sidebar-foreground/45",
+            )}
+          />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={6} className="w-[208px]">

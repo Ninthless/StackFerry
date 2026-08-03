@@ -44,4 +44,32 @@ describe("PageHeader", () => {
 
     expect(container.querySelector(".overflow-x-auto")).toBeNull();
   });
+
+  it("uses the app switcher as the sole provider identity", () => {
+    const { container } = render(
+      <PageHeader
+        title="Codex"
+        appSwitcher={<button>Switch Codex</button>}
+        showTitle={false}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Switch Codex" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Codex" })).toHaveClass(
+      "sr-only",
+    );
+    expect(container.querySelector("header p")).toBeNull();
+  });
+
+  it("keeps non-provider page titles and context without an app switcher", () => {
+    render(<PageHeader title="Settings" context="Manage the application" />);
+
+    expect(screen.getByRole("heading", { name: "Settings" })).not.toHaveClass(
+      "sr-only",
+    );
+    expect(screen.getByText("Manage the application")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Switch Codex" }),
+    ).not.toBeInTheDocument();
+  });
 });

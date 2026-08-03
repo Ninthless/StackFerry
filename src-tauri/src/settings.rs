@@ -350,7 +350,7 @@ pub struct AppSettings {
     pub show_in_tray: bool,
     #[serde(default = "default_minimize_to_tray_on_close")]
     pub minimize_to_tray_on_close: bool,
-    #[serde(default)]
+    #[serde(default = "default_use_app_window_controls")]
     pub use_app_window_controls: bool,
     /// 是否启用 Claude 插件联动
     #[serde(default)]
@@ -503,12 +503,16 @@ fn default_minimize_to_tray_on_close() -> bool {
     true
 }
 
+fn default_use_app_window_controls() -> bool {
+    true
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             show_in_tray: true,
             minimize_to_tray_on_close: true,
-            use_app_window_controls: false,
+            use_app_window_controls: true,
             enable_claude_plugin_integration: false,
             skip_claude_onboarding: false,
             launch_on_startup: false,
@@ -1207,5 +1211,18 @@ mod tests {
         let serialized = serde_json::to_value(settings).expect("serialized settings");
 
         assert!(serialized.get("showProfileSwitcher").is_none());
+    }
+
+    #[test]
+    fn app_window_controls_default_on_and_preserve_explicit_fallback() {
+        let default_settings: AppSettings =
+            serde_json::from_value(serde_json::json!({})).expect("default settings");
+        let fallback_settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "useAppWindowControls": false
+        }))
+        .expect("fallback settings");
+
+        assert!(default_settings.use_app_window_controls);
+        assert!(!fallback_settings.use_app_window_controls);
     }
 }

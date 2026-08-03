@@ -2712,7 +2712,7 @@
       "selectProvider": "Select a provider to add to queue",
       "noAvailableProviders": "No providers available to add",
       "empty": "Failover queue is empty. Add providers to enable automatic failover.",
-      "orderHint": "Queue order matches the provider list order on the Home page. Reorder providers on the Home page to change priority.",
+      "orderHint": "Priority follows join order: the first provider added is P1, followed by P2 and P3.",
       "dragHint": "Drag providers to adjust failover order. Lower numbers have higher priority.",
       "toggleEnabled": "Enable/Disable",
       "addSuccess": "Added to failover queue",

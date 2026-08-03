@@ -24,6 +24,7 @@ import {
   syncModelsDevPricingOnStartup,
 } from "./lib/modelsDevAutoSync";
 import { installBrowserPreview } from "./lib/browserPreview";
+import { WindowFrame } from "./components/shell/WindowFrame";
 
 installGlobalErrorHandlers();
 
@@ -78,6 +79,19 @@ async function handleConfigLoadError(
 async function bootstrap() {
   await installBrowserPreview();
 
+  const renderApplication = (content: React.ReactNode) => (
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider defaultTheme="system" storageKey="stackferry-theme">
+          <WindowFrame>
+            <FrontendErrorBoundary>{content}</FrontendErrorBoundary>
+            <Toaster />
+          </WindowFrame>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </React.StrictMode>
+  );
+
   try {
     void listen("configLoadError", async (evt) => {
       await handleConfigLoadError(evt.payload as ConfigLoadErrorPayload | null);
@@ -94,14 +108,7 @@ async function bootstrap() {
     if (initError && initError.kind === "db_version_too_new") {
       // 数据库版本过新：渲染应用内「升级应用」恢复界面，不进入正常 App
       ReactDOM.createRoot(document.getElementById("root")!).render(
-        <React.StrictMode>
-          <FrontendErrorBoundary>
-            <ThemeProvider defaultTheme="system" storageKey="stackferry-theme">
-              <DatabaseUpgrade payload={initError} />
-              <Toaster />
-            </ThemeProvider>
-          </FrontendErrorBoundary>
-        </React.StrictMode>,
+        renderApplication(<DatabaseUpgrade payload={initError} />),
       );
       return;
     }
@@ -116,18 +123,11 @@ async function bootstrap() {
   }
 
   ReactDOM.createRoot(document.getElementById("root")!).render(
-    <React.StrictMode>
-      <FrontendErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <ThemeProvider defaultTheme="system" storageKey="stackferry-theme">
-            <UpdateProvider>
-              <App />
-              <Toaster />
-            </UpdateProvider>
-          </ThemeProvider>
-        </QueryClientProvider>
-      </FrontendErrorBoundary>
-    </React.StrictMode>,
+    renderApplication(
+      <UpdateProvider>
+        <App />
+      </UpdateProvider>,
+    ),
   );
 
   void syncModelsDevPricingOnStartup()

@@ -11,30 +11,21 @@ import {
   Route,
   Settings,
   ShieldCheck,
-  SlidersHorizontal,
   SquareTerminal,
   Wrench,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useEffect, useState, type CSSProperties } from "react";
 import type { AppId } from "@/lib/api";
-import type { VisibleApps } from "@/types";
-import { APP_VERSION } from "@/lib/appVersion";
-import { getCurrentVersion } from "@/lib/updater";
 import { cn } from "@/lib/utils";
-import { AppSwitcher } from "@/components/AppSwitcher";
 import { UpdateBadge } from "@/components/UpdateBadge";
 import type { AppView } from "@/components/shell/types";
-import appIcon from "@/assets/icons/app-icon.png";
 
 interface AppSidebarProps {
   activeApp: AppId;
-  visibleApps: VisibleApps;
   currentView: AppView;
   isRouteActive: boolean;
   hasSkillsSupport: boolean;
   hasSessionSupport: boolean;
-  onAppSwitch: (app: AppId) => void;
   onViewChange: (view: AppView) => void;
   onOpenHermesWebUI: () => void;
   onOpenSettings: () => void;
@@ -52,12 +43,10 @@ interface NavItem {
 
 export function AppSidebar({
   activeApp,
-  visibleApps,
   currentView,
   isRouteActive,
   hasSkillsSupport,
   hasSessionSupport,
-  onAppSwitch,
   onViewChange,
   onOpenHermesWebUI,
   onOpenSettings,
@@ -65,19 +54,6 @@ export function AppSidebar({
   onOpenUpdate,
 }: AppSidebarProps) {
   const { t } = useTranslation();
-  const [appVersion, setAppVersion] = useState(APP_VERSION);
-
-  useEffect(() => {
-    let mounted = true;
-
-    void getCurrentVersion().then((version) => {
-      if (mounted) setAppVersion(version);
-    });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   const coreItems: NavItem[] = [
     {
@@ -235,36 +211,7 @@ export function AppSidebar({
 
   return (
     <aside className="flex h-full w-[232px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div
-        className="flex h-[72px] shrink-0 items-center gap-3 border-b border-sidebar-border px-4"
-        data-tauri-drag-region
-        style={{ WebkitAppRegion: "drag" } as CSSProperties}
-      >
-        <img src={appIcon} alt="" className="h-9 w-9 rounded-md" />
-        <div className="min-w-0">
-          <div className="truncate text-[15px] font-semibold leading-5">
-            StackFerry
-          </div>
-          <div className="truncate text-[10px] uppercase text-sidebar-foreground/45">
-            {t("shell.routeWorkbench")}
-          </div>
-        </div>
-      </div>
-
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-        <div className="mb-5">
-          <div className="mb-2 flex items-center justify-between px-1">
-            <span className="text-[10px] font-semibold uppercase text-sidebar-foreground/40">
-              {t("shell.applications")}
-            </span>
-          </div>
-          <AppSwitcher
-            activeApp={activeApp}
-            onSwitch={onAppSwitch}
-            visibleApps={visibleApps}
-          />
-        </div>
-
         <nav aria-label={t("shell.navigation")}>
           <div className="mb-2 px-1 text-[10px] font-semibold uppercase text-sidebar-foreground/40">
             {t("shell.workspace")}
@@ -304,10 +251,6 @@ export function AppSidebar({
             <span className="truncate">{t("common.settings")}</span>
           </button>
           <UpdateBadge className="rounded-md" onClick={onOpenUpdate} />
-        </div>
-        <div className="mt-2 flex items-center gap-2 px-2.5 text-[10px] text-sidebar-foreground/35">
-          <SlidersHorizontal className="h-3 w-3" />
-          <span>v{appVersion}</span>
         </div>
       </div>
     </aside>

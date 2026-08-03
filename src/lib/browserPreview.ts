@@ -18,7 +18,7 @@ const visibleApps = {
 export const browserPreviewSettings: Settings = {
   showInTray: true,
   minimizeToTrayOnClose: true,
-  useAppWindowControls: false,
+  useAppWindowControls: true,
   enableClaudePluginIntegration: false,
   skipClaudeOnboarding: false,
   launchOnStartup: false,
@@ -175,7 +175,10 @@ export const createBrowserPreviewCommandHandler = () => {
       case "is_live_takeover_active":
       case "copilot_is_authenticated":
       case "get_migration_result":
+      case "plugin:window|is_fullscreen":
       case "plugin:window|is_maximized":
+        return false;
+      case "plugin:window|is_decorated":
         return false;
       case "get_config_dir":
         return `C:\\Preview\\${String(args.app ?? "stackferry")}`;
@@ -426,7 +429,10 @@ export const createBrowserPreviewCommandHandler = () => {
       case "record_models_dev_sync_result":
       case "sync_current_providers_live":
       case "copy_text_to_clipboard":
+      case "plugin:window|close":
+      case "plugin:window|minimize":
       case "plugin:window|set_decorations":
+      case "plugin:window|toggle_maximize":
         return true;
       default:
         console.warn(`[browser-preview] Missing IPC response: ${command}`);

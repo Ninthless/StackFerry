@@ -111,7 +111,7 @@ export function useSettingsForm(): UseSettingsFormResult {
       ...data,
       showInTray: data.showInTray ?? true,
       minimizeToTrayOnClose: data.minimizeToTrayOnClose ?? true,
-      useAppWindowControls: data.useAppWindowControls ?? false,
+      useAppWindowControls: data.useAppWindowControls ?? true,
       enableClaudePluginIntegration:
         data.enableClaudePluginIntegration ?? false,
       silentStartup: data.silentStartup ?? false,
@@ -142,7 +142,7 @@ export function useSettingsForm(): UseSettingsFormResult {
           ({
             showInTray: true,
             minimizeToTrayOnClose: true,
-            useAppWindowControls: false,
+            useAppWindowControls: true,
             enableClaudePluginIntegration: false,
             skipClaudeOnboarding: false,
             preserveCodexOfficialAuthOnSwitch: false,
@@ -179,7 +179,7 @@ export function useSettingsForm(): UseSettingsFormResult {
         ...serverData,
         showInTray: serverData.showInTray ?? true,
         minimizeToTrayOnClose: serverData.minimizeToTrayOnClose ?? true,
-        useAppWindowControls: serverData.useAppWindowControls ?? false,
+        useAppWindowControls: serverData.useAppWindowControls ?? true,
         enableClaudePluginIntegration:
           serverData.enableClaudePluginIntegration ?? false,
         silentStartup: serverData.silentStartup ?? false,

@@ -69,6 +69,8 @@ pub fn exit_lightweight_mode(app: &tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| format!("创建主窗口失败: {e}"))?;
 
     if let Some(window) = app.get_webview_window("main") {
+        crate::window_chrome::apply_window_decorations(&window)
+            .map_err(|e| format!("恢复主窗口装饰状态失败: {e}"))?;
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
