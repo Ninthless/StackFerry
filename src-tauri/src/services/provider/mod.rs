@@ -2711,6 +2711,16 @@ impl ProviderService {
         }
     }
 
+    fn normalize_provider_if_pi(
+        app_type: &AppType,
+        provider: &mut Provider,
+    ) -> Result<(), AppError> {
+        if matches!(app_type, AppType::Pi) {
+            crate::pi_config::normalize_provider(&mut provider.settings_config)?;
+        }
+        Ok(())
+    }
+
     /// Check whether a provider exists in live config, tolerating parse errors
     /// only for providers that are explicitly marked as DB-only.
     fn check_live_config_exists(
@@ -2891,6 +2901,7 @@ impl ProviderService {
         let mut provider = provider;
         // Normalize Claude model keys
         Self::normalize_provider_if_claude(&app_type, &mut provider);
+        Self::normalize_provider_if_pi(&app_type, &mut provider)?;
         Self::validate_provider_settings(&app_type, &provider)?;
         normalize_provider_common_config_for_storage(state.db.as_ref(), &app_type, &mut provider)?;
         Self::normalize_usage_script_credential_overrides(&app_type, &mut provider);
@@ -3006,6 +3017,7 @@ impl ProviderService {
             .get_provider_by_id(&original_id, app_type.as_str())?;
         // Normalize Claude model keys
         Self::normalize_provider_if_claude(&app_type, &mut provider);
+        Self::normalize_provider_if_pi(&app_type, &mut provider)?;
         Self::validate_provider_settings(&app_type, &provider)?;
         normalize_provider_common_config_for_storage(state.db.as_ref(), &app_type, &mut provider)?;
         Self::normalize_usage_script_credential_overrides(&app_type, &mut provider);

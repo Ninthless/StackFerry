@@ -54,7 +54,10 @@ import {
 } from "@/lib/api/model-fetch";
 import { cn } from "@/lib/utils";
 import type { PiModelConfig, PiProviderApi, PiProviderConfig } from "@/types";
-import { piProviderPresets } from "@/config/piProviderPresets";
+import {
+  piProviderPresets,
+  withPiDefaultHeaders,
+} from "@/config/piProviderPresets";
 
 import type { ProviderFormProps, ProviderFormValues } from "./ProviderForm";
 import { ProviderPresetSelector } from "./ProviderPresetSelector";
@@ -177,7 +180,7 @@ export function PiProviderForm({
     initialConfig.defaultModel ?? initialConfig.models?.[0]?.id ?? "",
   );
   const [headers, setHeaders] = useState(() =>
-    JSON.stringify(initialConfig.headers ?? {}, null, 2),
+    JSON.stringify(withPiDefaultHeaders(initialConfig.headers), null, 2),
   );
   const [compat, setCompat] = useState(() =>
     JSON.stringify(initialConfig.compat ?? {}, null, 2),
@@ -425,9 +428,9 @@ export function PiProviderForm({
       models: normalizedModels,
     };
     delete config.providerKey;
-    if (Object.keys(parsedHeaders).length > 0)
-      config.headers = parsedHeaders as Record<string, string>;
-    else delete config.headers;
+    config.headers = withPiDefaultHeaders(
+      parsedHeaders as Record<string, string>,
+    );
     if (Object.keys(parsedCompat).length > 0) config.compat = parsedCompat;
     else delete config.compat;
 

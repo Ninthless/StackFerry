@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { piProviderPresets } from "@/config/piProviderPresets";
+import {
+  PI_USER_AGENT,
+  piProviderPresets,
+  withPiDefaultHeaders,
+} from "@/config/piProviderPresets";
 
 describe("Pi provider presets", () => {
   it("provides valid custom-provider contracts", () => {
@@ -12,12 +16,19 @@ describe("Pi provider presets", () => {
       expect(preset.settingsConfig.defaultModel).toBe(
         preset.settingsConfig.models[0].id,
       );
+      expect(preset.settingsConfig.headers?.["User-Agent"]).toBe(PI_USER_AGENT);
     }
   });
 
   it("keeps provider keys unique", () => {
     const keys = piProviderPresets.map((preset) => preset.providerKey);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("preserves explicitly configured user agents", () => {
+    expect(withPiDefaultHeaders({ "user-agent": "CustomClient/1.0" })).toEqual({
+      "user-agent": "CustomClient/1.0",
+    });
   });
 
   it("includes local provider presets from the Pi contract", () => {

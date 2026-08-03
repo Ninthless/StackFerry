@@ -23,6 +23,18 @@ export interface PiProviderPreset {
   isCustomTemplate?: boolean;
 }
 
+export const PI_USER_AGENT = "StackFerry";
+
+export const withPiDefaultHeaders = (
+  headers: Record<string, string> = {},
+): Record<string, string> => {
+  const hasUserAgent = Object.keys(headers).some(
+    (name) => name.toLowerCase() === "user-agent",
+  );
+  if (hasUserAgent) return { ...headers };
+  return { ...headers, "User-Agent": PI_USER_AGENT };
+};
+
 const slugifyProviderKey = (value: string) =>
   value
     .toLowerCase()
@@ -80,6 +92,7 @@ const catalogPresets: PiProviderPreset[] = opencodeProviderPresets.flatMap(
           authHeader: api !== "google-generative-ai",
           defaultModel: models[0].id,
           models,
+          headers: withPiDefaultHeaders(),
         },
         category: preset.category,
         isPartner: preset.isPartner,
@@ -108,6 +121,7 @@ export const piProviderPresets: PiProviderPreset[] = [
         { id: "qwen2.5-coder:7b", name: "Qwen 2.5 Coder 7B" },
         { id: "llama3.1:8b", name: "Llama 3.1 8B" },
       ],
+      headers: withPiDefaultHeaders(),
       compat: {
         supportsDeveloperRole: false,
         supportsReasoningEffort: false,
@@ -127,6 +141,7 @@ export const piProviderPresets: PiProviderPreset[] = [
       authHeader: false,
       defaultModel: "local-model",
       models: [{ id: "local-model", name: "Local Model" }],
+      headers: withPiDefaultHeaders(),
       compat: {
         supportsDeveloperRole: false,
         supportsReasoningEffort: false,

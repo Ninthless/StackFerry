@@ -64,6 +64,7 @@ describe("PiProviderForm", () => {
     expect(config.api).toBe("openai-completions");
     expect(config.defaultModel).toBe("qwen2.5-coder:7b");
     expect(config.models).toHaveLength(2);
+    expect(config.headers).toEqual({ "User-Agent": "StackFerry" });
   });
 
   it("submits Pi provider and model extensions without dropping them", async () => {
@@ -84,6 +85,7 @@ describe("PiProviderForm", () => {
             apiKey: "secret",
             defaultModel: "model-a",
             providerExtension: "keep",
+            headers: { "X-Tenant": "alpha" },
             models: [
               {
                 id: "model-a",
@@ -108,6 +110,10 @@ describe("PiProviderForm", () => {
     expect(values.providerKey).toBe("acme");
     expect(config.baseUrl).toBe("https://api.example.com/v1");
     expect(config.providerExtension).toBe("keep");
+    expect(config.headers).toEqual({
+      "X-Tenant": "alpha",
+      "User-Agent": "StackFerry",
+    });
     expect(config.models[0].modelExtension).toBe("keep");
     expect(config.models[0].input).toEqual(["text", "image"]);
   });

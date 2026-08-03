@@ -608,6 +608,14 @@ pub fn run() {
 
             let app_state = AppState::new(db);
 
+            match crate::pi_config::migrate_provider_user_agents() {
+                Ok(count) if count > 0 => {
+                    log::info!("Migrated {count} Pi provider user agent(s)");
+                }
+                Ok(_) => {}
+                Err(e) => log::warn!("Failed to migrate Pi provider user agents: {e}"),
+            }
+
             // 设置 AppHandle 用于代理故障转移时的 UI 更新
             app_state.proxy_service.set_app_handle(app.handle().clone());
 

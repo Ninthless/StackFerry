@@ -12,6 +12,8 @@ const SUPPORTED_APIS: [&str; 4] = [
     "anthropic-messages",
     "google-generative-ai",
 ];
+const USER_AGENT_HEADER: &str = "User-Agent";
+const STACKFERRY_USER_AGENT: &str = "StackFerry";
 
 fn pi_write_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -126,6 +128,33 @@ fn read_object(path: &Path) -> Result<Map<String, Value>, AppError> {
     })
 }
 
+fn ensure_user_agent(provider: &mut Map<String, Value>) -> Result<bool, AppError> {
+    let headers = provider
+        .entry("headers".to_string())
+        .or_insert_with(|| Value::Object(Map::new()))
+        .as_object_mut()
+        .ok_or_else(|| AppError::Config("Pi provider headers must be an object".to_string()))?;
+    if headers
+        .keys()
+        .any(|name| name.eq_ignore_ascii_case(USER_AGENT_HEADER))
+    {
+        return Ok(false);
+    }
+    headers.insert(
+        USER_AGENT_HEADER.to_string(),
+        Value::String(STACKFERRY_USER_AGENT.to_string()),
+    );
+    Ok(true)
+}
+
+pub(crate) fn normalize_provider(settings: &mut Value) -> Result<(), AppError> {
+    let provider = settings.as_object_mut().ok_or_else(|| {
+        AppError::Config("Pi provider configuration must be an object".to_string())
+    })?;
+    ensure_user_agent(provider)?;
+    Ok(())
+}
+
 fn provider_fragment(settings: &Value) -> Result<Map<String, Value>, AppError> {
     let mut fragment = settings.as_object().cloned().ok_or_else(|| {
         AppError::Config("Pi provider configuration must be an object".to_string())
@@ -223,13 +252,15 @@ fn provider_fragment(settings: &Value) -> Result<Map<String, Value>, AppError> {
             "Pi provider authHeader must be a boolean".to_string(),
         ));
     }
-    for field in ["headers", "compat"] {
-        if fragment.get(field).is_some_and(|value| !value.is_object()) {
-            return Err(AppError::Config(format!(
-                "Pi provider {field} must be an object"
-            )));
-        }
+    if fragment
+        .get("compat")
+        .is_some_and(|value| !value.is_object())
+    {
+        return Err(AppError::Config(
+            "Pi provider compat must be an object".to_string(),
+        ));
     }
+    ensure_user_agent(&mut fragment)?;
 
     fragment.remove("apiKey");
     fragment.remove("defaultModel");
@@ -336,6 +367,37 @@ pub fn set_provider(id: &str, settings: &Value) -> Result<(), AppError> {
         .lock()
         .map_err(|_| AppError::Message("Pi configuration lock is poisoned".to_string()))?;
     apply_provider_in_dir(&get_pi_dir(), id, settings)
+}
+
+fn migrate_provider_user_agents_in_dir(dir: &Path) -> Result<usize, AppError> {
+    let models_path = dir.join("models.json");
+    if !models_path.exists() {
+        return Ok(0);
+    }
+    let mut models_root = read_object(&models_path)?;
+    let Some(providers) = models_root
+        .get_mut("providers")
+        .and_then(Value::as_object_mut)
+    else {
+        return Ok(0);
+    };
+    let mut changed = 0;
+    for provider in providers.values_mut().filter_map(Value::as_object_mut) {
+        if ensure_user_agent(provider).unwrap_or(false) {
+            changed += 1;
+        }
+    }
+    if changed > 0 {
+        write_json_file(&models_path, &Value::Object(models_root))?;
+    }
+    Ok(changed)
+}
+
+pub fn migrate_provider_user_agents() -> Result<usize, AppError> {
+    let _guard = pi_write_lock()
+        .lock()
+        .map_err(|_| AppError::Message("Pi configuration lock is poisoned".to_string()))?;
+    migrate_provider_user_agents_in_dir(&get_pi_dir())
 }
 
 fn remove_provider_in_dir(dir: &Path, id: &str) -> Result<(), AppError> {
@@ -508,6 +570,14 @@ mod tests {
             .get("providers")
             .and_then(Value::as_object)
             .is_some_and(|providers| providers.contains_key("existing")));
+        assert_eq!(
+            models["providers"]["custom"]["headers"][USER_AGENT_HEADER],
+            Value::String(STACKFERRY_USER_AGENT.to_string())
+        );
+        assert_eq!(
+            models["providers"]["custom"]["headers"]["X-Tenant"],
+            Value::String("alpha".to_string())
+        );
         let auth = read_object(&temp.path().join("auth.json")).expect("read auth");
         assert_eq!(
             auth.get("oauth-provider")
@@ -549,6 +619,62 @@ mod tests {
             imported.get("defaultModel").and_then(Value::as_str),
             Some("gpt-test")
         );
+    }
+
+    #[test]
+    fn provider_normalization_preserves_custom_user_agent() {
+        let mut settings = provider();
+        settings["headers"] = json!({ "user-agent": "CustomClient/1.0" });
+
+        normalize_provider(&mut settings).expect("normalize");
+
+        assert_eq!(
+            settings["headers"]["user-agent"],
+            Value::String("CustomClient/1.0".to_string())
+        );
+        assert!(settings["headers"].get(USER_AGENT_HEADER).is_none());
+    }
+
+    #[test]
+    fn migration_backfills_existing_provider_user_agents() {
+        let temp = tempdir().expect("tempdir");
+        write_json_file(
+            &temp.path().join("models.json"),
+            &json!({
+                "providers": {
+                    "legacy": { "headers": { "X-Tenant": "alpha" } },
+                    "custom": { "headers": { "user-agent": "CustomClient/1.0" } },
+                    "invalid": { "headers": "invalid" }
+                },
+                "extensionField": true
+            }),
+        )
+        .expect("models");
+
+        assert_eq!(
+            migrate_provider_user_agents_in_dir(temp.path()).expect("migration"),
+            1
+        );
+        assert_eq!(
+            migrate_provider_user_agents_in_dir(temp.path()).expect("idempotent migration"),
+            0
+        );
+
+        let models = read_object(&temp.path().join("models.json")).expect("models");
+        assert_eq!(
+            models["providers"]["legacy"]["headers"][USER_AGENT_HEADER],
+            Value::String(STACKFERRY_USER_AGENT.to_string())
+        );
+        assert_eq!(
+            models["providers"]["legacy"]["headers"]["X-Tenant"],
+            Value::String("alpha".to_string())
+        );
+        assert_eq!(
+            models["providers"]["custom"]["headers"]["user-agent"],
+            Value::String("CustomClient/1.0".to_string())
+        );
+        assert_eq!(models["providers"]["invalid"]["headers"], json!("invalid"));
+        assert_eq!(models["extensionField"], Value::Bool(true));
     }
 
     #[test]

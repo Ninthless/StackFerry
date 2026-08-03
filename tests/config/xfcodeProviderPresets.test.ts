@@ -115,6 +115,7 @@ describe("XFcode provider presets", () => {
       apiKey: "",
       authHeader: true,
       defaultModel: XFCODE_PROVIDER.models.openAi,
+      headers: { "User-Agent": "StackFerry" },
     });
   });
 });
