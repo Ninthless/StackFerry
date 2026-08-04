@@ -855,10 +855,11 @@ fn test_parse_mcp_apps() {
     assert!(!apps.codex);
     assert!(apps.gemini);
 
-    let apps = parse_mcp_apps("grokbuild,opencode,hermes").unwrap();
+    let apps = parse_mcp_apps("grokbuild,opencode,hermes,pi").unwrap();
     assert!(apps.grokbuild);
     assert!(apps.opencode);
     assert!(apps.hermes);
+    assert!(apps.pi);
 
     let err = parse_mcp_apps("invalid").unwrap_err();
     assert!(err.to_string().contains("Invalid app"));

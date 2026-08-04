@@ -34,6 +34,8 @@ pub fn reset_test_fs() {
         ".grok",
         ".config",
         ".openclaw",
+        ".pi",
+        "custom-pi-agent",
         "profiles",
     ] {
         let path = home.join(sub);

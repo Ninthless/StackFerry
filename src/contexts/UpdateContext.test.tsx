@@ -3,21 +3,26 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UpdateProvider, useUpdate } from "./UpdateContext";
 
-const { checkForUpdateMock, relaunchAppMock } = vi.hoisted(() => ({
+const { checkForUpdateMock, installUpdateAndRestartMock } = vi.hoisted(() => ({
   checkForUpdateMock: vi.fn(),
-  relaunchAppMock: vi.fn(),
+  installUpdateAndRestartMock: vi.fn(),
 }));
 
 vi.mock("../lib/updater", () => ({
   checkForUpdate: checkForUpdateMock,
-  relaunchApp: relaunchAppMock,
+}));
+
+vi.mock("../lib/api/settings", () => ({
+  settingsApi: {
+    installUpdateAndRestart: installUpdateAndRestartMock,
+  },
 }));
 
 const wrapper = ({ children }: PropsWithChildren) => (
   <UpdateProvider>{children}</UpdateProvider>
 );
 
-function availableUpdate(downloadAndInstall: () => Promise<void>) {
+function availableUpdate() {
   return {
     status: "available" as const,
     info: {
@@ -25,10 +30,6 @@ function availableUpdate(downloadAndInstall: () => Promise<void>) {
       availableVersion: "0.2.0",
       notes: "Release notes",
       pubDate: "2026-08-02T00:00:00Z",
-    },
-    update: {
-      version: "0.2.0",
-      downloadAndInstall,
     },
   };
 }
@@ -38,7 +39,7 @@ describe("UpdateProvider", () => {
     vi.useFakeTimers();
     localStorage.clear();
     checkForUpdateMock.mockResolvedValue({ status: "up-to-date" });
-    relaunchAppMock.mockResolvedValue(undefined);
+    installUpdateAndRestartMock.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -46,9 +47,8 @@ describe("UpdateProvider", () => {
     vi.useRealTimers();
   });
 
-  it("downloads an available update before relaunching", async () => {
-    const downloadAndInstall = vi.fn().mockResolvedValue(undefined);
-    checkForUpdateMock.mockResolvedValue(availableUpdate(downloadAndInstall));
+  it("delegates installation and restart to the backend", async () => {
+    checkForUpdateMock.mockResolvedValue(availableUpdate());
     const { result } = renderHook(() => useUpdate(), { wrapper });
 
     await act(async () => {
@@ -58,11 +58,7 @@ describe("UpdateProvider", () => {
       await result.current.installUpdate();
     });
 
-    expect(downloadAndInstall).toHaveBeenCalledOnce();
-    expect(relaunchAppMock).toHaveBeenCalledOnce();
-    expect(downloadAndInstall.mock.invocationCallOrder[0]).toBeLessThan(
-      relaunchAppMock.mock.invocationCallOrder[0],
-    );
+    expect(installUpdateAndRestartMock).toHaveBeenCalledOnce();
     expect(result.current.isInstalling).toBe(false);
     expect(result.current.error).toBeNull();
   });
@@ -74,14 +70,14 @@ describe("UpdateProvider", () => {
       "No update is ready to install",
     );
 
-    expect(relaunchAppMock).not.toHaveBeenCalled();
+    expect(installUpdateAndRestartMock).not.toHaveBeenCalled();
   });
 
-  it("does not relaunch after installation fails", async () => {
-    const downloadAndInstall = vi
-      .fn()
-      .mockRejectedValue(new Error("signature rejected"));
-    checkForUpdateMock.mockResolvedValue(availableUpdate(downloadAndInstall));
+  it("surfaces a backend installation failure", async () => {
+    installUpdateAndRestartMock.mockRejectedValue(
+      new Error("signature rejected"),
+    );
+    checkForUpdateMock.mockResolvedValue(availableUpdate());
     const { result } = renderHook(() => useUpdate(), { wrapper });
 
     await act(async () => {
@@ -93,20 +89,37 @@ describe("UpdateProvider", () => {
       );
     });
 
-    expect(relaunchAppMock).not.toHaveBeenCalled();
+    expect(installUpdateAndRestartMock).toHaveBeenCalledOnce();
     expect(result.current.isInstalling).toBe(false);
     expect(result.current.error).toBe("signature rejected");
   });
 
+  it("clears the checked update when the backend no longer finds it", async () => {
+    installUpdateAndRestartMock.mockResolvedValue(false);
+    checkForUpdateMock.mockResolvedValue(availableUpdate());
+    const { result } = renderHook(() => useUpdate(), { wrapper });
+
+    await act(async () => {
+      await result.current.checkUpdate();
+    });
+    await act(async () => {
+      await result.current.installUpdate();
+    });
+
+    expect(result.current.hasUpdate).toBe(false);
+    expect(result.current.updateInfo).toBeNull();
+    expect(result.current.isInstalling).toBe(false);
+  });
+
   it("ignores a duplicate install request while installation is running", async () => {
-    let finishDownload = () => {};
-    const downloadAndInstall = vi.fn(
+    let finishInstall = () => {};
+    installUpdateAndRestartMock.mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          finishDownload = resolve;
+        new Promise<boolean>((resolve) => {
+          finishInstall = () => resolve(true);
         }),
     );
-    checkForUpdateMock.mockResolvedValue(availableUpdate(downloadAndInstall));
+    checkForUpdateMock.mockResolvedValue(availableUpdate());
     const { result } = renderHook(() => useUpdate(), { wrapper });
 
     await act(async () => {
@@ -122,20 +135,16 @@ describe("UpdateProvider", () => {
     await act(async () => {
       await result.current.installUpdate();
     });
-    expect(downloadAndInstall).toHaveBeenCalledOnce();
+    expect(installUpdateAndRestartMock).toHaveBeenCalledOnce();
 
     await act(async () => {
-      finishDownload();
+      finishInstall();
       await installPromise;
     });
-    expect(relaunchAppMock).toHaveBeenCalledOnce();
   });
 
   it("clears a stale update after a later check fails", async () => {
-    const downloadAndInstall = vi.fn().mockResolvedValue(undefined);
-    checkForUpdateMock.mockResolvedValueOnce(
-      availableUpdate(downloadAndInstall),
-    );
+    checkForUpdateMock.mockResolvedValueOnce(availableUpdate());
     const { result } = renderHook(() => useUpdate(), { wrapper });
 
     await act(async () => {

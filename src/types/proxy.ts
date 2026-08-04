@@ -47,6 +47,7 @@ export interface ProxyTakeoverStatus {
   codex: boolean;
   gemini: boolean;
   grokbuild: boolean;
+  pi: boolean;
   opencode: boolean;
   openclaw: boolean;
   hermes: boolean;

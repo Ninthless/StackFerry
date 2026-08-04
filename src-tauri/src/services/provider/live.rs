@@ -1287,8 +1287,23 @@ pub fn sync_current_to_live(state: &AppState) -> Result<(), AppError> {
     // Sync providers based on mode
     for app_type in AppType::all() {
         if app_type.is_additive_mode() {
-            // Additive mode: sync ALL providers
-            sync_all_providers_to_live(state, &app_type)?;
+            if matches!(app_type, AppType::Pi) {
+                let has_live_backup =
+                    futures::executor::block_on(state.db.get_live_backup(app_type.as_str()))
+                        .ok()
+                        .flatten()
+                        .is_some();
+                let live_taken_over = state
+                    .proxy_service
+                    .detect_takeover_in_live_config_for_app(&app_type);
+                if has_live_backup || live_taken_over {
+                    sync_current_provider_for_app_respecting_takeover(state, &app_type)?;
+                } else {
+                    sync_all_providers_to_live(state, &app_type)?;
+                }
+            } else {
+                sync_all_providers_to_live(state, &app_type)?;
+            }
         } else {
             // Switch mode: sync only current provider. During proxy takeover,
             // update the restore backup instead of rewriting the taken-over

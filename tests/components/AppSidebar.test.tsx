@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import type { AppId } from "@/lib/api/types";
 import { vi } from "vitest";
 
 vi.mock("@/components/UpdateBadge", () => ({
@@ -17,6 +18,60 @@ const precedes = (before: Element, after: Element) =>
   );
 
 describe("AppSidebar", () => {
+  const renderSidebar = (activeApp: AppId = "claude") =>
+    render(
+      <AppSidebar
+        activeApp={activeApp}
+        currentView="providers"
+        isRouteActive={false}
+        onViewChange={vi.fn()}
+        onOpenHermesWebUI={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onOpenUsage={vi.fn()}
+        onOpenUpdate={vi.fn()}
+      />,
+    );
+
+  it.each<AppId>(["claude", "claude-desktop", "pi", "openclaw", "hermes"])(
+    "keeps global feature navigation visible for %s routing",
+    (activeApp) => {
+      const { unmount } = renderSidebar(activeApp);
+
+      expect(screen.getByText("Skills")).toBeInTheDocument();
+      expect(screen.getByText("Prompts")).toBeInTheDocument();
+      expect(screen.getByText("Sessions")).toBeInTheDocument();
+      expect(screen.getByText("MCP servers")).toBeInTheDocument();
+
+      unmount();
+    },
+  );
+
+  it("adds route-specific tools without duplicating global navigation", () => {
+    const { rerender } = renderSidebar("openclaw");
+
+    expect(screen.getByText("Workspace")).toBeInTheDocument();
+    expect(screen.getByText("Environment")).toBeInTheDocument();
+    expect(screen.getAllByText("Sessions")).toHaveLength(1);
+
+    rerender(
+      <AppSidebar
+        activeApp="hermes"
+        currentView="providers"
+        isRouteActive={false}
+        onViewChange={vi.fn()}
+        onOpenHermesWebUI={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onOpenUsage={vi.fn()}
+        onOpenUpdate={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Memory")).toBeInTheDocument();
+    expect(screen.getByText("Open dashboard")).toBeInTheDocument();
+    expect(screen.getAllByText("Skills")).toHaveLength(1);
+    expect(screen.getAllByText("MCP servers")).toHaveLength(1);
+  });
+
   it("keeps footer actions in order without rendering version content", () => {
     const onOpenUsage = vi.fn();
     const onOpenSettings = vi.fn();
@@ -27,8 +82,6 @@ describe("AppSidebar", () => {
         activeApp="claude"
         currentView="providers"
         isRouteActive
-        hasSkillsSupport={false}
-        hasSessionSupport={false}
         onViewChange={vi.fn()}
         onOpenHermesWebUI={vi.fn()}
         onOpenSettings={onOpenSettings}

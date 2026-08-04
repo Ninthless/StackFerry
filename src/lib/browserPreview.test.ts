@@ -23,6 +23,11 @@ describe("browser preview IPC", () => {
 
     expect(invoke("get_prompts", { app: "claude" })).toEqual({});
     expect(invoke("get_mcp_servers")).toEqual({});
+    expect(invoke("get_pi_mcp_adapter_status")).toMatchObject({
+      state: "inactive",
+      configuredVersion: null,
+      installedVersion: null,
+    });
     expect(invoke("list_sessions")).toEqual([]);
     expect(invoke("scan_openclaw_config_health")).toEqual([]);
     expect(invoke("get_pi_live_provider_ids")).toEqual([]);

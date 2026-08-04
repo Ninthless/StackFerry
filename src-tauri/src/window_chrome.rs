@@ -2,15 +2,21 @@ use tauri::WebviewWindow;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DesktopPlatform {
+    #[cfg(any(test, target_os = "linux"))]
     Linux,
+    #[cfg(any(test, target_os = "macos"))]
     Macos,
+    #[cfg(any(test, target_os = "windows"))]
     Windows,
 }
 
-const fn uses_app_window_controls(platform: DesktopPlatform, linux_preference: bool) -> bool {
+const fn uses_app_window_controls(platform: DesktopPlatform) -> bool {
     match platform {
+        #[cfg(any(test, target_os = "windows"))]
         DesktopPlatform::Windows => true,
-        DesktopPlatform::Linux => linux_preference,
+        #[cfg(any(test, target_os = "linux"))]
+        DesktopPlatform::Linux => true,
+        #[cfg(any(test, target_os = "macos"))]
         DesktopPlatform::Macos => false,
     }
 }
@@ -27,8 +33,7 @@ const fn current_platform() -> DesktopPlatform {
 }
 
 pub(crate) fn apply_window_decorations(window: &WebviewWindow) -> Result<(), tauri::Error> {
-    let settings = crate::settings::get_settings();
-    let decorated = !uses_app_window_controls(current_platform(), settings.use_app_window_controls);
+    let decorated = !uses_app_window_controls(current_platform());
     window.set_decorations(decorated)
 }
 
@@ -38,19 +43,16 @@ mod tests {
 
     #[test]
     fn windows_always_uses_app_controls() {
-        assert!(uses_app_window_controls(DesktopPlatform::Windows, false));
-        assert!(uses_app_window_controls(DesktopPlatform::Windows, true));
+        assert!(uses_app_window_controls(DesktopPlatform::Windows));
     }
 
     #[test]
     fn macos_always_uses_native_controls() {
-        assert!(!uses_app_window_controls(DesktopPlatform::Macos, false));
-        assert!(!uses_app_window_controls(DesktopPlatform::Macos, true));
+        assert!(!uses_app_window_controls(DesktopPlatform::Macos));
     }
 
     #[test]
-    fn linux_preserves_the_user_preference() {
-        assert!(!uses_app_window_controls(DesktopPlatform::Linux, false));
-        assert!(uses_app_window_controls(DesktopPlatform::Linux, true));
+    fn linux_always_uses_app_controls() {
+        assert!(uses_app_window_controls(DesktopPlatform::Linux));
     }
 }

@@ -19,6 +19,8 @@ pub struct McpApps {
     pub opencode: bool,
     #[serde(default)]
     pub hermes: bool,
+    #[serde(default)]
+    pub pi: bool,
 }
 
 impl McpApps {
@@ -33,7 +35,7 @@ impl McpApps {
             AppType::OpenClaw => false, // OpenClaw doesn't support MCP
             AppType::Hermes => self.hermes,
             AppType::ClaudeDesktop => false,
-            AppType::Pi => false,
+            AppType::Pi => self.pi,
         }
     }
 
@@ -48,7 +50,7 @@ impl McpApps {
             AppType::OpenClaw => {} // OpenClaw doesn't support MCP, ignore
             AppType::Hermes => self.hermes = enabled,
             AppType::ClaudeDesktop => {} // Claude Desktop 3P provider config doesn't support MCP here
-            AppType::Pi => {}
+            AppType::Pi => self.pi = enabled,
         }
     }
 
@@ -73,6 +75,9 @@ impl McpApps {
         if self.hermes {
             apps.push(AppType::Hermes);
         }
+        if self.pi {
+            apps.push(AppType::Pi);
+        }
         apps
     }
 
@@ -84,6 +89,7 @@ impl McpApps {
             && !self.grokbuild
             && !self.opencode
             && !self.hermes
+            && !self.pi
     }
 }
 
@@ -316,6 +322,8 @@ pub struct McpRoot {
     /// Hermes MCP 配置（实际使用 config.yaml）
     #[serde(default, skip_serializing_if = "McpConfig::is_empty")]
     pub hermes: McpConfig,
+    #[serde(default, skip_serializing_if = "McpConfig::is_empty")]
+    pub pi: McpConfig,
 }
 
 impl Default for McpRoot {
@@ -332,6 +340,7 @@ impl Default for McpRoot {
             opencode: McpConfig::default(),
             openclaw: McpConfig::default(),
             hermes: McpConfig::default(),
+            pi: McpConfig::default(),
         }
     }
 }
@@ -721,7 +730,7 @@ impl MultiAppConfig {
             AppType::OpenCode => &self.mcp.opencode,
             AppType::OpenClaw => &self.mcp.openclaw,
             AppType::Hermes => &self.mcp.hermes,
-            AppType::Pi => unreachable!("Pi does not support MCP"),
+            AppType::Pi => &self.mcp.pi,
         }
     }
 
@@ -736,7 +745,7 @@ impl MultiAppConfig {
             AppType::OpenCode => &mut self.mcp.opencode,
             AppType::OpenClaw => &mut self.mcp.openclaw,
             AppType::Hermes => &mut self.mcp.hermes,
-            AppType::Pi => unreachable!("Pi does not support MCP"),
+            AppType::Pi => &mut self.mcp.pi,
         }
     }
 

@@ -99,6 +99,7 @@ type CacheWriteState = "ok" | "partial" | "na";
  */
 function deriveCacheWriteState(appTypes: string[]): CacheWriteState {
   if (appTypes.length === 0) return "ok";
+  if (appTypes.includes("pi")) return "partial";
   const inclusive = appTypes.filter((t) =>
     CACHE_INCLUSIVE_APP_TYPES.has(t),
   ).length;

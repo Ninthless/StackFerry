@@ -1,10 +1,10 @@
 {
   "name": "stackferry",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Provider and configuration manager for AI coding tools",
   "type": "module",
   "scripts": {
-    "dev": "pnpm tauri dev",
+    "dev": "node scripts/dev.mjs",
     "build": "pnpm tauri build",
     "tauri": "tauri",
     "dev:renderer": "vite",
@@ -17,7 +17,7 @@
     "test:unit:watch": "vitest watch"
   },
   "keywords": [],
-  "author": "Ninthless",
+  "author": ["Ninthless", "QiXia881"],
   "license": "MIT",
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.0",

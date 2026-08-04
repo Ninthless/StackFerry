@@ -167,6 +167,25 @@ pub async fn get_mcp_servers(
     McpService::get_all_servers(&state).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn get_pi_mcp_adapter_status(
+    state: State<'_, AppState>,
+    project_dir: Option<String>,
+) -> Result<crate::mcp::PiMcpStatus, String> {
+    let enabled_ids = McpService::get_all_servers(&state)
+        .map_err(|error| error.to_string())?
+        .into_values()
+        .filter(|server| server.apps.pi)
+        .map(|server| server.id)
+        .collect();
+    let project_dir = project_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(std::path::Path::new);
+    Ok(crate::mcp::get_pi_mcp_status(project_dir, &enabled_ids))
+}
+
 /// 添加或更新 MCP 服务器
 #[tauri::command]
 pub async fn upsert_mcp_server(

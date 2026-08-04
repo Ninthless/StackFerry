@@ -9,9 +9,13 @@ use crate::provider::Provider;
 use crate::proxy::circuit_breaker::{
     AllowResult, CircuitBreaker, CircuitBreakerConfig, CircuitState,
 };
+use crate::proxy::providers::{extract_pi_request_model, plan_pi_provider, PiProviderSelection};
+use crate::proxy::types::ProviderHealth;
+use crate::proxy::ProxyError;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 
 /// 供应商路由器
@@ -67,6 +71,109 @@ impl ProviderRouter {
 
         log::warn!("[{app_type}] [FO-005] 未配置供应商");
         Err(AppError::NoProvidersConfigured)
+    }
+
+    pub async fn select_pi_providers(
+        &self,
+        source_provider_id: &str,
+        body: &serde_json::Value,
+        endpoint: &str,
+    ) -> Result<PiProviderSelection, ProxyError> {
+        let request_model = extract_pi_request_model(body, endpoint);
+        let source_provider = self
+            .db
+            .get_provider_by_id(source_provider_id, "pi")
+            .map_err(|error| ProxyError::DatabaseError(error.to_string()))?
+            .ok_or_else(|| {
+                ProxyError::ConfigError(format!(
+                    "Pi source provider '{source_provider_id}' is not configured"
+                ))
+            })?;
+        let source_plan = plan_pi_provider(&source_provider, request_model.as_deref())?
+            .ok_or_else(|| {
+                ProxyError::InvalidRequest(format!(
+                    "Pi provider '{source_provider_id}' does not define requested model '{}'",
+                    request_model.as_deref().unwrap_or("<unspecified>")
+                ))
+            })?;
+        let api = source_plan.api;
+        let source_header_names = source_plan.source_header_names()?;
+        let auto_failover_enabled = self
+            .db
+            .get_proxy_config_for_app("pi")
+            .await
+            .map_err(|error| ProxyError::DatabaseError(error.to_string()))?
+            .auto_failover_enabled;
+
+        if !auto_failover_enabled {
+            return Ok(PiProviderSelection {
+                api,
+                request_model,
+                providers: vec![source_plan.into_provider()],
+                source_header_names,
+            });
+        }
+
+        let all_providers = self
+            .db
+            .get_all_providers("pi")
+            .map_err(|error| ProxyError::DatabaseError(error.to_string()))?;
+        let queue = self
+            .db
+            .get_failover_queue("pi")
+            .map_err(|error| ProxyError::DatabaseError(error.to_string()))?;
+        if queue.is_empty() {
+            return Err(ProxyError::NoProvidersConfigured);
+        }
+
+        let mut providers = Vec::new();
+        let mut compatible_count = 0usize;
+        let mut unavailable_count = 0usize;
+        for item in queue {
+            let Some(provider) = all_providers.get(&item.provider_id) else {
+                continue;
+            };
+            let Some(plan) = plan_pi_provider(provider, request_model.as_deref())? else {
+                continue;
+            };
+            if plan.api != api {
+                continue;
+            }
+            compatible_count += 1;
+
+            let health = self
+                .db
+                .get_provider_health(&provider.id, "pi")
+                .await
+                .map_err(|error| ProxyError::DatabaseError(error.to_string()))?;
+            let circuit_key = format!("pi:{}", provider.id);
+            let breaker = self
+                .get_or_create_circuit_breaker_from_health(&circuit_key, &health)
+                .await;
+            if !breaker.is_available().await {
+                unavailable_count += 1;
+                continue;
+            }
+
+            providers.push(plan.into_provider());
+        }
+
+        if !providers.is_empty() {
+            return Ok(PiProviderSelection {
+                api,
+                request_model,
+                providers,
+                source_header_names,
+            });
+        }
+        if compatible_count > 0 && unavailable_count == compatible_count {
+            return Err(ProxyError::AllProvidersCircuitOpen);
+        }
+        Err(ProxyError::InvalidRequest(format!(
+            "No Pi failover provider supports model '{}' with API '{}'",
+            request_model.as_deref().unwrap_or("<unspecified>"),
+            api.as_str()
+        )))
     }
 
     pub async fn select_failover_activation_provider(
@@ -146,6 +253,10 @@ impl ProviderRouter {
         app_type: &str,
     ) -> Result<bool, AppError> {
         let health = self.db.get_provider_health(&provider.id, app_type).await?;
+        let circuit_key = format!("{app_type}:{}", provider.id);
+        let breaker = self
+            .get_or_create_circuit_breaker_from_health(&circuit_key, &health)
+            .await;
         if !health.is_healthy {
             log::info!(
                 "[{app_type}] 跳过付费图片供应商: provider_id={}, provider_name={}, reason=persisted_unhealthy",
@@ -155,8 +266,6 @@ impl ProviderRouter {
             return Ok(false);
         }
 
-        let circuit_key = format!("{app_type}:{}", provider.id);
-        let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
         let circuit_state = breaker.get_state().await;
         if circuit_state != CircuitState::Closed {
             log::info!(
@@ -191,13 +300,10 @@ impl ProviderRouter {
             };
 
             let health = self.db.get_provider_health(&provider.id, app_type).await?;
-            if !health.is_healthy {
-                unavailable_count += 1;
-                continue;
-            }
-
             let circuit_key = format!("{app_type}:{}", provider.id);
-            let breaker = self.get_or_create_circuit_breaker(&circuit_key).await;
+            let breaker = self
+                .get_or_create_circuit_breaker_from_health(&circuit_key, &health)
+                .await;
             if breaker.is_available().await {
                 providers.push(provider);
             } else {
@@ -341,6 +447,42 @@ impl ProviderRouter {
 
     /// 获取或创建熔断器
     async fn get_or_create_circuit_breaker(&self, key: &str) -> Arc<CircuitBreaker> {
+        self.get_or_create_circuit_breaker_with_open_elapsed(key, None)
+            .await
+    }
+
+    async fn get_or_create_circuit_breaker_from_health(
+        &self,
+        key: &str,
+        health: &ProviderHealth,
+    ) -> Arc<CircuitBreaker> {
+        let open_elapsed = if health.is_healthy {
+            None
+        } else {
+            Some(
+                health
+                    .last_failure_at
+                    .as_deref()
+                    .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+                    .and_then(|failed_at| {
+                        chrono::Utc::now()
+                            .signed_duration_since(failed_at.with_timezone(&chrono::Utc))
+                            .to_std()
+                            .ok()
+                    })
+                    .unwrap_or_default(),
+            )
+        };
+
+        self.get_or_create_circuit_breaker_with_open_elapsed(key, open_elapsed)
+            .await
+    }
+
+    async fn get_or_create_circuit_breaker_with_open_elapsed(
+        &self,
+        key: &str,
+        open_elapsed: Option<Duration>,
+    ) -> Arc<CircuitBreaker> {
         // 先尝试读锁获取
         {
             let breakers = self.circuit_breakers.read().await;
@@ -372,7 +514,10 @@ impl ProviderRouter {
             Err(_) => crate::proxy::circuit_breaker::CircuitBreakerConfig::default(),
         };
 
-        let breaker = Arc::new(CircuitBreaker::new(config));
+        let breaker = Arc::new(match open_elapsed {
+            Some(elapsed) => CircuitBreaker::new_open(config, elapsed),
+            None => CircuitBreaker::new(config),
+        });
         breakers.insert(key.to_string(), breaker.clone());
 
         breaker
@@ -537,7 +682,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn test_failover_skips_persisted_unhealthy_provider_after_router_restart() {
+    async fn test_failover_preserves_persisted_cooldown_after_router_restart() {
         let _home = TempHome::new();
         let db = Arc::new(Database::memory().unwrap());
         let mut provider_a =
@@ -561,6 +706,7 @@ mod tests {
         .unwrap();
         let mut config = db.get_proxy_config_for_app("claude").await.unwrap();
         config.auto_failover_enabled = true;
+        config.circuit_timeout_seconds = 60;
         db.update_proxy_config_for_app(config).await.unwrap();
 
         let router = ProviderRouter::new(db.clone());
@@ -580,6 +726,7 @@ mod tests {
             .unwrap();
         assert_eq!(activation.id, "a");
         db.reset_provider_health("b", "claude").await.unwrap();
+        restarted_router.reset_provider_breaker("b", "claude").await;
         let recovered = restarted_router.select_providers("claude").await.unwrap();
         assert_eq!(
             recovered
@@ -588,6 +735,65 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["b", "a"]
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_failover_restores_persisted_unhealthy_provider_after_cooldown() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        let provider_a =
+            Provider::with_id("a".to_string(), "Provider A".to_string(), json!({}), None);
+        let provider_b =
+            Provider::with_id("b".to_string(), "Provider B".to_string(), json!({}), None);
+        db.save_provider("claude", &provider_a).unwrap();
+        db.save_provider("claude", &provider_b).unwrap();
+        db.add_to_failover_queue("claude", "b").unwrap();
+        db.add_to_failover_queue("claude", "a").unwrap();
+        db.update_provider_health_with_threshold(
+            "b",
+            "claude",
+            false,
+            Some("unavailable".to_string()),
+            1,
+        )
+        .await
+        .unwrap();
+
+        let mut config = db.get_proxy_config_for_app("claude").await.unwrap();
+        config.auto_failover_enabled = true;
+        config.circuit_failure_threshold = 1;
+        config.circuit_success_threshold = 1;
+        config.circuit_timeout_seconds = 0;
+        db.update_proxy_config_for_app(config).await.unwrap();
+
+        let router = ProviderRouter::new(db.clone());
+        let providers = router.select_providers("claude").await.unwrap();
+        assert_eq!(
+            providers
+                .iter()
+                .map(|provider| provider.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["b", "a"]
+        );
+
+        let first = router.allow_provider_request("b", "claude").await;
+        assert!(first.allowed);
+        assert!(first.used_half_open_permit);
+        assert!(!router.allow_provider_request("b", "claude").await.allowed);
+
+        router
+            .record_result("b", "claude", first.used_half_open_permit, true, None)
+            .await
+            .unwrap();
+
+        let health = db.get_provider_health("b", "claude").await.unwrap();
+        assert!(health.is_healthy);
+        let stats = router
+            .get_circuit_breaker_stats("b", "claude")
+            .await
+            .unwrap();
+        assert_eq!(stats.state, CircuitState::Closed);
     }
 
     #[tokio::test]
@@ -626,7 +832,6 @@ mod tests {
             .record_result("b", "claude", false, false, Some("fail".to_string()))
             .await
             .unwrap();
-        db.reset_provider_health("b", "claude").await.unwrap();
 
         let providers = router.select_providers("claude").await.unwrap();
         assert_eq!(providers.len(), 2);
@@ -685,5 +890,94 @@ mod tests {
         let third = router.allow_provider_request("a", "claude").await;
         assert!(third.allowed);
         assert!(third.used_half_open_permit);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_pi_persisted_channel_recovers_in_original_queue_position() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        let pi_provider = |id: &str| {
+            Provider::with_id(
+                id.to_string(),
+                id.to_string(),
+                json!({
+                    "baseUrl": "https://pi.example/v1",
+                    "api": "openai-responses",
+                    "apiKey": format!("{id}-key"),
+                    "authHeader": false,
+                    "headers": {},
+                    "models": [{"id": "shared-model"}]
+                }),
+                None,
+            )
+        };
+        let source = pi_provider("source");
+        let first = pi_provider("first");
+        let second = pi_provider("second");
+        db.save_provider("pi", &source).unwrap();
+        db.save_provider("pi", &first).unwrap();
+        db.save_provider("pi", &second).unwrap();
+        db.add_to_failover_queue("pi", "first").unwrap();
+        db.add_to_failover_queue("pi", "second").unwrap();
+
+        let mut config = db.get_proxy_config_for_app("pi").await.unwrap();
+        config.auto_failover_enabled = true;
+        config.circuit_failure_threshold = 1;
+        config.circuit_success_threshold = 1;
+        config.circuit_timeout_seconds = 0;
+        db.update_proxy_config_for_app(config).await.unwrap();
+        db.update_provider_health_with_threshold(
+            "first",
+            "pi",
+            false,
+            Some("persisted failure".to_string()),
+            1,
+        )
+        .await
+        .unwrap();
+
+        let router = ProviderRouter::new(db.clone());
+        let selection = router
+            .select_pi_providers(
+                "source",
+                &json!({"model": "shared-model", "input": "probe"}),
+                "/responses",
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            selection
+                .providers
+                .iter()
+                .map(|provider| provider.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["first", "second"]
+        );
+
+        let permit = router.allow_provider_request("first", "pi").await;
+        assert!(permit.allowed);
+        assert!(permit.used_half_open_permit);
+        router
+            .record_result("first", "pi", permit.used_half_open_permit, true, None)
+            .await
+            .unwrap();
+        assert!(
+            db.get_provider_health("first", "pi")
+                .await
+                .unwrap()
+                .is_healthy
+        );
+
+        let restarted = ProviderRouter::new(db);
+        let selection = restarted
+            .select_pi_providers(
+                "source",
+                &json!({"model": "shared-model", "input": "next"}),
+                "/responses",
+            )
+            .await
+            .unwrap();
+        assert_eq!(selection.providers[0].id, "first");
     }
 }

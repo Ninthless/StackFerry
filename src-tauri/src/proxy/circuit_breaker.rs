@@ -7,7 +7,7 @@ use super::types::AppProxyConfig;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 /// 熔断器状态
@@ -114,6 +114,17 @@ impl CircuitBreaker {
             last_opened_at: Arc::new(RwLock::new(None)),
             config: Arc::new(RwLock::new(config)),
             half_open_requests: Arc::new(AtomicU32::new(0)),
+        }
+    }
+
+    pub(crate) fn new_open(config: CircuitBreakerConfig, elapsed: Duration) -> Self {
+        let now = Instant::now();
+        let opened_at = now.checked_sub(elapsed).unwrap_or(now);
+
+        Self {
+            state: Arc::new(RwLock::new(CircuitState::Open)),
+            last_opened_at: Arc::new(RwLock::new(Some(opened_at))),
+            ..Self::new(config)
         }
     }
 

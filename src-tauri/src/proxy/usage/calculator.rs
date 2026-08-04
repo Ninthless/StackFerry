@@ -69,6 +69,20 @@ impl CostCalculator {
         )
     }
 
+    pub fn calculate_with_input_semantics(
+        input_token_semantics: i64,
+        usage: &TokenUsage,
+        pricing: &ModelPricing,
+        cost_multiplier: Decimal,
+    ) -> CostBreakdown {
+        Self::calculate_with_cache_semantics(
+            usage,
+            pricing,
+            cost_multiplier,
+            input_token_semantics == crate::services::sql_helpers::INPUT_TOKEN_SEMANTICS_TOTAL,
+        )
+    }
+
     fn calculate_with_cache_semantics(
         usage: &TokenUsage,
         pricing: &ModelPricing,
@@ -122,13 +136,20 @@ impl CostCalculator {
         pricing.map(|p| Self::calculate(usage, p, cost_multiplier))
     }
 
-    pub fn try_calculate_for_app(
-        app_type: &str,
+    pub fn try_calculate_with_input_semantics(
+        input_token_semantics: i64,
         usage: &TokenUsage,
         pricing: Option<&ModelPricing>,
         cost_multiplier: Decimal,
     ) -> Option<CostBreakdown> {
-        pricing.map(|p| Self::calculate_for_app(app_type, usage, p, cost_multiplier))
+        pricing.map(|pricing| {
+            Self::calculate_with_input_semantics(
+                input_token_semantics,
+                usage,
+                pricing,
+                cost_multiplier,
+            )
+        })
     }
 }
 
@@ -160,6 +181,8 @@ mod tests {
             output_tokens: 500,
             cache_read_tokens: 200,
             cache_creation_tokens: 100,
+            reasoning_tokens: 0,
+            cache_creation_1h_tokens: 0,
             model: None,
             message_id: None,
         };
@@ -192,6 +215,8 @@ mod tests {
             output_tokens: 500,
             cache_read_tokens: 200,
             cache_creation_tokens: 100,
+            reasoning_tokens: 0,
+            cache_creation_1h_tokens: 0,
             model: None,
             message_id: None,
         };
@@ -219,6 +244,8 @@ mod tests {
             output_tokens: 0,
             cache_read_tokens: 600,
             cache_creation_tokens: 0,
+            reasoning_tokens: 0,
+            cache_creation_1h_tokens: 0,
             model: None,
             message_id: None,
         };
@@ -238,6 +265,8 @@ mod tests {
             output_tokens: 0,
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
+            reasoning_tokens: 0,
+            cache_creation_1h_tokens: 0,
             model: None,
             message_id: None,
         };
@@ -260,6 +289,8 @@ mod tests {
             output_tokens: 500,
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
+            reasoning_tokens: 0,
+            cache_creation_1h_tokens: 0,
             model: None,
             message_id: None,
         };
@@ -277,6 +308,8 @@ mod tests {
             output_tokens: 1,
             cache_read_tokens: 1,
             cache_creation_tokens: 1,
+            reasoning_tokens: 0,
+            cache_creation_1h_tokens: 0,
             model: None,
             message_id: None,
         };

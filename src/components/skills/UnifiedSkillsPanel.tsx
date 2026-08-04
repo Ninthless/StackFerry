@@ -47,7 +47,7 @@ import {
 
 interface UnifiedSkillsPanelProps {
   onOpenDiscovery: () => void;
-  currentApp: AppId;
+  targetApp: AppId;
 }
 
 export interface UnifiedSkillsPanelHandle {
@@ -68,7 +68,7 @@ function formatSkillBackupDate(unixSeconds: number): string {
 const UnifiedSkillsPanel = React.forwardRef<
   UnifiedSkillsPanelHandle,
   UnifiedSkillsPanelProps
->(({ onOpenDiscovery, currentApp }, ref) => {
+>(({ onOpenDiscovery, targetApp }, ref) => {
   const { t } = useTranslation();
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -200,13 +200,14 @@ const UnifiedSkillsPanel = React.forwardRef<
   };
 
   const handleInstallFromZip = async () => {
+    const installTarget = targetApp;
     try {
       const filePath = await skillsApi.openZipFileDialog();
       if (!filePath) return;
 
       const installed = await installFromZipMutation.mutateAsync({
         filePath,
-        currentApp,
+        currentApp: installTarget,
       });
 
       if (installed.length === 0) {
@@ -290,10 +291,11 @@ const UnifiedSkillsPanel = React.forwardRef<
   };
 
   const handleRestoreFromBackup = async (backupId: string) => {
+    const restoreTarget = targetApp;
     try {
       const restored = await restoreBackupMutation.mutateAsync({
         backupId,
-        currentApp,
+        currentApp: restoreTarget,
       });
       setRestoreDialogOpen(false);
       toast.success(

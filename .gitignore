@@ -27,5 +27,6 @@ flatpak-repo/
 .spec-workflow/
 copilot-api
 .history
+.stackferry-dev/
 CODEBUDDY.md
 mainWindow.js

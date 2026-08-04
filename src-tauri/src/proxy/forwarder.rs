@@ -13,7 +13,8 @@ use super::{
     provider_router::ProviderRouter,
     providers::{
         codex_chat_history::CodexChatHistoryStore, gemini_shadow::GeminiShadowStore, get_adapter,
-        AuthInfo, AuthStrategy, ProviderAdapter, ProviderType,
+        pi_prepare_bedrock_headers, pi_resolved_headers, resolve_pi_provider, AuthInfo,
+        AuthStrategy, PiRequestMetadata, ProviderAdapter, ProviderType,
     },
     thinking_budget_rectifier::{rectify_thinking_budget, should_rectify_thinking_budget},
     thinking_rectifier::{
@@ -100,6 +101,7 @@ impl CodexAuxiliaryEndpoint {
 enum ForwardRequestKind {
     Standard,
     CodexAuxiliary(CodexAuxiliaryEndpoint),
+    Pi,
 }
 
 impl ForwardRequestKind {
@@ -107,10 +109,18 @@ impl ForwardRequestKind {
         matches!(self, Self::CodexAuxiliary(_))
     }
 
+    const fn is_pi(self) -> bool {
+        matches!(self, Self::Pi)
+    }
+
+    const fn allows_request_mutation(self) -> bool {
+        matches!(self, Self::Standard)
+    }
+
     const fn auxiliary_endpoint(self) -> Option<CodexAuxiliaryEndpoint> {
         match self {
             Self::CodexAuxiliary(endpoint) => Some(endpoint),
-            Self::Standard => None,
+            Self::Standard | Self::Pi => None,
         }
     }
 
@@ -439,6 +449,29 @@ impl RequestForwarder {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub async fn forward_pi_with_retry(
+        &self,
+        method: http::Method,
+        endpoint: &str,
+        body: Value,
+        headers: axum::http::HeaderMap,
+        extensions: Extensions,
+        providers: Vec<Provider>,
+    ) -> Result<ForwardResult, ForwardError> {
+        self.forward_with_retry_kind(
+            &AppType::Pi,
+            method,
+            endpoint,
+            body,
+            headers,
+            extensions,
+            providers,
+            ForwardRequestKind::Pi,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
     async fn forward_with_retry_kind(
         &self,
         app_type: &AppType,
@@ -568,7 +601,7 @@ impl RequestForwarder {
 
             // PRE-SEND 优化器：每个 provider 独立决定是否优化
             // clone body 以避免 Bedrock 优化字段泄漏到非 Bedrock provider（failover 场景）
-            let mut provider_body = if !request_kind.is_codex_auxiliary()
+            let mut provider_body = if request_kind.allows_request_mutation()
                 && self.optimizer_config.enabled
                 && is_bedrock_provider(provider)
             {
@@ -667,14 +700,14 @@ impl RequestForwarder {
                 Err(e) => {
                     // 检测是否需要触发整流器（仅 Claude/ClaudeAuth 供应商）
                     let provider_type = ProviderType::from_app_type_and_config(app_type, provider);
-                    let is_anthropic_provider = !request_kind.is_codex_auxiliary()
+                    let is_anthropic_provider = request_kind.allows_request_mutation()
                         && matches!(
                             provider_type,
                             ProviderType::Claude | ProviderType::ClaudeAuth
                         );
                     let mut signature_rectifier_non_retryable_client_error = false;
 
-                    if !request_kind.is_codex_auxiliary()
+                    if request_kind.allows_request_mutation()
                         && self.media_retry_should_trigger(
                             adapter.name(),
                             media_rectifier_retried,
@@ -1329,6 +1362,13 @@ impl RequestForwarder {
         adapter: &dyn ProviderAdapter,
         request_kind: ForwardRequestKind,
     ) -> Result<(ProxyResponse, Option<String>, Option<String>), ProxyError> {
+        let is_pi = request_kind.is_pi();
+        let resolved_pi_provider = if is_pi {
+            Some(resolve_pi_provider(provider).await?)
+        } else {
+            None
+        };
+        let provider = resolved_pi_provider.as_ref().unwrap_or(provider);
         // 使用适配器提取 base_url
         let mut base_url = adapter.extract_base_url(provider)?;
 
@@ -1365,7 +1405,7 @@ impl RequestForwarder {
         // 应用模型映射（独立于格式转换）
         // Claude Desktop proxy 模式必须先把 Desktop 可见的 claude-* route
         // 映射成真实上游模型名，并且未知 route 要直接报错，不能使用默认模型兜底。
-        let mapped_body = if request_kind.paid_image_endpoint().is_some() {
+        let mapped_body = if is_pi || request_kind.paid_image_endpoint().is_some() {
             body.clone()
         } else if matches!(app_type, AppType::ClaudeDesktop) {
             crate::claude_desktop_config::map_proxy_request_model(body.clone(), provider)
@@ -1377,7 +1417,7 @@ impl RequestForwarder {
         };
 
         // 与 CCH 对齐：请求前不做 thinking 主动改写（仅保留兼容入口）
-        let mut mapped_body = if request_kind.is_codex_auxiliary() {
+        let mut mapped_body = if !request_kind.allows_request_mutation() {
             mapped_body
         } else {
             normalize_thinking_type(mapped_body)
@@ -1386,11 +1426,11 @@ impl RequestForwarder {
         // Grok Build exposes a stable client-side model profile in config.toml.
         // Route requests to the provider's real upstream model before applying
         // the optional Responses -> Chat/Anthropic bridge.
-        if !request_kind.is_codex_auxiliary() && matches!(app_type, AppType::GrokBuild) {
+        if request_kind.allows_request_mutation() && matches!(app_type, AppType::GrokBuild) {
             super::providers::apply_codex_upstream_model(provider, &mut mapped_body);
         }
 
-        if !request_kind.is_codex_auxiliary() {
+        if request_kind.allows_request_mutation() {
             if is_copilot {
                 mapped_body =
                     super::providers::copilot_model_map::apply_copilot_model_normalization(
@@ -1411,7 +1451,7 @@ impl RequestForwarder {
         //   1. 先在原始 body 上分类（保留 tool_result 语义，避免误判为 user）
         //   2. 再清洗孤立 tool_result（防止上游 API 报错）
         //   3. 再合并 tool_result + text（减少 premium 计费）
-        let copilot_optimization = if !request_kind.is_codex_auxiliary()
+        let copilot_optimization = if request_kind.allows_request_mutation()
             && is_copilot
             && self.copilot_optimizer_config.enabled
         {
@@ -1556,7 +1596,7 @@ impl RequestForwarder {
                 self.apply_media_prevention(&mut mapped_body, provider);
             }
         }
-        let needs_transform = if request_kind.is_codex_auxiliary() {
+        let needs_transform = if !request_kind.allows_request_mutation() {
             false
         } else {
             match resolved_claude_api_format.as_deref() {
@@ -1798,20 +1838,18 @@ impl RequestForwarder {
 
         // 过滤私有参数（以 `_` 开头的字段），防止内部信息泄露到上游
         // 默认使用空白名单，过滤所有 _ 前缀字段
-        let mut filtered_body = if request_kind.is_codex_auxiliary() {
+        let mut filtered_body = if !request_kind.allows_request_mutation() {
             request_body
         } else {
             prepare_upstream_request_body(request_body)
         };
-        if !is_copilot {
+        if request_kind.allows_request_mutation() && !is_copilot {
             if let Some(overrides) = provider
                 .meta
                 .as_ref()
                 .and_then(|meta| meta.local_proxy_request_overrides.as_ref())
             {
-                if apply_local_proxy_body_overrides(&mut filtered_body, overrides)
-                    && !request_kind.is_codex_auxiliary()
-                {
+                if apply_local_proxy_body_overrides(&mut filtered_body, overrides) {
                     filtered_body = prepare_upstream_request_body(filtered_body);
                 }
             }
@@ -1834,10 +1872,11 @@ impl RequestForwarder {
         );
         let request_is_streaming =
             is_streaming_request(&effective_endpoint, &filtered_body, headers);
-        let force_identity_encoding = needs_transform
-            || codex_responses_to_chat
-            || codex_responses_to_anthropic
-            || request_is_streaming;
+        let force_identity_encoding = !is_pi
+            && (needs_transform
+                || codex_responses_to_chat
+                || codex_responses_to_anthropic
+                || request_is_streaming);
 
         // Codex OAuth 需要注入的 ChatGPT-Account-Id（在动态 token 获取期间填充）
         let mut codex_oauth_account_id: Option<String> = None;
@@ -2092,6 +2131,19 @@ impl RequestForwarder {
             &[]
         };
 
+        let pi_metadata = if is_pi {
+            Some(extensions.get::<PiRequestMetadata>().ok_or_else(|| {
+                ProxyError::Internal("Pi request metadata is missing".to_string())
+            })?)
+        } else {
+            None
+        };
+        let pi_target_headers = if is_pi {
+            pi_resolved_headers(provider)?
+        } else {
+            http::HeaderMap::new()
+        };
+
         // 预计算上游 host 值（用于在原位替换 host header）
         let upstream_host = url
             .parse::<http::Uri>()
@@ -2146,6 +2198,19 @@ impl RequestForwarder {
         for (key, value) in headers {
             let key_str = key.as_str();
 
+            if let Some(metadata) = pi_metadata {
+                if metadata.is_source_configured_header(key) {
+                    let preserve_source_auth = metadata.is_source_provider(&provider.id)
+                        && is_pi_auth_header(key)
+                        && !pi_target_headers.contains_key(key)
+                        && provider.settings_config.get("api").and_then(Value::as_str)
+                            != Some("bedrock-converse-stream");
+                    if !preserve_source_auth {
+                        continue;
+                    }
+                }
+            }
+
             // --- host — 原位替换为上游 host（保持客户端原始位置） ---
             if key_str.eq_ignore_ascii_case("host") {
                 if let Some(ref host_val) = upstream_host {
@@ -2176,17 +2241,21 @@ impl RequestForwarder {
                     | "x-azure-ref"
                     | "akamai-origin-hop"
                     | "x-akamai-config-log-detail"
-                    | "x-request-id"
-                    | "x-correlation-id"
-                    | "x-trace-id"
-                    | "x-amzn-trace-id"
-                    | "x-b3-traceid"
-                    | "x-b3-spanid"
-                    | "x-b3-parentspanid"
-                    | "x-b3-sampled"
-                    | "traceparent"
-                    | "tracestate"
-            ) {
+            ) || (!is_pi
+                && matches!(
+                    key_str,
+                    "x-request-id"
+                        | "x-correlation-id"
+                        | "x-trace-id"
+                        | "x-amzn-trace-id"
+                        | "x-b3-traceid"
+                        | "x-b3-spanid"
+                        | "x-b3-parentspanid"
+                        | "x-b3-sampled"
+                        | "traceparent"
+                        | "tracestate"
+                ))
+            {
                 continue;
             }
 
@@ -2276,7 +2345,7 @@ impl RequestForwarder {
             }
 
             // --- anthropic-beta — 用重建值替换（确保含 claude-code 标记） ---
-            if key_str.eq_ignore_ascii_case("anthropic-beta") {
+            if !is_pi && key_str.eq_ignore_ascii_case("anthropic-beta") {
                 if !saw_anthropic_beta {
                     saw_anthropic_beta = true;
                     if let Some(ref beta_val) = anthropic_beta_value {
@@ -2289,7 +2358,7 @@ impl RequestForwarder {
             }
 
             // --- anthropic-version — 透传客户端值 ---
-            if key_str.eq_ignore_ascii_case("anthropic-version") {
+            if !is_pi && key_str.eq_ignore_ascii_case("anthropic-version") {
                 if should_send_anthropic_headers {
                     saw_anthropic_version = true;
                     ordered_headers.append(key.clone(), value.clone());
@@ -2313,6 +2382,12 @@ impl RequestForwarder {
         if !saw_auth && !auth_headers.is_empty() {
             for (ah_name, ah_value) in &auth_headers {
                 ordered_headers.append(ah_name.clone(), ah_value.clone());
+            }
+        }
+
+        for (name, value) in pi_target_headers {
+            if let Some(name) = name {
+                ordered_headers.insert(name, value);
             }
         }
 
@@ -2373,7 +2448,9 @@ impl RequestForwarder {
 
         // 序列化请求体。GET/HEAD 是 idempotent/safe 方法，按 HTTP 语义不应携带 body；
         // 强行附带 JSON body 会让某些上游（如 Google Gemini 的 models.list）拒绝请求。
-        let body_bytes = if matches!(method, &http::Method::GET | &http::Method::HEAD) {
+        let body_bytes = if let Some(metadata) = pi_metadata {
+            metadata.raw_body.to_vec()
+        } else if matches!(method, &http::Method::GET | &http::Method::HEAD) {
             Vec::new()
         } else {
             serde_json::to_vec(&filtered_body).map_err(|e| {
@@ -2382,21 +2459,27 @@ impl RequestForwarder {
         };
 
         // 确保 content-type 存在
-        if !ordered_headers.contains_key(http::header::CONTENT_TYPE) {
+        if !is_pi && !ordered_headers.contains_key(http::header::CONTENT_TYPE) {
             ordered_headers.insert(
                 http::header::CONTENT_TYPE,
                 http::HeaderValue::from_static("application/json"),
             );
         }
 
-        apply_local_proxy_header_overrides(
-            &mut ordered_headers,
-            provider
-                .meta
-                .as_ref()
-                .and_then(|meta| meta.local_proxy_request_overrides.as_ref()),
-            is_copilot,
-        );
+        if !is_pi {
+            apply_local_proxy_header_overrides(
+                &mut ordered_headers,
+                provider
+                    .meta
+                    .as_ref()
+                    .and_then(|meta| meta.local_proxy_request_overrides.as_ref()),
+                is_copilot,
+            );
+        }
+
+        if is_pi {
+            pi_prepare_bedrock_headers(provider, &url, method, &body_bytes, &mut ordered_headers)?;
+        }
 
         reject_proxy_placeholder_for_managed_account_upstream(&url, &ordered_headers)?;
 
@@ -2992,6 +3075,19 @@ fn is_bedrock_provider(provider: &Provider) -> bool {
         .unwrap_or(false)
 }
 
+fn is_pi_auth_header(name: &http::HeaderName) -> bool {
+    matches!(
+        name.as_str(),
+        "authorization"
+            | "api-key"
+            | "x-api-key"
+            | "x-goog-api-key"
+            | "x-amz-content-sha256"
+            | "x-amz-date"
+            | "x-amz-security-token"
+    )
+}
+
 fn build_retryable_failure_log(
     provider_name: &str,
     attempted_providers: usize,
@@ -3580,7 +3676,13 @@ fn is_streaming_request(endpoint: &str, body: &Value, headers: &axum::http::Head
         return true;
     }
 
-    if endpoint.contains("streamGenerateContent") || endpoint.contains("alt=sse") {
+    if endpoint.contains("streamGenerateContent")
+        || endpoint.contains("alt=sse")
+        || endpoint
+            .split_once('?')
+            .map_or(endpoint, |(path, _)| path)
+            .ends_with("/converse-stream")
+    {
         return true;
     }
 
@@ -4945,6 +5047,15 @@ mod tests {
             "/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse",
             &json!({ "model": "gemini-2.5-pro" }),
             &headers
+        ));
+    }
+
+    #[test]
+    fn streaming_request_detects_bedrock_event_stream_without_body_flag() {
+        assert!(is_streaming_request(
+            "/model/us.anthropic.claude-sonnet-4-v1%3A0/converse-stream",
+            &json!({ "messages": [] }),
+            &HeaderMap::new()
         ));
     }
 

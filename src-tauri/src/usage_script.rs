@@ -5,16 +5,32 @@ use url::{Host, Url};
 
 use crate::error::AppError;
 
+#[derive(Clone, Copy)]
+pub(crate) struct UsageScriptExecution<'a> {
+    pub script_code: &'a str,
+    pub api_key: &'a str,
+    pub base_url: &'a str,
+    pub timeout_secs: u64,
+    pub access_token: Option<&'a str>,
+    pub user_id: Option<&'a str>,
+    pub template_type: Option<&'a str>,
+    pub include_http_error_body: bool,
+}
+
 /// 执行用量查询脚本
-pub async fn execute_usage_script(
-    script_code: &str,
-    api_key: &str,
-    base_url: &str,
-    timeout_secs: u64,
-    access_token: Option<&str>,
-    user_id: Option<&str>,
-    template_type: Option<&str>,
+pub(crate) async fn execute_usage_script(
+    execution: &UsageScriptExecution<'_>,
 ) -> Result<Value, AppError> {
+    let UsageScriptExecution {
+        script_code,
+        api_key,
+        base_url,
+        timeout_secs,
+        access_token,
+        user_id,
+        template_type,
+        include_http_error_body,
+    } = *execution;
     // 检测是否为自定义模板模式
     // 优先使用前端传递的 template_type
     let is_custom_template = template_type.map(|t| t == "custom").unwrap_or(false);
@@ -108,7 +124,7 @@ pub async fn execute_usage_script(
     validate_request_url(&request.url, base_url, is_custom_template)?;
 
     // 6. 发送 HTTP 请求
-    let response_data = send_http_request(&request, timeout_secs).await?;
+    let response_data = send_http_request(&request, timeout_secs, include_http_error_body).await?;
 
     // 7. 在独立作用域中执行 extractor（确保 Runtime/Context 在函数结束前释放）
     let result: Value = {
@@ -220,7 +236,11 @@ struct RequestConfig {
 }
 
 /// 发送 HTTP 请求
-async fn send_http_request(config: &RequestConfig, timeout_secs: u64) -> Result<String, AppError> {
+async fn send_http_request(
+    config: &RequestConfig,
+    timeout_secs: u64,
+    include_http_error_body: bool,
+) -> Result<String, AppError> {
     // 使用全局 HTTP 客户端（已包含代理配置）
     let client = crate::proxy::http_client::get();
     // 约束超时范围，防止异常配置导致长时间阻塞（最小 2 秒，最大 30 秒）
@@ -268,23 +288,33 @@ async fn send_http_request(config: &RequestConfig, timeout_secs: u64) -> Result<
     })?;
 
     if !status.is_success() {
-        let preview = if text.len() > 200 {
-            let mut safe_cut = 200usize;
-            while !text.is_char_boundary(safe_cut) {
-                safe_cut = safe_cut.saturating_sub(1);
-            }
-            format!("{}...", &text[..safe_cut])
-        } else {
-            text.clone()
-        };
+        let detail = http_error_detail(&text, include_http_error_body);
         return Err(AppError::localized(
             "usage_script.http_error",
-            format!("HTTP {status} : {preview}"),
-            format!("HTTP {status} : {preview}"),
+            format!("HTTP {status}{detail}"),
+            format!("HTTP {status}{detail}"),
         ));
     }
 
     Ok(text)
+}
+
+fn http_error_detail(text: &str, include: bool) -> String {
+    include
+        .then(|| response_preview(text))
+        .map(|preview| format!(" : {preview}"))
+        .unwrap_or_default()
+}
+
+fn response_preview(text: &str) -> String {
+    if text.len() <= 200 {
+        return text.to_string();
+    }
+    let mut end = 200usize;
+    while !text.is_char_boundary(end) {
+        end = end.saturating_sub(1);
+    }
+    format!("{}...", &text[..end])
 }
 
 /// 验证脚本返回值（支持单对象或数组）
@@ -600,6 +630,17 @@ mod tests {
             result.is_ok(),
             "Custom usage scripts should be able to call an explicit HTTP quota endpoint"
         );
+    }
+
+    #[test]
+    fn hidden_http_error_body_does_not_include_sensitive_response() {
+        let body = r#"{"Authorization":"Bearer resolved-secret","apiKey":"resolved-secret"}"#;
+        let detail = http_error_detail(body, false);
+        let message = format!("HTTP 401 Unauthorized{detail}");
+
+        assert_eq!(message, "HTTP 401 Unauthorized");
+        assert!(!message.contains("resolved-secret"));
+        assert!(!message.contains("Authorization"));
     }
 
     #[test]

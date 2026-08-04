@@ -159,6 +159,7 @@ pub(crate) fn parse_mcp_apps(apps_str: &str) -> Result<McpApps, AppError> {
         grokbuild: false,
         opencode: false,
         hermes: false,
+        pi: false,
     };
 
     for app in apps_str.split(',') {
@@ -173,6 +174,7 @@ pub(crate) fn parse_mcp_apps(apps_str: &str) -> Result<McpApps, AppError> {
                 log::debug!("OpenClaw doesn't support MCP, ignoring in apps parameter");
             }
             "hermes" => apps.hermes = true,
+            "pi" => apps.pi = true,
             other => {
                 return Err(AppError::InvalidInput(format!(
                     "Invalid app in 'apps': {other}"
@@ -214,6 +216,7 @@ mod tests {
             grokbuild: true,
             opencode: true,
             hermes: true,
+            pi: true,
             ..McpApps::default()
         };
         let merged = merge_mcp_apps(&existing, &target);
@@ -224,5 +227,6 @@ mod tests {
         assert!(merged.grokbuild);
         assert!(merged.opencode);
         assert!(merged.hermes);
+        assert!(merged.pi);
     }
 }

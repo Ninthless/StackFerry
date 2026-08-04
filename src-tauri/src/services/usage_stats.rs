@@ -129,6 +129,7 @@ pub struct RequestLogDetail {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_name: Option<String>,
     pub app_type: String,
+    pub api_type: String,
     pub model: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_model: Option<String>,
@@ -137,8 +138,8 @@ pub struct RequestLogDetail {
     pub output_tokens: u32,
     pub cache_read_tokens: u32,
     pub cache_creation_tokens: u32,
-    /// Internal storage semantics; omitted from the UI/API payload.
-    #[serde(skip)]
+    pub reasoning_tokens: u32,
+    pub cache_creation_1h_tokens: u32,
     pub input_token_semantics: i64,
     pub input_cost_usd: String,
     pub output_cost_usd: String,
@@ -157,17 +158,23 @@ pub struct RequestLogDetail {
     /// 写入时实际用于计价的模型名。None = v11 前的历史行，"" = 未计价的错误行。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pricing_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upstream_response_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<String>,
 }
 
-/// 把 26 列的查询结果映射为 `RequestLogDetail`。
+/// 把 31 列的查询结果映射为 `RequestLogDetail`。
 ///
 /// 调用方的 SELECT **必须**按以下顺序返回 26 列：
-/// `request_id, provider_id, provider_name, app_type, model, request_model,
+/// `request_id, provider_id, provider_name, app_type, api_type, model, request_model,
 ///  cost_multiplier, input_tokens, output_tokens, cache_read_tokens,
-///  cache_creation_tokens, input_cost_usd, output_cost_usd, cache_read_cost_usd,
+///  cache_creation_tokens, reasoning_tokens, cache_creation_1h_tokens,
+///  input_cost_usd, output_cost_usd, cache_read_cost_usd,
 ///  cache_creation_cost_usd, total_cost_usd, is_streaming, latency_ms,
 ///  first_token_ms, duration_ms, status_code, error_message, created_at,
-///  data_source, pricing_model, input_token_semantics`
+///  data_source, pricing_model, input_token_semantics, upstream_response_id,
+///  stop_reason`
 ///
 /// 不需要 provider_name 时（如 backfill）SELECT `NULL AS provider_name` 占位即可。
 fn row_to_request_log_detail(row: &rusqlite::Row<'_>) -> rusqlite::Result<RequestLogDetail> {
@@ -176,30 +183,35 @@ fn row_to_request_log_detail(row: &rusqlite::Row<'_>) -> rusqlite::Result<Reques
         provider_id: row.get(1)?,
         provider_name: row.get(2)?,
         app_type: row.get(3)?,
-        model: row.get(4)?,
-        request_model: row.get(5)?,
+        api_type: row.get(4)?,
+        model: row.get(5)?,
+        request_model: row.get(6)?,
         cost_multiplier: row
-            .get::<_, Option<String>>(6)?
+            .get::<_, Option<String>>(7)?
             .unwrap_or_else(|| "1".to_string()),
-        input_tokens: row.get::<_, i64>(7)? as u32,
-        output_tokens: row.get::<_, i64>(8)? as u32,
-        cache_read_tokens: row.get::<_, i64>(9)? as u32,
-        cache_creation_tokens: row.get::<_, i64>(10)? as u32,
-        input_cost_usd: row.get(11)?,
-        output_cost_usd: row.get(12)?,
-        cache_read_cost_usd: row.get(13)?,
-        cache_creation_cost_usd: row.get(14)?,
-        total_cost_usd: row.get(15)?,
-        is_streaming: row.get::<_, i64>(16)? != 0,
-        latency_ms: row.get::<_, i64>(17)? as u64,
-        first_token_ms: row.get::<_, Option<i64>>(18)?.map(|v| v as u64),
-        duration_ms: row.get::<_, Option<i64>>(19)?.map(|v| v as u64),
-        status_code: row.get::<_, i64>(20)? as u16,
-        error_message: row.get(21)?,
-        created_at: row.get(22)?,
-        data_source: row.get(23)?,
-        pricing_model: row.get(24)?,
-        input_token_semantics: row.get::<_, i64>(25)?,
+        input_tokens: row.get::<_, i64>(8)? as u32,
+        output_tokens: row.get::<_, i64>(9)? as u32,
+        cache_read_tokens: row.get::<_, i64>(10)? as u32,
+        cache_creation_tokens: row.get::<_, i64>(11)? as u32,
+        reasoning_tokens: row.get::<_, i64>(12)? as u32,
+        cache_creation_1h_tokens: row.get::<_, i64>(13)? as u32,
+        input_cost_usd: row.get(14)?,
+        output_cost_usd: row.get(15)?,
+        cache_read_cost_usd: row.get(16)?,
+        cache_creation_cost_usd: row.get(17)?,
+        total_cost_usd: row.get(18)?,
+        is_streaming: row.get::<_, i64>(19)? != 0,
+        latency_ms: row.get::<_, i64>(20)? as u64,
+        first_token_ms: row.get::<_, Option<i64>>(21)?.map(|v| v as u64),
+        duration_ms: row.get::<_, Option<i64>>(22)?.map(|v| v as u64),
+        status_code: row.get::<_, i64>(23)? as u16,
+        error_message: row.get(24)?,
+        created_at: row.get(25)?,
+        data_source: row.get(26)?,
+        pricing_model: row.get(27)?,
+        input_token_semantics: row.get::<_, i64>(28)?,
+        upstream_response_id: row.get(29)?,
+        stop_reason: row.get(30)?,
     })
 }
 
@@ -300,7 +312,7 @@ pub(crate) fn effective_usage_log_filter(log_alias: &str) -> String {
     let proxy_data_source = data_source_expr("proxy_dedup");
     format!(
         "NOT (
-            {data_source} IN ('session_log', 'codex_session', 'gemini_session', 'opencode_session')
+            {data_source} IN ('session_log', 'codex_session', 'gemini_session', 'opencode_session', 'pi_session')
             AND EXISTS (
                 SELECT 1
                 FROM proxy_request_logs proxy_dedup
@@ -308,23 +320,33 @@ pub(crate) fn effective_usage_log_filter(log_alias: &str) -> String {
                   AND proxy_dedup.app_type = {log_alias}.app_type
                   AND proxy_dedup.status_code >= 200
                   AND proxy_dedup.status_code < 300
-                  AND proxy_dedup.input_tokens = {log_alias}.input_tokens
-                  AND proxy_dedup.output_tokens = {log_alias}.output_tokens
-                  AND proxy_dedup.cache_read_tokens = {log_alias}.cache_read_tokens
                   AND (
-                      proxy_dedup.cache_creation_tokens = {log_alias}.cache_creation_tokens
-                      OR (
-                          {log_alias}.cache_creation_tokens = 0
-                          AND {data_source} IN ('codex_session', 'gemini_session', 'opencode_session')
+                      (
+                          {data_source} = 'pi_session'
+                          AND NULLIF({log_alias}.upstream_response_id, '') IS NOT NULL
+                          AND proxy_dedup.provider_id = {log_alias}.provider_id
+                          AND proxy_dedup.upstream_response_id = {log_alias}.upstream_response_id
                       )
-                  )
-                  AND proxy_dedup.created_at BETWEEN
-                      {log_alias}.created_at - {SESSION_PROXY_DEDUP_WINDOW_SECONDS}
-                      AND {log_alias}.created_at + {SESSION_PROXY_DEDUP_WINDOW_SECONDS}
-                  AND (
-                      LOWER(proxy_dedup.model) = LOWER({log_alias}.model)
-                      OR LOWER(proxy_dedup.model) = 'unknown'
-                      OR LOWER({log_alias}.model) = 'unknown'
+                      OR (
+                          proxy_dedup.input_tokens = {log_alias}.input_tokens
+                          AND proxy_dedup.output_tokens = {log_alias}.output_tokens
+                          AND proxy_dedup.cache_read_tokens = {log_alias}.cache_read_tokens
+                          AND (
+                              proxy_dedup.cache_creation_tokens = {log_alias}.cache_creation_tokens
+                              OR (
+                                  {log_alias}.cache_creation_tokens = 0
+                                  AND {data_source} IN ('codex_session', 'gemini_session', 'opencode_session')
+                              )
+                          )
+                          AND proxy_dedup.created_at BETWEEN
+                              {log_alias}.created_at - {SESSION_PROXY_DEDUP_WINDOW_SECONDS}
+                              AND {log_alias}.created_at + {SESSION_PROXY_DEDUP_WINDOW_SECONDS}
+                          AND (
+                              LOWER(proxy_dedup.model) = LOWER({log_alias}.model)
+                              OR LOWER(proxy_dedup.model) = 'unknown'
+                              OR LOWER({log_alias}.model) = 'unknown'
+                          )
+                      )
                   )
             )
         )"
@@ -357,6 +379,39 @@ pub(crate) fn should_skip_session_insert(
 ) -> Result<bool, AppError> {
     if proxy_request_id_exists(conn, request_id)? {
         return Ok(true);
+    }
+    has_matching_proxy_usage_log(conn, key)
+}
+
+pub(crate) fn should_skip_pi_session_insert(
+    conn: &Connection,
+    request_id: &str,
+    provider_id: &str,
+    upstream_response_id: Option<&str>,
+    key: &DedupKey,
+) -> Result<bool, AppError> {
+    if proxy_request_id_exists(conn, request_id)? {
+        return Ok(true);
+    }
+    if let Some(response_id) = upstream_response_id.filter(|value| !value.is_empty()) {
+        let duplicate = conn
+            .query_row(
+                "SELECT EXISTS (
+                    SELECT 1 FROM proxy_request_logs
+                    WHERE COALESCE(data_source, 'proxy') = 'proxy'
+                      AND app_type = 'pi'
+                      AND provider_id = ?1
+                      AND upstream_response_id = ?2
+                 )",
+                params![provider_id, response_id],
+                |row| row.get::<_, bool>(0),
+            )
+            .map_err(|error| {
+                AppError::Database(format!("查询 Pi 上游响应重复日志失败: {error}"))
+            })?;
+        if duplicate {
+            return Ok(true);
+        }
     }
     has_matching_proxy_usage_log(conn, key)
 }
@@ -1598,13 +1653,14 @@ impl Database {
 
         let logs_pname = provider_name_coalesce("l", "p");
         let sql = format!(
-            "SELECT l.request_id, l.provider_id, {logs_pname} as provider_name, l.app_type, l.model,
-                    l.request_model, l.cost_multiplier,
+            "SELECT l.request_id, l.provider_id, {logs_pname} as provider_name, l.app_type,
+                    l.api_type, l.model, l.request_model, l.cost_multiplier,
                     l.input_tokens, l.output_tokens, l.cache_read_tokens, l.cache_creation_tokens,
+                    l.reasoning_tokens, l.cache_creation_1h_tokens,
                     l.input_cost_usd, l.output_cost_usd, l.cache_read_cost_usd, l.cache_creation_cost_usd, l.total_cost_usd,
                     l.is_streaming, l.latency_ms, l.first_token_ms, l.duration_ms,
                     l.status_code, l.error_message, l.created_at, l.data_source, l.pricing_model,
-                    l.input_token_semantics
+                    l.input_token_semantics, l.upstream_response_id, l.stop_reason
              FROM proxy_request_logs l
              LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type
              {where_clause}
@@ -1642,13 +1698,14 @@ impl Database {
 
         let detail_pname = provider_name_coalesce("l", "p");
         let detail_sql = format!(
-            "SELECT l.request_id, l.provider_id, {detail_pname} as provider_name, l.app_type, l.model,
-                    l.request_model, l.cost_multiplier,
+            "SELECT l.request_id, l.provider_id, {detail_pname} as provider_name, l.app_type,
+                    l.api_type, l.model, l.request_model, l.cost_multiplier,
                     input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                    reasoning_tokens, cache_creation_1h_tokens,
                     input_cost_usd, output_cost_usd, cache_read_cost_usd, cache_creation_cost_usd, total_cost_usd,
                     is_streaming, latency_ms, first_token_ms, duration_ms,
                     status_code, error_message, created_at, l.data_source, l.pricing_model,
-                    l.input_token_semantics
+                    l.input_token_semantics, l.upstream_response_id, l.stop_reason
              FROM proxy_request_logs l
              LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type
              WHERE l.request_id = ?"
@@ -1798,13 +1855,15 @@ impl Database {
         only_model_id: Option<&str>,
     ) -> Result<u64, AppError> {
         const BASE_SQL: &str =
-            "SELECT request_id, provider_id, NULL AS provider_name, app_type, model, request_model,
-                        cost_multiplier,
+            "SELECT request_id, provider_id, NULL AS provider_name, app_type, api_type,
+                        model, request_model, cost_multiplier,
                         input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                        reasoning_tokens, cache_creation_1h_tokens,
                         input_cost_usd, output_cost_usd, cache_read_cost_usd,
                         cache_creation_cost_usd, total_cost_usd, is_streaming, latency_ms,
                         first_token_ms, duration_ms, status_code, error_message, created_at,
-                        data_source, pricing_model, input_token_semantics
+                        data_source, pricing_model, input_token_semantics,
+                        upstream_response_id, stop_reason
              FROM proxy_request_logs
              WHERE CAST(total_cost_usd AS REAL) <= 0
                AND (input_tokens > 0 OR output_tokens > 0
@@ -1888,19 +1947,18 @@ impl Database {
         // 1. 历史 cache-inclusive 行只包含 cache read；新 total 行还包含 cache write。
         // 2. Claude/Anthropic 的 input_tokens 已经是 fresh input，不能再次扣减
         // 3. 各项成本是基础成本（不含倍率），倍率只作用于最终总价
-        let cache_inclusive_app =
-            crate::services::sql_helpers::is_cache_inclusive_app(log.app_type.as_str());
-        let billable_input_tokens =
-            if !cache_inclusive_app || log.input_token_semantics == INPUT_TOKEN_SEMANTICS_FRESH {
-                log.input_tokens as u64
-            } else if log.input_token_semantics == INPUT_TOKEN_SEMANTICS_TOTAL {
-                (log.input_tokens as u64)
-                    .saturating_sub(log.cache_read_tokens as u64)
-                    .saturating_sub(log.cache_creation_tokens as u64)
-            } else {
-                // v12 and earlier: input included cache reads but excluded cache writes.
-                (log.input_tokens as u64).saturating_sub(log.cache_read_tokens as u64)
-            };
+        let billable_input_tokens = if log.input_token_semantics == INPUT_TOKEN_SEMANTICS_FRESH {
+            log.input_tokens as u64
+        } else if log.input_token_semantics == INPUT_TOKEN_SEMANTICS_TOTAL {
+            (log.input_tokens as u64)
+                .saturating_sub(log.cache_read_tokens as u64)
+                .saturating_sub(log.cache_creation_tokens as u64)
+        } else if crate::services::sql_helpers::is_cache_inclusive_app(log.app_type.as_str()) {
+            // v12 and earlier: input included cache reads but excluded cache writes.
+            (log.input_tokens as u64).saturating_sub(log.cache_read_tokens as u64)
+        } else {
+            log.input_tokens as u64
+        };
         let input_cost =
             rust_decimal::Decimal::from(billable_input_tokens) * pricing.input / million;
         let output_cost =
@@ -2402,6 +2460,7 @@ mod tests {
         conn.execute(
             "CREATE TABLE proxy_request_logs (
                 request_id TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL DEFAULT '',
                 app_type TEXT NOT NULL,
                 model TEXT NOT NULL,
                 input_tokens INTEGER NOT NULL,
@@ -2410,7 +2469,8 @@ mod tests {
                 cache_creation_tokens INTEGER NOT NULL,
                 status_code INTEGER NOT NULL,
                 created_at INTEGER NOT NULL,
-                data_source TEXT
+                data_source TEXT,
+                upstream_response_id TEXT
             )",
             [],
         )?;

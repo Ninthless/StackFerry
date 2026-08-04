@@ -8,6 +8,7 @@ import { createTestQueryClient } from "../utils/testQueryClient";
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
 const invokeMock = vi.fn();
+let piTakeoverEnabled = false;
 
 vi.mock("sonner", () => ({
   toast: {
@@ -55,6 +56,7 @@ describe("useProxyStatus", () => {
     invokeMock.mockReset();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
+    piTakeoverEnabled = false;
 
     invokeMock.mockImplementation((command: string) => {
       if (command === "get_proxy_status") {
@@ -82,6 +84,7 @@ describe("useProxyStatus", () => {
           codex: false,
           gemini: false,
           grokbuild: false,
+          pi: piTakeoverEnabled,
           opencode: false,
           openclaw: false,
         });
@@ -115,5 +118,16 @@ describe("useProxyStatus", () => {
       "代理服务已启动 - 127.0.0.1:15721",
       { closeButton: true },
     );
+  });
+
+  it("includes Pi in the aggregate takeover state", async () => {
+    piTakeoverEnabled = true;
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useProxyStatus(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.takeoverStatus?.pi).toBe(true);
+    });
+    expect(result.current.isTakeoverActive).toBe(true);
   });
 });

@@ -7,11 +7,13 @@ use crate::provider::Provider;
 use crate::proxy::{
     extract_session_id,
     forwarder::{CodexAuxiliaryEndpoint, RequestForwarder},
+    providers::PiApi,
     server::ProxyState,
     types::{AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, RectifierConfig},
     ProxyError,
 };
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, HeaderName};
+use std::collections::HashSet;
 use std::time::Instant;
 
 /// 流式超时配置
@@ -60,6 +62,10 @@ pub struct RequestContext {
     /// 应用类型（预留，目前通过 app_type_str 使用）
     #[allow(dead_code)]
     pub app_type: AppType,
+    /// 当前请求的上游 API 协议标识；非 Pi 应用沿用应用类型。
+    pub api_type: String,
+    /// input_tokens 是总输入（含缓存）还是已归一化的新输入。
+    pub input_token_semantics: i64,
     /// Session ID（从客户端请求提取或新生成）
     pub session_id: String,
     /// Session ID 是否由客户端提供。生成的 UUID 不能作为上游缓存 key，否则每个请求都会换 key。
@@ -113,6 +119,59 @@ impl RequestContext {
             endpoint.is_paid_image_operation(),
         )
         .await
+    }
+
+    pub async fn new_for_pi(
+        state: &ProxyState,
+        body: &serde_json::Value,
+        headers: &HeaderMap,
+        source_provider_id: &str,
+        endpoint: &str,
+    ) -> Result<(Self, PiApi, HashSet<HeaderName>), ProxyError> {
+        let start_time = Instant::now();
+        let app_config = state
+            .db
+            .get_proxy_config_for_app("pi")
+            .await
+            .map_err(|error| ProxyError::DatabaseError(error.to_string()))?;
+        let rectifier_config = state.db.get_rectifier_config().unwrap_or_default();
+        let optimizer_config = state.db.get_optimizer_config().unwrap_or_default();
+        let copilot_optimizer_config = state.db.get_copilot_optimizer_config().unwrap_or_default();
+        let selection = state
+            .provider_router
+            .select_pi_providers(source_provider_id, body, endpoint)
+            .await?;
+        let provider = selection
+            .providers
+            .first()
+            .cloned()
+            .ok_or(ProxyError::NoAvailableProvider)?;
+        let request_model = selection
+            .request_model
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        let session_result = extract_session_id(headers, body, "pi");
+
+        let context = Self {
+            start_time,
+            app_config,
+            provider,
+            providers: selection.providers,
+            current_provider_id: source_provider_id.to_string(),
+            request_model,
+            outbound_model: None,
+            tag: "Pi",
+            app_type_str: "pi",
+            app_type: AppType::Pi,
+            api_type: selection.api.as_str().to_string(),
+            input_token_semantics: selection.api.input_token_semantics(),
+            session_id: session_result.session_id,
+            session_client_provided: session_result.client_provided,
+            rectifier_config,
+            optimizer_config,
+            copilot_optimizer_config,
+        };
+        Ok((context, selection.api, selection.source_header_names))
     }
 
     async fn new_with_provider_selection(
@@ -217,6 +276,10 @@ impl RequestContext {
             tag,
             app_type_str,
             app_type,
+            api_type: app_type_str.to_string(),
+            input_token_semantics: crate::services::sql_helpers::default_input_token_semantics(
+                app_type_str,
+            ),
             session_id,
             session_client_provided: session_result.client_provided,
             rectifier_config,

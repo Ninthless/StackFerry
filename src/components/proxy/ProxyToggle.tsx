@@ -30,8 +30,7 @@ export function ProxyToggle({ className, activeApp }: ProxyToggleProps) {
     }
   };
 
-  const takeoverEnabled =
-    activeApp === "pi" ? false : takeoverStatus?.[activeApp] || false;
+  const takeoverEnabled = takeoverStatus?.[activeApp] || false;
 
   const appLabel =
     activeApp === "claude"
@@ -42,7 +41,9 @@ export function ProxyToggle({ className, activeApp }: ProxyToggleProps) {
           ? "Gemini"
           : activeApp === "grokbuild"
             ? "Grok Build"
-            : "OpenCode";
+            : activeApp === "pi"
+              ? "Pi"
+              : "OpenCode";
 
   const tooltipText = takeoverEnabled
     ? isRunning

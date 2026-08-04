@@ -1478,6 +1478,11 @@
     "outputTokens": "輸出",
     "cacheReadTokens": "快取命中",
     "cacheCreationTokens": "快取建立",
+    "reasoningTokens": "推理 Tokens",
+    "cacheCreation1hTokens": "1 小時快取建立",
+    "apiType": "API 協定",
+    "upstreamResponseId": "上游回應 ID",
+    "stopReason": "停止原因",
     "timingInfo": "耗時/首字",
     "status": "狀態",
     "multiplier": "倍率",
@@ -1494,6 +1499,7 @@
       "all": "全部",
       "claude": "Claude Code",
       "codex": "Codex",
+      "pi": "Pi",
       "gemini": "Gemini",
       "opencode": "OpenCode",
       "grokbuild": "Grok Build"
@@ -1507,6 +1513,7 @@
       "codex_session": "Codex 工作階段日誌",
       "gemini_session": "Gemini 工作階段日誌",
       "opencode_session": "OpenCode 工作階段日誌",
+      "pi_session": "Pi 工作階段日誌",
       "grok_session": "Grok Build 工作階段日誌"
     },
     "sessionSync": {
@@ -1802,12 +1809,22 @@
       "apps": {
         "claude": "Claude",
         "codex": "Codex",
+        "pi": "Pi",
         "gemini": "Gemini",
         "grokbuild": "Grok Build",
         "opencode": "OpenCode",
         "openclaw": "OpenClaw",
         "hermes": "Hermes"
       }
+    },
+    "piAdapter": {
+      "label": "Pi MCP 介面卡",
+      "loading": "正在檢查",
+      "inactive": "未啟用",
+      "pending": "等待 Pi 安裝",
+      "installed": "已安裝",
+      "error": "異常",
+      "projectOverride": "專案設定已覆蓋全域設定"
     },
     "userLevelPath": "使用者級 MCP 設定路徑",
     "serverList": "伺服器清單",
@@ -1940,6 +1957,7 @@
   },
   "prompts": {
     "manage": "提示詞",
+    "selectApplication": "選擇提示詞應用程式",
     "title": "{{appName}} 提示詞管理",
     "claudeTitle": "Claude 提示詞管理",
     "codexTitle": "Codex 提示詞管理",
@@ -2265,6 +2283,7 @@
   },
   "skills": {
     "manage": "Skills",
+    "selectTargetApplication": "選擇 Skills 安裝目標",
     "title": "Skills 管理",
     "description": "從熱門的儲存庫發現並安裝技能，擴充 Claude Code、Codex、Pi、Gemini CLI 等工具的能力",
     "refresh": "重新整理",

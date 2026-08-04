@@ -409,6 +409,7 @@ command = "echo"
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -518,6 +519,276 @@ fn import_from_all_apps_reports_broken_app_but_imports_the_rest() {
 }
 
 #[test]
+fn enabling_and_disabling_pi_mcp_projects_and_restores_files() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let home = ensure_test_home();
+    let state = create_test_state().expect("create test state");
+
+    McpService::upsert_server(
+        &state,
+        McpServer {
+            id: "pi-stdio".to_string(),
+            name: "Pi Stdio".to_string(),
+            server: json!({
+                "command": "npx",
+                "args": ["-y", "server"],
+                "env": {"TOKEN": "!read-token"}
+            }),
+            apps: McpApps {
+                pi: true,
+                ..Default::default()
+            },
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: Vec::new(),
+        },
+    )
+    .expect("enable Pi MCP");
+
+    let pi_dir = home.join(".pi/agent");
+    let mcp: serde_json::Value = serde_json::from_slice(
+        &fs::read(pi_dir.join("mcp.json")).expect("read projected Pi MCP config"),
+    )
+    .expect("parse Pi MCP config");
+    let settings: serde_json::Value = serde_json::from_slice(
+        &fs::read(pi_dir.join("settings.json")).expect("read projected Pi settings"),
+    )
+    .expect("parse Pi settings");
+    assert_eq!(mcp["mcpServers"]["pi-stdio"]["env"]["TOKEN"], "!read-token");
+    assert!(settings["packages"]
+        .as_array()
+        .expect("packages array")
+        .iter()
+        .any(|entry| entry == "npm:pi-mcp-adapter@2.19.0"));
+
+    McpService::toggle_app(&state, "pi-stdio", AppType::Pi, false).expect("disable Pi MCP");
+
+    assert!(!pi_dir.join("mcp.json").exists());
+    assert!(!pi_dir.join("settings.json").exists());
+    let servers = state.db.get_all_mcp_servers().expect("read MCP database");
+    assert!(!servers["pi-stdio"].apps.pi);
+}
+
+#[test]
+fn pi_mcp_projection_honors_custom_agent_directory() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let home = ensure_test_home();
+    let custom_dir = home.join("custom-pi-agent");
+    update_settings(AppSettings {
+        pi_config_dir: Some(custom_dir.to_string_lossy().to_string()),
+        ..Default::default()
+    })
+    .expect("set custom Pi agent dir");
+    let state = create_test_state().expect("create test state");
+
+    McpService::upsert_server(
+        &state,
+        McpServer {
+            id: "custom-dir".to_string(),
+            name: "Custom Dir".to_string(),
+            server: json!({"url": "https://example.com/mcp"}),
+            apps: McpApps {
+                pi: true,
+                ..Default::default()
+            },
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: Vec::new(),
+        },
+    )
+    .expect("project Pi MCP to custom dir");
+
+    assert!(custom_dir.join("mcp.json").exists());
+    assert!(custom_dir.join("settings.json").exists());
+    assert!(!home.join(".pi/agent/mcp.json").exists());
+}
+
+#[test]
+fn pi_projection_collision_rolls_back_database_upsert() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let home = ensure_test_home();
+    let pi_dir = home.join(".pi/agent");
+    fs::create_dir_all(&pi_dir).expect("create Pi agent dir");
+    let original = json!({"mcpServers": {"same": {"command": "user-command"}}});
+    fs::write(
+        pi_dir.join("mcp.json"),
+        serde_json::to_vec_pretty(&original).expect("serialize Pi config"),
+    )
+    .expect("seed Pi config");
+    let state = create_test_state().expect("create test state");
+
+    let error = McpService::upsert_server(
+        &state,
+        McpServer {
+            id: "same".to_string(),
+            name: "Same".to_string(),
+            server: json!({"command": "stackferry-command"}),
+            apps: McpApps {
+                pi: true,
+                ..Default::default()
+            },
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: Vec::new(),
+        },
+    )
+    .expect_err("unmanaged Pi collision must fail");
+
+    assert!(error.to_string().contains("same"));
+    assert!(state
+        .db
+        .get_all_mcp_servers()
+        .expect("read MCP database")
+        .is_empty());
+    let after: serde_json::Value = serde_json::from_slice(
+        &fs::read(pi_dir.join("mcp.json")).expect("read Pi config after failure"),
+    )
+    .expect("parse Pi config after failure");
+    assert_eq!(after, original);
+    assert!(!pi_dir.join("settings.json").exists());
+}
+
+#[test]
+fn pi_toggle_and_delete_projection_failures_restore_database_state() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let home = ensure_test_home();
+    let state = create_test_state().expect("create test state");
+    let server = McpServer {
+        id: "externally-changed".to_string(),
+        name: "Externally Changed".to_string(),
+        server: json!({"command": "managed"}),
+        apps: McpApps {
+            pi: true,
+            ..Default::default()
+        },
+        description: None,
+        homepage: None,
+        docs: None,
+        tags: Vec::new(),
+    };
+    McpService::upsert_server(&state, server).expect("enable Pi MCP");
+
+    let mcp_path = home.join(".pi/agent/mcp.json");
+    fs::write(
+        &mcp_path,
+        serde_json::to_vec_pretty(&json!({
+            "mcpServers": {"externally-changed": {"command": "user-change"}}
+        }))
+        .expect("serialize external Pi edit"),
+    )
+    .expect("write external Pi edit");
+
+    McpService::toggle_app(&state, "externally-changed", AppType::Pi, false)
+        .expect_err("toggle must reject external edit");
+    assert!(
+        state
+            .db
+            .get_all_mcp_servers()
+            .expect("read MCP database after toggle failure")["externally-changed"]
+            .apps
+            .pi
+    );
+
+    McpService::delete_server(&state, "externally-changed")
+        .expect_err("delete must reject external edit");
+    assert!(state
+        .db
+        .get_all_mcp_servers()
+        .expect("read MCP database after delete failure")
+        .contains_key("externally-changed"));
+    let current: serde_json::Value =
+        serde_json::from_slice(&fs::read(mcp_path).expect("read externally edited Pi config"))
+            .expect("parse externally edited Pi config");
+    assert_eq!(
+        current["mcpServers"]["externally-changed"]["command"],
+        "user-change"
+    );
+}
+
+#[test]
+fn pi_import_preflights_collisions_without_partial_database_writes() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let home = ensure_test_home();
+    let pi_dir = home.join(".pi/agent");
+    fs::create_dir_all(&pi_dir).expect("create Pi agent dir");
+    fs::write(
+        pi_dir.join("mcp.json"),
+        serde_json::to_vec_pretty(&json!({
+            "mcpServers": {
+                "new-server": {"url": "https://example.com/mcp", "headers": {"Authorization": "Bearer ${TOKEN}"}},
+                "same": {"command": "pi-command"}
+            }
+        }))
+        .expect("serialize Pi config"),
+    )
+    .expect("seed Pi config");
+    let state = create_test_state().expect("create test state");
+    state
+        .db
+        .save_mcp_server(&McpServer {
+            id: "same".to_string(),
+            name: "Same".to_string(),
+            server: json!({"command": "stackferry-command"}),
+            apps: McpApps::default(),
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: Vec::new(),
+        })
+        .expect("seed StackFerry MCP");
+
+    let error = McpService::import_from_pi(&state).expect_err("different same-ID must collide");
+    assert!(error.to_string().contains("same"));
+    let servers = state.db.get_all_mcp_servers().expect("read MCP database");
+    assert_eq!(servers.len(), 1);
+    assert_eq!(servers["same"].server["command"], "stackferry-command");
+    assert!(!servers.contains_key("new-server"));
+}
+
+#[test]
+fn pi_import_preserves_adapter_fields_and_opaque_references() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let home = ensure_test_home();
+    let pi_dir = home.join(".pi/agent");
+    fs::create_dir_all(&pi_dir).expect("create Pi agent dir");
+    let spec = json!({
+        "url": "https://example.com/mcp",
+        "headers": {"Authorization": "Bearer ${TOKEN}"},
+        "auth": {"token": "!load-token"},
+        "lifecycle": "lazy-keep-alive",
+        "requestTimeoutMs": 45000,
+        "directTools": ["search"],
+        "includeTools": ["search*"]
+    });
+    fs::write(
+        pi_dir.join("mcp.json"),
+        serde_json::to_vec_pretty(&json!({"mcpServers": {"remote": spec.clone()}}))
+            .expect("serialize Pi config"),
+    )
+    .expect("seed Pi config");
+    let state = create_test_state().expect("create test state");
+
+    assert_eq!(
+        McpService::import_from_pi(&state).expect("import Pi MCP"),
+        1
+    );
+
+    let servers = state.db.get_all_mcp_servers().expect("read MCP database");
+    assert_eq!(servers["remote"].server, spec);
+    assert!(servers["remote"].apps.pi);
+    assert!(!pi_dir.join("settings.json").exists());
+}
+
+#[test]
 fn set_mcp_enabled_for_codex_writes_live_config() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
@@ -554,6 +825,7 @@ fn set_mcp_enabled_for_codex_writes_live_config() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -620,6 +892,7 @@ fn enabling_codex_mcp_skips_when_codex_dir_missing() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -666,6 +939,7 @@ fn upsert_mcp_server_disabling_app_removes_from_claude_live_config() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -701,6 +975,7 @@ fn upsert_mcp_server_disabling_app_removes_from_claude_live_config() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -835,6 +1110,7 @@ fn enabling_gemini_mcp_skips_when_gemini_dir_missing() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -891,6 +1167,7 @@ fn enabling_claude_mcp_skips_when_claude_config_absent() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -947,6 +1224,7 @@ fn explicit_default_claude_dir_keeps_default_split_mcp_path() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -1004,6 +1282,7 @@ fn custom_claude_dir_writes_mcp_inside_config_dir() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -1084,6 +1363,7 @@ fn custom_claude_dir_sync_does_not_copy_default_profile() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -1224,6 +1504,7 @@ fn sync_all_enabled_removes_known_disabled_but_preserves_unknown_live_entries() 
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -1247,6 +1528,7 @@ fn sync_all_enabled_removes_known_disabled_but_preserves_unknown_live_entries() 
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,

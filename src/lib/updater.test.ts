@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { APP_VERSION } from "./appVersion";
-import { checkForUpdate, getCurrentVersion, relaunchApp } from "./updater";
+import { checkForUpdate, getCurrentVersion } from "./updater";
 
-const { checkMock, getVersionMock, relaunchMock } = vi.hoisted(() => ({
+const { checkMock, getVersionMock } = vi.hoisted(() => ({
   checkMock: vi.fn(),
   getVersionMock: vi.fn(),
-  relaunchMock: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/app", () => ({
@@ -14,10 +13,6 @@ vi.mock("@tauri-apps/api/app", () => ({
 
 vi.mock("@tauri-apps/plugin-updater", () => ({
   check: checkMock,
-}));
-
-vi.mock("@tauri-apps/plugin-process", () => ({
-  relaunch: relaunchMock,
 }));
 
 describe("checkForUpdate", () => {
@@ -36,12 +31,10 @@ describe("checkForUpdate", () => {
   });
 
   it("returns release metadata when a newer version exists", async () => {
-    const downloadAndInstallMock = vi.fn().mockResolvedValue(undefined);
     checkMock.mockResolvedValue({
       version: "3.20.0",
       body: "Release notes",
       date: "2026-07-30T00:00:00Z",
-      downloadAndInstall: downloadAndInstallMock,
     });
 
     const result = await checkForUpdate();
@@ -54,15 +47,7 @@ describe("checkForUpdate", () => {
         notes: "Release notes",
         pubDate: "2026-07-30T00:00:00Z",
       },
-      update: {
-        version: "3.20.0",
-        downloadAndInstall: expect.any(Function),
-      },
     });
-    if (result.status === "available") {
-      await result.update.downloadAndInstall();
-    }
-    expect(downloadAndInstallMock).toHaveBeenCalledOnce();
   });
 
   it("reports updater failures", async () => {
@@ -87,19 +72,5 @@ describe("getCurrentVersion", () => {
     getVersionMock.mockRejectedValue(new Error("Tauri unavailable"));
 
     await expect(getCurrentVersion()).resolves.toBe(APP_VERSION);
-  });
-});
-
-describe("relaunchApp", () => {
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("relaunches through the Tauri process plugin", async () => {
-    relaunchMock.mockResolvedValue(undefined);
-
-    await relaunchApp();
-
-    expect(relaunchMock).toHaveBeenCalledOnce();
   });
 });

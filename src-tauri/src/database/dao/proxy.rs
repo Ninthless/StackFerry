@@ -329,6 +329,7 @@ impl Database {
                 "codex" => (3, 60, 120, 4, 2, 60, 0.6, 10),
                 "gemini" => (5, 60, 120, 4, 2, 60, 0.6, 10),
                 "grokbuild" => (3, 60, 120, 4, 2, 60, 0.6, 10),
+                "pi" => (3, 60, 120, 4, 2, 60, 0.6, 10),
                 _ => (3, 60, 120, 4, 2, 60, 0.6, 10), // 默认值
             };
 
@@ -411,6 +412,17 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
+        conn.execute(
+            "INSERT OR IGNORE INTO proxy_config (
+                app_type, max_retries,
+                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                circuit_error_rate_threshold, circuit_min_requests
+            ) VALUES ('pi', 3, 60, 120, 600, 4, 2, 60, 0.6, 10)",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
         Ok(())
     }
 
@@ -489,6 +501,18 @@ impl Database {
     pub async fn set_live_takeover_active(&self, _active: bool) -> Result<(), AppError> {
         // 不再使用此字段，由 enabled 字段替代
         // 保留空实现以兼容旧代码
+        Ok(())
+    }
+
+    pub async fn clear_all_takeover_enabled(&self) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        conn.execute(
+            "UPDATE proxy_config
+             SET enabled = 0, updated_at = datetime('now')
+             WHERE enabled != 0",
+            [],
+        )
+        .map_err(|error| AppError::Database(error.to_string()))?;
         Ok(())
     }
 

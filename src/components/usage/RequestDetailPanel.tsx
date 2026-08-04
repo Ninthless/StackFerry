@@ -108,6 +108,12 @@ export function RequestDetailPanel({
               </div>
               <div>
                 <dt className="text-muted-foreground">
+                  {t("usage.apiType", "API 协议")}
+                </dt>
+                <dd className="font-mono text-xs">{request.apiType}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">
                   {t("usage.model", "模型")}
                 </dt>
                 <dd className="font-mono">{request.model}</dd>
@@ -150,6 +156,24 @@ export function RequestDetailPanel({
                   </span>
                 </dd>
               </div>
+              {request.upstreamResponseId && (
+                <div>
+                  <dt className="text-muted-foreground">
+                    {t("usage.upstreamResponseId", "上游响应 ID")}
+                  </dt>
+                  <dd className="break-all font-mono text-xs">
+                    {request.upstreamResponseId}
+                  </dd>
+                </div>
+              )}
+              {request.stopReason && (
+                <div>
+                  <dt className="text-muted-foreground">
+                    {t("usage.stopReason", "停止原因")}
+                  </dt>
+                  <dd className="font-mono text-xs">{request.stopReason}</dd>
+                </div>
+              )}
             </dl>
           </div>
 
@@ -195,6 +219,22 @@ export function RequestDetailPanel({
                 </dt>
                 <dd className="font-mono">
                   {request.cacheCreationTokens.toLocaleString()}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">
+                  {t("usage.reasoningTokens", "推理 Tokens")}
+                </dt>
+                <dd className="font-mono">
+                  {request.reasoningTokens.toLocaleString()}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">
+                  {t("usage.cacheCreation1hTokens", "1 小时缓存写入")}
+                </dt>
+                <dd className="font-mono">
+                  {request.cacheCreation1hTokens.toLocaleString()}
                 </dd>
               </div>
               <div className="col-span-2">

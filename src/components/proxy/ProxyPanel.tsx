@@ -67,12 +67,13 @@ export function ProxyPanel({
     }
   }, [globalConfig]);
 
-  // 获取所有三个应用类型的故障转移队列
+  // 获取所有支持代理的应用故障转移队列
   // 启用自动故障转移后，将按队列优先级（P1→P2→...）选择供应商
   const { data: claudeQueue = [] } = useFailoverQueue("claude");
   const { data: codexQueue = [] } = useFailoverQueue("codex");
   const { data: geminiQueue = [] } = useFailoverQueue("gemini");
   const { data: grokQueue = [] } = useFailoverQueue("grokbuild");
+  const { data: piQueue = [] } = useFailoverQueue("pi");
 
   const handleTakeoverChange = async (appType: string, enabled: boolean) => {
     try {
@@ -273,32 +274,32 @@ export function ProxyPanel({
                     defaultValue: "应用接管",
                   })}
                 </p>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  {(["claude", "codex", "gemini", "grokbuild"] as const).map(
-                    (appType) => {
-                      const isEnabled =
-                        takeoverStatus?.[
-                          appType as keyof typeof takeoverStatus
-                        ] ?? false;
-                      return (
-                        <div
-                          key={appType}
-                          className="flex items-center justify-between rounded-md border border-primary/20 bg-background/60 px-3 py-2"
-                        >
-                          <span className="text-sm font-medium capitalize">
-                            {appType === "grokbuild" ? "Grok Build" : appType}
-                          </span>
-                          <Switch
-                            checked={isEnabled}
-                            onCheckedChange={(checked) =>
-                              handleTakeoverChange(appType, checked)
-                            }
-                            disabled={setTakeoverForApp.isPending}
-                          />
-                        </div>
-                      );
-                    },
-                  )}
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  {(
+                    ["claude", "codex", "gemini", "grokbuild", "pi"] as const
+                  ).map((appType) => {
+                    const isEnabled =
+                      takeoverStatus?.[
+                        appType as keyof typeof takeoverStatus
+                      ] ?? false;
+                    return (
+                      <div
+                        key={appType}
+                        className="flex items-center justify-between rounded-md border border-primary/20 bg-background/60 px-3 py-2"
+                      >
+                        <span className="text-sm font-medium capitalize">
+                          {appType === "grokbuild" ? "Grok Build" : appType}
+                        </span>
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={(checked) =>
+                            handleTakeoverChange(appType, checked)
+                          }
+                          disabled={setTakeoverForApp.isPending}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {t("proxy.takeover.hint", {
@@ -469,6 +470,18 @@ export function ProxyPanel({
                       appType="grokbuild"
                       appLabel="Grok Build"
                       targets={grokQueue.map((item) => ({
+                        id: item.providerId,
+                        name: item.providerName,
+                      }))}
+                      status={status}
+                    />
+                  )}
+
+                  {piQueue.length > 0 && (
+                    <ProviderQueueGroup
+                      appType="pi"
+                      appLabel="Pi"
+                      targets={piQueue.map((item) => ({
                         id: item.providerId,
                         name: item.providerName,
                       }))}

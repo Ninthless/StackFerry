@@ -88,6 +88,11 @@ pub fn sync_all_unlocked(db: &Database) -> SessionSyncResult {
     );
     merge_sync_step(
         &mut result,
+        "Pi",
+        crate::services::session_usage_pi::sync_pi_usage(db),
+    );
+    merge_sync_step(
+        &mut result,
         "Grok Build",
         crate::services::session_usage_grokbuild::sync_grokbuild_usage(db),
     );
@@ -519,6 +524,8 @@ fn insert_session_log_entry(
         output_tokens: msg.output_tokens,
         cache_read_tokens: msg.cache_read_tokens,
         cache_creation_tokens: msg.cache_creation_tokens,
+        reasoning_tokens: 0,
+        cache_creation_1h_tokens: 0,
         model: Some(msg.model.clone()),
         message_id: None,
     };

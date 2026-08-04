@@ -25,6 +25,7 @@ mod gemini;
 pub(crate) mod gemini_schema;
 pub mod gemini_shadow;
 pub mod models;
+mod pi;
 pub(crate) mod reasoning_bridge;
 pub mod streaming;
 pub mod streaming_codex_anthropic;
@@ -64,6 +65,14 @@ pub use codex::{
     should_convert_codex_responses_to_anthropic, should_convert_codex_responses_to_chat,
 };
 pub use gemini::GeminiAdapter;
+pub(crate) use pi::{
+    extract_request_model as extract_pi_request_model, parse_request_body as parse_pi_request_body,
+    parser_config as pi_parser_config, plan_provider as plan_pi_provider,
+    prepare_bedrock_headers as pi_prepare_bedrock_headers, resolve_provider as resolve_pi_provider,
+    resolve_usage_credentials as resolve_pi_usage_credentials,
+    resolved_headers as pi_resolved_headers, target_headers as pi_target_headers, PiAdapter, PiApi,
+    PiProviderSelection, PiRequestMetadata,
+};
 
 /// 供应商类型枚举
 ///
@@ -269,7 +278,7 @@ pub fn get_adapter(app_type: &AppType) -> Box<dyn ProviderAdapter> {
         AppType::Gemini => Box::new(GeminiAdapter::new()),
         AppType::GrokBuild => Box::new(CodexAdapter::new()),
         AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => Box::new(CodexAdapter::new()),
-        AppType::Pi => Box::new(CodexAdapter::new()),
+        AppType::Pi => Box::new(PiAdapter::new()),
     }
 }
 

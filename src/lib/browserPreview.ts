@@ -78,6 +78,7 @@ const proxyTakeoverStatus = {
   codex: false,
   gemini: false,
   grokbuild: false,
+  pi: false,
   opencode: false,
   openclaw: false,
   hermes: false,
@@ -273,6 +274,15 @@ export const createBrowserPreviewCommandHandler = () => {
       case "get_prompts":
       case "get_mcp_servers":
         return {};
+      case "get_pi_mcp_adapter_status":
+        return {
+          state: "inactive",
+          configuredVersion: null,
+          installedVersion: null,
+          configPath: "~/.pi/agent/mcp.json",
+          projectOverridePath: null,
+          error: null,
+        };
       case "get_current_provider":
         return currentProviders[args.app as AppId];
       case "get_current_omo_provider_id":

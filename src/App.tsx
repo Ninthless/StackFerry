@@ -31,6 +31,7 @@ import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { useUsageCacheBridge } from "@/hooks/useUsageCacheBridge";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
 import { useLastValidValue } from "@/hooks/useLastValidValue";
+import { usePersistedAppPreference } from "@/hooks/usePersistedAppPreference";
 import { useScanUnmanagedSkills } from "@/hooks/useSkills";
 import { extractErrorMessage } from "@/utils/errorUtils";
 import { isTextEditableTarget } from "@/utils/domUtils";
@@ -59,6 +60,7 @@ import { FirstRunNoticeDialog } from "@/components/FirstRunNoticeDialog";
 import { AgentsPanel } from "@/components/agents/AgentsPanel";
 import { UniversalProviderPanel } from "@/components/universal";
 import { Button } from "@/components/ui/button";
+import { AppSelect } from "@/components/common/AppSelect";
 import { SessionManagerPage } from "@/components/sessions/SessionManagerPage";
 import {
   useDisableCurrentOmo,
@@ -77,6 +79,7 @@ import {
   type PageHeaderOverflowAction,
 } from "@/components/shell/PageHeader";
 import type { AppView } from "@/components/shell/types";
+import { PROMPT_APP_IDS, SKILLS_APP_IDS } from "@/config/appConfig";
 
 interface SyncStatusUpdatedPayload {
   source?: string;
@@ -85,6 +88,8 @@ interface SyncStatusUpdatedPayload {
 }
 
 const STORAGE_KEY = "stackferry-last-app";
+const PROMPT_APP_STORAGE_KEY = "stackferry.prompts.app";
+const SKILLS_TARGET_APP_STORAGE_KEY = "stackferry.skills.targetApp";
 const VALID_APPS: AppId[] = [
   "claude",
   "claude-desktop",
@@ -136,8 +141,6 @@ function App() {
   const queryClient = useQueryClient();
 
   const [activeApp, setActiveApp] = useState<AppId>(getInitialApp);
-  const sharedFeatureApp: AppId =
-    activeApp === "claude-desktop" ? "claude" : activeApp;
   const [currentView, setCurrentView] = useState<AppView>(getInitialView);
   const [skillsDiscoverySource, setSkillsDiscoverySource] =
     useState<SkillsPageSource>("repos");
@@ -160,6 +163,22 @@ function App() {
     openclaw: true,
     hermes: true,
   };
+  const availablePromptApps = useMemo(() => {
+    const apps = PROMPT_APP_IDS.filter((app) => visibleApps[app]);
+    return apps.length > 0 ? apps : (["claude"] as AppId[]);
+  }, [visibleApps]);
+  const [promptApp, setPromptApp] = usePersistedAppPreference(
+    PROMPT_APP_STORAGE_KEY,
+    availablePromptApps,
+  );
+  const availableSkillsApps = useMemo(() => {
+    const apps = SKILLS_APP_IDS.filter((app) => visibleApps[app]);
+    return apps.length > 0 ? apps : (["claude"] as AppId[]);
+  }, [visibleApps]);
+  const [skillsTargetApp, setSkillsTargetApp] = usePersistedAppPreference(
+    SKILLS_TARGET_APP_STORAGE_KEY,
+    availableSkillsApps,
+  );
 
   const getFirstVisibleApp = (): AppId => {
     if (visibleApps.claude) return "claude";
@@ -179,29 +198,6 @@ function App() {
       setActiveApp(getFirstVisibleApp());
     }
   }, [visibleApps, activeApp]);
-
-  // Fallback from sessions view when switching to an app without session support
-  useEffect(() => {
-    if (
-      currentView === "sessions" &&
-      sharedFeatureApp !== "claude" &&
-      sharedFeatureApp !== "codex" &&
-      sharedFeatureApp !== "pi" &&
-      sharedFeatureApp !== "grokbuild" &&
-      sharedFeatureApp !== "opencode" &&
-      sharedFeatureApp !== "openclaw" &&
-      sharedFeatureApp !== "gemini" &&
-      sharedFeatureApp !== "hermes"
-    ) {
-      setCurrentView("providers");
-    }
-  }, [sharedFeatureApp, currentView]);
-
-  useEffect(() => {
-    if (activeApp === "pi" && currentView === "mcp") {
-      setCurrentView("providers");
-    }
-  }, [activeApp, currentView]);
 
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [usageProvider, setUsageProvider] = useState<Provider | null>(null);
@@ -231,8 +227,7 @@ function App() {
     takeoverStatus,
     status: proxyStatus,
   } = useProxyStatus();
-  const isCurrentAppTakeoverActive =
-    activeApp === "pi" ? false : takeoverStatus?.[activeApp] || false;
+  const isCurrentAppTakeoverActive = takeoverStatus?.[activeApp] || false;
   const activeProviderId = useMemo(() => {
     const target = proxyStatus?.active_targets?.find(
       (t) => t.app_type === activeApp,
@@ -256,17 +251,6 @@ function App() {
   const { data: openclawHealthWarningsData } =
     useOpenClawHealth(isOpenClawView);
   const openclawHealthWarnings = openclawHealthWarningsData ?? [];
-  const hasSkillsSupport = sharedFeatureApp !== "openclaw";
-  const hasSessionSupport =
-    sharedFeatureApp === "claude" ||
-    sharedFeatureApp === "codex" ||
-    sharedFeatureApp === "pi" ||
-    sharedFeatureApp === "grokbuild" ||
-    sharedFeatureApp === "opencode" ||
-    sharedFeatureApp === "openclaw" ||
-    sharedFeatureApp === "gemini" ||
-    sharedFeatureApp === "hermes";
-
   const {
     addProvider,
     updateProvider,
@@ -797,9 +781,7 @@ function App() {
       case "settings":
         return t("settings.title");
       case "prompts":
-        return t("prompts.title", {
-          appName: t(`apps.${sharedFeatureApp}`),
-        });
+        return t("prompts.manage");
       case "skills":
       case "skillsDiscovery":
         return t("skills.title");
@@ -833,7 +815,13 @@ function App() {
     if (currentView === "settings") {
       return t("settings.description");
     }
-    return t(`apps.${sharedFeatureApp}`);
+    if (currentView === "prompts") {
+      return t(`apps.${promptApp}`);
+    }
+    if (currentView === "skills" || currentView === "skillsDiscovery") {
+      return t(`apps.${skillsTargetApp}`);
+    }
+    return undefined;
   };
 
   const renderHeaderActions = () => {
@@ -842,8 +830,7 @@ function App() {
         <>
           {activeApp !== "opencode" &&
             activeApp !== "openclaw" &&
-            activeApp !== "hermes" &&
-            activeApp !== "pi" && (
+            activeApp !== "hermes" && (
               <div className="flex shrink-0 items-center gap-2">
                 {activeApp === "claude-desktop" ? (
                   <ClaudeDesktopRouteToggle />
@@ -895,16 +882,30 @@ function App() {
 
     if (currentView === "skills") {
       return (
-        <Button type="button" size="sm" onClick={handleOpenSkillsDiscovery}>
-          <Search className="h-4 w-4" />
-          <span>{t("skills.discover")}</span>
-        </Button>
+        <>
+          <AppSelect
+            value={skillsTargetApp}
+            appIds={availableSkillsApps}
+            onValueChange={setSkillsTargetApp}
+            ariaLabel={t("skills.selectTargetApplication")}
+          />
+          <Button type="button" size="sm" onClick={handleOpenSkillsDiscovery}>
+            <Search className="h-4 w-4" />
+            <span>{t("skills.discover")}</span>
+          </Button>
+        </>
       );
     }
 
     if (currentView === "skillsDiscovery") {
       return (
         <>
+          <AppSelect
+            value={skillsTargetApp}
+            appIds={availableSkillsApps}
+            onValueChange={setSkillsTargetApp}
+            ariaLabel={t("skills.selectTargetApplication")}
+          />
           <Button
             type="button"
             variant="outline"
@@ -988,10 +989,13 @@ function App() {
         case "prompts":
           return (
             <PromptPanel
+              key={promptApp}
               ref={promptPanelRef}
               open={true}
               onOpenChange={() => setCurrentView("providers")}
-              appId={sharedFeatureApp}
+              appId={promptApp}
+              availableApps={availablePromptApps}
+              onAppChange={setPromptApp}
             />
           );
         case "hermesMemory":
@@ -1001,18 +1005,14 @@ function App() {
             <UnifiedSkillsPanel
               ref={unifiedSkillsPanelRef}
               onOpenDiscovery={handleOpenSkillsDiscovery}
-              currentApp={
-                sharedFeatureApp === "openclaw" ? "claude" : sharedFeatureApp
-              }
+              targetApp={skillsTargetApp}
             />
           );
         case "skillsDiscovery":
           return (
             <SkillsPage
               ref={skillsPageRef}
-              initialApp={
-                sharedFeatureApp === "openclaw" ? "claude" : sharedFeatureApp
-              }
+              targetApp={skillsTargetApp}
               onSourceChange={setSkillsDiscoverySource}
             />
           );
@@ -1035,12 +1035,7 @@ function App() {
           );
 
         case "sessions":
-          return (
-            <SessionManagerPage
-              key={sharedFeatureApp}
-              appId={sharedFeatureApp}
-            />
-          );
+          return <SessionManagerPage />;
         case "workspace":
           return <WorkspaceFilesPanel />;
         case "openclawEnv":
@@ -1097,9 +1092,7 @@ function App() {
                           : undefined
                       }
                       onDuplicate={handleDuplicateProvider}
-                      onConfigureUsage={
-                        activeApp === "pi" ? undefined : setUsageProvider
-                      }
+                      onConfigureUsage={setUsageProvider}
                       onOpenWebsite={handleOpenWebsite}
                       onOpenTerminal={
                         activeApp === "claude" ? handleOpenTerminal : undefined
@@ -1146,8 +1139,6 @@ function App() {
           activeApp={activeApp}
           currentView={currentView}
           isRouteActive={isProxyRunning && isCurrentAppTakeoverActive}
-          hasSkillsSupport={hasSkillsSupport}
-          hasSessionSupport={hasSessionSupport}
           onViewChange={setCurrentView}
           onOpenHermesWebUI={() => void openHermesWebUI()}
           onOpenSettings={() => {

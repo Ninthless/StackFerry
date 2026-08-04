@@ -79,6 +79,8 @@ const SESSION_LIST_VIEW_MODE_STORAGE_KEY =
   "stackferry.sessionManager.listViewMode";
 const SESSION_GROUP_EXPANSION_STORAGE_KEY =
   "stackferry.sessionManager.groupExpansionState";
+const SESSION_PROVIDER_FILTER_STORAGE_KEY =
+  "stackferry.sessions.providerFilter";
 
 type ProviderFilter =
   | "all"
@@ -90,6 +92,18 @@ type ProviderFilter =
   | "openclaw"
   | "gemini"
   | "hermes";
+
+const PROVIDER_FILTERS: readonly ProviderFilter[] = [
+  "all",
+  "codex",
+  "pi",
+  "grokbuild",
+  "claude",
+  "opencode",
+  "openclaw",
+  "gemini",
+  "hermes",
+];
 
 type SessionListViewMode = "flat" | "grouped";
 
@@ -103,6 +117,16 @@ type GroupSelectionState = {
 type SessionGroupExpansionState = {
   expandedProviderIds: Set<string>;
   expandedDirectoryKeys: Set<string>;
+};
+
+const readInitialProviderFilter = (): ProviderFilter => {
+  if (typeof window === "undefined") return "all";
+  const stored = window.localStorage.getItem(
+    SESSION_PROVIDER_FILTER_STORAGE_KEY,
+  );
+  return PROVIDER_FILTERS.includes(stored as ProviderFilter)
+    ? (stored as ProviderFilter)
+    : "all";
 };
 
 const readInitialSessionListViewMode = (): SessionListViewMode => {
@@ -187,7 +211,7 @@ const filterSetToAllowedValues = (
   return changed ? next : current;
 };
 
-export function SessionManagerPage({ appId }: { appId: string }) {
+export function SessionManagerPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data, isLoading, refetch } = useSessionsQuery();
@@ -211,7 +235,7 @@ export function SessionManagerPage({ appId }: { appId: string }) {
 
   const [search, setSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState<ProviderFilter>(
-    appId as ProviderFilter,
+    readInitialProviderFilter,
   );
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [listViewMode, setListViewMode] = useState<SessionListViewMode>(
@@ -259,6 +283,13 @@ export function SessionManagerPage({ appId }: { appId: string }) {
     }),
     [sessions],
   );
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      SESSION_PROVIDER_FILTER_STORAGE_KEY,
+      providerFilter,
+    );
+  }, [providerFilter]);
 
   useEffect(() => {
     window.localStorage.setItem(

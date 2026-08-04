@@ -142,6 +142,71 @@ pub fn is_sse_response(response: &ProxyResponse) -> bool {
     response.is_sse()
 }
 
+#[inline]
+fn is_streaming_response(response: &ProxyResponse) -> bool {
+    is_sse_response(response)
+        || response
+            .content_type()
+            .and_then(|content_type| content_type.split(';').next())
+            .is_some_and(|media_type| {
+                media_type
+                    .trim()
+                    .eq_ignore_ascii_case("application/vnd.amazon.eventstream")
+            })
+}
+
+fn is_bedrock_eventstream(response: &ProxyResponse) -> bool {
+    response
+        .content_type()
+        .and_then(|content_type| content_type.split(';').next())
+        .is_some_and(|media_type| {
+            media_type
+                .trim()
+                .eq_ignore_ascii_case("application/vnd.amazon.eventstream")
+        })
+}
+
+#[derive(Default)]
+struct AwsEventStreamUsageDecoder {
+    buffer: Vec<u8>,
+}
+
+impl AwsEventStreamUsageDecoder {
+    const MIN_FRAME_BYTES: usize = 16;
+    const MAX_FRAME_BYTES: usize = 32 * 1024 * 1024;
+
+    fn push(&mut self, bytes: &[u8]) -> Vec<Value> {
+        self.buffer.extend_from_slice(bytes);
+        let mut payloads = Vec::new();
+        loop {
+            if self.buffer.len() < 12 {
+                break;
+            }
+            let total_len = u32::from_be_bytes(self.buffer[0..4].try_into().unwrap()) as usize;
+            let headers_len = u32::from_be_bytes(self.buffer[4..8].try_into().unwrap()) as usize;
+            if !(Self::MIN_FRAME_BYTES..=Self::MAX_FRAME_BYTES).contains(&total_len)
+                || headers_len > total_len.saturating_sub(Self::MIN_FRAME_BYTES)
+            {
+                log::warn!("[Pi] Invalid AWS EventStream frame length; usage inspection stopped");
+                self.buffer.clear();
+                break;
+            }
+            if self.buffer.len() < total_len {
+                break;
+            }
+            let payload_start = 12 + headers_len;
+            let payload_end = total_len - 4;
+            if let Ok(value) =
+                serde_json::from_slice::<Value>(&self.buffer[payload_start..payload_end])
+            {
+                payloads.push(value);
+            }
+            self.buffer.drain(..total_len);
+        }
+        payloads
+    }
+}
+
 /// 处理流式响应
 pub async fn handle_streaming(
     response: ProxyResponse,
@@ -176,11 +241,16 @@ pub async fn handle_streaming(
         builder = builder.header(key, value);
     }
 
+    let inspect_sse_events = is_sse_response(&response);
+    let inspect_bedrock_events = is_bedrock_eventstream(&response);
+
     // 创建字节流
     let stream = response.bytes_stream();
 
     // 创建使用量收集器；关闭 usage logging 时不要在流式热路径上解析每个 SSE event。
-    let usage_collector = create_usage_collector(ctx, state, status.as_u16(), parser_config);
+    let usage_collector = (inspect_sse_events || inspect_bedrock_events)
+        .then(|| create_usage_collector(ctx, state, status.as_u16(), parser_config))
+        .flatten();
 
     // 获取流式超时配置
     let timeout_config = ctx.streaming_timeout_config();
@@ -192,6 +262,8 @@ pub async fn handle_streaming(
         usage_collector,
         timeout_config,
         connection_guard,
+        inspect_sse_events,
+        inspect_bedrock_events,
     );
 
     let body = axum::body::Body::from_stream(logged_stream);
@@ -325,7 +397,7 @@ pub async fn process_response(
     parser_config: &UsageParserConfig,
     connection_guard: Option<ActiveConnectionGuard>,
 ) -> Result<Response, ProxyError> {
-    if is_sse_response(&response) {
+    if is_streaming_response(&response) {
         Ok(handle_streaming(response, ctx, state, parser_config, connection_guard).await)
     } else {
         handle_non_streaming(response, ctx, state, parser_config, connection_guard).await
@@ -336,7 +408,23 @@ pub async fn process_response(
 // SSE 使用量收集器
 // ============================================================================
 
-type UsageCallbackWithTiming = Arc<dyn Fn(Vec<Value>, Option<u64>) + Send + Sync + 'static>;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StreamFinishStatus {
+    Complete,
+    UpstreamFailed,
+}
+
+impl StreamFinishStatus {
+    pub(crate) fn usage_status_code(self, upstream_status_code: u16) -> u16 {
+        match self {
+            Self::Complete => upstream_status_code,
+            Self::UpstreamFailed => 500,
+        }
+    }
+}
+
+type UsageCallbackWithTiming =
+    Arc<dyn Fn(Vec<Value>, Option<u64>, StreamFinishStatus) + Send + Sync + 'static>;
 
 /// SSE 使用量收集器
 #[derive(Clone)]
@@ -352,6 +440,7 @@ struct SseUsageCollectorInner {
     on_complete: UsageCallbackWithTiming,
     should_collect: Option<StreamUsageEventFilter>,
     finished: AtomicBool,
+    upstream_failed: AtomicBool,
 }
 
 impl SseUsageCollector {
@@ -359,7 +448,7 @@ impl SseUsageCollector {
     pub fn new(
         start_time: std::time::Instant,
         should_collect: Option<StreamUsageEventFilter>,
-        callback: impl Fn(Vec<Value>, Option<u64>) + Send + Sync + 'static,
+        callback: impl Fn(Vec<Value>, Option<u64>, StreamFinishStatus) + Send + Sync + 'static,
     ) -> Self {
         let on_complete: UsageCallbackWithTiming = Arc::new(callback);
         Self {
@@ -371,6 +460,7 @@ impl SseUsageCollector {
                 on_complete,
                 should_collect,
                 finished: AtomicBool::new(false),
+                upstream_failed: AtomicBool::new(false),
             }),
         }
     }
@@ -401,6 +491,10 @@ impl SseUsageCollector {
         events.push(event);
     }
 
+    fn mark_upstream_failed(&self) {
+        self.inner.upstream_failed.store(true, Ordering::Release);
+    }
+
     /// 完成收集并触发回调
     pub async fn finish(&self) {
         if self.inner.finished.swap(true, Ordering::SeqCst) {
@@ -417,7 +511,12 @@ impl SseUsageCollector {
             first_time.map(|t| (t - self.inner.start_time).as_millis() as u64)
         };
 
-        (self.inner.on_complete)(events, first_token_ms);
+        let finish_status = if self.inner.upstream_failed.load(Ordering::Acquire) {
+            StreamFinishStatus::UpstreamFailed
+        } else {
+            StreamFinishStatus::Complete
+        };
+        (self.inner.on_complete)(events, first_token_ms, finish_status);
     }
 }
 
@@ -484,6 +583,8 @@ pub(crate) fn create_usage_collector(
     // CLAUDE_PARSER_CONFIG（app_type_str="claude"），按 parser_config 记账会把
     // claude-desktop 的行错记到 claude 名下，导致供应商计价覆盖解析不到。
     let app_type_str = ctx.app_type_str;
+    let api_type = ctx.api_type.clone();
+    let input_token_semantics = ctx.input_token_semantics;
     let tag = ctx.tag;
     let start_time = ctx.start_time;
     let stream_parser = parser_config.stream_parser;
@@ -493,7 +594,8 @@ pub(crate) fn create_usage_collector(
     Some(SseUsageCollector::new(
         start_time,
         parser_config.stream_event_filter,
-        move |events, first_token_ms| {
+        move |events, first_token_ms, finish_status| {
+            let status_code = finish_status.usage_status_code(status_code);
             if let Some(usage) = stream_parser(&events) {
                 let model = model_extractor(&events, &fallback_model);
                 let latency_ms = start_time.elapsed().as_millis() as u64;
@@ -503,12 +605,15 @@ pub(crate) fn create_usage_collector(
                 let session_id = session_id.clone();
                 let request_model = request_model.clone();
                 let outbound_model = fallback_model.clone();
+                let api_type = api_type.clone();
 
                 tokio::spawn(async move {
                     log_usage_internal(
                         &state,
                         &provider_id,
                         app_type_str,
+                        &api_type,
+                        input_token_semantics,
                         &model,
                         &request_model,
                         &outbound_model,
@@ -529,12 +634,15 @@ pub(crate) fn create_usage_collector(
                 let session_id = session_id.clone();
                 let request_model = request_model.clone();
                 let outbound_model = fallback_model.clone();
+                let api_type = api_type.clone();
 
                 tokio::spawn(async move {
                     log_usage_internal(
                         &state,
                         &provider_id,
                         app_type_str,
+                        &api_type,
+                        input_token_semantics,
                         &model,
                         &request_model,
                         &outbound_model,
@@ -573,6 +681,8 @@ fn spawn_log_usage(
     let state = state.clone();
     let provider_id = ctx.provider.id.clone();
     let app_type_str = ctx.app_type_str.to_string();
+    let api_type = ctx.api_type.clone();
+    let input_token_semantics = ctx.input_token_semantics;
     let model = model.to_string();
     let request_model = request_model.to_string();
     // 「按请求计价」模式的锚点：映射后的出站模型，无映射时等于 request_model
@@ -588,6 +698,8 @@ fn spawn_log_usage(
             &state,
             &provider_id,
             &app_type_str,
+            &api_type,
+            input_token_semantics,
             &model,
             &request_model,
             &outbound_model,
@@ -621,6 +733,8 @@ async fn log_usage_internal(
     state: &ProxyState,
     provider_id: &str,
     app_type: &str,
+    api_type: &str,
+    input_token_semantics: i64,
     model: &str,
     request_model: &str,
     outbound_model: &str,
@@ -658,6 +772,8 @@ async fn log_usage_internal(
         request_id,
         provider_id.to_string(),
         app_type.to_string(),
+        api_type.to_string(),
+        input_token_semantics,
         model.to_string(),
         request_model.to_string(),
         pricing_model.to_string(),
@@ -681,6 +797,8 @@ pub fn create_logged_passthrough_stream(
     usage_collector: Option<SseUsageCollector>,
     timeout_config: StreamingTimeoutConfig,
     connection_guard: Option<ActiveConnectionGuard>,
+    inspect_sse_events: bool,
+    inspect_bedrock_events: bool,
 ) -> impl Stream<Item = Result<Bytes, std::io::Error>> + Send {
     async_stream::stream! {
         let _conn_guard = connection_guard;
@@ -688,8 +806,10 @@ pub fn create_logged_passthrough_stream(
         let mut utf8_remainder: Vec<u8> = Vec::new();
         let mut collector = usage_collector;
         let mut finish_guard = collector.clone().map(SseUsageFinishGuard::new);
-        let inspect_sse_events =
-            collector.is_some() || log::log_enabled!(log::Level::Debug);
+        let inspect_sse_events = inspect_sse_events
+            && (collector.is_some() || log::log_enabled!(log::Level::Debug));
+        let inspect_bedrock_events = inspect_bedrock_events && collector.is_some();
+        let mut bedrock_decoder = inspect_bedrock_events.then(AwsEventStreamUsageDecoder::default);
         let mut is_first_chunk = true;
 
         // 超时配置
@@ -723,6 +843,9 @@ pub fn create_logged_passthrough_stream(
                             // 超时
                             let timeout_type = if is_first_chunk { "首字节" } else { "静默期" };
                             log::error!("[{tag}] 流式响应{}超时 ({}秒)", timeout_type, duration.as_secs());
+                            if let Some(collector) = &collector {
+                                collector.mark_upstream_failed();
+                            }
                             yield Err(std::io::Error::other(format!("流式响应{timeout_type}超时")));
                             break;
                         }
@@ -774,11 +897,19 @@ pub fn create_logged_passthrough_stream(
                             }
                         }
                     }
+                    if let (Some(decoder), Some(collector)) = (&mut bedrock_decoder, &collector) {
+                        for event in decoder.push(&bytes) {
+                            collector.push(event).await;
+                        }
+                    }
 
                     yield Ok(bytes);
                 }
                 Some(Err(e)) => {
                     log::error!("[{tag}] 流错误: {e}");
+                    if let Some(collector) = &collector {
+                        collector.mark_upstream_failed();
+                    }
                     yield Err(std::io::Error::other(e.to_string()));
                     break;
                 }
@@ -862,7 +993,7 @@ mod tests {
     use rust_decimal::Decimal;
     use std::collections::HashMap;
     use std::str::FromStr;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex as StdMutex};
     use tokio::sync::RwLock;
 
     #[test]
@@ -903,6 +1034,73 @@ mod tests {
             Some("message_start")
         );
         assert_eq!(super::strip_sse_field("id:1", "data"), None);
+    }
+
+    #[test]
+    fn bedrock_eventstream_usage_decoder_handles_split_frames() {
+        let payload = br#"{"metadata":{"usage":{"inputTokens":12,"outputTokens":3}}}"#;
+        let total_len = (12 + payload.len() + 4) as u32;
+        let mut frame = Vec::new();
+        frame.extend_from_slice(&total_len.to_be_bytes());
+        frame.extend_from_slice(&0u32.to_be_bytes());
+        frame.extend_from_slice(&0u32.to_be_bytes());
+        frame.extend_from_slice(payload);
+        frame.extend_from_slice(&0u32.to_be_bytes());
+
+        let split = frame.len() / 2;
+        let mut decoder = AwsEventStreamUsageDecoder::default();
+        assert!(decoder.push(&frame[..split]).is_empty());
+        let events = decoder.push(&frame[split..]);
+        assert_eq!(events.len(), 1);
+        let usage = TokenUsage::from_bedrock_stream_events(&events).unwrap();
+        assert_eq!(usage.input_tokens, 12);
+        assert_eq!(usage.output_tokens, 3);
+    }
+
+    #[tokio::test]
+    async fn interrupted_stream_marks_collected_usage_as_failed() {
+        let observed = Arc::new(StdMutex::new(None));
+        let callback_observed = observed.clone();
+        let collector = SseUsageCollector::new(
+            std::time::Instant::now(),
+            None,
+            move |events, _, finish_status| {
+                *callback_observed.lock().unwrap() = Some((events.len(), finish_status));
+            },
+        );
+        let upstream = futures::stream::iter(vec![
+            Ok(Bytes::from_static(
+                b"data: {\"type\":\"usage\",\"usage\":{\"input_tokens\":3}}\n\n",
+            )),
+            Err(std::io::Error::other("upstream reset")),
+        ]);
+
+        let output = create_logged_passthrough_stream(
+            upstream,
+            "test",
+            Some(collector),
+            StreamingTimeoutConfig {
+                first_byte_timeout: 0,
+                idle_timeout: 0,
+            },
+            None,
+            true,
+            false,
+        )
+        .collect::<Vec<_>>()
+        .await;
+
+        assert_eq!(output.len(), 2);
+        assert!(output[0].is_ok());
+        assert!(output[1].is_err());
+        assert_eq!(
+            *observed.lock().unwrap(),
+            Some((1, StreamFinishStatus::UpstreamFailed))
+        );
+        assert_eq!(
+            StreamFinishStatus::UpstreamFailed.usage_status_code(200),
+            500
+        );
     }
 
     #[test]
@@ -1061,6 +1259,8 @@ mod tests {
             output_tokens: 0,
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
+            reasoning_tokens: 0,
+            cache_creation_1h_tokens: 0,
             model: None,
             message_id: None,
         };
@@ -1069,6 +1269,8 @@ mod tests {
             &state,
             "provider-1",
             app_type,
+            app_type,
+            crate::services::sql_helpers::default_input_token_semantics(app_type),
             "resp-model",
             "req-model",
             "req-model",
@@ -1129,6 +1331,8 @@ mod tests {
             output_tokens: 0,
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
+            reasoning_tokens: 0,
+            cache_creation_1h_tokens: 0,
             model: None,
             message_id: None,
         };
@@ -1139,6 +1343,8 @@ mod tests {
             &state,
             "provider-3",
             app_type,
+            app_type,
+            crate::services::sql_helpers::default_input_token_semantics(app_type),
             "resp-model",
             "req-model",
             "outbound-model",
@@ -1211,6 +1417,8 @@ mod tests {
             output_tokens: 0,
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
+            reasoning_tokens: 0,
+            cache_creation_1h_tokens: 0,
             model: None,
             message_id: None,
         };
@@ -1219,6 +1427,8 @@ mod tests {
             &state,
             "provider-2",
             app_type,
+            app_type,
+            crate::services::sql_helpers::default_input_token_semantics(app_type),
             "resp-model",
             "req-model",
             "req-model",

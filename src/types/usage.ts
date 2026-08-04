@@ -12,6 +12,7 @@ export interface RequestLog {
   providerId: string;
   providerName?: string;
   appType: string;
+  apiType: string;
   model: string;
   requestModel?: string;
   /** 写入时实际用于计价的模型名；路由接管 + request 计价模式下可能与 model 不同 */
@@ -21,6 +22,9 @@ export interface RequestLog {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  reasoningTokens: number;
+  cacheCreation1hTokens: number;
+  inputTokenSemantics: number;
   inputCostUsd: string;
   outputCostUsd: string;
   cacheReadCostUsd: string;
@@ -32,6 +36,8 @@ export interface RequestLog {
   durationMs?: number;
   statusCode: number;
   errorMessage?: string;
+  upstreamResponseId?: string;
+  stopReason?: string;
   createdAt: number;
   dataSource?: string;
 }
@@ -188,13 +194,20 @@ export interface UsageRangeSelection {
  * `opencode` / `openclaw` / `hermes` have no proxy handler at all — they
  * appear only as managed apps elsewhere.
  */
-export type AppType = "claude" | "codex" | "gemini" | "grokbuild" | "opencode";
+export type AppType =
+  | "claude"
+  | "codex"
+  | "pi"
+  | "gemini"
+  | "grokbuild"
+  | "opencode";
 
 export type AppTypeFilter = "all" | AppType;
 
 export const KNOWN_APP_TYPES: ReadonlyArray<AppType> = [
   "claude",
   "codex",
+  "pi",
   "gemini",
   "grokbuild",
   "opencode",
@@ -223,6 +236,8 @@ export interface CacheNormalizableLog {
   appType: string;
   inputTokens: number;
   cacheReadTokens: number;
+  cacheCreationTokens: number;
+  inputTokenSemantics: number;
 }
 
 /**
@@ -231,6 +246,13 @@ export interface CacheNormalizableLog {
  * cache, so they pass through unchanged.
  */
 export function getFreshInputTokens(log: CacheNormalizableLog): number {
+  if (log.inputTokenSemantics === 2) return log.inputTokens;
+  if (log.inputTokenSemantics === 1) {
+    const cached = log.cacheReadTokens + log.cacheCreationTokens;
+    return log.inputTokens >= cached
+      ? log.inputTokens - cached
+      : log.inputTokens;
+  }
   if (
     CACHE_INCLUSIVE_APP_TYPES.has(log.appType) &&
     log.inputTokens >= log.cacheReadTokens

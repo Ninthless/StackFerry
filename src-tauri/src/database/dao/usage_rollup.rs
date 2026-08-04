@@ -123,19 +123,22 @@ impl Database {
         // 明细行的这两列可能为 NULL（历史/手工数据），归一为 ''。
         let aggregation_sql = format!(
             "INSERT OR REPLACE INTO usage_daily_rollups
-                (date, app_type, provider_id, model, request_model, pricing_model,
+                (date, app_type, provider_id, model, request_model, pricing_model, api_type,
                  request_count, success_count,
                  input_tokens, output_tokens,
                  cache_read_tokens, cache_creation_tokens,
+                 reasoning_tokens, cache_creation_1h_tokens,
                  input_token_semantics, total_cost_usd, avg_latency_ms)
             SELECT
-                d, a, p, m, rm, pm,
+                d, a, p, m, rm, pm, api,
                 COALESCE(old.request_count, 0) + new_req,
                 COALESCE(old.success_count, 0) + new_succ,
                 COALESCE({fresh_old_input}, 0) + new_in,
                 COALESCE(old.output_tokens, 0) + new_out,
                 COALESCE(old.cache_read_tokens, 0) + new_cr,
                 COALESCE(old.cache_creation_tokens, 0) + new_cc,
+                COALESCE(old.reasoning_tokens, 0) + new_reasoning,
+                COALESCE(old.cache_creation_1h_tokens, 0) + new_cc_1h,
                 {INPUT_TOKEN_SEMANTICS_FRESH},
                 CAST(COALESCE(CAST(old.total_cost_usd AS REAL), 0) + new_cost AS TEXT),
                 CASE WHEN COALESCE(old.request_count, 0) + new_req > 0
@@ -149,22 +152,26 @@ impl Database {
                     l.app_type as a, l.provider_id as p, l.model as m,
                     COALESCE(l.request_model, '') as rm,
                     COALESCE(l.pricing_model, '') as pm,
+                    COALESCE(l.api_type, '') as api,
                     COUNT(*) as new_req,
                     SUM(CASE WHEN l.status_code >= 200 AND l.status_code < 300 THEN 1 ELSE 0 END) as new_succ,
                     COALESCE(SUM({fresh_detail_input}), 0) as new_in,
                     COALESCE(SUM(l.output_tokens), 0) as new_out,
                     COALESCE(SUM(l.cache_read_tokens), 0) as new_cr,
                     COALESCE(SUM(l.cache_creation_tokens), 0) as new_cc,
+                    COALESCE(SUM(l.reasoning_tokens), 0) as new_reasoning,
+                    COALESCE(SUM(l.cache_creation_1h_tokens), 0) as new_cc_1h,
                     COALESCE(SUM(CAST(l.total_cost_usd AS REAL)), 0) as new_cost,
                     COALESCE(AVG(l.latency_ms), 0) as new_lat
                 FROM proxy_request_logs l
                 WHERE l.created_at < ?1 AND {effective_filter}
-                GROUP BY d, a, p, m, rm, pm
+                GROUP BY d, a, p, m, rm, pm, api
             ) agg
             LEFT JOIN usage_daily_rollups old
                 ON old.date = agg.d AND old.app_type = agg.a
                 AND old.provider_id = agg.p AND old.model = agg.m
-                AND old.request_model = agg.rm AND old.pricing_model = agg.pm"
+                AND old.request_model = agg.rm AND old.pricing_model = agg.pm
+                AND old.api_type = agg.api"
         );
 
         conn.execute(&aggregation_sql, [cutoff])
@@ -474,6 +481,58 @@ mod tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].0, "claude-sonnet-4-6");
         assert_eq!(rows[1].0, "kimi-k2");
+        Ok(())
+    }
+
+    #[test]
+    fn test_pi_rollup_preserves_api_and_usage_subsets() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        let old_ts = chrono::Utc::now().timestamp() - 40 * 86400;
+        {
+            let conn = crate::database::lock_conn!(db.conn);
+            for (id, api_type, semantics, input, reasoning, cache_1h) in [
+                ("anthropic", "anthropic-messages", 2, 100, 10, 30),
+                ("openai", "openai-responses", 1, 200, 20, 0),
+            ] {
+                conn.execute(
+                    "INSERT INTO proxy_request_logs (
+                        request_id, provider_id, app_type, api_type, model,
+                        input_tokens, output_tokens, cache_read_tokens,
+                        cache_creation_tokens, reasoning_tokens,
+                        cache_creation_1h_tokens, input_token_semantics,
+                        total_cost_usd, latency_ms, status_code, created_at
+                     ) VALUES (?1, 'p1', 'pi', ?2, 'shared-model', ?3, 40, 50,
+                               50, ?4, ?5, ?6, '0.1', 10, 200, ?7)",
+                    rusqlite::params![id, api_type, input, reasoning, cache_1h, semantics, old_ts],
+                )?;
+            }
+        }
+
+        assert_eq!(db.rollup_and_prune(30)?, 2);
+        let conn = crate::database::lock_conn!(db.conn);
+        let mut stmt = conn.prepare(
+            "SELECT api_type, input_tokens, reasoning_tokens,
+                    cache_creation_1h_tokens, input_token_semantics
+             FROM usage_daily_rollups WHERE app_type = 'pi' ORDER BY api_type",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(
+            rows,
+            vec![
+                ("anthropic-messages".to_string(), 100, 10, 30, 2),
+                ("openai-responses".to_string(), 100, 20, 0, 2),
+            ]
+        );
         Ok(())
     }
 

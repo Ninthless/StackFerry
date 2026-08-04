@@ -134,7 +134,9 @@ export function useProxyStatus() {
               ? "Gemini"
               : variables.appType === "grokbuild"
                 ? "Grok Build"
-                : "OpenCode";
+                : variables.appType === "pi"
+                  ? "Pi"
+                  : "OpenCode";
 
       toast.success(
         variables.enabled
@@ -218,6 +220,7 @@ export function useProxyStatus() {
       takeoverStatus?.codex ||
       takeoverStatus?.gemini ||
       takeoverStatus?.grokbuild ||
+      takeoverStatus?.pi ||
       false,
 
     // 启动/停止（总开关）

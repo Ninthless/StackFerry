@@ -68,9 +68,16 @@ import {
 
 const PI_APIS: Array<{ value: PiProviderApi; label: string }> = [
   { value: "openai-responses", label: "OpenAI Responses" },
+  { value: "openai-codex-responses", label: "OpenAI Codex Responses" },
+  { value: "azure-openai-responses", label: "Azure OpenAI Responses" },
   { value: "openai-completions", label: "OpenAI Chat Completions" },
   { value: "anthropic-messages", label: "Anthropic Messages" },
   { value: "google-generative-ai", label: "Google Generative AI" },
+  { value: "google-vertex", label: "Google Vertex AI" },
+  { value: "bedrock-converse-stream", label: "Amazon Bedrock Converse" },
+  { value: "mistral-conversations", label: "Mistral Conversations" },
+  { value: "pi-messages", label: "Pi Messages" },
+  { value: "openrouter-images", label: "OpenRouter Images" },
 ];
 
 type PiModelDraft = {
@@ -357,7 +364,12 @@ export function PiProviderForm({
     }
     const usesManagedOAuth =
       typeof initialConfig.oauth === "string" && initialConfig.oauth.trim();
-    if (!apiKey.trim() && !usesManagedOAuth) {
+    const usesExternalCredentials = [
+      "openai-codex-responses",
+      "google-vertex",
+      "bedrock-converse-stream",
+    ].includes(api);
+    if (!apiKey.trim() && !usesManagedOAuth && !usesExternalCredentials) {
       toast.error(t("pi.form.apiKeyRequired"));
       return;
     }
@@ -427,6 +439,7 @@ export function PiProviderForm({
       defaultModel: normalizedDefault,
       models: normalizedModels,
     };
+    if (!apiKey.trim()) delete config.apiKey;
     delete config.providerKey;
     config.headers = withPiDefaultHeaders(
       parsedHeaders as Record<string, string>,

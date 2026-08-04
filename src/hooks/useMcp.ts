@@ -13,6 +13,13 @@ export function useAllMcpServers() {
   });
 }
 
+export function usePiMcpAdapterStatus(projectDir?: string) {
+  return useQuery({
+    queryKey: ["mcp", "pi-adapter-status", projectDir ?? null],
+    queryFn: () => mcpApi.getPiAdapterStatus(projectDir),
+  });
+}
+
 /**
  * 添加或更新 MCP 服务器
  */
@@ -22,6 +29,9 @@ export function useUpsertMcpServer() {
     mutationFn: (server: McpServer) => mcpApi.upsertUnifiedServer(server),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mcp", "all"] });
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "pi-adapter-status"],
+      });
     },
   });
 }
@@ -43,6 +53,9 @@ export function useToggleMcpApp() {
     }) => mcpApi.toggleApp(serverId, app, enabled),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mcp", "all"] });
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "pi-adapter-status"],
+      });
     },
   });
 }
@@ -56,6 +69,9 @@ export function useDeleteMcpServer() {
     mutationFn: (id: string) => mcpApi.deleteUnifiedServer(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mcp", "all"] });
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "pi-adapter-status"],
+      });
     },
   });
 }
@@ -71,6 +87,9 @@ export function useImportMcpFromApps() {
     // 服务器已经入库，失败时也要刷新列表。
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["mcp", "all"] });
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "pi-adapter-status"],
+      });
     },
   });
 }

@@ -18,6 +18,7 @@ const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
 const GROUP_EXPANSION_STORAGE_KEY =
   "stackferry.sessionManager.groupExpansionState";
+const PROVIDER_FILTER_STORAGE_KEY = "stackferry.sessions.providerFilter";
 
 vi.mock("sonner", () => ({
   toast: {
@@ -59,7 +60,10 @@ vi.mock("@/components/ConfirmDialog", () => ({
     ) : null,
 }));
 
-const renderPage = (appId = "codex") => {
+const renderPage = (providerFilter: string | null = "codex") => {
+  if (providerFilter !== null) {
+    window.localStorage.setItem(PROVIDER_FILTER_STORAGE_KEY, providerFilter);
+  }
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -71,7 +75,7 @@ const renderPage = (appId = "codex") => {
     client,
     ...render(
       <QueryClientProvider client={client}>
-        <SessionManagerPage appId={appId} />
+        <SessionManagerPage />
       </QueryClientProvider>,
     ),
   };
@@ -156,6 +160,7 @@ describe("SessionManagerPage", () => {
     Element.prototype.scrollIntoView = vi.fn();
     window.localStorage.removeItem("stackferry.sessionManager.listViewMode");
     window.localStorage.removeItem(GROUP_EXPANSION_STORAGE_KEY);
+    window.localStorage.removeItem(PROVIDER_FILTER_STORAGE_KEY);
 
     const sessions: SessionMeta[] = [
       {
@@ -225,6 +230,86 @@ describe("SessionManagerPage", () => {
     const { container } = renderPage();
 
     expect(container.firstElementChild).toHaveClass("py-4");
+  });
+
+  it("defaults a clean profile to all session providers", async () => {
+    renderPage(null);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Claude Session" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Alpha Session")).toBeInTheDocument();
+    });
+    expect(window.localStorage.getItem(PROVIDER_FILTER_STORAGE_KEY)).toBe(
+      "all",
+    );
+  });
+
+  it("restores a valid provider filter after remounting", async () => {
+    const firstRender = renderPage(null);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Claude Session" }),
+      ).toBeInTheDocument(),
+    );
+    await switchProviderFilter(/Codex/i);
+    await waitFor(() =>
+      expect(window.localStorage.getItem(PROVIDER_FILTER_STORAGE_KEY)).toBe(
+        "codex",
+      ),
+    );
+
+    firstRender.unmount();
+    renderPage(null);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Alpha Session" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Claude Session")).not.toBeInTheDocument();
+    });
+  });
+
+  it("replaces an invalid stored provider filter with all", async () => {
+    window.localStorage.setItem(PROVIDER_FILTER_STORAGE_KEY, "invalid-client");
+
+    renderPage(null);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Claude Session" }),
+      ).toBeInTheDocument();
+      expect(window.localStorage.getItem(PROVIDER_FILTER_STORAGE_KEY)).toBe(
+        "all",
+      );
+    });
+  });
+
+  it("reconciles the selected detail when filtering hides it", async () => {
+    renderPage("all");
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Claude Session" }),
+      ).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Alpha Session/ }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Alpha Session" }),
+      ).toBeInTheDocument(),
+    );
+
+    await switchProviderFilter(/Claude Code/i);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Claude Session" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Alpha Session")).not.toBeInTheDocument();
+    });
   });
 
   it("deletes the selected session and selects the next visible session", async () => {

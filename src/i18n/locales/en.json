@@ -1507,6 +1507,11 @@
     "outputTokens": "Output",
     "cacheReadTokens": "Cache Hit",
     "cacheCreationTokens": "Cache Creation",
+    "reasoningTokens": "Reasoning",
+    "cacheCreation1hTokens": "1-hour Cache Creation",
+    "apiType": "API Protocol",
+    "upstreamResponseId": "Upstream Response ID",
+    "stopReason": "Stop Reason",
     "timingInfo": "Duration/TTFT",
     "status": "Status",
     "multiplier": "Multiplier",
@@ -1523,6 +1528,7 @@
       "all": "All",
       "claude": "Claude Code",
       "codex": "Codex",
+      "pi": "Pi",
       "gemini": "Gemini",
       "opencode": "OpenCode",
       "grokbuild": "Grok Build"
@@ -1536,6 +1542,7 @@
       "codex_session": "Codex Session",
       "gemini_session": "Gemini Session",
       "opencode_session": "OpenCode Session",
+      "pi_session": "Pi Session",
       "grok_session": "Grok Build Session"
     },
     "sessionSync": {
@@ -1831,12 +1838,22 @@
       "apps": {
         "claude": "Claude",
         "codex": "Codex",
+        "pi": "Pi",
         "gemini": "Gemini",
         "grokbuild": "Grok Build",
         "opencode": "OpenCode",
         "openclaw": "OpenClaw",
         "hermes": "Hermes"
       }
+    },
+    "piAdapter": {
+      "label": "Pi MCP adapter",
+      "loading": "Checking",
+      "inactive": "Inactive",
+      "pending": "Pending Pi install",
+      "installed": "Installed",
+      "error": "Error",
+      "projectOverride": "Project config overrides global config"
     },
     "userLevelPath": "User-level MCP path",
     "serverList": "Servers",
@@ -1969,6 +1986,7 @@
   },
   "prompts": {
     "manage": "Prompts",
+    "selectApplication": "Select prompt application",
     "title": "{{appName}} Prompt Management",
     "claudeTitle": "Claude Prompt Management",
     "codexTitle": "Codex Prompt Management",
@@ -2294,6 +2312,7 @@
   },
   "skills": {
     "manage": "Skills",
+    "selectTargetApplication": "Select Skills install target",
     "title": "Skills Management",
     "description": "Discover and install skills from popular repositories for Claude Code, Codex, Pi, Gemini CLI and other supported tools",
     "refresh": "Refresh",

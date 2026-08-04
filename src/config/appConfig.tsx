@@ -27,6 +27,10 @@ export const APP_IDS: AppId[] = [
   "hermes",
 ];
 
+export const PROMPT_APP_IDS: AppId[] = APP_IDS.filter(
+  (app) => app !== "claude-desktop",
+);
+
 /** App IDs shown in Skills panels (excludes OpenClaw — it doesn't support Skills) */
 export const SKILLS_APP_IDS: AppId[] = [
   "claude",
@@ -39,9 +43,10 @@ export const SKILLS_APP_IDS: AppId[] = [
 ];
 
 /** App IDs shown in MCP panels (excludes OpenClaw) */
-export const MCP_APP_IDS: Array<Exclude<AppId, "pi">> = [
+export const MCP_APP_IDS: AppId[] = [
   "claude",
   "codex",
+  "pi",
   "gemini",
   "grokbuild",
   "opencode",

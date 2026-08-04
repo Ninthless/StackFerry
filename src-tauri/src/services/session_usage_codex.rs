@@ -1263,6 +1263,8 @@ fn insert_codex_session_entry(
         output_tokens: delta.output,
         cache_read_tokens: delta.cached_input,
         cache_creation_tokens: 0,
+        reasoning_tokens: 0,
+        cache_creation_1h_tokens: 0,
         model: Some(model.to_string()),
         message_id: None,
     };

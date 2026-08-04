@@ -27,6 +27,14 @@ fn openai_cache_write_tokens(usage: &Value) -> u32 {
         .unwrap_or(0) as u32
 }
 
+fn openai_reasoning_tokens(usage: &Value) -> u32 {
+    usage
+        .pointer("/output_tokens_details/reasoning_tokens")
+        .or_else(|| usage.pointer("/completion_tokens_details/reasoning_tokens"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0) as u32
+}
+
 /// Session 日志 request_id 前缀，与 `session_usage.rs` 中的格式保持一致
 pub const SESSION_REQUEST_ID_PREFIX: &str = "session:";
 
@@ -37,6 +45,30 @@ fn response_id(body: &Value, field: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
+fn usage_u32(usage: &Value, fields: &[&str]) -> u32 {
+    fields
+        .iter()
+        .find_map(|field| usage.get(*field).and_then(Value::as_u64))
+        .unwrap_or(0) as u32
+}
+
+fn mistral_cache_read_tokens(usage: &Value) -> u32 {
+    [
+        "/promptTokensDetails/cachedTokens",
+        "/prompt_tokens_details/cached_tokens",
+        "/promptTokenDetails/cachedTokens",
+        "/prompt_token_details/cached_tokens",
+    ]
+    .iter()
+    .find_map(|pointer| usage.pointer(pointer).and_then(Value::as_u64))
+    .or_else(|| {
+        ["numCachedTokens", "num_cached_tokens"]
+            .iter()
+            .find_map(|field| usage.get(*field).and_then(Value::as_u64))
+    })
+    .unwrap_or(0) as u32
+}
+
 /// Token 使用量统计
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TokenUsage {
@@ -44,6 +76,10 @@ pub struct TokenUsage {
     pub output_tokens: u32,
     pub cache_read_tokens: u32,
     pub cache_creation_tokens: u32,
+    /// 输出 token 中用于推理的子集，不重复计入总 token 或成本。
+    pub reasoning_tokens: u32,
+    /// cache_creation_tokens 中 1h TTL 写入的子集。
+    pub cache_creation_1h_tokens: u32,
     /// 从响应中提取的实际模型名称（如果可用）
     pub model: Option<String>,
     /// 从响应中提取的消息 ID（用于跨源去重）
@@ -93,6 +129,130 @@ pub enum ApiType {
 }
 
 impl TokenUsage {
+    pub fn from_mistral_response(body: &Value) -> Option<Self> {
+        let usage = body.get("usage")?;
+        let prompt_tokens = usage_u32(usage, &["promptTokens", "prompt_tokens"]);
+        let output_tokens = usage_u32(usage, &["completionTokens", "completion_tokens"]);
+        let cache_read_tokens = mistral_cache_read_tokens(usage).min(prompt_tokens);
+        if prompt_tokens == 0 && output_tokens == 0 && cache_read_tokens == 0 {
+            return None;
+        }
+        Some(Self {
+            input_tokens: prompt_tokens.saturating_sub(cache_read_tokens),
+            output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens: 0,
+            reasoning_tokens: usage_u32(usage, &["reasoningTokens", "reasoning_tokens"]),
+            cache_creation_1h_tokens: 0,
+            model: body.get("model").and_then(Value::as_str).map(str::to_owned),
+            message_id: response_id(body, "id"),
+        })
+    }
+
+    pub fn from_mistral_stream_events(events: &[Value]) -> Option<Self> {
+        for event in events.iter().rev() {
+            if event.get("usage").is_some() {
+                let mut parsed = Self::from_mistral_response(event)?;
+                if parsed.message_id.is_none() {
+                    parsed.message_id = events.iter().find_map(|item| response_id(item, "id"));
+                }
+                return Some(parsed);
+            }
+        }
+        None
+    }
+
+    pub fn from_pi_messages_event(event: &Value) -> Option<Self> {
+        if !matches!(
+            event.get("type").and_then(Value::as_str),
+            Some("done" | "error")
+        ) {
+            return None;
+        }
+        let usage = event.get("usage")?;
+        let parsed = Self {
+            input_tokens: usage_u32(usage, &["input"]),
+            output_tokens: usage_u32(usage, &["output"]),
+            cache_read_tokens: usage_u32(usage, &["cacheRead"]),
+            cache_creation_tokens: usage_u32(usage, &["cacheWrite"]),
+            reasoning_tokens: usage_u32(usage, &["reasoning"]),
+            cache_creation_1h_tokens: usage_u32(usage, &["cacheWrite1h"]),
+            model: event
+                .get("model")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            message_id: response_id(event, "responseId"),
+        };
+        parsed.has_billable_tokens().then_some(parsed)
+    }
+
+    pub fn from_pi_messages_stream_events(events: &[Value]) -> Option<Self> {
+        events.iter().rev().find_map(Self::from_pi_messages_event)
+    }
+
+    pub fn from_bedrock_event(body: &Value) -> Option<Self> {
+        let usage = body
+            .pointer("/metadata/usage")
+            .or_else(|| body.get("usage"))?;
+        let parsed = Self {
+            input_tokens: usage_u32(usage, &["inputTokens", "input_tokens"]),
+            output_tokens: usage_u32(usage, &["outputTokens", "output_tokens"]),
+            cache_read_tokens: usage_u32(
+                usage,
+                &["cacheReadInputTokens", "cache_read_input_tokens"],
+            ),
+            cache_creation_tokens: usage_u32(
+                usage,
+                &["cacheWriteInputTokens", "cache_write_input_tokens"],
+            ),
+            reasoning_tokens: usage_u32(usage, &["reasoningTokens", "reasoning_tokens"]),
+            cache_creation_1h_tokens: 0,
+            model: body.get("model").and_then(Value::as_str).map(str::to_owned),
+            message_id: response_id(body, "requestId"),
+        };
+        parsed.has_billable_tokens().then_some(parsed)
+    }
+
+    pub fn from_bedrock_stream_events(events: &[Value]) -> Option<Self> {
+        events.iter().rev().find_map(Self::from_bedrock_event)
+    }
+
+    pub fn from_openrouter_images_response(body: &Value) -> Option<Self> {
+        let usage = body.get("usage")?;
+        let input_tokens = usage_u32(usage, &["prompt_tokens"]);
+        let output_tokens = usage_u32(usage, &["completion_tokens"]);
+        let reported_cached = usage
+            .pointer("/prompt_tokens_details/cached_tokens")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as u32;
+        let cache_creation_tokens = usage
+            .pointer("/prompt_tokens_details/cache_write_tokens")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as u32;
+        let cache_read_tokens = if cache_creation_tokens > 0 {
+            reported_cached.saturating_sub(cache_creation_tokens)
+        } else {
+            reported_cached
+        };
+        Some(Self {
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
+            reasoning_tokens: 0,
+            cache_creation_1h_tokens: 0,
+            model: body.get("model").and_then(Value::as_str).map(str::to_owned),
+            message_id: response_id(body, "id"),
+        })
+    }
+
+    pub fn from_openrouter_images_stream_events(events: &[Value]) -> Option<Self> {
+        events
+            .iter()
+            .rev()
+            .find_map(Self::from_openrouter_images_response)
+    }
+
     /// 从 Claude API 非流式响应解析
     pub fn from_claude_response(body: &Value) -> Option<Self> {
         let usage = body.get("usage")?;
@@ -113,6 +273,14 @@ impl TokenUsage {
             cache_creation_tokens: usage
                 .get("cache_creation_input_tokens")
                 .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32,
+            reasoning_tokens: usage
+                .pointer("/output_tokens_details/thinking_tokens")
+                .and_then(Value::as_u64)
+                .unwrap_or(0) as u32,
+            cache_creation_1h_tokens: usage
+                .pointer("/cache_creation/ephemeral_1h_input_tokens")
+                .and_then(Value::as_u64)
                 .unwrap_or(0) as u32,
             model,
             message_id,
@@ -158,6 +326,11 @@ impl TokenUsage {
                             usage.cache_creation_tokens = msg_usage
                                 .get("cache_creation_input_tokens")
                                 .and_then(|v| v.as_u64())
+                                .unwrap_or(0)
+                                as u32;
+                            usage.cache_creation_1h_tokens = msg_usage
+                                .pointer("/cache_creation/ephemeral_1h_input_tokens")
+                                .and_then(Value::as_u64)
                                 .unwrap_or(0)
                                 as u32;
                         }
@@ -218,6 +391,12 @@ impl TokenUsage {
                                     usage.cache_creation_tokens = cache_creation;
                                 }
                             }
+                            if let Some(reasoning) = delta_usage
+                                .pointer("/output_tokens_details/thinking_tokens")
+                                .and_then(Value::as_u64)
+                            {
+                                usage.reasoning_tokens = reasoning as u32;
+                            }
                         }
                     }
                     _ => {}
@@ -247,6 +426,8 @@ impl TokenUsage {
             output_tokens: usage.get("completion_tokens")?.as_u64()? as u32,
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
+            reasoning_tokens: openai_reasoning_tokens(usage),
+            cache_creation_1h_tokens: 0,
             model: None,
             message_id: response_id(body, "id"),
         })
@@ -286,6 +467,8 @@ impl TokenUsage {
             output_tokens: output_tokens? as u32,
             cache_read_tokens: cached_tokens,
             cache_creation_tokens: cache_write_tokens,
+            reasoning_tokens: openai_reasoning_tokens(usage),
+            cache_creation_1h_tokens: 0,
             model,
             message_id: response_id(body, "id"),
         })
@@ -321,6 +504,8 @@ impl TokenUsage {
             output_tokens,
             cache_read_tokens: cached_tokens,
             cache_creation_tokens: cache_write_tokens,
+            reasoning_tokens: openai_reasoning_tokens(usage),
+            cache_creation_1h_tokens: 0,
             model,
             message_id: response_id(body, "id"),
         })
@@ -413,6 +598,8 @@ impl TokenUsage {
             output_tokens: completion_tokens as u32,
             cache_read_tokens: cached_tokens,
             cache_creation_tokens: cache_write_tokens,
+            reasoning_tokens: openai_reasoning_tokens(usage),
+            cache_creation_1h_tokens: 0,
             model,
             message_id: response_id(body, "id"),
         })
@@ -463,6 +650,11 @@ impl TokenUsage {
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0) as u32,
             cache_creation_tokens: 0,
+            reasoning_tokens: usage
+                .get("thoughtsTokenCount")
+                .and_then(Value::as_u64)
+                .unwrap_or(0) as u32,
+            cache_creation_1h_tokens: 0,
             model,
             message_id: response_id(body, "responseId"),
         })
@@ -474,6 +666,7 @@ impl TokenUsage {
         let mut total_input = 0u32;
         let mut total_tokens = 0u32;
         let mut total_cache_read = 0u32;
+        let mut total_reasoning = 0u32;
         let mut model: Option<String> = None;
         let mut message_id: Option<String> = None;
 
@@ -495,6 +688,10 @@ impl TokenUsage {
                 total_cache_read = usage
                     .get("cachedContentTokenCount")
                     .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32;
+                total_reasoning = usage
+                    .get("thoughtsTokenCount")
+                    .and_then(Value::as_u64)
                     .unwrap_or(0) as u32;
             }
 
@@ -518,6 +715,8 @@ impl TokenUsage {
                 output_tokens: total_output,
                 cache_read_tokens: total_cache_read,
                 cache_creation_tokens: 0,
+                reasoning_tokens: total_reasoning,
+                cache_creation_1h_tokens: 0,
                 model,
                 message_id,
             })
@@ -605,6 +804,185 @@ mod tests {
         assert_eq!(usage.cache_read_tokens, 20);
         assert_eq!(usage.cache_creation_tokens, 10);
         assert_eq!(usage.model, Some("claude-sonnet-4-20250514".to_string()));
+    }
+
+    #[test]
+    fn pi_protocol_usage_fixtures_preserve_reported_breakdowns() {
+        let anthropic = TokenUsage::from_claude_response(&json!({
+            "id": "msg_1",
+            "model": "claude-sonnet-5",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 40,
+                "cache_read_input_tokens": 60,
+                "cache_creation_input_tokens": 20,
+                "cache_creation": { "ephemeral_1h_input_tokens": 15 },
+                "output_tokens_details": { "thinking_tokens": 12 }
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            (
+                anthropic.input_tokens,
+                anthropic.output_tokens,
+                anthropic.cache_read_tokens,
+                anthropic.cache_creation_tokens,
+                anthropic.cache_creation_1h_tokens,
+                anthropic.reasoning_tokens,
+            ),
+            (100, 40, 60, 20, 15, 12)
+        );
+
+        let responses = TokenUsage::from_codex_response_auto(&json!({
+            "id": "resp_1",
+            "usage": {
+                "input_tokens": 200,
+                "output_tokens": 50,
+                "input_tokens_details": { "cached_tokens": 80, "cache_write_tokens": 20 },
+                "output_tokens_details": { "reasoning_tokens": 30 }
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            (
+                responses.input_tokens,
+                responses.output_tokens,
+                responses.cache_read_tokens,
+                responses.cache_creation_tokens,
+                responses.reasoning_tokens,
+            ),
+            (200, 50, 80, 20, 30)
+        );
+
+        let chat = TokenUsage::from_openai_response(&json!({
+            "id": "chat_1",
+            "usage": {
+                "prompt_tokens": 120,
+                "completion_tokens": 25,
+                "prompt_tokens_details": { "cached_tokens": 40 },
+                "completion_tokens_details": { "reasoning_tokens": 10 }
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            (
+                chat.input_tokens,
+                chat.output_tokens,
+                chat.cache_read_tokens,
+                chat.reasoning_tokens,
+            ),
+            (120, 25, 40, 10)
+        );
+
+        let gemini = TokenUsage::from_gemini_response(&json!({
+            "responseId": "gemini_1",
+            "usageMetadata": {
+                "promptTokenCount": 150,
+                "candidatesTokenCount": 30,
+                "thoughtsTokenCount": 20,
+                "cachedContentTokenCount": 50,
+                "totalTokenCount": 200
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            (
+                gemini.input_tokens,
+                gemini.output_tokens,
+                gemini.cache_read_tokens,
+                gemini.reasoning_tokens,
+            ),
+            (150, 50, 50, 20)
+        );
+    }
+
+    #[test]
+    fn pi_specialized_usage_fixtures_use_native_wire_fields() {
+        let mistral = TokenUsage::from_mistral_response(&json!({
+            "id": "mistral_1",
+            "usage": {
+                "promptTokens": 100,
+                "completionTokens": 25,
+                "promptTokensDetails": { "cachedTokens": 40 }
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            (
+                mistral.input_tokens,
+                mistral.output_tokens,
+                mistral.cache_read_tokens,
+            ),
+            (60, 25, 40)
+        );
+
+        let pi_messages = TokenUsage::from_pi_messages_event(&json!({
+            "type": "error",
+            "responseId": "pi_1",
+            "usage": {
+                "input": 70,
+                "output": 20,
+                "cacheRead": 30,
+                "cacheWrite": 10,
+                "cacheWrite1h": 8,
+                "reasoning": 12
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            (
+                pi_messages.input_tokens,
+                pi_messages.output_tokens,
+                pi_messages.cache_read_tokens,
+                pi_messages.cache_creation_tokens,
+                pi_messages.cache_creation_1h_tokens,
+                pi_messages.reasoning_tokens,
+            ),
+            (70, 20, 30, 10, 8, 12)
+        );
+
+        let bedrock = TokenUsage::from_bedrock_event(&json!({
+            "metadata": {
+                "usage": {
+                    "inputTokens": 90,
+                    "outputTokens": 15,
+                    "cacheReadInputTokens": 45,
+                    "cacheWriteInputTokens": 5
+                }
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            (
+                bedrock.input_tokens,
+                bedrock.output_tokens,
+                bedrock.cache_read_tokens,
+                bedrock.cache_creation_tokens,
+            ),
+            (90, 15, 45, 5)
+        );
+
+        let image = TokenUsage::from_openrouter_images_response(&json!({
+            "id": "image_1",
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 5,
+                "prompt_tokens_details": {
+                    "cached_tokens": 50,
+                    "cache_write_tokens": 20
+                }
+            }
+        }))
+        .unwrap();
+        assert_eq!(
+            (
+                image.input_tokens,
+                image.output_tokens,
+                image.cache_read_tokens,
+                image.cache_creation_tokens,
+            ),
+            (100, 5, 30, 20)
+        );
     }
 
     #[test]

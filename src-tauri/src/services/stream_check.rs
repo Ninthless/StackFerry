@@ -526,6 +526,8 @@ mod tests {
             "openai-responses",
             "anthropic-messages",
             "google-generative-ai",
+            "mistral-conversations",
+            "pi-messages",
         ] {
             let provider = make_provider(serde_json::json!({
                 "baseUrl": "  https://api.example.com/v1  ",

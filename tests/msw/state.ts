@@ -164,6 +164,7 @@ let mcpConfigs: McpConfigState = {
       apps: {
         claude: true,
         codex: false,
+        pi: false,
         gemini: false,
         opencode: false,
         openclaw: false,
@@ -184,6 +185,7 @@ let mcpConfigs: McpConfigState = {
       apps: {
         claude: false,
         codex: true,
+        pi: false,
         gemini: false,
         opencode: false,
         openclaw: false,
@@ -235,6 +237,7 @@ export const resetProviderState = () => {
         apps: {
           claude: true,
           codex: false,
+          pi: false,
           gemini: false,
           opencode: false,
           openclaw: false,
@@ -255,6 +258,7 @@ export const resetProviderState = () => {
         apps: {
           claude: false,
           codex: true,
+          pi: false,
           gemini: false,
           opencode: false,
           openclaw: false,

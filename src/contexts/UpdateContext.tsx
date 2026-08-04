@@ -6,8 +6,9 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import type { UpdateHandle, UpdateInfo } from "../lib/updater";
-import { checkForUpdate, relaunchApp } from "../lib/updater";
+import { settingsApi } from "../lib/api/settings";
+import type { UpdateInfo } from "../lib/updater";
+import { checkForUpdate } from "../lib/updater";
 
 interface UpdateContextValue {
   // 更新状态
@@ -50,7 +51,6 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
   const [isInstalling, setIsInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDismissed, setIsDismissed] = useState(false);
-  const [pendingUpdate, setPendingUpdate] = useState<UpdateHandle | null>(null);
 
   // 从 localStorage 读取已关闭的版本
   useEffect(() => {
@@ -75,14 +75,12 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
       if (result.status === "available") {
         setHasUpdate(true);
         setUpdateInfo(result.info);
-        setPendingUpdate(result.update);
 
         setIsDismissed(readDismissedVersion() === result.info.availableVersion);
         return true; // 有更新
       } else {
         setHasUpdate(false);
         setUpdateInfo(null);
-        setPendingUpdate(null);
         setIsDismissed(false);
         return false; // 已是最新
       }
@@ -91,7 +89,6 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
       setError(err instanceof Error ? err.message : "检查更新失败");
       setHasUpdate(false);
       setUpdateInfo(null);
-      setPendingUpdate(null);
       setIsDismissed(false);
       throw err; // 抛出错误让调用方处理
     } finally {
@@ -102,7 +99,7 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
 
   const installUpdate = useCallback(async () => {
     if (isInstallingRef.current) return;
-    if (!pendingUpdate) {
+    if (!updateInfo) {
       throw new Error("No update is ready to install");
     }
 
@@ -111,8 +108,12 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      await pendingUpdate.downloadAndInstall();
-      await relaunchApp();
+      const installed = await settingsApi.installUpdateAndRestart();
+      if (!installed) {
+        setHasUpdate(false);
+        setUpdateInfo(null);
+        setIsDismissed(false);
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Update installation failed",
@@ -122,7 +123,7 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
       setIsInstalling(false);
       isInstallingRef.current = false;
     }
-  }, [pendingUpdate]);
+  }, [updateInfo]);
 
   const dismissUpdate = useCallback(() => {
     setIsDismissed(true);

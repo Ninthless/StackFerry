@@ -57,12 +57,15 @@ mod tests {
     use crate::provider::Provider;
     use axum::body::Body;
     use axum::extract::State;
-    use axum::response::Response;
+    use axum::response::{IntoResponse, Response};
+    use bytes::Bytes;
+    use futures::{SinkExt, StreamExt};
     use http_body_util::BodyExt;
     use serde_json::{json, Value};
     use std::collections::VecDeque;
     use std::time::Duration;
-    use tokio::sync::Mutex;
+    use tokio::sync::{Mutex, Notify};
+    use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message as ClientWsMessage};
 
     struct CapturedRequest {
         method: http::Method,
@@ -171,6 +174,216 @@ mod tests {
         (format!("http://{address}"), requests, handle)
     }
 
+    struct CapturedPiRequest {
+        uri: http::Uri,
+        headers: http::HeaderMap,
+        body: Bytes,
+    }
+
+    struct PiMockReply {
+        status: http::StatusCode,
+        content_type: &'static str,
+        body: Bytes,
+    }
+
+    #[derive(Clone)]
+    struct PiMockState {
+        requests: Arc<Mutex<Vec<CapturedPiRequest>>>,
+        replies: Arc<Mutex<VecDeque<PiMockReply>>>,
+    }
+
+    async fn capture_pi_request(
+        State(state): State<PiMockState>,
+        request: axum::extract::Request,
+    ) -> Response {
+        let (parts, body) = request.into_parts();
+        let body = body
+            .collect()
+            .await
+            .expect("collect Pi mock request body")
+            .to_bytes();
+        state.requests.lock().await.push(CapturedPiRequest {
+            uri: parts.uri,
+            headers: parts.headers,
+            body,
+        });
+        let reply = state
+            .replies
+            .lock()
+            .await
+            .pop_front()
+            .expect("Pi mock reply");
+        Response::builder()
+            .status(reply.status)
+            .header("content-type", reply.content_type)
+            .body(Body::from(reply.body))
+            .expect("build Pi mock response")
+    }
+
+    async fn spawn_pi_upstream(
+        replies: Vec<PiMockReply>,
+    ) -> (
+        String,
+        Arc<Mutex<Vec<CapturedPiRequest>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind Pi mock upstream");
+        let address = listener.local_addr().expect("Pi mock upstream address");
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let state = PiMockState {
+            requests: requests.clone(),
+            replies: Arc::new(Mutex::new(replies.into())),
+        };
+        let app = Router::new()
+            .fallback(any(capture_pi_request))
+            .with_state(state);
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("serve Pi mock upstream");
+        });
+        (format!("http://{address}"), requests, handle)
+    }
+
+    enum PiWsReply {
+        CloseBeforeFirst,
+        EventsThenNormal(Vec<String>),
+        EventThenDisconnect(String),
+        WaitForClientClose,
+    }
+
+    struct CapturedPiWsHandshake {
+        uri: http::Uri,
+        headers: http::HeaderMap,
+    }
+
+    #[derive(Clone)]
+    struct PiWsMockState {
+        handshakes: Arc<Mutex<Vec<CapturedPiWsHandshake>>>,
+        initial_frames: Arc<Mutex<Vec<Bytes>>>,
+        replies: Arc<Mutex<VecDeque<PiWsReply>>>,
+        initial_frame_received: Arc<Notify>,
+    }
+
+    async fn capture_pi_websocket(
+        State(state): State<PiWsMockState>,
+        uri: http::Uri,
+        headers: http::HeaderMap,
+        websocket: axum::extract::ws::WebSocketUpgrade,
+    ) -> Response {
+        state
+            .handshakes
+            .lock()
+            .await
+            .push(CapturedPiWsHandshake { uri, headers });
+        let reply = state
+            .replies
+            .lock()
+            .await
+            .pop_front()
+            .expect("Pi WebSocket mock reply");
+        websocket
+            .on_upgrade(move |mut socket| async move {
+                let Some(Ok(initial)) = socket.recv().await else {
+                    return;
+                };
+                let bytes = match initial {
+                    axum::extract::ws::Message::Text(text) => {
+                        Bytes::copy_from_slice(text.as_bytes())
+                    }
+                    axum::extract::ws::Message::Binary(bytes) => Bytes::from(bytes),
+                    _ => return,
+                };
+                state.initial_frames.lock().await.push(bytes);
+                state.initial_frame_received.notify_one();
+
+                match reply {
+                    PiWsReply::CloseBeforeFirst => {
+                        let _ = socket
+                            .send(axum::extract::ws::Message::Close(Some(
+                                axum::extract::ws::CloseFrame {
+                                    code: 1011,
+                                    reason: std::borrow::Cow::Borrowed("closed before first event"),
+                                },
+                            )))
+                            .await;
+                    }
+                    PiWsReply::EventsThenNormal(events) => {
+                        for event in events {
+                            if socket
+                                .send(axum::extract::ws::Message::Text(event))
+                                .await
+                                .is_err()
+                            {
+                                return;
+                            }
+                        }
+                        let _ = socket
+                            .send(axum::extract::ws::Message::Close(Some(
+                                axum::extract::ws::CloseFrame {
+                                    code: 1000,
+                                    reason: std::borrow::Cow::Borrowed("complete"),
+                                },
+                            )))
+                            .await;
+                    }
+                    PiWsReply::EventThenDisconnect(event) => {
+                        let _ = socket.send(axum::extract::ws::Message::Text(event)).await;
+                    }
+                    PiWsReply::WaitForClientClose => {
+                        while let Some(message) = socket.recv().await {
+                            if matches!(message, Ok(axum::extract::ws::Message::Close(_)) | Err(_))
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+            })
+            .into_response()
+    }
+
+    async fn spawn_pi_websocket_upstream(
+        replies: Vec<PiWsReply>,
+    ) -> (
+        String,
+        Arc<Mutex<Vec<CapturedPiWsHandshake>>>,
+        Arc<Mutex<Vec<Bytes>>>,
+        Arc<Notify>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind Pi WebSocket upstream");
+        let address = listener.local_addr().unwrap();
+        let handshakes = Arc::new(Mutex::new(Vec::new()));
+        let initial_frames = Arc::new(Mutex::new(Vec::new()));
+        let initial_frame_received = Arc::new(Notify::new());
+        let state = PiWsMockState {
+            handshakes: handshakes.clone(),
+            initial_frames: initial_frames.clone(),
+            replies: Arc::new(Mutex::new(replies.into())),
+            initial_frame_received: initial_frame_received.clone(),
+        };
+        let app = Router::new()
+            .fallback(any(capture_pi_websocket))
+            .with_state(state);
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("serve Pi WebSocket upstream");
+        });
+        (
+            format!("http://{address}"),
+            handshakes,
+            initial_frames,
+            initial_frame_received,
+            handle,
+        )
+    }
+
     async fn configure_codex_failover(db: &Database, max_retries: u32, timeout_seconds: u32) {
         let mut config = db
             .get_proxy_config_for_app("codex")
@@ -212,6 +425,1117 @@ mod tests {
         let info = proxy.start().await.expect("start proxy");
         let origin = format!("http://127.0.0.1:{}", info.port);
         (proxy, origin)
+    }
+
+    async fn configure_pi_failover(db: &Database, max_retries: u32) {
+        let mut config = db
+            .get_proxy_config_for_app("pi")
+            .await
+            .expect("read Pi proxy config");
+        config.auto_failover_enabled = true;
+        config.max_retries = max_retries;
+        config.non_streaming_timeout = 5;
+        config.streaming_first_byte_timeout = 5;
+        db.update_proxy_config_for_app(config)
+            .await
+            .expect("configure Pi failover");
+    }
+
+    fn pi_provider(id: &str, origin: &str, api: &str, model: &str, queued: bool) -> Provider {
+        let mut provider = Provider::with_id(
+            id.to_string(),
+            id.to_string(),
+            json!({
+                "baseUrl": origin,
+                "api": api,
+                "apiKey": format!("{id}-key"),
+                "authHeader": false,
+                "headers": {
+                    "X-Provider-Secret": format!("{id}-header"),
+                    "User-Agent": format!("{id}-agent")
+                },
+                "models": [{"id": model}]
+            }),
+            None,
+        );
+        provider.in_failover_queue = queued;
+        provider
+    }
+
+    #[tokio::test]
+    async fn pi_six_protocols_preserve_paths_queries_bodies_headers_and_sse() {
+        let protocols = [
+            (
+                "openai-completions",
+                "chat-model",
+                "/chat/completions?case=chat",
+                "/chat/completions?case=chat-stream",
+            ),
+            (
+                "openai-responses",
+                "responses-model",
+                "/responses?case=responses",
+                "/responses?case=responses-stream",
+            ),
+            (
+                "anthropic-messages",
+                "anthropic-model",
+                "/v1/messages?case=anthropic",
+                "/v1/messages?case=anthropic-stream",
+            ),
+            (
+                "google-generative-ai",
+                "gemini-model",
+                "/models/gemini-model:generateContent?case=gemini",
+                "/models/gemini-model:streamGenerateContent?case=gemini-stream&alt=sse",
+            ),
+            (
+                "mistral-conversations",
+                "mistral-model",
+                "/v1/conversations?case=mistral",
+                "/v1/conversations?case=mistral-stream",
+            ),
+            (
+                "pi-messages",
+                "pi-model",
+                "/messages?case=pi",
+                "/messages?case=pi-stream&debug=1",
+            ),
+        ];
+        let mut replies = Vec::new();
+        for (index, _) in protocols.iter().enumerate() {
+            replies.push(PiMockReply {
+                status: http::StatusCode::OK,
+                content_type: "application/json",
+                body: Bytes::from(
+                    serde_json::to_vec(&json!({"ok": true, "index": index})).unwrap(),
+                ),
+            });
+            replies.push(PiMockReply {
+                status: http::StatusCode::OK,
+                content_type: "text/event-stream",
+                body: Bytes::from(format!(
+                    "event: protocol\ndata: {{\"index\":{index},\"type\":\"opaque\"}}\n\n"
+                )),
+            });
+        }
+        let (upstream_origin, captured, upstream_handle) = spawn_pi_upstream(replies).await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_pi_failover(db.as_ref(), 0).await;
+        for (index, (api, model, _, _)) in protocols.iter().enumerate() {
+            let source = pi_provider(
+                &format!("source-{index}"),
+                "https://source.invalid",
+                api,
+                model,
+                false,
+            );
+            let target = pi_provider(
+                &format!("target-{index}"),
+                &upstream_origin,
+                api,
+                model,
+                true,
+            );
+            db.save_provider("pi", &source).expect("save Pi source");
+            db.save_provider("pi", &target).expect("save Pi target");
+            db.add_to_failover_queue("pi", &target.id)
+                .expect("queue Pi target");
+        }
+        let (proxy, proxy_origin) = start_proxy(db).await;
+        let client = reqwest::Client::new();
+
+        for (index, (_, model, json_endpoint, stream_endpoint)) in protocols.iter().enumerate() {
+            let source_id = format!("source-{index}");
+            let mut payload = json!({
+                "model": model,
+                "stream": false,
+                "_piOpaque": {"tool": "unchanged"},
+                "image": "data:image/png;base64,INPUT-SENTINEL"
+            });
+            if *model == "gemini-model" {
+                payload.as_object_mut().unwrap().remove("model");
+            }
+            let raw_payload = serde_json::to_vec(&payload).unwrap();
+            let response = client
+                .post(format!("{proxy_origin}/pi/{source_id}{json_endpoint}"))
+                .header("authorization", format!("Bearer {source_id}-key"))
+                .header("x-provider-secret", format!("{source_id}-header"))
+                .header("x-pi-session", "session-preserved")
+                .header("content-type", "application/json")
+                .body(raw_payload.clone())
+                .send()
+                .await
+                .expect("send Pi JSON request");
+            assert_eq!(response.status(), http::StatusCode::OK);
+            assert_eq!(response.json::<Value>().await.unwrap()["index"], index);
+
+            payload["stream"] = json!(true);
+            let raw_stream_payload = serde_json::to_vec(&payload).unwrap();
+            let expected_sse =
+                format!("event: protocol\ndata: {{\"index\":{index},\"type\":\"opaque\"}}\n\n");
+            let response = client
+                .post(format!("{proxy_origin}/pi/{source_id}{stream_endpoint}"))
+                .header("authorization", format!("Bearer {source_id}-key"))
+                .header("x-provider-secret", format!("{source_id}-header"))
+                .header("x-pi-session", "session-preserved")
+                .header("accept", "text/event-stream")
+                .header("content-type", "application/json")
+                .body(raw_stream_payload.clone())
+                .send()
+                .await
+                .expect("send Pi SSE request");
+            assert_eq!(response.status(), http::StatusCode::OK);
+            assert_eq!(response.text().await.unwrap(), expected_sse);
+        }
+
+        proxy.stop().await.expect("stop proxy");
+        upstream_handle.abort();
+        let captured = captured.lock().await;
+        assert_eq!(captured.len(), protocols.len() * 2);
+        for (index, requests) in captured.chunks_exact(2).enumerate() {
+            let target_id = format!("target-{index}");
+            let expected_auth_header = match protocols[index].0 {
+                "anthropic-messages" => "x-api-key",
+                "google-generative-ai" => "x-goog-api-key",
+                _ => "authorization",
+            };
+            let expected_auth_value = match expected_auth_header {
+                "authorization" => format!("Bearer {target_id}-key"),
+                _ => format!("{target_id}-key"),
+            };
+            for request in requests {
+                assert_eq!(
+                    request
+                        .headers
+                        .get(expected_auth_header)
+                        .and_then(|value| value.to_str().ok()),
+                    Some(expected_auth_value.as_str())
+                );
+                assert_eq!(
+                    request
+                        .headers
+                        .get("x-provider-secret")
+                        .and_then(|value| value.to_str().ok()),
+                    Some(format!("{target_id}-header").as_str())
+                );
+                assert_eq!(
+                    request
+                        .headers
+                        .get("x-pi-session")
+                        .and_then(|value| value.to_str().ok()),
+                    Some("session-preserved")
+                );
+                assert!(request
+                    .body
+                    .windows("_piOpaque".len())
+                    .any(|window| window == b"_piOpaque"));
+                assert!(request
+                    .body
+                    .windows("INPUT-SENTINEL".len())
+                    .any(|window| window == b"INPUT-SENTINEL"));
+            }
+            assert_eq!(
+                requests[0].uri.path_and_query().unwrap().as_str(),
+                protocols[index].2
+            );
+            assert_eq!(
+                requests[1].uri.path_and_query().unwrap().as_str(),
+                protocols[index].3
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn pi_failover_uses_queue_order_and_rebuilds_credentials_per_attempt() {
+        let (first_origin, first_requests, first_handle) = spawn_pi_upstream(vec![PiMockReply {
+            status: http::StatusCode::INTERNAL_SERVER_ERROR,
+            content_type: "application/json",
+            body: Bytes::from_static(br#"{"error":"first failed"}"#),
+        }])
+        .await;
+        let (second_origin, second_requests, second_handle) =
+            spawn_pi_upstream(vec![PiMockReply {
+                status: http::StatusCode::OK,
+                content_type: "application/json",
+                body: Bytes::from_static(br#"{"servedBy":"second"}"#),
+            }])
+            .await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_pi_failover(db.as_ref(), 1).await;
+        let source = pi_provider(
+            "source",
+            "https://source.invalid",
+            "openai-responses",
+            "shared-model",
+            false,
+        );
+        let first = pi_provider(
+            "first",
+            &first_origin,
+            "openai-responses",
+            "shared-model",
+            true,
+        );
+        let second = pi_provider(
+            "second",
+            &second_origin,
+            "openai-responses",
+            "shared-model",
+            true,
+        );
+        db.save_provider("pi", &source).unwrap();
+        db.save_provider("pi", &first).unwrap();
+        db.save_provider("pi", &second).unwrap();
+        db.add_to_failover_queue("pi", &first.id).unwrap();
+        db.add_to_failover_queue("pi", &second.id).unwrap();
+        let (proxy, proxy_origin) = start_proxy(db).await;
+
+        let response = reqwest::Client::new()
+            .post(format!(
+                "{proxy_origin}/pi/source/responses?trace=preserved"
+            ))
+            .header("authorization", "Bearer source-key")
+            .header("x-provider-secret", "source-header")
+            .header("x-pi-attribution", "preserved")
+            .json(&json!({"model": "shared-model", "input": "hello"}))
+            .send()
+            .await
+            .expect("send Pi failover request");
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(
+            response.json::<Value>().await.unwrap()["servedBy"],
+            "second"
+        );
+
+        proxy.stop().await.expect("stop proxy");
+        first_handle.abort();
+        second_handle.abort();
+        let first_requests = first_requests.lock().await;
+        let second_requests = second_requests.lock().await;
+        assert_eq!(first_requests.len(), 1);
+        assert_eq!(second_requests.len(), 1);
+        for (request, provider_id) in [
+            (&first_requests[0], "first"),
+            (&second_requests[0], "second"),
+        ] {
+            assert_eq!(
+                request.uri.path_and_query().unwrap().as_str(),
+                "/responses?trace=preserved"
+            );
+            assert_eq!(
+                request
+                    .headers
+                    .get("authorization")
+                    .and_then(|value| value.to_str().ok()),
+                Some(format!("Bearer {provider_id}-key").as_str())
+            );
+            assert_eq!(
+                request
+                    .headers
+                    .get("x-provider-secret")
+                    .and_then(|value| value.to_str().ok()),
+                Some(format!("{provider_id}-header").as_str())
+            );
+            assert_eq!(
+                request
+                    .headers
+                    .get("x-pi-attribution")
+                    .and_then(|value| value.to_str().ok()),
+                Some("preserved")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn pi_failover_retries_500_and_429_in_three_channel_queue_order() {
+        let (first_origin, first_requests, first_handle) = spawn_pi_upstream(vec![PiMockReply {
+            status: http::StatusCode::INTERNAL_SERVER_ERROR,
+            content_type: "application/json",
+            body: Bytes::from_static(br#"{"error":"first unavailable"}"#),
+        }])
+        .await;
+        let (second_origin, second_requests, second_handle) =
+            spawn_pi_upstream(vec![PiMockReply {
+                status: http::StatusCode::TOO_MANY_REQUESTS,
+                content_type: "application/json",
+                body: Bytes::from_static(br#"{"error":"second throttled"}"#),
+            }])
+            .await;
+        let (third_origin, third_requests, third_handle) = spawn_pi_upstream(vec![PiMockReply {
+            status: http::StatusCode::OK,
+            content_type: "application/json",
+            body: Bytes::from_static(br#"{"servedBy":"third"}"#),
+        }])
+        .await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_pi_failover(db.as_ref(), 2).await;
+        let source = pi_provider(
+            "ordered-source",
+            "https://source.invalid",
+            "openai-responses",
+            "ordered-model",
+            false,
+        );
+        db.save_provider("pi", &source).unwrap();
+        for (id, origin) in [
+            ("ordered-first", &first_origin),
+            ("ordered-second", &second_origin),
+            ("ordered-third", &third_origin),
+        ] {
+            let provider = pi_provider(id, origin, "openai-responses", "ordered-model", true);
+            db.save_provider("pi", &provider).unwrap();
+            db.add_to_failover_queue("pi", id).unwrap();
+        }
+        let (proxy, proxy_origin) = start_proxy(db).await;
+
+        let response = reqwest::Client::new()
+            .post(format!(
+                "{proxy_origin}/pi/ordered-source/responses?ordered=true"
+            ))
+            .json(&json!({"model": "ordered-model", "input": "hello"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(response.json::<Value>().await.unwrap()["servedBy"], "third");
+
+        proxy.stop().await.unwrap();
+        first_handle.abort();
+        second_handle.abort();
+        third_handle.abort();
+        assert_eq!(first_requests.lock().await.len(), 1);
+        assert_eq!(second_requests.lock().await.len(), 1);
+        assert_eq!(third_requests.lock().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn pi_failover_stops_on_non_retryable_client_error() {
+        let (first_origin, first_requests, first_handle) = spawn_pi_upstream(vec![PiMockReply {
+            status: http::StatusCode::BAD_REQUEST,
+            content_type: "application/json",
+            body: Bytes::from_static(br#"{"error":"invalid request"}"#),
+        }])
+        .await;
+        let (second_origin, second_requests, second_handle) =
+            spawn_pi_upstream(vec![PiMockReply {
+                status: http::StatusCode::OK,
+                content_type: "application/json",
+                body: Bytes::from_static(br#"{"unexpected":"replay"}"#),
+            }])
+            .await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_pi_failover(db.as_ref(), 1).await;
+        let source = pi_provider(
+            "invalid-source",
+            "https://source.invalid",
+            "openai-responses",
+            "invalid-model",
+            false,
+        );
+        let first = pi_provider(
+            "invalid-first",
+            &first_origin,
+            "openai-responses",
+            "invalid-model",
+            true,
+        );
+        let second = pi_provider(
+            "invalid-second",
+            &second_origin,
+            "openai-responses",
+            "invalid-model",
+            true,
+        );
+        db.save_provider("pi", &source).unwrap();
+        db.save_provider("pi", &first).unwrap();
+        db.save_provider("pi", &second).unwrap();
+        db.add_to_failover_queue("pi", &first.id).unwrap();
+        db.add_to_failover_queue("pi", &second.id).unwrap();
+        let (proxy, proxy_origin) = start_proxy(db).await;
+
+        let response = reqwest::Client::new()
+            .post(format!("{proxy_origin}/pi/invalid-source/responses"))
+            .json(&json!({"model": "invalid-model", "input": "invalid"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::BAD_REQUEST);
+
+        proxy.stop().await.unwrap();
+        first_handle.abort();
+        second_handle.abort();
+        assert_eq!(first_requests.lock().await.len(), 1);
+        assert!(second_requests.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pi_empty_body_is_forwarded_without_json_synthesis() {
+        let (upstream_origin, requests, upstream_handle) = spawn_pi_upstream(vec![PiMockReply {
+            status: http::StatusCode::OK,
+            content_type: "application/json",
+            body: Bytes::from_static(br#"{"data":[]}"#),
+        }])
+        .await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_pi_failover(db.as_ref(), 0).await;
+        let source = pi_provider(
+            "empty-source",
+            "https://source.invalid/v1",
+            "openai-completions",
+            "unused-model",
+            false,
+        );
+        let target = pi_provider(
+            "empty-target",
+            &upstream_origin,
+            "openai-completions",
+            "unused-model",
+            true,
+        );
+        db.save_provider("pi", &source).unwrap();
+        db.save_provider("pi", &target).unwrap();
+        db.add_to_failover_queue("pi", &target.id).unwrap();
+        let (proxy, proxy_origin) = start_proxy(db).await;
+
+        let response = reqwest::Client::new()
+            .get(format!("{proxy_origin}/pi/empty-source/models?empty=true"))
+            .header("authorization", "Bearer empty-source-key")
+            .send()
+            .await
+            .expect("send empty Pi request");
+        assert_eq!(response.status(), http::StatusCode::OK);
+
+        proxy.stop().await.expect("stop proxy");
+        upstream_handle.abort();
+        let requests = requests.lock().await;
+        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0].uri.path_and_query().unwrap().as_str(),
+            "/models?empty=true"
+        );
+        assert!(requests[0].body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pi_advanced_http_transports_preserve_protocol_specific_wire_data() {
+        let codex_sse = Bytes::from_static(
+            b"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"model\":\"gpt-5.4\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n",
+        );
+        let azure_sse = Bytes::from_static(
+            b"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"model\":\"azure-model\",\"usage\":{\"input_tokens\":2,\"output_tokens\":1}}}\n\n",
+        );
+        let vertex_sse = Bytes::from_static(
+            b"data: {\"candidates\":[],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":1}}\n\n",
+        );
+        let bedrock_events = Bytes::from_static(b"BEDROCK-EVENTSTREAM-SENTINEL");
+        let image_response = json!({
+            "id": "image-response",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "images": [{
+                        "type": "image_url",
+                        "image_url": {
+                            "url": "data:image/png;base64,OUTPUT-SENTINEL"
+                        }
+                    }]
+                }
+            }],
+            "usage": {"prompt_tokens": 4, "completion_tokens": 2}
+        });
+        let (upstream_origin, captured, upstream_handle) = spawn_pi_upstream(vec![
+            PiMockReply {
+                status: http::StatusCode::OK,
+                content_type: "text/event-stream",
+                body: codex_sse.clone(),
+            },
+            PiMockReply {
+                status: http::StatusCode::OK,
+                content_type: "text/event-stream",
+                body: azure_sse.clone(),
+            },
+            PiMockReply {
+                status: http::StatusCode::OK,
+                content_type: "text/event-stream",
+                body: vertex_sse.clone(),
+            },
+            PiMockReply {
+                status: http::StatusCode::OK,
+                content_type: "application/vnd.amazon.eventstream",
+                body: bedrock_events.clone(),
+            },
+            PiMockReply {
+                status: http::StatusCode::OK,
+                content_type: "application/json",
+                body: Bytes::from(serde_json::to_vec(&image_response).unwrap()),
+            },
+        ])
+        .await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_pi_failover(db.as_ref(), 0).await;
+
+        let specs = [
+            (
+                "codex-source",
+                "codex-target",
+                "openai-codex-responses",
+                "gpt-5.4",
+            ),
+            (
+                "azure-source",
+                "azure-target",
+                "azure-openai-responses",
+                "azure-model",
+            ),
+            (
+                "vertex-source",
+                "vertex-target",
+                "google-vertex",
+                "vertex-model",
+            ),
+            (
+                "bedrock-source",
+                "bedrock-target",
+                "bedrock-converse-stream",
+                "us.anthropic.test:0",
+            ),
+            (
+                "image-source",
+                "image-target",
+                "openrouter-images",
+                "image-model",
+            ),
+        ];
+        for (source_id, target_id, api, model) in specs {
+            let source = pi_provider(source_id, "https://source.invalid", api, model, false);
+            let mut target = pi_provider(target_id, &upstream_origin, api, model, true);
+            if api == "google-vertex" {
+                target
+                    .settings_config
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("apiKey");
+                target.settings_config["headers"] = json!({
+                    "Authorization": "Bearer vertex-target-oauth",
+                    "X-Provider-Secret": "vertex-target-header"
+                });
+            }
+            if api == "bedrock-converse-stream" {
+                target
+                    .settings_config
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("apiKey");
+                target.settings_config["env"] = json!({
+                    "AWS_ACCESS_KEY_ID": "AKIDTARGET",
+                    "AWS_SECRET_ACCESS_KEY": "target-secret",
+                    "AWS_SESSION_TOKEN": "target-session",
+                    "AWS_REGION": "us-west-2"
+                });
+            }
+            db.save_provider("pi", &source).unwrap();
+            db.save_provider("pi", &target).unwrap();
+            db.add_to_failover_queue("pi", target_id).unwrap();
+        }
+        let (proxy, proxy_origin) = start_proxy(db).await;
+        let client = reqwest::Client::new();
+
+        let codex_json = serde_json::to_vec(&json!({
+            "model": "gpt-5.4",
+            "stream": true,
+            "input": [{"role": "user", "content": "zstd-preserved"}]
+        }))
+        .unwrap();
+        let codex_zstd = zstd::stream::encode_all(codex_json.as_slice(), 3).unwrap();
+        let response = client
+            .post(format!(
+                "{proxy_origin}/pi/codex-source/codex/responses?trace=codex"
+            ))
+            .header("authorization", "Bearer codex-source-key")
+            .header("content-type", "application/json")
+            .header("content-encoding", "zstd")
+            .header("accept", "text/event-stream")
+            .header("chatgpt-account-id", "account-preserved")
+            .header("session_id", "session-preserved")
+            .body(codex_zstd.clone())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(response.bytes().await.unwrap(), codex_sse);
+
+        let response = client
+            .post(format!(
+                "{proxy_origin}/pi/azure-source/openai/deployments/azure-model/responses?api-version=2025-04-01-preview"
+            ))
+            .header("authorization", "Bearer source-credential")
+            .header("content-type", "application/json")
+            .header("accept", "text/event-stream")
+            .json(&json!({
+                "model": "azure-model",
+                "stream": true,
+                "input": "hello"
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(response.bytes().await.unwrap(), azure_sse);
+
+        let response = client
+            .post(format!(
+                "{proxy_origin}/pi/vertex-source/v1/projects/project/locations/us-central1/publishers/google/models/vertex-model:streamGenerateContent?alt=sse"
+            ))
+            .header("authorization", "Bearer vertex-source-oauth")
+            .header("content-type", "application/json")
+            .json(&json!({
+                "contents": [{
+                    "role": "user",
+                    "parts": [{"text": "hello"}]
+                }]
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(response.bytes().await.unwrap(), vertex_sse);
+
+        let bedrock_body = serde_json::to_vec(&json!({
+            "messages": [{
+                "role": "user",
+                "content": [{"text": "hello"}]
+            }]
+        }))
+        .unwrap();
+        let response = client
+            .post(format!(
+                "{proxy_origin}/pi/bedrock-source/model/us.anthropic.test%3A0/converse-stream"
+            ))
+            .header("authorization", "AWS4-HMAC-SHA256 Credential=LOCAL/invalid")
+            .header("x-amz-date", "20260804T000000Z")
+            .header("x-amz-content-sha256", "local-body-hash")
+            .header("content-type", "application/json")
+            .body(bedrock_body.clone())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(response.bytes().await.unwrap(), bedrock_events);
+
+        let image_body = json!({
+            "model": "image-model",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "draw"},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": "data:image/png;base64,INPUT-SENTINEL"
+                        }
+                    }
+                ]
+            }],
+            "modalities": ["image", "text"],
+            "stream": false
+        });
+        let response = client
+            .post(format!(
+                "{proxy_origin}/pi/image-source/chat/completions?image=true"
+            ))
+            .header("authorization", "Bearer image-source-key")
+            .json(&image_body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(response.json::<Value>().await.unwrap(), image_response);
+
+        proxy.stop().await.expect("stop proxy");
+        upstream_handle.abort();
+        let captured = captured.lock().await;
+        assert_eq!(captured.len(), 5);
+
+        assert_eq!(captured[0].body, Bytes::from(codex_zstd));
+        assert_eq!(
+            captured[0]
+                .headers
+                .get("content-encoding")
+                .and_then(|value| value.to_str().ok()),
+            Some("zstd")
+        );
+        assert_eq!(
+            captured[0]
+                .headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer codex-target-key")
+        );
+        assert_eq!(
+            captured[0]
+                .headers
+                .get("chatgpt-account-id")
+                .and_then(|value| value.to_str().ok()),
+            Some("account-preserved")
+        );
+        assert_eq!(
+            captured[0]
+                .headers
+                .get("session_id")
+                .and_then(|value| value.to_str().ok()),
+            Some("session-preserved")
+        );
+
+        assert_eq!(
+            captured[1].uri.path_and_query().unwrap().as_str(),
+            "/openai/deployments/azure-model/responses?api-version=2025-04-01-preview"
+        );
+        assert_eq!(
+            captured[1]
+                .headers
+                .get("api-key")
+                .and_then(|value| value.to_str().ok()),
+            Some("azure-target-key")
+        );
+        assert!(!captured[1].headers.contains_key("authorization"));
+
+        assert_eq!(
+            captured[2]
+                .headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer vertex-target-oauth")
+        );
+        assert!(!captured[2].headers.contains_key("x-goog-api-key"));
+
+        let bedrock_authorization = captured[3]
+            .headers
+            .get("authorization")
+            .and_then(|value| value.to_str().ok())
+            .unwrap();
+        assert!(bedrock_authorization.starts_with("AWS4-HMAC-SHA256 Credential=AKIDTARGET/"));
+        assert!(!bedrock_authorization.contains("LOCAL"));
+        assert_eq!(
+            captured[3]
+                .headers
+                .get("x-amz-security-token")
+                .and_then(|value| value.to_str().ok()),
+            Some("target-session")
+        );
+        assert_eq!(captured[3].body, Bytes::from(bedrock_body));
+
+        assert_eq!(
+            captured[4].body,
+            Bytes::from(serde_json::to_vec(&image_body).unwrap())
+        );
+        assert_eq!(
+            captured[4]
+                .headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer image-target-key")
+        );
+    }
+
+    #[tokio::test]
+    async fn pi_codex_websocket_fails_over_before_first_event_and_preserves_headers() {
+        let (first_origin, first_handshakes, first_frames, _first_notify, first_handle) =
+            spawn_pi_websocket_upstream(vec![PiWsReply::CloseBeforeFirst]).await;
+        let second_created =
+            json!({"type": "response.created", "response": {"id": "response-second"}}).to_string();
+        let second_completed = json!({
+            "type": "response.completed",
+            "response": {
+                "id": "response-second",
+                "model": "gpt-5.4",
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            }
+        })
+        .to_string();
+        let (second_origin, second_handshakes, second_frames, _second_notify, second_handle) =
+            spawn_pi_websocket_upstream(vec![PiWsReply::EventsThenNormal(vec![
+                second_created.clone(),
+                second_completed.clone(),
+            ])])
+            .await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_pi_failover(db.as_ref(), 1).await;
+        let source = pi_provider(
+            "ws-source",
+            "https://source.invalid",
+            "openai-codex-responses",
+            "gpt-5.4",
+            false,
+        );
+        let first = pi_provider(
+            "ws-first",
+            &first_origin,
+            "openai-codex-responses",
+            "gpt-5.4",
+            true,
+        );
+        let second = pi_provider(
+            "ws-second",
+            &second_origin,
+            "openai-codex-responses",
+            "gpt-5.4",
+            true,
+        );
+        db.save_provider("pi", &source).unwrap();
+        db.save_provider("pi", &first).unwrap();
+        db.save_provider("pi", &second).unwrap();
+        db.add_to_failover_queue("pi", &first.id).unwrap();
+        db.add_to_failover_queue("pi", &second.id).unwrap();
+        let (proxy, proxy_origin) = start_proxy(db).await;
+
+        let ws_origin = proxy_origin.replacen("http://", "ws://", 1);
+        let mut request = format!("{ws_origin}/pi/ws-source/codex/responses?transport=websocket")
+            .into_client_request()
+            .unwrap();
+        request.headers_mut().insert(
+            http::header::AUTHORIZATION,
+            http::HeaderValue::from_static("Bearer ws-source-key"),
+        );
+        request.headers_mut().insert(
+            http::HeaderName::from_static("chatgpt-account-id"),
+            http::HeaderValue::from_static("account-preserved"),
+        );
+        request.headers_mut().insert(
+            http::HeaderName::from_static("session_id"),
+            http::HeaderValue::from_static("session-preserved"),
+        );
+        request.headers_mut().insert(
+            http::HeaderName::from_static("x-provider-secret"),
+            http::HeaderValue::from_static("ws-source-header"),
+        );
+        let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+        let initial = json!({
+            "type": "response.create",
+            "model": "gpt-5.4",
+            "input": [{"role": "user", "content": "hello"}]
+        })
+        .to_string();
+        socket
+            .send(ClientWsMessage::Text(initial.clone()))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            socket.next().await.unwrap().unwrap(),
+            ClientWsMessage::Text(second_created)
+        );
+        assert_eq!(
+            socket.next().await.unwrap().unwrap(),
+            ClientWsMessage::Text(second_completed)
+        );
+        assert!(matches!(
+            socket.next().await.unwrap().unwrap(),
+            ClientWsMessage::Close(Some(_))
+        ));
+
+        proxy.stop().await.unwrap();
+        first_handle.abort();
+        second_handle.abort();
+        assert_eq!(
+            first_frames.lock().await.as_slice(),
+            &[Bytes::from(initial.clone())]
+        );
+        assert_eq!(
+            second_frames.lock().await.as_slice(),
+            &[Bytes::from(initial)]
+        );
+        let first_handshakes = first_handshakes.lock().await;
+        let second_handshakes = second_handshakes.lock().await;
+        assert_eq!(first_handshakes.len(), 1);
+        assert_eq!(second_handshakes.len(), 1);
+        for (handshake, provider_id) in [
+            (&first_handshakes[0], "ws-first"),
+            (&second_handshakes[0], "ws-second"),
+        ] {
+            assert_eq!(
+                handshake.uri.path_and_query().unwrap().as_str(),
+                "/codex/responses?transport=websocket"
+            );
+            assert_eq!(
+                handshake
+                    .headers
+                    .get("authorization")
+                    .and_then(|value| value.to_str().ok()),
+                Some(format!("Bearer {provider_id}-key").as_str())
+            );
+            assert_eq!(
+                handshake
+                    .headers
+                    .get("x-provider-secret")
+                    .and_then(|value| value.to_str().ok()),
+                Some(format!("{provider_id}-header").as_str())
+            );
+            assert_eq!(
+                handshake
+                    .headers
+                    .get("chatgpt-account-id")
+                    .and_then(|value| value.to_str().ok()),
+                Some("account-preserved")
+            );
+            assert_eq!(
+                handshake
+                    .headers
+                    .get("session_id")
+                    .and_then(|value| value.to_str().ok()),
+                Some("session-preserved")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn pi_codex_websocket_disconnect_after_first_event_is_not_replayed() {
+        let first_event =
+            json!({"type": "response.created", "response": {"id": "committed"}}).to_string();
+        let (first_origin, first_handshakes, _first_frames, _first_notify, first_handle) =
+            spawn_pi_websocket_upstream(vec![PiWsReply::EventThenDisconnect(first_event.clone())])
+                .await;
+        let (second_origin, second_handshakes, _second_frames, _second_notify, second_handle) =
+            spawn_pi_websocket_upstream(vec![PiWsReply::EventsThenNormal(vec![
+                json!({"type": "response.created", "response": {"id": "must-not-run"}}).to_string(),
+            ])])
+            .await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_pi_failover(db.as_ref(), 1).await;
+        let source = pi_provider(
+            "committed-source",
+            "https://source.invalid",
+            "openai-codex-responses",
+            "gpt-5.4",
+            false,
+        );
+        let first = pi_provider(
+            "committed-first",
+            &first_origin,
+            "openai-codex-responses",
+            "gpt-5.4",
+            true,
+        );
+        let second = pi_provider(
+            "committed-second",
+            &second_origin,
+            "openai-codex-responses",
+            "gpt-5.4",
+            true,
+        );
+        db.save_provider("pi", &source).unwrap();
+        db.save_provider("pi", &first).unwrap();
+        db.save_provider("pi", &second).unwrap();
+        db.add_to_failover_queue("pi", &first.id).unwrap();
+        db.add_to_failover_queue("pi", &second.id).unwrap();
+        let (proxy, proxy_origin) = start_proxy(db).await;
+
+        let ws_origin = proxy_origin.replacen("http://", "ws://", 1);
+        let (mut socket, _) = tokio_tungstenite::connect_async(format!(
+            "{ws_origin}/pi/committed-source/codex/responses"
+        ))
+        .await
+        .unwrap();
+        socket
+            .send(ClientWsMessage::Text(
+                json!({"type": "response.create", "model": "gpt-5.4"}).to_string(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            socket.next().await.unwrap().unwrap(),
+            ClientWsMessage::Text(first_event)
+        );
+        let close = tokio::time::timeout(Duration::from_secs(2), socket.next())
+            .await
+            .expect("proxy should terminate committed broken stream")
+            .expect("proxy close frame")
+            .expect("valid proxy close frame");
+        match close {
+            ClientWsMessage::Close(Some(frame)) => {
+                assert_eq!(u16::from(frame.code), 1011);
+            }
+            other => panic!("expected error close after committed disconnect, got {other:?}"),
+        }
+
+        proxy.stop().await.unwrap();
+        first_handle.abort();
+        second_handle.abort();
+        assert_eq!(first_handshakes.lock().await.len(), 1);
+        assert!(second_handshakes.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pi_codex_websocket_client_cancel_before_first_event_stops_failover() {
+        let (first_origin, first_handshakes, _first_frames, first_notify, first_handle) =
+            spawn_pi_websocket_upstream(vec![PiWsReply::WaitForClientClose]).await;
+        let (second_origin, second_handshakes, _second_frames, _second_notify, second_handle) =
+            spawn_pi_websocket_upstream(vec![PiWsReply::EventsThenNormal(vec![
+                json!({"type": "response.created", "response": {"id": "must-not-run"}}).to_string(),
+            ])])
+            .await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_pi_failover(db.as_ref(), 1).await;
+        let source = pi_provider(
+            "cancel-source",
+            "https://source.invalid",
+            "openai-codex-responses",
+            "gpt-5.4",
+            false,
+        );
+        let first = pi_provider(
+            "cancel-first",
+            &first_origin,
+            "openai-codex-responses",
+            "gpt-5.4",
+            true,
+        );
+        let second = pi_provider(
+            "cancel-second",
+            &second_origin,
+            "openai-codex-responses",
+            "gpt-5.4",
+            true,
+        );
+        db.save_provider("pi", &source).unwrap();
+        db.save_provider("pi", &first).unwrap();
+        db.save_provider("pi", &second).unwrap();
+        db.add_to_failover_queue("pi", &first.id).unwrap();
+        db.add_to_failover_queue("pi", &second.id).unwrap();
+        let (proxy, proxy_origin) = start_proxy(db).await;
+
+        let ws_origin = proxy_origin.replacen("http://", "ws://", 1);
+        let (mut socket, _) = tokio_tungstenite::connect_async(format!(
+            "{ws_origin}/pi/cancel-source/codex/responses"
+        ))
+        .await
+        .unwrap();
+        socket
+            .send(ClientWsMessage::Text(
+                json!({"type": "response.create", "model": "gpt-5.4"}).to_string(),
+            ))
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), first_notify.notified())
+            .await
+            .expect("first upstream should receive initial frame");
+        socket.close(None).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if proxy.state.status.read().await.active_connections == 0 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("cancelled WebSocket should stop promptly");
+
+        proxy.stop().await.unwrap();
+        first_handle.abort();
+        second_handle.abort();
+        assert_eq!(first_handshakes.lock().await.len(), 1);
+        assert!(second_handshakes.lock().await.is_empty());
     }
 
     #[tokio::test]
@@ -726,6 +2050,7 @@ impl ProxyServer {
                             if let Err(e) = hyper::server::conn::http1::Builder::new()
                                 .preserve_header_case(true)
                                 .serve_connection(TokioIo::new(stream), service)
+                                .with_upgrades()
                                 .await
                             {
                                 // Connection reset / broken pipe 等在代理场景下很常见，debug 级别
@@ -913,6 +2238,8 @@ impl ProxyServer {
                 "/grokbuild/v1/responses/compact",
                 post(handlers::handle_grokbuild_responses_compact),
             )
+            .route("/pi/:provider_id", any(handlers::handle_pi_root))
+            .route("/pi/:provider_id/*path", any(handlers::handle_pi))
             // Gemini API (支持带前缀和不带前缀)
             //
             // 用 `any(..)` 覆盖所有 HTTP 方法：除了 POST `:generateContent` /

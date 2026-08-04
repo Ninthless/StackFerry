@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
-use crate::app_config::{AppType, McpServer};
+use crate::app_config::{AppType, McpApps, McpServer};
 use crate::error::AppError;
 use crate::mcp;
 use crate::store::AppState;
@@ -17,15 +17,14 @@ impl McpService {
 
     /// 添加或更新 MCP 服务器
     pub fn upsert_server(state: &AppState, server: McpServer) -> Result<(), AppError> {
-        // 读取旧状态：用于处理“编辑时取消勾选某个应用”的场景（需要从对应 live 配置中移除）
-        let prev_apps = state
-            .db
-            .get_all_mcp_servers()?
-            .get(&server.id)
-            .map(|s| s.apps.clone())
+        let previous = state.db.get_all_mcp_servers()?.get(&server.id).cloned();
+        let prev_apps = previous
+            .as_ref()
+            .map(|server| server.apps.clone())
             .unwrap_or_default();
 
         state.db.save_mcp_server(&server)?;
+        Self::project_pi_or_restore_database(state, &server.id, previous.as_ref())?;
 
         // 处理禁用：若旧版本启用但新版本取消，则需要从该应用的 live 配置移除
         if prev_apps.claude && !server.apps.claude {
@@ -59,6 +58,7 @@ impl McpService {
 
         if let Some(server) = server {
             state.db.delete_mcp_server(id)?;
+            Self::project_pi_or_restore_database(state, id, Some(&server))?;
 
             // 从所有应用的 live 配置中移除
             Self::remove_server_from_all_apps(state, id, &server)?;
@@ -78,8 +78,10 @@ impl McpService {
         let mut servers = state.db.get_all_mcp_servers()?;
 
         if let Some(server) = servers.get_mut(server_id) {
+            let previous = server.clone();
             server.apps.set_enabled_for(&app, enabled);
             state.db.save_mcp_server(server)?;
+            Self::project_pi_or_restore_database(state, server_id, Some(&previous))?;
 
             // 同步到对应应用
             if enabled {
@@ -89,6 +91,30 @@ impl McpService {
             }
         }
 
+        Ok(())
+    }
+
+    fn project_pi_or_restore_database(
+        state: &AppState,
+        id: &str,
+        previous: Option<&McpServer>,
+    ) -> Result<(), AppError> {
+        let projection = state
+            .db
+            .get_all_mcp_servers()
+            .and_then(|servers| mcp::project_servers_to_pi(&servers));
+        if let Err(projection_error) = projection {
+            let rollback = match previous {
+                Some(server) => state.db.save_mcp_server(server),
+                None => state.db.delete_mcp_server(id),
+            };
+            if let Err(rollback_error) = rollback {
+                return Err(AppError::Message(format!(
+                    "Pi MCP projection failed ({projection_error}); database rollback also failed ({rollback_error})"
+                )));
+            }
+            return Err(projection_error);
+        }
         Ok(())
     }
 
@@ -229,6 +255,9 @@ impl McpService {
         servers: &IndexMap<String, McpServer>,
         app: &AppType,
     ) -> Result<(), AppError> {
+        if matches!(app, AppType::Pi) {
+            return mcp::project_servers_to_pi(servers);
+        }
         if matches!(app, AppType::OpenClaw | AppType::ClaudeDesktop) {
             return Ok(());
         }
@@ -282,6 +311,10 @@ impl McpService {
     #[deprecated(since = "3.7.0", note = "Use sync_all_enabled instead")]
     pub fn sync_enabled(state: &AppState, app: AppType) -> Result<(), AppError> {
         let servers = Self::get_all_servers(state)?;
+
+        if matches!(app, AppType::Pi) {
+            return mcp::project_servers_to_pi(&servers);
+        }
 
         for server in servers.values() {
             if server.apps.is_enabled_for(&app) {
@@ -508,6 +541,54 @@ impl McpService {
         Ok(new_count)
     }
 
+    pub fn import_from_pi(state: &AppState) -> Result<usize, AppError> {
+        let imported = mcp::read_pi_servers()?;
+        if imported.is_empty() {
+            return Ok(0);
+        }
+
+        let existing = state.db.get_all_mcp_servers()?;
+        let mut pending = Vec::with_capacity(imported.len());
+        let mut new_count = 0;
+        for (id, spec) in imported {
+            let server = if let Some(existing_server) = existing.get(&id) {
+                if existing_server.server != spec {
+                    return Err(AppError::McpValidation(format!(
+                        "Pi MCP server '{id}' conflicts with the StackFerry server of the same ID"
+                    )));
+                }
+                let mut merged = existing_server.clone();
+                merged.apps.pi = true;
+                merged
+            } else {
+                new_count += 1;
+                McpServer {
+                    id: id.clone(),
+                    name: spec
+                        .get("name")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or(&id)
+                        .to_string(),
+                    server: spec,
+                    apps: McpApps {
+                        pi: true,
+                        ..Default::default()
+                    },
+                    description: None,
+                    homepage: None,
+                    docs: None,
+                    tags: Vec::new(),
+                }
+            };
+            pending.push(server);
+        }
+
+        for server in pending {
+            state.db.save_mcp_server(&server)?;
+        }
+        Ok(new_count)
+    }
+
     /// 从所有支持 MCP 的应用导入服务器，返回新导入的数量。
     ///
     /// Best-effort：单个应用导入失败（如坏 config.toml）不阻断其余应用；
@@ -518,13 +599,14 @@ impl McpService {
         let mut total = 0;
         let mut failures: Vec<String> = Vec::new();
 
-        let results: [(&str, Result<usize, AppError>); 6] = [
+        let results: [(&str, Result<usize, AppError>); 7] = [
             ("claude", Self::import_from_claude(state)),
             ("codex", Self::import_from_codex(state)),
             ("gemini", Self::import_from_gemini(state)),
             ("grokbuild", Self::import_from_grokbuild(state)),
             ("opencode", Self::import_from_opencode(state)),
             ("hermes", Self::import_from_hermes(state)),
+            ("pi", Self::import_from_pi(state)),
         ];
         for (app, result) in results {
             match result {

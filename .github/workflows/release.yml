@@ -31,6 +31,9 @@ jobs:
       - name: Validate release version
         run: node scripts/validate-release-version.mjs
 
+      - name: Test Node scripts
+        run: node --test scripts/dev.node.mjs scripts/generate-updater-manifest.node.mjs
+
       - name: Validate updater signing secret
         shell: bash
         env:
@@ -361,40 +364,57 @@ jobs:
       - name: Prepare Linux Assets
         if: runner.os == 'Linux'
         shell: bash
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           set -euxo pipefail
           mkdir -p release-assets
           VERSION="${GITHUB_REF_NAME}"  # e.g., v3.5.0
           ARCH="${{ matrix.arch || 'x86_64' }}"
+
+          copy_signed_artifact() {
+            local artifact="$1"
+            local destination="$2"
+            if [ ! -f "$artifact.sig" ]; then
+              pnpm tauri signer sign "$artifact"
+            fi
+            if [ ! -s "$artifact.sig" ]; then
+              echo "No updater signature found for $artifact" >&2
+              exit 1
+            fi
+            cp "$artifact" "release-assets/$destination"
+            cp "$artifact.sig" "release-assets/$destination.sig"
+          }
+
           # AppImage
           APPIMAGE=$(find src-tauri/target/release/bundle -name "*.AppImage" | head -1 || true)
           if [ -n "$APPIMAGE" ]; then
             NEW_APPIMAGE="StackFerry-${VERSION}-Linux-${ARCH}.AppImage"
-            cp "$APPIMAGE" "release-assets/$NEW_APPIMAGE"
-            if [ ! -f "$APPIMAGE.sig" ]; then
-              echo "No updater signature found for $APPIMAGE" >&2
-              exit 1
-            fi
-            cp "$APPIMAGE.sig" "release-assets/$NEW_APPIMAGE.sig"
+            copy_signed_artifact "$APPIMAGE" "$NEW_APPIMAGE"
             echo "AppImage copied: $NEW_APPIMAGE"
           else
             echo "No AppImage found under target/release/bundle" >&2
+            exit 1
           fi
-          # 额外上传 .deb（用于手动安装，不参与 Updater）
+          # deb updater artifact
           DEB=$(find src-tauri/target/release/bundle -name "*.deb" | head -1 || true)
           if [ -n "$DEB" ]; then
-            cp "$DEB" "release-assets/StackFerry-${VERSION}-Linux-${ARCH}.deb"
-            echo "Deb package copied: StackFerry-${VERSION}-Linux-${ARCH}.deb"
+            NEW_DEB="StackFerry-${VERSION}-Linux-${ARCH}.deb"
+            copy_signed_artifact "$DEB" "$NEW_DEB"
+            echo "Deb package copied: $NEW_DEB"
           else
-            echo "No .deb found (optional)"
+            echo "No .deb found under target/release/bundle" >&2
+            exit 1
           fi
-          # 额外上传 .rpm（用于 Fedora/RHEL/openSUSE 等，不参与 Updater）
+          # rpm updater artifact
           RPM=$(find src-tauri/target/release/bundle -name "*.rpm" | head -1 || true)
           if [ -n "$RPM" ]; then
-            cp "$RPM" "release-assets/StackFerry-${VERSION}-Linux-${ARCH}.rpm"
-            echo "RPM package copied: StackFerry-${VERSION}-Linux-${ARCH}.rpm"
+            NEW_RPM="StackFerry-${VERSION}-Linux-${ARCH}.rpm"
+            copy_signed_artifact "$RPM" "$NEW_RPM"
+            echo "RPM package copied: $NEW_RPM"
           else
-            echo "No .rpm found (optional)"
+            echo "No .rpm found under target/release/bundle" >&2
+            exit 1
           fi
 
       - name: List prepared assets
@@ -427,6 +447,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
 
       - name: Download built release artifacts
         uses: actions/download-artifact@v8
@@ -557,55 +582,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          version="${GITHUB_REF_NAME#v}"
           published_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          base_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
-
-          jq -n \
-            --arg version "$version" \
-            --arg notes "StackFerry ${GITHUB_REF_NAME} release. See the GitHub Release page for the bilingual notes." \
-            --arg pub_date "$published_at" \
-            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: {}}' \
-            > release-assets/latest.json
-
-          add_platform() {
-            local platform="$1"
-            local signature_file="$2"
-            local artifact="${signature_file%.sig}"
-            local signature
-            signature=$(cat "$signature_file")
-            jq \
-              --arg platform "$platform" \
-              --arg signature "$signature" \
-              --arg url "$base_url/$(basename "$artifact")" \
-              '.platforms[$platform] = {signature: $signature, url: $url}' \
-              release-assets/latest.json > release-assets/latest.next.json
-            mv release-assets/latest.next.json release-assets/latest.json
-          }
-
-          mac=(release-assets/*-macOS.tar.gz.sig)
-          windows_x64=(release-assets/*-Windows.msi.sig)
-          windows_arm64=(release-assets/*-Windows-arm64.msi.sig)
-          linux_x64=(release-assets/*-Linux-x86_64.AppImage.sig)
-          linux_arm64=(release-assets/*-Linux-arm64.AppImage.sig)
-
-          for files in mac windows_x64 windows_arm64 linux_x64 linux_arm64; do
-            declare -n current="$files"
-            if [ "${#current[@]}" -ne 1 ]; then
-              echo "Expected one signature for $files, found ${#current[@]}" >&2
-              exit 1
-            fi
-          done
-
-          add_platform darwin-x86_64 "${mac[0]}"
-          add_platform darwin-aarch64 "${mac[0]}"
-          add_platform windows-x86_64 "${windows_x64[0]}"
-          add_platform windows-aarch64 "${windows_arm64[0]}"
-          add_platform linux-x86_64 "${linux_x64[0]}"
-          add_platform linux-aarch64 "${linux_arm64[0]}"
-
-          jq -e '.platforms | length == 6' release-assets/latest.json >/dev/null
+          node scripts/generate-updater-manifest.mjs \
+            --assets-dir release-assets \
+            --tag "$GITHUB_REF_NAME" \
+            --repository "$GITHUB_REPOSITORY" \
+            --published-at "$published_at"
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v3

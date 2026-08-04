@@ -9,9 +9,6 @@ import {
 const platformState = vi.hoisted(() => ({
   current: "windows" as "linux" | "macos" | "unknown" | "windows",
 }));
-const settingsState = vi.hoisted(() => ({
-  current: { useAppWindowControls: false },
-}));
 const windowState = vi.hoisted(() => ({
   close: vi.fn(async () => undefined),
   isDecorated: false,
@@ -26,17 +23,13 @@ const windowState = vi.hoisted(() => ({
 }));
 const toastError = vi.hoisted(() => vi.fn());
 const reportFrontendError = vi.hoisted(() => vi.fn());
-const getCurrentVersion = vi.hoisted(() => vi.fn(async () => "0.1.3"));
+const getCurrentVersion = vi.hoisted(() => vi.fn(async () => "9.8.7"));
 
 vi.mock("@/lib/platform", () => ({
   DRAG_REGION_ATTR: { "data-tauri-drag-region": true },
   isLinux: () => platformState.current === "linux",
   isMac: () => platformState.current === "macos",
   isWindows: () => platformState.current === "windows",
-}));
-
-vi.mock("@/lib/query", () => ({
-  useSettingsQuery: () => ({ data: settingsState.current }),
 }));
 
 vi.mock("@/hooks/useWindowControls", () => ({
@@ -63,7 +56,6 @@ function ThrowingChild(): React.ReactNode {
 describe("WindowFrame", () => {
   beforeEach(() => {
     platformState.current = "windows";
-    settingsState.current = { useAppWindowControls: false };
     windowState.isDecorated = false;
     windowState.isFocused = true;
     windowState.isFullscreen = false;
@@ -106,7 +98,7 @@ describe("WindowFrame", () => {
     });
   });
 
-  it("places one compact brand at the left of the Windows titlebar", () => {
+  it("places one compact brand at the left of the Windows titlebar", async () => {
     render(<WindowFrame>content</WindowFrame>);
 
     const titlebar = screen.getByTestId("window-titlebar");
@@ -114,7 +106,7 @@ describe("WindowFrame", () => {
     const wordmark = within(brand).getByText("StackFerry");
     const version = within(brand).getByTestId("window-version");
     expect(wordmark).toBeVisible();
-    expect(version).toHaveTextContent("v0.1.3");
+    await waitFor(() => expect(version).toHaveTextContent("v9.8.7"));
     expect(wordmark.nextElementSibling).toBe(version);
     expect(brand.querySelectorAll("img")).toHaveLength(1);
     expect(
@@ -196,24 +188,22 @@ describe("WindowFrame", () => {
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 
-  it("preserves the Linux native fallback and enables app controls by preference", async () => {
+  it("forces Linux app controls regardless of the legacy preference", async () => {
     platformState.current = "linux";
     windowState.isDecorated = true;
     const { rerender } = render(<WindowFrame>content</WindowFrame>);
 
     expect(screen.queryByTestId("window-titlebar")).not.toBeInTheDocument();
-    expect(windowState.setDecorated).toHaveBeenCalledWith(true);
+    await waitFor(() =>
+      expect(windowState.setDecorated).toHaveBeenCalledWith(false),
+    );
 
-    settingsState.current = { useAppWindowControls: true };
     windowState.isDecorated = false;
     rerender(<WindowFrame>content</WindowFrame>);
 
     expect(screen.getByTestId("window-titlebar")).toHaveAttribute(
       "data-platform",
       "linux",
-    );
-    await waitFor(() =>
-      expect(windowState.setDecorated).toHaveBeenCalledWith(false),
     );
   });
 

@@ -5,6 +5,7 @@ import type {
   McpServerSpec,
   McpServersMap,
   McpStatus,
+  PiMcpAdapterStatus,
 } from "@/types";
 import type { AppId } from "./types";
 
@@ -93,6 +94,12 @@ export const mcpApi = {
    */
   async getAllServers(): Promise<McpServersMap> {
     return await invoke("get_mcp_servers");
+  },
+
+  async getPiAdapterStatus(projectDir?: string): Promise<PiMcpAdapterStatus> {
+    return await invoke("get_pi_mcp_adapter_status", {
+      projectDir: projectDir ?? null,
+    });
   },
 
   /**

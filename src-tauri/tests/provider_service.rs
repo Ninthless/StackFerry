@@ -167,6 +167,7 @@ command = "say"
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -947,6 +948,7 @@ fn reapply_codex_official_live_resyncs_mcp_servers() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -966,6 +968,13 @@ fn reapply_codex_official_live_resyncs_mcp_servers() {
         "switch should sync enabled MCP servers into live"
     );
 
+    let apps_before_reapply = state
+        .db
+        .get_all_mcp_servers()
+        .expect("read MCP flags before reapply")["echo-server"]
+        .apps
+        .clone();
+
     // 统一会话开关变更触发的 reapply 会整体重写 live config.toml（有意设计），
     // 写完必须重新投影 DB 里启用的 MCP，否则用户的 MCP 会静默失效。
     let reapplied =
@@ -980,6 +989,16 @@ fn reapply_codex_official_live_resyncs_mcp_servers() {
     assert!(
         live.contains("mcp_servers.echo-server"),
         "reapply must re-project enabled MCP servers after the full live rewrite, got: {live}"
+    );
+    let apps_after_reapply = state
+        .db
+        .get_all_mcp_servers()
+        .expect("read MCP flags after reapply")["echo-server"]
+        .apps
+        .clone();
+    assert_eq!(
+        apps_after_reapply, apps_before_reapply,
+        "reapply must not mutate the stored MCP application matrix"
     );
 }
 
@@ -1046,6 +1065,7 @@ fn reapply_codex_official_live_projects_mcp_despite_broken_claude_json() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -1139,6 +1159,7 @@ fn switch_codex_projects_mcp_despite_broken_claude_json() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,
@@ -1148,6 +1169,12 @@ fn switch_codex_projects_mcp_despite_broken_claude_json() {
     );
 
     let state = create_test_state_with_config(&config).expect("create test state");
+    let apps_before_switch = state
+        .db
+        .get_all_mcp_servers()
+        .expect("read MCP flags before switch")["echo-server"]
+        .apps
+        .clone();
 
     // 坏 JSON 能通过 should_sync_claude_mcp 门控（文件存在即过），
     // 但 read_mcp_servers_map 解析必然报错；codex-only 服务器也会
@@ -1163,6 +1190,17 @@ fn switch_codex_projects_mcp_despite_broken_claude_json() {
     assert!(
         live.contains("mcp_servers.echo-server"),
         "switch must re-project codex MCP after the full live rewrite, got: {live}"
+    );
+
+    let apps_after_switch = state
+        .db
+        .get_all_mcp_servers()
+        .expect("read MCP flags after switch")["echo-server"]
+        .apps
+        .clone();
+    assert_eq!(
+        apps_after_switch, apps_before_switch,
+        "provider switching must not mutate the stored MCP application matrix"
     );
 
     let claude_after = std::fs::read_to_string(&claude_json).expect("read claude json");
@@ -1203,6 +1241,7 @@ fn sync_all_enabled_reports_broken_app_but_projects_the_rest() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                pi: false,
             },
             description: None,
             homepage: None,

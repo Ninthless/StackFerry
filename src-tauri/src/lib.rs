@@ -933,6 +933,14 @@ pub fn run() {
                     Ok(_) => log::debug!("○ No Hermes MCP servers found to import"),
                     Err(e) => log::warn!("✗ Failed to import Hermes MCP: {e}"),
                 }
+
+                match crate::services::mcp::McpService::import_from_pi(&app_state) {
+                    Ok(count) if count > 0 => {
+                        log::info!("✓ Imported {count} MCP server(s) from Pi");
+                    }
+                    Ok(_) => log::debug!("○ No Pi MCP servers found to import"),
+                    Err(e) => log::warn!("✗ Failed to import Pi MCP: {e}"),
+                }
             }
 
             // 4. 导入提示词文件（表空时触发）
@@ -1362,6 +1370,7 @@ pub fn run() {
             commands::get_log_config,
             commands::set_log_config,
             commands::restart_app,
+            commands::install_update_and_restart,
             commands::check_for_updates,
             commands::is_portable_mode,
             commands::copy_text_to_clipboard,
@@ -1395,6 +1404,7 @@ pub fn run() {
             commands::set_mcp_enabled,
             // Unified MCP management
             commands::get_mcp_servers,
+            commands::get_pi_mcp_adapter_status,
             commands::upsert_mcp_server,
             commands::delete_mcp_server,
             commands::toggle_mcp_app,
@@ -1880,7 +1890,7 @@ pub(crate) fn remove_tray_icon_before_exit(app_handle: &tauri::AppHandle) {
 ///
 /// 检查 `proxy_config.enabled` 字段，如果有任一应用的状态为 `true`，
 /// 则自动启动代理服务并接管对应应用的 Live 配置。
-const PROXY_STARTUP_APP_TYPES: [&str; 4] = ["claude", "codex", "gemini", "grokbuild"];
+const PROXY_STARTUP_APP_TYPES: [&str; 5] = ["claude", "codex", "gemini", "grokbuild", "pi"];
 
 async fn enabled_proxy_apps_on_startup(db: &database::Database) -> Vec<&'static str> {
     let mut apps = Vec::new();
@@ -2344,5 +2354,22 @@ mod tests {
         let apps = enabled_proxy_apps_on_startup(&db).await;
 
         assert_eq!(apps, vec!["grokbuild"]);
+    }
+
+    #[tokio::test]
+    async fn startup_restore_includes_enabled_pi_route() {
+        let db = Database::memory().expect("initialize database");
+        let mut config = db
+            .get_proxy_config_for_app("pi")
+            .await
+            .expect("read Pi proxy config");
+        config.enabled = true;
+        db.update_proxy_config_for_app(config)
+            .await
+            .expect("enable Pi proxy config");
+
+        let apps = enabled_proxy_apps_on_startup(&db).await;
+
+        assert_eq!(apps, vec!["pi"]);
     }
 }

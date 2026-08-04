@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import appIcon from "@/assets/icons/app-icon.png";
 import { useWindowControls } from "@/hooks/useWindowControls";
 import { APP_VERSION } from "@/lib/appVersion";
-import { useSettingsQuery } from "@/lib/query";
 import { DRAG_REGION_ATTR, isLinux, isMac, isWindows } from "@/lib/platform";
 import { getCurrentVersion } from "@/lib/updater";
 import { cn } from "@/lib/utils";
@@ -28,7 +27,6 @@ const platform = (): WindowPlatform => {
 export function WindowFrame({ children }: WindowFrameProps) {
   const { t } = useTranslation();
   const currentPlatform = useMemo(platform, []);
-  const { data: settings } = useSettingsQuery();
   const {
     close,
     isDecorated,
@@ -43,12 +41,9 @@ export function WindowFrame({ children }: WindowFrameProps) {
   const [appVersion, setAppVersion] = useState(APP_VERSION);
   const [pendingAction, setPendingAction] = useState<WindowAction | null>(null);
 
-  const linuxUsesAppControls =
-    currentPlatform === "linux" &&
-    (isReady ? !isDecorated : Boolean(settings?.useAppWindowControls));
   const usesAppControls =
-    (currentPlatform === "windows" && (!isReady || !isDecorated)) ||
-    linuxUsesAppControls;
+    (currentPlatform === "windows" || currentPlatform === "linux") &&
+    (!isReady || !isDecorated);
   const showsTitlebar =
     !isFullscreen && (currentPlatform === "macos" || usesAppControls);
   const titlebarHeight = showsTitlebar
@@ -80,9 +75,9 @@ export function WindowFrame({ children }: WindowFrameProps) {
   }, [titlebarHeight]);
 
   useEffect(() => {
-    if (currentPlatform !== "linux" || !settings) return;
+    if (currentPlatform !== "linux") return;
 
-    void setDecorated(!settings.useAppWindowControls).catch((error) => {
+    void setDecorated(false).catch((error) => {
       console.error("[WindowFrame] Failed to update window decorations", error);
       toast.error(
         t("notifications.windowControlFailed", {
@@ -91,7 +86,7 @@ export function WindowFrame({ children }: WindowFrameProps) {
         }),
       );
     });
-  }, [currentPlatform, setDecorated, settings, t]);
+  }, [currentPlatform, setDecorated, t]);
 
   const runAction = async (
     action: WindowAction,

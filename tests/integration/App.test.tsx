@@ -7,6 +7,7 @@ import {
   fireEvent,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { providersApi } from "@/lib/api/providers";
 import {
@@ -19,6 +20,10 @@ import { emitTauriEvent } from "../msw/tauriMocks";
 
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
+const SESSION_PROVIDER_FILTER_STORAGE_KEY =
+  "stackferry.sessions.providerFilter";
+const PROMPT_APP_STORAGE_KEY = "stackferry.prompts.app";
+const SKILLS_TARGET_APP_STORAGE_KEY = "stackferry.skills.targetApp";
 
 vi.mock("sonner", () => ({
   toast: {
@@ -103,10 +108,11 @@ vi.mock("@/components/providers/EditProviderDialog", () => ({
 }));
 
 vi.mock("@/components/UsageScriptModal", () => ({
-  default: ({ isOpen, provider, onSave, onClose }: any) =>
+  default: ({ isOpen, provider, appId, onSave, onClose }: any) =>
     isOpen ? (
       <div data-testid="usage-modal">
         <span data-testid="usage-provider">{provider?.id}</span>
+        <span data-testid="usage-app">{appId}</span>
         <button onClick={() => onSave("script-code")}>save-script</button>
         <button onClick={() => onClose()}>close-usage</button>
       </div>
@@ -128,8 +134,16 @@ vi.mock("@/components/AppSwitcher", () => ({
     <div data-testid="app-switcher">
       <span>{activeApp}</span>
       <button onClick={() => onSwitch("claude")}>switch-claude</button>
+      <button onClick={() => onSwitch("claude-desktop")}>
+        switch-claude-desktop
+      </button>
       <button onClick={() => onSwitch("codex")}>switch-codex</button>
+      <button onClick={() => onSwitch("pi")}>switch-pi</button>
+      <button onClick={() => onSwitch("gemini")}>switch-gemini</button>
+      <button onClick={() => onSwitch("grokbuild")}>switch-grokbuild</button>
+      <button onClick={() => onSwitch("opencode")}>switch-opencode</button>
       <button onClick={() => onSwitch("openclaw")}>switch-openclaw</button>
+      <button onClick={() => onSwitch("hermes")}>switch-hermes</button>
     </div>
   ),
 }));
@@ -171,6 +185,10 @@ describe("App integration with MSW", () => {
     resetProviderState();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
+    Element.prototype.scrollIntoView = vi.fn();
+    window.localStorage.removeItem(SESSION_PROVIDER_FILTER_STORAGE_KEY);
+    window.localStorage.removeItem(PROMPT_APP_STORAGE_KEY);
+    window.localStorage.removeItem(SKILLS_TARGET_APP_STORAGE_KEY);
   });
 
   it("covers basic provider flows via real hooks", async () => {
@@ -243,17 +261,15 @@ describe("App integration with MSW", () => {
       ),
     );
 
-    const firstRunConfirm = screen.queryByRole("button", {
+    const firstRunConfirm = await screen.findByRole("button", {
       name: "firstRunNotice.confirm",
     });
-    if (firstRunConfirm) {
-      fireEvent.click(firstRunConfirm);
-      await waitFor(() =>
-        expect(
-          screen.queryByRole("dialog", { name: "firstRunNotice.title" }),
-        ).not.toBeInTheDocument(),
-      );
-    }
+    fireEvent.click(firstRunConfirm);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "firstRunNotice.title" }),
+      ).not.toBeInTheDocument(),
+    );
 
     let pageHeader = screen.getByRole("banner");
     expect(within(pageHeader).getByTestId("app-switcher")).toBeVisible();
@@ -291,6 +307,256 @@ describe("App integration with MSW", () => {
       pageHeader = screen.getByRole("banner");
       expect(within(pageHeader).getByTestId("app-switcher")).toBeVisible();
     });
+  }, 30_000);
+
+  it("keeps the session filter independent from provider route switching", async () => {
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("provider-list").textContent).toContain(
+        "claude-1",
+      ),
+    );
+
+    const firstRunConfirm = screen.queryByRole("button", {
+      name: "firstRunNotice.confirm",
+    });
+    if (firstRunConfirm) {
+      fireEvent.click(firstRunConfirm);
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "firstRunNotice.title" }),
+        ).not.toBeInTheDocument(),
+      );
+    }
+
+    fireEvent.click(
+      within(screen.getByRole("complementary")).getByRole("button", {
+        name: "Sessions",
+      }),
+    );
+
+    const filter = await screen.findByRole("combobox", {
+      name: /供应商筛选/i,
+    });
+    await userEvent.click(filter);
+    await userEvent.click(
+      await screen.findByRole("option", { name: /Codex/i }),
+    );
+    await waitFor(() =>
+      expect(
+        window.localStorage.getItem(SESSION_PROVIDER_FILTER_STORAGE_KEY),
+      ).toBe("codex"),
+    );
+
+    fireEvent.click(
+      within(screen.getByRole("complementary")).getByRole("button", {
+        name: "provider.title",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("app-switcher")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("switch-pi"));
+
+    fireEvent.click(
+      within(screen.getByRole("complementary")).getByRole("button", {
+        name: "Sessions",
+      }),
+    );
+    const restoredFilter = await screen.findByRole("combobox", {
+      name: /供应商筛选/i,
+    });
+    await userEvent.click(restoredFilter);
+
+    expect(
+      await screen.findByRole("option", { name: /Codex/i }),
+    ).toHaveAttribute("data-state", "checked");
+    expect(
+      window.localStorage.getItem(SESSION_PROVIDER_FILTER_STORAGE_KEY),
+    ).toBe("codex");
+  }, 30_000);
+
+  it("keeps MCP reachable and route-neutral for every routing application", async () => {
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("provider-list")).toBeInTheDocument(),
+    );
+
+    const firstRunConfirm = await screen.findByRole("button", {
+      name: "firstRunNotice.confirm",
+    });
+    fireEvent.click(firstRunConfirm);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "firstRunNotice.title" }),
+      ).not.toBeInTheDocument(),
+    );
+
+    const routeApps = [
+      "claude",
+      "claude-desktop",
+      "codex",
+      "pi",
+      "gemini",
+      "grokbuild",
+      "opencode",
+      "openclaw",
+      "hermes",
+    ];
+
+    for (const app of routeApps) {
+      fireEvent.click(screen.getByText(`switch-${app}`));
+      await waitFor(() =>
+        expect(
+          within(screen.getByTestId("app-switcher")).getByText(app),
+        ).toBeInTheDocument(),
+      );
+
+      fireEvent.click(
+        within(screen.getByRole("complementary")).getByRole("button", {
+          name: "MCP servers",
+        }),
+      );
+
+      const header = await screen.findByRole("banner");
+      expect(
+        within(header).getByRole("heading", {
+          name: "mcp.unifiedPanel.title",
+        }),
+      ).toBeInTheDocument();
+      expect(header.querySelector("p")).toBeNull();
+
+      fireEvent.click(
+        within(screen.getByRole("complementary")).getByRole("button", {
+          name: "provider.title",
+        }),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("app-switcher")).toBeInTheDocument(),
+      );
+    }
+  }, 60_000);
+
+  it("keeps every feature scope unchanged across route and provider switching", async () => {
+    window.localStorage.setItem(PROMPT_APP_STORAGE_KEY, "codex");
+    window.localStorage.setItem(SKILLS_TARGET_APP_STORAGE_KEY, "pi");
+    window.localStorage.setItem(SESSION_PROVIDER_FILTER_STORAGE_KEY, "gemini");
+
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("provider-list")).toBeInTheDocument(),
+    );
+    const firstRunConfirm = await screen.findByRole("button", {
+      name: "firstRunNotice.confirm",
+    });
+    fireEvent.click(firstRunConfirm);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "firstRunNotice.title" }),
+      ).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByText("switch-codex"));
+    await waitFor(() =>
+      expect(screen.getByTestId("provider-list")).toHaveTextContent("codex-1"),
+    );
+    fireEvent.click(screen.getByText("switch"));
+    fireEvent.click(screen.getByText("switch-pi"));
+    fireEvent.click(screen.getByText("switch-openclaw"));
+    fireEvent.click(screen.getByText("switch-claude"));
+
+    expect(window.localStorage.getItem(PROMPT_APP_STORAGE_KEY)).toBe("codex");
+    expect(window.localStorage.getItem(SKILLS_TARGET_APP_STORAGE_KEY)).toBe(
+      "pi",
+    );
+    expect(
+      window.localStorage.getItem(SESSION_PROVIDER_FILTER_STORAGE_KEY),
+    ).toBe("gemini");
+
+    const sidebar = screen.getByRole("complementary");
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Prompts" }));
+    expect(
+      within(
+        await screen.findByRole("combobox", {
+          name: "prompts.selectApplication",
+        }),
+      ).getByText("Codex"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Skills" }));
+    expect(
+      within(
+        await screen.findByRole("combobox", {
+          name: "skills.selectTargetApplication",
+        }),
+      ).getByText("Pi"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Sessions" }));
+    const sessionFilter = await screen.findByRole("combobox", {
+      name: /供应商筛选/i,
+    });
+    await userEvent.click(sessionFilter);
+    const geminiOption = await screen.findByRole("option", { name: /Gemini/i });
+    expect(geminiOption).toHaveAttribute("data-state", "checked");
+    await userEvent.click(geminiOption);
+
+    fireEvent.click(
+      within(sidebar).getByRole("button", { name: "MCP servers" }),
+    );
+    await screen.findByText("Matrix Server");
+    expect(screen.getByRole("button", { name: "Codex" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Pi" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  }, 60_000);
+
+  it("opens usage configuration for Pi providers", async () => {
+    setProviders("pi", {
+      "pi-1": {
+        id: "pi-1",
+        name: "Pi Provider",
+        settingsConfig: {
+          baseUrl: "https://pi.example/v1",
+          apiKey: "$STACKFERRY_PI_KEY",
+          api: "openai-responses",
+          models: [],
+        },
+        category: "custom",
+        sortIndex: 0,
+        createdAt: Date.now(),
+      },
+    });
+    setCurrentProviderId("pi", "pi-1");
+
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("provider-list").textContent).toContain(
+        "claude-1",
+      ),
+    );
+    fireEvent.click(screen.getByText("switch-pi"));
+    await waitFor(() =>
+      expect(screen.getByTestId("provider-list").textContent).toContain("pi-1"),
+    );
+
+    fireEvent.click(screen.getByText("usage"));
+
+    expect(screen.getByTestId("usage-modal")).toBeInTheDocument();
+    expect(screen.getByTestId("usage-provider")).toHaveTextContent("pi-1");
+    expect(screen.getByTestId("usage-app")).toHaveTextContent("pi");
   }, 30_000);
 
   it("shows toast when auto sync fails in background", async () => {

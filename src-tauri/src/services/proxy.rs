@@ -68,6 +68,16 @@ pub struct HotSwitchOutcome {
     pub logical_target_changed: bool,
 }
 
+struct HotSwitchRollbackState {
+    previous_backup: Option<LiveBackup>,
+    previous_provider_id: Option<String>,
+    should_sync_backup: bool,
+    live_taken_over: bool,
+    previous_live_before_direct_write: Option<Value>,
+    previous_pi_live: Option<Value>,
+    previous_pi_settings: Option<Value>,
+}
+
 impl ProxyService {
     pub fn new(db: Arc<Database>) -> Self {
         Self {
@@ -407,6 +417,25 @@ impl ProxyService {
         self.write_grok_live(&effective_settings)
     }
 
+    async fn sync_pi_live_from_provider_while_proxy_active(
+        &self,
+        provider: &Provider,
+    ) -> Result<(), String> {
+        let backup = self
+            .db
+            .get_live_backup("pi")
+            .await
+            .map_err(|e| format!("读取 Pi 备份失败: {e}"))?
+            .ok_or_else(|| "Pi 接管备份不存在".to_string())?;
+        let snapshot: Value = serde_json::from_str(&backup.original_config)
+            .map_err(|e| format!("解析 Pi 备份失败: {e}"))?;
+        let (proxy_url, _) = self.build_proxy_urls().await?;
+        crate::pi_config::apply_takeover_snapshot(&snapshot, &provider.id, &proxy_url)
+            .map_err(|e| format!("写入 Pi 接管配置失败: {e}"))?;
+        crate::pi_config::apply_switch_defaults(&provider.id, &provider.settings_config)
+            .map_err(|e| format!("更新 Pi 默认供应商失败: {e}"))
+    }
+
     fn get_current_provider_for_app(&self, app_type: &AppType) -> Result<Option<Provider>, String> {
         let Some(current_id) = crate::settings::get_effective_current_provider(&self.db, app_type)
             .map_err(|e| format!("获取 {app_type:?} 当前供应商失败: {e}"))?
@@ -433,17 +462,13 @@ impl ProxyService {
     async fn rollback_hot_switch_preparation(
         &self,
         app_type: &AppType,
-        previous_backup: Option<&LiveBackup>,
-        previous_provider_id: Option<&str>,
-        should_sync_backup: bool,
-        live_taken_over: bool,
-        previous_live_before_direct_write: Option<&Value>,
+        rollback: &HotSwitchRollbackState,
     ) {
-        if !should_sync_backup {
+        if !rollback.should_sync_backup {
             return;
         }
 
-        let rollback_result = match previous_backup {
+        let rollback_result = match rollback.previous_backup.as_ref() {
             Some(backup) => {
                 self.db
                     .save_live_backup(app_type.as_str(), &backup.original_config)
@@ -455,7 +480,21 @@ impl ProxyService {
             log::error!("{} 热切换失败后恢复原备份失败: {error}", app_type.as_str());
         }
 
-        if let Some(previous_live) = previous_live_before_direct_write {
+        if matches!(app_type, AppType::Pi) {
+            if let Some(previous_live) = rollback.previous_pi_live.as_ref() {
+                if let Err(error) = crate::pi_config::restore_takeover_snapshot(previous_live) {
+                    log::error!("Pi 热切换失败后恢复原 Live 配置失败: {error}");
+                }
+            }
+            if let Some(previous_settings) = rollback.previous_pi_settings.as_ref() {
+                if let Err(error) = crate::pi_config::restore_settings(previous_settings) {
+                    log::error!("Pi 热切换失败后恢复原默认供应商失败: {error}");
+                }
+            }
+            return;
+        }
+
+        if let Some(previous_live) = rollback.previous_live_before_direct_write.as_ref() {
             if let Err(error) = self.write_codex_live_verbatim(previous_live) {
                 log::error!(
                     "{} 热切换失败后恢复直接写入前的 Live 配置失败: {error}",
@@ -465,7 +504,7 @@ impl ProxyService {
             return;
         }
 
-        let Some(previous_provider_id) = previous_provider_id else {
+        let Some(previous_provider_id) = rollback.previous_provider_id.as_deref() else {
             return;
         };
         let Ok(Some(previous_provider)) = self
@@ -478,10 +517,10 @@ impl ProxyService {
         let live_result = if matches!(app_type, AppType::Claude) {
             self.sync_claude_live_from_provider_while_proxy_active(&previous_provider)
                 .await
-        } else if live_taken_over && matches!(app_type, AppType::Codex) {
+        } else if rollback.live_taken_over && matches!(app_type, AppType::Codex) {
             self.sync_codex_live_from_provider_while_proxy_active(&previous_provider)
                 .await
-        } else if live_taken_over && matches!(app_type, AppType::GrokBuild) {
+        } else if rollback.live_taken_over && matches!(app_type, AppType::GrokBuild) {
             self.sync_grok_live_from_provider_while_proxy_active(&previous_provider)
                 .await
         } else {
@@ -709,6 +748,12 @@ impl ProxyService {
             .await
             .map(|c| c.enabled)
             .unwrap_or(false);
+        let pi_enabled = self
+            .db
+            .get_proxy_config_for_app("pi")
+            .await
+            .map(|c| c.enabled)
+            .unwrap_or(false);
         // OpenCode and OpenClaw don't support proxy features, always return false
         let opencode_enabled = false;
         let openclaw_enabled = false;
@@ -718,6 +763,7 @@ impl ProxyService {
             codex: codex_enabled,
             gemini: gemini_enabled,
             grokbuild: grokbuild_enabled,
+            pi: pi_enabled,
             opencode: opencode_enabled,
             openclaw: openclaw_enabled,
         })
@@ -734,16 +780,23 @@ impl ProxyService {
 
         if enabled {
             // 1) 代理服务未运行则自动启动
-            if !self.is_running().await {
+            let started_proxy_for_takeover = if !self.is_running().await {
                 self.start().await?;
-            }
+                true
+            } else {
+                false
+            };
 
             // 2) 已接管则直接返回（幂等）；但如果缺少备份或占位符残留，需要重建接管
-            let current_config = self
-                .db
-                .get_proxy_config_for_app(app_type_str)
-                .await
-                .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
+            let current_config = match self.db.get_proxy_config_for_app(app_type_str).await {
+                Ok(config) => config,
+                Err(e) => {
+                    if started_proxy_for_takeover {
+                        let _ = self.stop().await;
+                    }
+                    return Err(format!("获取 {app_type_str} 配置失败: {e}"));
+                }
+            };
 
             let mut restore_existing_backup_before_takeover = false;
             if current_config.enabled {
@@ -779,13 +832,26 @@ impl ProxyService {
 
             // 3) 备份 Live 配置（严格：目标 app 不存在则报错）
             if restore_existing_backup_before_takeover {
-                self.restore_live_config_for_app_inner(&app).await?;
+                if let Err(e) = self.restore_live_config_for_app_inner(&app).await {
+                    if started_proxy_for_takeover {
+                        let _ = self.stop().await;
+                    }
+                    return Err(e);
+                }
             } else {
-                self.backup_live_config_strict(&app).await?;
+                if let Err(e) = self.backup_live_config_strict(&app).await {
+                    if started_proxy_for_takeover {
+                        let _ = self.stop().await;
+                    }
+                    return Err(e);
+                }
 
                 // 4) 同步 Live Token 到数据库（仅当前 app）
                 if let Err(e) = self.sync_live_to_provider(&app).await {
                     let _ = self.db.delete_live_backup(app_type_str).await;
+                    if started_proxy_for_takeover {
+                        let _ = self.stop().await;
+                    }
                     return Err(e);
                 }
             }
@@ -797,6 +863,9 @@ impl ProxyService {
                     Ok(()) => {
                         // 恢复成功才清理备份，避免失败场景下丢失唯一可回滚来源
                         let _ = self.db.delete_live_backup(app_type_str).await;
+                        if started_proxy_for_takeover {
+                            let _ = self.stop().await;
+                        }
                     }
                     Err(restore_err) => {
                         log::error!(
@@ -814,10 +883,23 @@ impl ProxyService {
                 .await
                 .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
             updated_config.enabled = true;
-            self.db
-                .update_proxy_config_for_app(updated_config)
-                .await
-                .map_err(|e| format!("设置 {app_type_str} enabled 状态失败: {e}"))?;
+            if let Err(e) = self.db.update_proxy_config_for_app(updated_config).await {
+                log::error!("设置 {app_type_str} enabled 状态失败，尝试恢复 Live: {e}");
+                match self.restore_live_config_for_app_inner(&app).await {
+                    Ok(()) => {
+                        let _ = self.db.delete_live_backup(app_type_str).await;
+                        if started_proxy_for_takeover {
+                            let _ = self.stop().await;
+                        }
+                    }
+                    Err(restore_err) => {
+                        log::error!(
+                            "{app_type_str} enabled 状态提交失败且 Live 恢复失败，将保留备份和代理服务: {restore_err}"
+                        );
+                    }
+                }
+                return Err(format!("设置 {app_type_str} enabled 状态失败: {e}"));
+            }
 
             // 7) 兼容旧逻辑：写入 any-of 标志（失败不影响功能）
             let _ = self.db.set_live_takeover_active(true).await;
@@ -869,23 +951,27 @@ impl ProxyService {
         self.restore_live_config_for_app_with_fallback_inner(&app)
             .await?;
 
-        // 2) 删除该 app 的备份（避免长期存储敏感 Token）
-        self.db
-            .delete_live_backup(app_type_str)
-            .await
-            .map_err(|e| format!("删除 {app_type_str} Live 备份失败: {e}"))?;
-
-        // 3) 设置 proxy_config.enabled = false
+        // 2) 设置 proxy_config.enabled = false
         let mut updated_config = self
             .db
             .get_proxy_config_for_app(app_type_str)
             .await
             .map_err(|e| format!("获取 {app_type_str} 配置失败: {e}"))?;
         updated_config.enabled = false;
-        self.db
-            .update_proxy_config_for_app(updated_config)
-            .await
-            .map_err(|e| format!("清除 {app_type_str} enabled 状态失败: {e}"))?;
+        if let Err(e) = self.db.update_proxy_config_for_app(updated_config).await {
+            let _ = self.takeover_live_config_best_effort(&app).await;
+            return Err(format!("清除 {app_type_str} enabled 状态失败: {e}"));
+        }
+
+        // 3) 删除该 app 的备份（避免长期存储敏感 Token）
+        if let Err(e) = self.db.delete_live_backup(app_type_str).await {
+            if let Ok(mut rollback_config) = self.db.get_proxy_config_for_app(app_type_str).await {
+                rollback_config.enabled = true;
+                let _ = self.db.update_proxy_config_for_app(rollback_config).await;
+            }
+            let _ = self.takeover_live_config_best_effort(&app).await;
+            return Err(format!("删除 {app_type_str} Live 备份失败: {e}"));
+        }
 
         // 4) 清除该应用的健康状态（关闭代理时重置队列状态）
         self.db
@@ -958,6 +1044,9 @@ impl ProxyService {
     /// 在清空 Live Token 之前调用，确保数据库中的 Provider 配置有最新的 Token。
     /// 这样代理才能从数据库读取到正确的认证信息。
     async fn sync_live_to_provider(&self, app_type: &AppType) -> Result<(), String> {
+        if matches!(app_type, AppType::Pi) {
+            return Ok(());
+        }
         let live_config = match app_type {
             AppType::Claude => self.read_claude_live()?,
             AppType::Codex => self.read_codex_live()?,
@@ -1298,25 +1387,13 @@ impl ProxyService {
         // 2. 恢复原始 Live 配置
         self.restore_live_configs().await?;
 
-        // 3. 清除 proxy_config 表中的接管状态（兼容旧版）
+        // 3. 清除所有应用的接管状态
         self.db
-            .set_live_takeover_active(false)
+            .clear_all_takeover_enabled()
             .await
             .map_err(|e| format!("清除接管状态失败: {e}"))?;
 
-        // 4. 清除所有应用的 enabled 状态（用户手动关闭，不需要下次自动恢复）
-        for app_type in ["claude", "codex", "gemini", "grokbuild"] {
-            if let Ok(mut config) = self.db.get_proxy_config_for_app(app_type).await {
-                if config.enabled {
-                    config.enabled = false;
-                    if let Err(e) = self.db.update_proxy_config_for_app(config).await {
-                        log::warn!("清除 {app_type} enabled 状态失败: {e}");
-                    }
-                }
-            }
-        }
-
-        // 5. 删除备份
+        // 4. 删除备份
         self.db
             .delete_all_live_backups()
             .await
@@ -1424,27 +1501,53 @@ impl ProxyService {
             }
         }
 
+        if !crate::pi_config::has_takeover().unwrap_or(false) {
+            if let Ok(snapshot) = crate::pi_config::snapshot_takeover_models() {
+                let json_str = serde_json::to_string(&snapshot)
+                    .map_err(|e| format!("序列化 Pi 配置失败: {e}"))?;
+                self.db
+                    .save_live_backup("pi", &json_str)
+                    .await
+                    .map_err(|e| format!("备份 Pi 配置失败: {e}"))?;
+            }
+        }
+
         log::info!("已备份所有应用的 Live 配置");
         Ok(())
     }
 
     /// 备份指定应用的 Live 配置（严格模式：目标配置不存在则返回错误）
     async fn backup_live_config_strict(&self, app_type: &AppType) -> Result<(), String> {
-        let (app_type_str, config) = match app_type {
+        let (app_type_str, mut config) = match app_type {
             AppType::Claude => ("claude", self.read_claude_live()?),
             AppType::Codex => ("codex", self.read_codex_live()?),
             AppType::Gemini => ("gemini", self.read_gemini_live()?),
             AppType::GrokBuild => ("grokbuild", self.read_grok_live()?),
+            AppType::Pi => (
+                "pi",
+                crate::pi_config::snapshot_takeover_models()
+                    .map_err(|e| format!("读取 Pi 配置失败: {e}"))?,
+            ),
             _ => return Err("该应用不支持代理功能".to_string()),
         };
 
         // 跳过已被代理接管的 Live：避免把代理占位符当作"原始 Live"存进备份槽
         // （见 backup_live_configs 中的注释）。
         if Self::live_has_proxy_placeholder_for_app(app_type, &config) {
-            log::warn!(
+            if matches!(app_type, AppType::Pi) {
+                let provider = self.require_current_provider_for_app(&AppType::Pi)?;
+                crate::pi_config::update_takeover_snapshot_provider(
+                    &mut config,
+                    &provider.id,
+                    &provider.settings_config,
+                )
+                .map_err(|e| format!("重建 Pi 原始配置备份失败: {e}"))?;
+            } else {
+                log::warn!(
                 "{app_type_str} Live 已被代理接管，不备份（避免把代理配置固化进备份槽）；下次 stop 会从 SSOT 重建 Live"
             );
-            return Ok(());
+                return Ok(());
+            }
         }
 
         let json_str = serde_json::to_string(&config)
@@ -1592,6 +1695,16 @@ impl ProxyService {
             }
         }
 
+        if let Ok(Some(provider)) = self.get_current_provider_for_app(&AppType::Pi) {
+            if let Ok(Some(backup)) = self.db.get_live_backup("pi").await {
+                let snapshot: Value = serde_json::from_str(&backup.original_config)
+                    .map_err(|e| format!("解析 Pi 备份失败: {e}"))?;
+                crate::pi_config::apply_takeover_snapshot(&snapshot, &provider.id, &proxy_url)
+                    .map_err(|e| format!("接管 Pi 配置失败: {e}"))?;
+                log::info!("Pi 配置已接管，代理地址: {proxy_url}");
+            }
+        }
+
         Ok(())
     }
 
@@ -1655,6 +1768,20 @@ impl ProxyService {
                 Self::apply_grok_takeover_fields(&mut live_config, &proxy_grok_base_url)?;
                 self.write_grok_live(&live_config)?;
                 log::info!("Grok Build Live 配置已接管，代理地址: {proxy_grok_base_url}");
+            }
+            AppType::Pi => {
+                let provider = self.require_current_provider_for_app(&AppType::Pi)?;
+                let backup = self
+                    .db
+                    .get_live_backup("pi")
+                    .await
+                    .map_err(|e| format!("读取 Pi 备份失败: {e}"))?
+                    .ok_or_else(|| "Pi 接管备份不存在".to_string())?;
+                let snapshot: Value = serde_json::from_str(&backup.original_config)
+                    .map_err(|e| format!("解析 Pi 备份失败: {e}"))?;
+                crate::pi_config::apply_takeover_snapshot(&snapshot, &provider.id, &proxy_url)
+                    .map_err(|e| format!("接管 Pi 配置失败: {e}"))?;
+                log::info!("Pi 配置已接管，代理地址: {proxy_url}");
             }
             _ => return Err("该应用不支持代理功能".to_string()),
         }
@@ -1733,6 +1860,17 @@ impl ProxyService {
                     }
                 }
             }
+            AppType::Pi => {
+                if let (Ok(Some(provider)), Ok(Some(backup))) = (
+                    self.get_current_provider_for_app(&AppType::Pi),
+                    self.db.get_live_backup("pi").await,
+                ) {
+                    let snapshot: Value = serde_json::from_str(&backup.original_config)
+                        .map_err(|e| format!("解析 Pi 备份失败: {e}"))?;
+                    crate::pi_config::apply_takeover_snapshot(&snapshot, &provider.id, &proxy_url)
+                        .map_err(|e| format!("接管 Pi 配置失败: {e}"))?;
+                }
+            }
             _ => {}
         }
 
@@ -1773,6 +1911,15 @@ impl ProxyService {
                     log::info!("Grok Build Live 配置已恢复");
                 }
             }
+            AppType::Pi => {
+                if let Ok(Some(backup)) = self.db.get_live_backup("pi").await {
+                    let snapshot: Value = serde_json::from_str(&backup.original_config)
+                        .map_err(|e| format!("解析 Pi 备份失败: {e}"))?;
+                    crate::pi_config::restore_takeover_snapshot(&snapshot)
+                        .map_err(|e| format!("恢复 Pi 配置失败: {e}"))?;
+                    log::info!("Pi 配置已恢复");
+                }
+            }
             _ => {}
         }
 
@@ -1788,6 +1935,7 @@ impl ProxyService {
             AppType::Codex,
             AppType::Gemini,
             AppType::GrokBuild,
+            AppType::Pi,
         ] {
             if let Err(e) = self
                 .restore_live_config_for_app_with_fallback(&app_type)
@@ -1878,6 +2026,8 @@ impl ProxyService {
             AppType::Codex => self.write_codex_live(config),
             AppType::Gemini => self.write_gemini_live(config),
             AppType::GrokBuild => self.write_grok_live(config),
+            AppType::Pi => crate::pi_config::restore_takeover_snapshot(config)
+                .map_err(|e| format!("写入 Pi 配置失败: {e}")),
             _ => Err("该应用不支持代理功能".to_string()),
         }
     }
@@ -1900,6 +2050,7 @@ impl ProxyService {
                 Ok(config) => Self::is_grok_live_taken_over(&config),
                 Err(_) => false,
             },
+            AppType::Pi => crate::pi_config::has_takeover().unwrap_or(false),
             _ => false,
         }
     }
@@ -1936,8 +2087,16 @@ impl ProxyService {
             return Ok(false);
         }
 
-        write_live_with_common_config(self.db.as_ref(), app_type, provider)
-            .map_err(|e| format!("写入 {app_type:?} Live 配置失败: {e}"))?;
+        if matches!(app_type, AppType::Pi) {
+            crate::pi_config::restore_provider_from_settings(
+                &provider.id,
+                &provider.settings_config,
+            )
+            .map_err(|e| format!("写入 Pi 配置失败: {e}"))?;
+        } else {
+            write_live_with_common_config(self.db.as_ref(), app_type, provider)
+                .map_err(|e| format!("写入 {app_type:?} Live 配置失败: {e}"))?;
+        }
 
         Ok(true)
     }
@@ -1951,6 +2110,7 @@ impl ProxyService {
             AppType::Codex => self.cleanup_codex_takeover_placeholders_in_live(),
             AppType::Gemini => self.cleanup_gemini_takeover_placeholders_in_live(),
             AppType::GrokBuild => self.cleanup_grok_takeover_placeholders_in_live(),
+            AppType::Pi => Err("Pi 接管备份缺失，且无法从当前供应商恢复".to_string()),
             _ => Ok(()),
         }
     }
@@ -2055,6 +2215,13 @@ impl ProxyService {
                             })
                         });
                 Ok(Self::is_grok_live_taken_over(&config) && base_url_matches)
+            }
+            AppType::Pi => {
+                let Some(provider) = self.get_current_provider_for_app(&AppType::Pi)? else {
+                    return Ok(false);
+                };
+                crate::pi_config::takeover_matches(&provider.id, &proxy_url)
+                    .map_err(|e| format!("检测 Pi 接管配置失败: {e}"))
             }
             _ => Ok(false),
         }
@@ -2166,7 +2333,7 @@ impl ProxyService {
     /// 检查是否处于 Live 接管模式
     pub async fn is_takeover_active(&self) -> Result<bool, String> {
         let status = self.get_takeover_status().await?;
-        Ok(status.claude || status.codex || status.gemini || status.grokbuild)
+        Ok(status.claude || status.codex || status.gemini || status.grokbuild || status.pi)
     }
 
     /// 从异常退出中恢复（启动时调用）
@@ -2179,7 +2346,7 @@ impl ProxyService {
 
         // 2. 清除接管标志
         self.db
-            .set_live_takeover_active(false)
+            .clear_all_takeover_enabled()
             .await
             .map_err(|e| format!("清除接管状态失败: {e}"))?;
 
@@ -2220,6 +2387,10 @@ impl ProxyService {
             if Self::is_grok_live_taken_over(&config) {
                 return true;
             }
+        }
+
+        if crate::pi_config::has_takeover().unwrap_or(false) {
+            return true;
         }
 
         false
@@ -2301,6 +2472,7 @@ impl ProxyService {
             AppType::Codex => Self::is_codex_live_taken_over(config),
             AppType::Gemini => Self::is_gemini_live_taken_over(config),
             AppType::GrokBuild => Self::is_grok_live_taken_over(config),
+            AppType::Pi => crate::pi_config::takeover_snapshot_has_takeover(config),
             _ => false,
         }
     }
@@ -2327,6 +2499,36 @@ impl ProxyService {
     ) -> Result<(), String> {
         let app_type_enum =
             AppType::from_str(app_type).map_err(|_| format!("未知的应用类型: {app_type}"))?;
+        if matches!(app_type_enum, AppType::Pi) {
+            let mut snapshot = self
+                .db
+                .get_live_backup(app_type)
+                .await
+                .map_err(|e| format!("读取 Pi 现有备份失败: {e}"))?
+                .map(|backup| {
+                    serde_json::from_str::<Value>(&backup.original_config)
+                        .map_err(|e| format!("解析 Pi 现有备份失败: {e}"))
+                })
+                .transpose()?
+                .unwrap_or(
+                    crate::pi_config::snapshot_takeover_models()
+                        .map_err(|e| format!("读取 Pi 配置失败: {e}"))?,
+                );
+            crate::pi_config::update_takeover_snapshot_provider(
+                &mut snapshot,
+                &provider.id,
+                &provider.settings_config,
+            )
+            .map_err(|e| format!("更新 Pi 备份失败: {e}"))?;
+            let backup_json =
+                serde_json::to_string(&snapshot).map_err(|e| format!("序列化 Pi 备份失败: {e}"))?;
+            self.db
+                .save_live_backup(app_type, &backup_json)
+                .await
+                .map_err(|e| format!("更新 Pi 备份失败: {e}"))?;
+            log::info!("已更新 Pi 配置备份（热切换）");
+            return Ok(());
+        }
         let mut effective_settings =
             build_effective_settings_with_common_config(self.db.as_ref(), &app_type_enum, provider)
                 .map_err(|e| format!("构建 {app_type} 有效配置失败: {e}"))?;
@@ -2492,6 +2694,31 @@ impl ProxyService {
             } else {
                 None
             };
+        let previous_pi_live = if matches!(app_type_enum, AppType::Pi) {
+            Some(
+                crate::pi_config::snapshot_takeover_models()
+                    .map_err(|e| format!("读取 Pi 原 Live 配置失败: {e}"))?,
+            )
+        } else {
+            None
+        };
+        let previous_pi_settings = if matches!(app_type_enum, AppType::Pi) {
+            Some(
+                crate::pi_config::read_settings()
+                    .map_err(|e| format!("读取 Pi 原默认供应商失败: {e}"))?,
+            )
+        } else {
+            None
+        };
+        let rollback = HotSwitchRollbackState {
+            previous_backup,
+            previous_provider_id,
+            should_sync_backup,
+            live_taken_over,
+            previous_live_before_direct_write,
+            previous_pi_live,
+            previous_pi_settings,
+        };
 
         let prepare_result: Result<(), String> = async {
             if should_sync_backup {
@@ -2506,6 +2733,9 @@ impl ProxyService {
                         .await?;
                 } else if live_taken_over && matches!(app_type_enum, AppType::GrokBuild) {
                     self.sync_grok_live_from_provider_while_proxy_active(&provider)
+                        .await?;
+                } else if matches!(app_type_enum, AppType::Pi) {
+                    self.sync_pi_live_from_provider_while_proxy_active(&provider)
                         .await?;
                 }
             }
@@ -2539,29 +2769,15 @@ impl ProxyService {
         .await;
 
         if let Err(error) = prepare_result {
-            self.rollback_hot_switch_preparation(
-                &app_type_enum,
-                previous_backup.as_ref(),
-                previous_provider_id.as_deref(),
-                should_sync_backup,
-                live_taken_over,
-                previous_live_before_direct_write.as_ref(),
-            )
-            .await;
+            self.rollback_hot_switch_preparation(&app_type_enum, &rollback)
+                .await;
             return Err(error);
         }
 
         if let Err(error) = crate::settings::set_current_provider(&app_type_enum, Some(provider_id))
         {
-            self.rollback_hot_switch_preparation(
-                &app_type_enum,
-                previous_backup.as_ref(),
-                previous_provider_id.as_deref(),
-                should_sync_backup,
-                live_taken_over,
-                previous_live_before_direct_write.as_ref(),
-            )
-            .await;
+            self.rollback_hot_switch_preparation(&app_type_enum, &rollback)
+                .await;
             return Err(format!("更新本地当前供应商失败: {error}"));
         }
         if let Err(error) = self
@@ -2574,15 +2790,8 @@ impl ProxyService {
             ) {
                 log::error!("数据库切换失败后恢复本地当前供应商失败: {rollback_error}");
             }
-            self.rollback_hot_switch_preparation(
-                &app_type_enum,
-                previous_backup.as_ref(),
-                previous_provider_id.as_deref(),
-                should_sync_backup,
-                live_taken_over,
-                previous_live_before_direct_write.as_ref(),
-            )
-            .await;
+            self.rollback_hot_switch_preparation(&app_type_enum, &rollback)
+                .await;
             return Err(format!("更新当前供应商失败: {error}"));
         }
 
@@ -3135,6 +3344,10 @@ impl ProxyService {
                         .await?;
                     updated_any = true;
                 }
+                if takeover.pi {
+                    self.takeover_live_config_best_effort(&AppType::Pi).await?;
+                    updated_any = true;
+                }
 
                 if updated_any {
                     log::info!("已同步更新 Live 配置中的代理地址");
@@ -3226,10 +3439,108 @@ impl ProxyService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app_config::{McpApps, McpServer};
     use crate::provider::ProviderMeta;
+    use crate::services::mcp::McpService;
+    use crate::store::AppState;
+    use axum::body::Body;
+    use axum::extract::State;
+    use axum::response::Response;
+    use axum::routing::any;
+    use axum::Router;
     use serial_test::serial;
     use std::env;
     use tempfile::TempDir;
+    use tokio::sync::Mutex;
+
+    struct PiRolloutRequest {
+        path: String,
+        authorization: Option<String>,
+        provider: Option<String>,
+    }
+
+    #[derive(Clone)]
+    struct PiRolloutUpstream {
+        fail: bool,
+        requests: Arc<Mutex<Vec<PiRolloutRequest>>>,
+    }
+
+    async fn capture_pi_rollout_request(
+        State(state): State<PiRolloutUpstream>,
+        request: axum::extract::Request,
+    ) -> Response {
+        let path = request.uri().path().to_string();
+        state.requests.lock().await.push(PiRolloutRequest {
+            path: path.clone(),
+            authorization: request
+                .headers()
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string),
+            provider: request
+                .headers()
+                .get("x-provider")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string),
+        });
+
+        let (status, body) = if state.fail {
+            (
+                http::StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"error": "rollout upstream unavailable"}),
+            )
+        } else if path == "/quota" {
+            (http::StatusCode::OK, json!({"remaining": 42}))
+        } else {
+            (
+                http::StatusCode::OK,
+                json!({
+                    "id": "resp-proxy-rollout",
+                    "object": "response",
+                    "status": "completed",
+                    "model": "rollout-model",
+                    "usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 4,
+                        "input_tokens_details": {"cached_tokens": 2}
+                    }
+                }),
+            )
+        };
+        Response::builder()
+            .status(status)
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&body).expect("serialize rollout response"),
+            ))
+            .expect("build rollout response")
+    }
+
+    async fn spawn_pi_rollout_upstream(
+        fail: bool,
+    ) -> (
+        String,
+        Arc<Mutex<Vec<PiRolloutRequest>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind Pi rollout upstream");
+        let address = listener.local_addr().expect("read rollout address");
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let app = Router::new()
+            .fallback(any(capture_pi_rollout_request))
+            .with_state(PiRolloutUpstream {
+                fail,
+                requests: requests.clone(),
+            });
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("serve Pi rollout upstream");
+        });
+        (format!("http://{address}"), requests, handle)
+    }
 
     struct TempHome {
         #[allow(dead_code)]
@@ -3237,6 +3548,7 @@ mod tests {
         original_home: Option<String>,
         original_userprofile: Option<String>,
         original_test_home: Option<String>,
+        original_pi_dir: Option<String>,
     }
 
     impl TempHome {
@@ -3245,16 +3557,19 @@ mod tests {
             let original_home = env::var("HOME").ok();
             let original_userprofile = env::var("USERPROFILE").ok();
             let original_test_home = env::var("STACKFERRY_TEST_HOME").ok();
+            let original_pi_dir = env::var("PI_CODING_AGENT_DIR").ok();
 
             env::set_var("HOME", dir.path());
             env::set_var("USERPROFILE", dir.path());
             env::set_var("STACKFERRY_TEST_HOME", dir.path());
+            env::set_var("PI_CODING_AGENT_DIR", dir.path().join(".pi-agent"));
 
             Self {
                 dir,
                 original_home,
                 original_userprofile,
                 original_test_home,
+                original_pi_dir,
             }
         }
     }
@@ -3275,7 +3590,54 @@ mod tests {
                 Some(value) => env::set_var("STACKFERRY_TEST_HOME", value),
                 None => env::remove_var("STACKFERRY_TEST_HOME"),
             }
+
+            match &self.original_pi_dir {
+                Some(value) => env::set_var("PI_CODING_AGENT_DIR", value),
+                None => env::remove_var("PI_CODING_AGENT_DIR"),
+            }
         }
+    }
+
+    fn pi_provider(id: &str, base_url: &str, api: &str, model: &str) -> Provider {
+        Provider::with_id(
+            id.to_string(),
+            id.to_string(),
+            json!({
+                "baseUrl": base_url,
+                "api": api,
+                "defaultModel": model,
+                "models": [{ "id": model }],
+                "headers": { "X-Provider": id }
+            }),
+            None,
+        )
+    }
+
+    fn write_pi_live(providers: Value, default_provider: &str, default_model: &str) {
+        let pi_dir = crate::pi_config::get_pi_dir();
+        std::fs::create_dir_all(&pi_dir).expect("create Pi dir");
+        write_json_file(
+            &pi_dir.join("models.json"),
+            &json!({ "providers": providers, "unknownRoot": true }),
+        )
+        .expect("write Pi models");
+        write_json_file(
+            &pi_dir.join("auth.json"),
+            &json!({
+                "pi-a": { "type": "oauth", "access": "oauth-secret" },
+                "pi-b": { "type": "api_key", "key": "$PI_B_KEY" }
+            }),
+        )
+        .expect("write Pi auth");
+        write_json_file(
+            &pi_dir.join("settings.json"),
+            &json!({
+                "defaultProvider": default_provider,
+                "defaultModel": default_model,
+                "theme": "dark"
+            }),
+        )
+        .expect("write Pi settings");
     }
 
     fn assert_env_str(env: &Map<String, Value>, key: &str, expected: Option<&str>) {
@@ -7295,5 +7657,501 @@ experimental_bearer_token = "PROXY_MANAGED"
             .expect("read backup")
             .expect("backup exists");
         assert_eq!(backup.original_config, original_backup);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn pi_takeover_hot_switch_and_restore_preserve_credentials_and_defaults() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+        use_ephemeral_proxy_port(&db).await;
+        let provider_a = pi_provider(
+            "pi-a",
+            "https://a.example.com/v1",
+            "anthropic-messages",
+            "claude-a",
+        );
+        let provider_b = pi_provider(
+            "pi-b",
+            "https://b.example.com/v1",
+            "openai-responses",
+            "gpt-b",
+        );
+        db.save_provider("pi", &provider_a)
+            .expect("save provider a");
+        db.save_provider("pi", &provider_b)
+            .expect("save provider b");
+        db.set_current_provider("pi", "pi-a")
+            .expect("set db current");
+        crate::settings::set_current_provider(&AppType::Pi, Some("pi-a"))
+            .expect("set local current");
+        write_pi_live(
+            json!({
+                "pi-a": provider_a.settings_config,
+                "pi-b": provider_b.settings_config
+            }),
+            "pi-a",
+            "claude-a",
+        );
+        let auth_path = crate::pi_config::get_pi_dir().join("auth.json");
+        let auth_before = std::fs::read(&auth_path).expect("read auth");
+
+        service
+            .set_takeover_for_app("pi", true)
+            .await
+            .expect("enable Pi takeover");
+        assert!(service.get_takeover_status().await.expect("status").pi);
+        let proxy_status = service.get_status().await.expect("proxy status");
+        let live: Value = read_json_file(&crate::pi_config::get_models_path()).expect("read live");
+        assert_eq!(
+            live["providers"]["pi-a"]["baseUrl"],
+            json!(format!("http://127.0.0.1:{}/pi/pi-a", proxy_status.port))
+        );
+
+        service
+            .hot_switch_provider("pi", "pi-b")
+            .await
+            .expect("hot switch Pi");
+
+        let live: Value =
+            read_json_file(&crate::pi_config::get_models_path()).expect("read switched live");
+        assert_eq!(
+            live["providers"]["pi-a"]["baseUrl"],
+            json!("https://a.example.com/v1")
+        );
+        assert_eq!(
+            live["providers"]["pi-b"]["baseUrl"],
+            json!(format!("http://127.0.0.1:{}/pi/pi-b", proxy_status.port))
+        );
+        assert_eq!(live["providers"]["pi-b"]["api"], json!("openai-responses"));
+        let settings = crate::pi_config::read_settings().expect("settings");
+        assert_eq!(settings["defaultProvider"], json!("pi-b"));
+        assert_eq!(settings["defaultModel"], json!("gpt-b"));
+        assert_eq!(
+            crate::settings::get_effective_current_provider(&db, &AppType::Pi)
+                .expect("current")
+                .as_deref(),
+            Some("pi-b")
+        );
+
+        let backup = db
+            .get_live_backup("pi")
+            .await
+            .expect("read backup")
+            .expect("backup exists");
+        let backup: Value = serde_json::from_str(&backup.original_config).expect("parse backup");
+        assert_eq!(
+            backup["models"]["providers"]["pi-b"]["baseUrl"],
+            json!("https://b.example.com/v1")
+        );
+
+        service
+            .set_takeover_for_app("pi", false)
+            .await
+            .expect("disable Pi takeover");
+        let restored: Value =
+            read_json_file(&crate::pi_config::get_models_path()).expect("restored");
+        assert_eq!(
+            restored["providers"]["pi-b"]["baseUrl"],
+            json!("https://b.example.com/v1")
+        );
+        assert_eq!(restored["unknownRoot"], json!(true));
+        let settings = crate::pi_config::read_settings().expect("settings after restore");
+        assert_eq!(settings["defaultProvider"], json!("pi-b"));
+        assert_eq!(
+            std::fs::read(auth_path).expect("auth after restore"),
+            auth_before
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn pi_rollout_workflow_restores_config_after_failover_usage_and_mcp() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let (first_origin, first_requests, first_handle) = spawn_pi_rollout_upstream(true).await;
+        let (second_origin, second_requests, second_handle) =
+            spawn_pi_rollout_upstream(false).await;
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+        use_ephemeral_proxy_port(&db).await;
+        let mut proxy_config = db
+            .get_proxy_config_for_app("pi")
+            .await
+            .expect("read Pi proxy config");
+        proxy_config.auto_failover_enabled = true;
+        proxy_config.max_retries = 1;
+        proxy_config.non_streaming_timeout = 5;
+        db.update_proxy_config_for_app(proxy_config)
+            .await
+            .expect("configure Pi failover");
+
+        let mut source = pi_provider(
+            "pi-source",
+            "https://source.example.com/v1",
+            "openai-responses",
+            "rollout-model",
+        );
+        let mut first = pi_provider(
+            "pi-first",
+            &first_origin,
+            "openai-responses",
+            "rollout-model",
+        );
+        let mut second = pi_provider(
+            "pi-second",
+            &second_origin,
+            "openai-responses",
+            "rollout-model",
+        );
+        for provider in [&mut source, &mut first, &mut second] {
+            provider.settings_config["apiKey"] = json!(format!("{}-key", provider.id));
+            provider.settings_config["authHeader"] = json!(true);
+        }
+        first.in_failover_queue = true;
+        second.in_failover_queue = true;
+        for provider in [&source, &first, &second] {
+            db.save_provider("pi", provider).expect("save Pi provider");
+        }
+        db.add_to_failover_queue("pi", &first.id)
+            .expect("queue first Pi provider");
+        db.add_to_failover_queue("pi", &second.id)
+            .expect("queue second Pi provider");
+        db.set_current_provider("pi", &source.id)
+            .expect("set current Pi provider");
+        crate::settings::set_current_provider(&AppType::Pi, Some(&source.id))
+            .expect("set local Pi provider");
+        write_pi_live(
+            json!({
+                source.id.clone(): source.settings_config.clone(),
+                first.id.clone(): first.settings_config.clone(),
+                second.id.clone(): second.settings_config.clone()
+            }),
+            &source.id,
+            "rollout-model",
+        );
+        let pi_dir = crate::pi_config::get_pi_dir();
+        let auth_path = pi_dir.join("auth.json");
+        let auth_before = std::fs::read(&auth_path).expect("read Pi auth before rollout");
+        let state = AppState::new(db.clone());
+        McpService::upsert_server(
+            &state,
+            McpServer {
+                id: "rollout-mcp".to_string(),
+                name: "Rollout MCP".to_string(),
+                server: json!({"command": "node", "args": ["rollout-server.js"]}),
+                apps: McpApps {
+                    pi: true,
+                    ..Default::default()
+                },
+                description: None,
+                homepage: None,
+                docs: None,
+                tags: Vec::new(),
+            },
+        )
+        .expect("project Pi MCP");
+
+        service
+            .set_takeover_for_app("pi", true)
+            .await
+            .expect("enable Pi takeover");
+        let proxy_status = service.get_status().await.expect("read proxy status");
+        let response = reqwest::Client::new()
+            .post(format!(
+                "http://127.0.0.1:{}/pi/{}/responses",
+                proxy_status.port, source.id
+            ))
+            .header("authorization", "Bearer source-client-key")
+            .json(&json!({"model": "rollout-model", "input": "rollout"}))
+            .send()
+            .await
+            .expect("send Pi rollout request");
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(
+            response.json::<Value>().await.expect("parse Pi response")["id"],
+            "resp-proxy-rollout"
+        );
+
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            loop {
+                let count: i64 = db
+                    .conn
+                    .lock()
+                    .expect("lock usage database")
+                    .query_row(
+                        "SELECT COUNT(*) FROM proxy_request_logs
+                         WHERE app_type = 'pi' AND data_source = 'proxy'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .expect("count Pi proxy usage");
+                if count == 1 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("Pi proxy usage should be recorded");
+
+        let quota_script = r#"({
+            request: {
+                url: "__QUOTA_URL__",
+                method: "GET",
+                headers: { "Authorization": "Bearer {{apiKey}}" }
+            },
+            extractor: function(response) {
+                return { remaining: response.remaining, unit: "credits" };
+            }
+        })"#
+        .replace("__QUOTA_URL__", &format!("{second_origin}/quota"));
+        let quota = crate::services::provider::ProviderService::test_usage_script(
+            &state,
+            AppType::Pi,
+            &second.id,
+            &quota_script,
+            5,
+            Some("quota-secret"),
+            Some(&second_origin),
+            None,
+            None,
+            Some("custom"),
+        )
+        .await
+        .expect("query Pi quota");
+        assert!(quota.success);
+        assert_eq!(quota.data.expect("Pi quota data")[0].remaining, Some(42.0));
+
+        let session_entries = [
+            json!({
+                "type": "session",
+                "version": 3,
+                "id": "rollout-session",
+                "timestamp": "2026-08-04T00:00:00.000Z",
+                "cwd": "/tmp/project"
+            }),
+            json!({
+                "type": "message",
+                "id": "assistant-rollout",
+                "parentId": null,
+                "timestamp": "2026-08-04T00:00:01.000Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [],
+                    "api": "openai-responses",
+                    "provider": "pi-second",
+                    "model": "rollout-model",
+                    "responseModel": "rollout-model",
+                    "responseId": "resp-session-rollout",
+                    "usage": {
+                        "input": 6,
+                        "output": 2,
+                        "cacheRead": 1,
+                        "cacheWrite": 0,
+                        "reasoning": 0,
+                        "totalTokens": 9,
+                        "cost": {"input": 0, "output": 0, "total": 0}
+                    },
+                    "stopReason": "stop",
+                    "timestamp": 1785801601000i64
+                }
+            }),
+        ];
+        let mut session_jsonl = session_entries
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        session_jsonl.push('\n');
+        let session_path = pi_dir.join("sessions/project/rollout.jsonl");
+        std::fs::create_dir_all(session_path.parent().expect("session parent"))
+            .expect("create Pi session directory");
+        std::fs::write(&session_path, session_jsonl).expect("write Pi session");
+        assert_eq!(
+            crate::services::session_usage_pi::sync_pi_usage(&db)
+                .expect("sync Pi session usage")
+                .imported,
+            1
+        );
+        let usage_counts: (i64, i64) = db
+            .conn
+            .lock()
+            .expect("lock Pi usage database")
+            .query_row(
+                "SELECT COUNT(*), COUNT(DISTINCT data_source)
+                 FROM proxy_request_logs WHERE app_type = 'pi'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read Pi usage counts");
+        assert_eq!(usage_counts, (2, 2));
+
+        service
+            .hot_switch_provider("pi", &second.id)
+            .await
+            .expect("hot switch Pi provider");
+        service
+            .recover_from_crash()
+            .await
+            .expect("recover Pi takeover after forced termination");
+        service.stop().await.expect("stop recovered proxy");
+        assert!(
+            !service
+                .get_takeover_status()
+                .await
+                .expect("read recovered takeover status")
+                .pi
+        );
+        McpService::sync_all_enabled(&state).expect("reproject Pi MCP after restart");
+        McpService::toggle_app(&state, "rollout-mcp", AppType::Pi, false)
+            .expect("remove Pi MCP projection");
+
+        let restored: Value =
+            read_json_file(&crate::pi_config::get_models_path()).expect("read restored Pi models");
+        assert_eq!(
+            restored["providers"][&source.id]["baseUrl"],
+            source.settings_config["baseUrl"]
+        );
+        assert_eq!(
+            restored["providers"][&first.id]["baseUrl"],
+            first.settings_config["baseUrl"]
+        );
+        assert_eq!(
+            restored["providers"][&second.id]["baseUrl"],
+            second.settings_config["baseUrl"]
+        );
+        assert_eq!(restored["unknownRoot"], true);
+        let settings = crate::pi_config::read_settings().expect("read restored Pi settings");
+        assert_eq!(settings["defaultProvider"], second.id);
+        assert_eq!(settings["defaultModel"], "rollout-model");
+        assert_eq!(settings["theme"], "dark");
+        assert!(settings.get("packages").is_none());
+        assert!(!pi_dir.join("mcp.json").exists());
+        assert_eq!(
+            std::fs::read(auth_path).expect("read Pi auth after rollout"),
+            auth_before
+        );
+
+        let first_requests = first_requests.lock().await;
+        assert_eq!(first_requests.len(), 1);
+        assert_eq!(first_requests[0].path, "/responses");
+        assert_eq!(
+            first_requests[0].authorization.as_deref(),
+            Some("Bearer pi-first-key")
+        );
+        assert_eq!(first_requests[0].provider.as_deref(), Some("pi-first"));
+        drop(first_requests);
+        let second_requests = second_requests.lock().await;
+        assert_eq!(second_requests.len(), 2);
+        assert_eq!(second_requests[0].path, "/responses");
+        assert_eq!(
+            second_requests[0].authorization.as_deref(),
+            Some("Bearer pi-second-key")
+        );
+        assert_eq!(second_requests[0].provider.as_deref(), Some("pi-second"));
+        assert_eq!(second_requests[1].path, "/quota");
+        assert_eq!(
+            second_requests[1].authorization.as_deref(),
+            Some("Bearer quota-secret")
+        );
+        drop(second_requests);
+
+        first_handle.abort();
+        second_handle.abort();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn failed_pi_hot_switch_restores_live_backup_defaults_and_current() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+        use_ephemeral_proxy_port(&db).await;
+        let provider_a = pi_provider(
+            "pi-a",
+            "https://a.example.com/v1",
+            "openai-responses",
+            "gpt-a",
+        );
+        let mut provider_b = pi_provider(
+            "pi-b",
+            "https://b.example.com/v1",
+            "openai-responses",
+            "gpt-b",
+        );
+        provider_b
+            .settings_config
+            .as_object_mut()
+            .expect("provider b")
+            .remove("api");
+        db.save_provider("pi", &provider_a)
+            .expect("save provider a");
+        db.save_provider("pi", &provider_b)
+            .expect("save provider b");
+        db.set_current_provider("pi", "pi-a")
+            .expect("set db current");
+        crate::settings::set_current_provider(&AppType::Pi, Some("pi-a"))
+            .expect("set local current");
+        write_pi_live(
+            json!({
+                "pi-a": provider_a.settings_config,
+                "pi-b": {
+                    "baseUrl": "https://b.example.com/v1",
+                    "api": "openai-responses",
+                    "models": [{ "id": "gpt-b" }]
+                }
+            }),
+            "pi-a",
+            "gpt-a",
+        );
+
+        service
+            .set_takeover_for_app("pi", true)
+            .await
+            .expect("enable Pi takeover");
+        let live_before: Value =
+            read_json_file(&crate::pi_config::get_models_path()).expect("live before");
+        let settings_before = crate::pi_config::read_settings().expect("settings before");
+        let backup_before = db
+            .get_live_backup("pi")
+            .await
+            .expect("backup before")
+            .expect("backup exists")
+            .original_config;
+
+        service
+            .hot_switch_provider("pi", "pi-b")
+            .await
+            .expect_err("invalid Pi provider must fail");
+
+        assert_eq!(
+            read_json_file::<Value>(&crate::pi_config::get_models_path()).expect("live after"),
+            live_before
+        );
+        assert_eq!(
+            crate::pi_config::read_settings().expect("settings after"),
+            settings_before
+        );
+        assert_eq!(
+            db.get_live_backup("pi")
+                .await
+                .expect("backup after")
+                .expect("backup exists")
+                .original_config,
+            backup_before
+        );
+        assert_eq!(
+            crate::settings::get_effective_current_provider(&db, &AppType::Pi)
+                .expect("current")
+                .as_deref(),
+            Some("pi-a")
+        );
     }
 }

@@ -26,8 +26,7 @@ export function FailoverToggle({ className, activeApp }: FailoverToggleProps) {
     useAutoFailoverEnabled(activeApp);
   const setEnabled = useSetAutoFailoverEnabled();
   const { takeoverStatus } = useProxyStatus();
-  const takeoverEnabled =
-    activeApp === "pi" ? false : (takeoverStatus?.[activeApp] ?? false);
+  const takeoverEnabled = takeoverStatus?.[activeApp] ?? false;
 
   const handleToggle = (checked: boolean) => {
     if (checked && !takeoverEnabled) return;
@@ -41,7 +40,9 @@ export function FailoverToggle({ className, activeApp }: FailoverToggleProps) {
         ? "Codex"
         : activeApp === "grokbuild"
           ? "Grok Build"
-          : "Gemini";
+          : activeApp === "pi"
+            ? "Pi"
+            : "Gemini";
 
   const tooltipText = !takeoverEnabled
     ? t("failover.tooltip.takeoverRequired", {

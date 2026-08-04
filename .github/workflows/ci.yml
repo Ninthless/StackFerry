@@ -53,6 +53,9 @@ jobs:
       - name: Unit tests
         run: pnpm test:unit
 
+      - name: Test Node scripts
+        run: node --test scripts/dev.node.mjs scripts/generate-updater-manifest.node.mjs
+
   backend:
     name: Backend Checks
     runs-on: ${{ matrix.os }}

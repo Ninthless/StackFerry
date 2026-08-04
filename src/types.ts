@@ -502,6 +502,7 @@ export interface McpApps {
   claude: boolean;
   "claude-desktop"?: boolean;
   codex: boolean;
+  pi: boolean;
   gemini: boolean;
   grokbuild?: boolean;
   opencode: boolean;
@@ -533,6 +534,17 @@ export interface McpStatus {
   userConfigPath: string;
   userConfigExists: boolean;
   serverCount: number;
+}
+
+export type PiMcpAdapterState = "inactive" | "pending" | "installed" | "error";
+
+export interface PiMcpAdapterStatus {
+  state: PiMcpAdapterState;
+  configuredVersion?: string | null;
+  installedVersion?: string | null;
+  configPath: string;
+  projectOverridePath?: string | null;
+  error?: string | null;
 }
 
 // 新：来自 config.json 的 MCP 列表响应
@@ -723,8 +735,15 @@ export interface OpenClawProviderConfig {
 export type PiProviderApi =
   | "openai-completions"
   | "openai-responses"
+  | "openai-codex-responses"
+  | "azure-openai-responses"
   | "anthropic-messages"
-  | "google-generative-ai";
+  | "google-generative-ai"
+  | "google-vertex"
+  | "bedrock-converse-stream"
+  | "mistral-conversations"
+  | "pi-messages"
+  | "openrouter-images";
 
 export interface PiModelConfig {
   id: string;

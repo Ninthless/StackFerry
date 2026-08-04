@@ -45,7 +45,7 @@ import { formatSkillError } from "@/lib/errors/skillErrorParser";
 export type SkillsPageSource = "repos" | "skillssh";
 
 interface SkillsPageProps {
-  initialApp?: AppId;
+  targetApp: AppId;
   onSourceChange?: (source: SkillsPageSource) => void;
 }
 
@@ -91,7 +91,7 @@ const SKILLSSH_PAGE_SIZE = 20;
  * 用于浏览和安装来自仓库或 skills.sh 的 Skills
  */
 export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
-  ({ initialApp = "claude", onSourceChange }, ref) => {
+  ({ targetApp, onSourceChange }, ref) => {
     const { t } = useTranslation();
     const [repoManagerOpen, setRepoManagerOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
@@ -108,9 +108,6 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
     const [accumulatedResults, setAccumulatedResults] = useState<
       SkillsShDiscoverableSkill[]
     >([]);
-
-    // currentApp 用于安装时的默认应用
-    const currentApp = initialApp;
 
     // Queries
     const {
@@ -251,9 +248,10 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
       }
 
       try {
+        const installTarget = targetApp;
         await installMutation.mutateAsync({
           skill,
-          currentApp,
+          currentApp: installTarget,
         });
         toast.success(t("skills.installSuccess", { name: skill.name }), {
           closeButton: true,

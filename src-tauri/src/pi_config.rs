@@ -6,14 +6,22 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-const SUPPORTED_APIS: [&str; 4] = [
+const SUPPORTED_APIS: [&str; 11] = [
     "openai-completions",
     "openai-responses",
+    "openai-codex-responses",
+    "azure-openai-responses",
     "anthropic-messages",
     "google-generative-ai",
+    "google-vertex",
+    "bedrock-converse-stream",
+    "mistral-conversations",
+    "pi-messages",
+    "openrouter-images",
 ];
 const USER_AGENT_HEADER: &str = "User-Agent";
 const STACKFERRY_USER_AGENT: &str = "StackFerry";
+const TAKEOVER_SNAPSHOT_VERSION: u64 = 1;
 
 fn pi_write_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -58,10 +66,7 @@ pub fn get_pi_dir() -> PathBuf {
     if let Some(path) = std::env::var_os("PI_CODING_AGENT_DIR").filter(|value| !value.is_empty()) {
         return PathBuf::from(path);
     }
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".pi")
-        .join("agent")
+    crate::config::get_home_dir().join(".pi").join("agent")
 }
 
 pub fn get_models_path() -> PathBuf {
@@ -70,6 +75,12 @@ pub fn get_models_path() -> PathBuf {
 
 pub fn get_settings_path() -> PathBuf {
     get_pi_dir().join("settings.json")
+}
+
+pub(crate) fn get_proxy_credential(provider_id: &str) -> Result<Option<Value>, AppError> {
+    Ok(read_object(&get_pi_dir().join("auth.json"))?
+        .get(provider_id)
+        .cloned())
 }
 
 pub fn get_sessions_dir() -> PathBuf {
@@ -94,15 +105,13 @@ pub fn get_sessions_dir() -> PathBuf {
         return pi_dir.join("sessions");
     };
     if configured == "~" {
-        return dirs::home_dir().unwrap_or(pi_dir);
+        return crate::config::get_home_dir();
     }
     if let Some(relative) = configured
         .strip_prefix("~/")
         .or_else(|| configured.strip_prefix("~\\"))
     {
-        return dirs::home_dir()
-            .unwrap_or_else(|| pi_dir.clone())
-            .join(relative);
+        return crate::config::get_home_dir().join(relative);
     }
     let path = PathBuf::from(configured);
     if path.is_absolute() {
@@ -173,6 +182,11 @@ fn provider_fragment(settings: &Value) -> Result<Map<String, Value>, AppError> {
             "Pi provider baseUrl must use HTTP or HTTPS".to_string(),
         ));
     }
+    if parsed_url.host_str().is_none() || parsed_url.fragment().is_some() {
+        return Err(AppError::Config(
+            "Pi provider baseUrl must be an absolute URL without a fragment".to_string(),
+        ));
+    }
     fragment.insert("baseUrl".to_string(), Value::String(base_url.to_string()));
 
     let api = fragment
@@ -210,6 +224,42 @@ fn provider_fragment(settings: &Value) -> Result<Map<String, Value>, AppError> {
             return Err(AppError::Config(format!(
                 "Pi model '{id}' name must be a string"
             )));
+        }
+        if let Some(api) = model.get("api") {
+            let api = api
+                .as_str()
+                .map(str::trim)
+                .ok_or_else(|| AppError::Config(format!("Pi model '{id}' api must be a string")))?;
+            if !SUPPORTED_APIS.contains(&api) {
+                return Err(AppError::Config(format!(
+                    "Pi model '{id}' api '{api}' is not supported"
+                )));
+            }
+        }
+        if let Some(base_url) = model.get("baseUrl") {
+            let base_url = base_url.as_str().map(str::trim).ok_or_else(|| {
+                AppError::Config(format!("Pi model '{id}' baseUrl must be a string"))
+            })?;
+            let parsed = url::Url::parse(base_url)
+                .map_err(|_| AppError::Config(format!("Pi model '{id}' baseUrl is invalid")))?;
+            if !matches!(parsed.scheme(), "http" | "https")
+                || parsed.host_str().is_none()
+                || parsed.fragment().is_some()
+            {
+                return Err(AppError::Config(format!(
+                    "Pi model '{id}' baseUrl must be an absolute HTTP(S) URL without a fragment"
+                )));
+            }
+        }
+        if let Some(headers) = model.get("headers") {
+            let headers = headers.as_object().ok_or_else(|| {
+                AppError::Config(format!("Pi model '{id}' headers must be an object"))
+            })?;
+            if headers.values().any(|value| !value.is_string()) {
+                return Err(AppError::Config(format!(
+                    "Pi model '{id}' header values must be strings"
+                )));
+            }
         }
         if model
             .get("reasoning")
@@ -261,6 +311,15 @@ fn provider_fragment(settings: &Value) -> Result<Map<String, Value>, AppError> {
         ));
     }
     ensure_user_agent(&mut fragment)?;
+    if fragment
+        .get("headers")
+        .and_then(Value::as_object)
+        .is_some_and(|headers| headers.values().any(|value| !value.is_string()))
+    {
+        return Err(AppError::Config(
+            "Pi provider header values must be strings".to_string(),
+        ));
+    }
 
     fragment.remove("apiKey");
     fragment.remove("defaultModel");
@@ -335,6 +394,260 @@ fn providers_mut(root: &mut Map<String, Value>) -> Result<&mut Map<String, Value
     providers
         .as_object_mut()
         .ok_or_else(|| AppError::Config("Pi models.json providers must be an object".to_string()))
+}
+
+fn takeover_snapshot_in_dir(dir: &Path) -> Result<Value, AppError> {
+    Ok(json!({
+        "version": TAKEOVER_SNAPSHOT_VERSION,
+        "models": Value::Object(read_object(&dir.join("models.json"))?),
+    }))
+}
+
+fn models_from_takeover_snapshot(snapshot: &Value) -> Result<Map<String, Value>, AppError> {
+    if snapshot.get("version").and_then(Value::as_u64) != Some(TAKEOVER_SNAPSHOT_VERSION) {
+        return Err(AppError::Config(
+            "Unsupported Pi takeover snapshot version".to_string(),
+        ));
+    }
+    snapshot
+        .get("models")
+        .and_then(Value::as_object)
+        .cloned()
+        .ok_or_else(|| AppError::Config("Pi takeover snapshot is missing models".to_string()))
+}
+
+pub(crate) fn takeover_base_url(proxy_origin: &str, provider_id: &str) -> Result<String, AppError> {
+    let provider_id = provider_id.trim();
+    if provider_id.is_empty() {
+        return Err(AppError::Config("Pi provider key is required".to_string()));
+    }
+    let mut url = url::Url::parse(proxy_origin)
+        .map_err(|_| AppError::Config("Proxy origin is invalid".to_string()))?;
+    if !matches!(url.scheme(), "http" | "https") || url.cannot_be_a_base() {
+        return Err(AppError::Config(
+            "Proxy origin must be an HTTP or HTTPS base URL".to_string(),
+        ));
+    }
+    url.set_query(None);
+    url.set_fragment(None);
+    {
+        let mut segments = url.path_segments_mut().map_err(|_| {
+            AppError::Config("Proxy origin cannot contain path segments".to_string())
+        })?;
+        segments.clear().push("pi").push(provider_id);
+    }
+    Ok(url.to_string().trim_end_matches('/').to_string())
+}
+
+fn apply_takeover_to_models(
+    models_root: &mut Map<String, Value>,
+    provider_id: &str,
+    proxy_origin: &str,
+) -> Result<String, AppError> {
+    let base_url = takeover_base_url(proxy_origin, provider_id)?;
+    let provider = models_root
+        .get_mut("providers")
+        .and_then(Value::as_object_mut)
+        .and_then(|providers| providers.get_mut(provider_id))
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| {
+            AppError::Config(format!(
+                "Pi provider '{provider_id}' is not present in models.json"
+            ))
+        })?;
+    provider.insert("baseUrl".to_string(), Value::String(base_url.clone()));
+    if let Some(models) = provider.get_mut("models").and_then(Value::as_array_mut) {
+        for model in models {
+            let Some(model) = model.as_object_mut() else {
+                continue;
+            };
+            if model.contains_key("baseUrl") {
+                model.insert("baseUrl".to_string(), Value::String(base_url.clone()));
+            }
+        }
+    }
+    Ok(base_url)
+}
+
+fn apply_takeover_snapshot_in_dir(
+    dir: &Path,
+    snapshot: &Value,
+    provider_id: &str,
+    proxy_origin: &str,
+) -> Result<(), AppError> {
+    let mut models_root = models_from_takeover_snapshot(snapshot)?;
+    apply_takeover_to_models(&mut models_root, provider_id, proxy_origin)?;
+    write_json_file(&dir.join("models.json"), &Value::Object(models_root))
+}
+
+fn restore_takeover_snapshot_in_dir(dir: &Path, snapshot: &Value) -> Result<(), AppError> {
+    let models_root = models_from_takeover_snapshot(snapshot)?;
+    write_json_file(&dir.join("models.json"), &Value::Object(models_root))
+}
+
+fn update_takeover_snapshot_provider_inner(
+    snapshot: &mut Value,
+    provider_id: &str,
+    settings: &Value,
+) -> Result<(), AppError> {
+    let fragment = provider_fragment(settings)?;
+    if snapshot.get("version").and_then(Value::as_u64) != Some(TAKEOVER_SNAPSHOT_VERSION) {
+        return Err(AppError::Config(
+            "Unsupported Pi takeover snapshot version".to_string(),
+        ));
+    }
+    let models = snapshot
+        .get_mut("models")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| AppError::Config("Pi takeover snapshot is missing models".to_string()))?;
+    providers_mut(models)?.insert(provider_id.to_string(), Value::Object(fragment));
+    Ok(())
+}
+
+fn restore_provider_in_dir(
+    dir: &Path,
+    provider_id: &str,
+    settings: &Value,
+) -> Result<(), AppError> {
+    let mut models_root = read_object(&dir.join("models.json"))?;
+    providers_mut(&mut models_root)?.insert(
+        provider_id.to_string(),
+        Value::Object(provider_fragment(settings)?),
+    );
+    write_json_file(&dir.join("models.json"), &Value::Object(models_root))
+}
+
+fn takeover_matches_in_dir(
+    dir: &Path,
+    provider_id: &str,
+    proxy_origin: &str,
+) -> Result<bool, AppError> {
+    let expected = takeover_base_url(proxy_origin, provider_id)?;
+    Ok(read_object(&dir.join("models.json"))?
+        .get("providers")
+        .and_then(Value::as_object)
+        .and_then(|providers| providers.get(provider_id))
+        .is_some_and(|provider| {
+            let provider_matches = provider
+                .get("baseUrl")
+                .and_then(Value::as_str)
+                .is_some_and(|base_url| base_url.trim_end_matches('/') == expected);
+            let models_match =
+                provider
+                    .get("models")
+                    .and_then(Value::as_array)
+                    .is_none_or(|models| {
+                        models.iter().all(|model| {
+                            model
+                                .get("baseUrl")
+                                .and_then(Value::as_str)
+                                .is_none_or(|base_url| base_url.trim_end_matches('/') == expected)
+                        })
+                    });
+            provider_matches && models_match
+        }))
+}
+
+fn models_have_takeover(models_root: &Map<String, Value>) -> bool {
+    let Some(providers) = models_root.get("providers").and_then(Value::as_object) else {
+        return false;
+    };
+    providers.iter().any(|(provider_id, provider)| {
+        let Some(base_url) = provider.get("baseUrl").and_then(Value::as_str) else {
+            return false;
+        };
+        let Ok(url) = url::Url::parse(base_url) else {
+            return false;
+        };
+        let Ok(expected) = takeover_base_url("http://127.0.0.1", provider_id) else {
+            return false;
+        };
+        let Ok(expected) = url::Url::parse(&expected) else {
+            return false;
+        };
+        url.path().trim_end_matches('/') == expected.path().trim_end_matches('/')
+    })
+}
+
+fn has_takeover_in_dir(dir: &Path) -> Result<bool, AppError> {
+    let models_root = read_object(&dir.join("models.json"))?;
+    if models_root.is_empty() {
+        return Ok(false);
+    }
+    Ok(models_have_takeover(&models_root))
+}
+
+pub(crate) fn snapshot_takeover_models() -> Result<Value, AppError> {
+    let _guard = pi_write_lock()
+        .lock()
+        .map_err(|_| AppError::Message("Pi configuration lock is poisoned".to_string()))?;
+    takeover_snapshot_in_dir(&get_pi_dir())
+}
+
+pub(crate) fn apply_takeover_snapshot(
+    snapshot: &Value,
+    provider_id: &str,
+    proxy_origin: &str,
+) -> Result<(), AppError> {
+    let _guard = pi_write_lock()
+        .lock()
+        .map_err(|_| AppError::Message("Pi configuration lock is poisoned".to_string()))?;
+    apply_takeover_snapshot_in_dir(&get_pi_dir(), snapshot, provider_id, proxy_origin)
+}
+
+pub(crate) fn restore_takeover_snapshot(snapshot: &Value) -> Result<(), AppError> {
+    let _guard = pi_write_lock()
+        .lock()
+        .map_err(|_| AppError::Message("Pi configuration lock is poisoned".to_string()))?;
+    restore_takeover_snapshot_in_dir(&get_pi_dir(), snapshot)
+}
+
+pub(crate) fn update_takeover_snapshot_provider(
+    snapshot: &mut Value,
+    provider_id: &str,
+    settings: &Value,
+) -> Result<(), AppError> {
+    update_takeover_snapshot_provider_inner(snapshot, provider_id, settings)
+}
+
+pub(crate) fn restore_provider_from_settings(
+    provider_id: &str,
+    settings: &Value,
+) -> Result<(), AppError> {
+    let _guard = pi_write_lock()
+        .lock()
+        .map_err(|_| AppError::Message("Pi configuration lock is poisoned".to_string()))?;
+    restore_provider_in_dir(&get_pi_dir(), provider_id, settings)
+}
+
+pub(crate) fn takeover_matches(provider_id: &str, proxy_origin: &str) -> Result<bool, AppError> {
+    takeover_matches_in_dir(&get_pi_dir(), provider_id, proxy_origin)
+}
+
+pub(crate) fn has_takeover() -> Result<bool, AppError> {
+    has_takeover_in_dir(&get_pi_dir())
+}
+
+pub(crate) fn takeover_snapshot_has_takeover(snapshot: &Value) -> bool {
+    models_from_takeover_snapshot(snapshot)
+        .map(|models| models_have_takeover(&models))
+        .unwrap_or(false)
+}
+
+fn restore_settings_in_dir(dir: &Path, settings: &Value) -> Result<(), AppError> {
+    if !settings.is_object() {
+        return Err(AppError::Config(
+            "Pi settings snapshot must be an object".to_string(),
+        ));
+    }
+    write_json_file(&dir.join("settings.json"), settings)
+}
+
+pub(crate) fn restore_settings(settings: &Value) -> Result<(), AppError> {
+    let _guard = pi_write_lock()
+        .lock()
+        .map_err(|_| AppError::Message("Pi configuration lock is poisoned".to_string()))?;
+    restore_settings_in_dir(&get_pi_dir(), settings)
 }
 
 fn apply_provider_in_dir(dir: &Path, id: &str, settings: &Value) -> Result<(), AppError> {
@@ -716,5 +1029,150 @@ mod tests {
         let mut invalid = provider();
         invalid["models"][0]["contextWindow"] = json!(0);
         assert!(validate_provider(&invalid).is_err());
+    }
+
+    #[test]
+    fn takeover_round_trip_only_changes_target_base_urls() {
+        let temp = tempdir().expect("tempdir");
+        let models = json!({
+            "providers": {
+                "custom/provider ?": {
+                    "baseUrl": "https://target.example/v1",
+                    "api": "anthropic-messages",
+                    "models": [{
+                        "id": "claude-test",
+                        "baseUrl": "https://model.example/v1"
+                    }],
+                    "headers": { "X-Target": "one" },
+                    "unknownProviderField": [1, 2, 3]
+                },
+                "other": {
+                    "baseUrl": "https://other.example/v1",
+                    "api": "google-generative-ai",
+                    "models": [{ "id": "gemini-test" }]
+                }
+            },
+            "unknownRootField": { "nested": true }
+        });
+        let auth = json!({
+            "custom/provider ?": { "type": "oauth", "access": "secret" },
+            "other": { "type": "api_key", "key": "$OTHER_KEY" }
+        });
+        let settings = json!({
+            "defaultProvider": "custom/provider ?",
+            "defaultModel": "claude-test",
+            "theme": "dark"
+        });
+        write_json_file(&temp.path().join("models.json"), &models).expect("models");
+        write_json_file(&temp.path().join("auth.json"), &auth).expect("auth");
+        write_json_file(&temp.path().join("settings.json"), &settings).expect("settings");
+        let auth_before = fs::read(temp.path().join("auth.json")).expect("auth bytes");
+        let settings_before = fs::read(temp.path().join("settings.json")).expect("settings bytes");
+
+        let snapshot = takeover_snapshot_in_dir(temp.path()).expect("snapshot");
+        apply_takeover_snapshot_in_dir(
+            temp.path(),
+            &snapshot,
+            "custom/provider ?",
+            "http://127.0.0.1:15721",
+        )
+        .expect("takeover");
+
+        let live = Value::Object(read_object(&temp.path().join("models.json")).expect("live"));
+        assert_eq!(
+            live["providers"]["custom/provider ?"]["baseUrl"],
+            json!("http://127.0.0.1:15721/pi/custom%2Fprovider%20%3F")
+        );
+        assert_eq!(
+            live["providers"]["custom/provider ?"]["models"][0]["baseUrl"],
+            json!("http://127.0.0.1:15721/pi/custom%2Fprovider%20%3F")
+        );
+        assert_eq!(
+            live["providers"]["custom/provider ?"]["api"],
+            models["providers"]["custom/provider ?"]["api"]
+        );
+        assert_eq!(live["providers"]["other"], models["providers"]["other"]);
+        assert_eq!(live["unknownRootField"], models["unknownRootField"]);
+        assert_eq!(
+            fs::read(temp.path().join("auth.json")).expect("auth"),
+            auth_before
+        );
+        assert_eq!(
+            fs::read(temp.path().join("settings.json")).expect("settings"),
+            settings_before
+        );
+        assert!(takeover_matches_in_dir(
+            temp.path(),
+            "custom/provider ?",
+            "http://127.0.0.1:15721"
+        )
+        .expect("matches"));
+        assert!(has_takeover_in_dir(temp.path()).expect("has takeover"));
+
+        restore_takeover_snapshot_in_dir(temp.path(), &snapshot).expect("restore");
+        let restored =
+            Value::Object(read_object(&temp.path().join("models.json")).expect("restored"));
+        assert_eq!(restored, models);
+        assert!(!has_takeover_in_dir(temp.path()).expect("clean"));
+    }
+
+    #[test]
+    fn invalid_takeover_snapshot_does_not_write_live_models() {
+        let temp = tempdir().expect("tempdir");
+        write_json_file(
+            &temp.path().join("models.json"),
+            &json!({ "providers": { "target": { "baseUrl": "https://target.example" } } }),
+        )
+        .expect("models");
+        let before = fs::read(temp.path().join("models.json")).expect("before");
+
+        let invalid = json!({ "version": 999, "models": {} });
+        assert!(apply_takeover_snapshot_in_dir(
+            temp.path(),
+            &invalid,
+            "target",
+            "http://127.0.0.1:15721"
+        )
+        .is_err());
+        assert_eq!(
+            fs::read(temp.path().join("models.json")).expect("after"),
+            before
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn takeover_preserves_models_file_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("models.json");
+        write_json_file(
+            &path,
+            &json!({
+                "providers": {
+                    "target": {
+                        "baseUrl": "https://target.example",
+                        "api": "openai-responses",
+                        "models": [{ "id": "test" }]
+                    }
+                }
+            }),
+        )
+        .expect("models");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).expect("permissions");
+        let snapshot = takeover_snapshot_in_dir(temp.path()).expect("snapshot");
+
+        apply_takeover_snapshot_in_dir(temp.path(), &snapshot, "target", "http://127.0.0.1:15721")
+            .expect("takeover");
+        assert_eq!(
+            fs::metadata(&path).expect("metadata").permissions().mode() & 0o777,
+            0o640
+        );
+        restore_takeover_snapshot_in_dir(temp.path(), &snapshot).expect("restore");
+        assert_eq!(
+            fs::metadata(&path).expect("metadata").permissions().mode() & 0o777,
+            0o640
+        );
     }
 }

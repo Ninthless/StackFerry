@@ -391,6 +391,7 @@ type = "stdio"
       codex: false,
       gemini: false,
       grokbuild: false,
+      pi: false,
     });
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave).toHaveBeenCalledWith();
@@ -443,9 +444,27 @@ type = "stdio"
       opencode: false,
       openclaw: false,
       hermes: false,
+      pi: false,
     });
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("允许选择 Pi 作为 MCP 目标", async () => {
+    renderForm({ defaultEnabledApps: [] });
+
+    fireEvent.change(screen.getByPlaceholderText("mcp.form.titlePlaceholder"), {
+      target: { value: "pi-server" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("mcp.form.jsonPlaceholder"), {
+      target: { value: '{"command":"run"}' },
+    });
+    fireEvent.click(screen.getByLabelText("mcp.unifiedPanel.apps.pi"));
+    fireEvent.click(screen.getByText("common.add"));
+
+    await waitFor(() => expect(upsertMock).toHaveBeenCalledTimes(1));
+    const [entry] = upsertMock.mock.calls.at(-1) ?? [];
+    expect(entry.apps.pi).toBe(true);
   });
 
   it("保存失败时展示翻译后的错误并恢复按钮", async () => {

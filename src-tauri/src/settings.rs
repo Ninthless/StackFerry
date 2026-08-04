@@ -719,18 +719,13 @@ fn settings_store() -> &'static RwLock<AppSettings> {
 }
 
 fn resolve_override_path(raw: &str) -> PathBuf {
+    let home = crate::config::get_home_dir();
     if raw == "~" {
-        if let Some(home) = dirs::home_dir() {
-            return home;
-        }
+        return home;
     } else if let Some(stripped) = raw.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
+        return home.join(stripped);
     } else if let Some(stripped) = raw.strip_prefix("~\\") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
+        return home.join(stripped);
     }
 
     PathBuf::from(raw)
@@ -1027,6 +1022,18 @@ pub fn get_effective_current_provider(
     db: &crate::database::Database,
     app_type: &AppType,
 ) -> Result<Option<String>, AppError> {
+    if matches!(app_type, AppType::Pi) {
+        if let Some(pi_default) = crate::pi_config::get_default_provider()? {
+            let providers = db.get_all_providers(app_type.as_str())?;
+            if providers.contains_key(&pi_default) {
+                return Ok(Some(pi_default));
+            }
+            log::warn!(
+                "Pi settings.json 中的默认供应商 {pi_default} 在数据库中不存在，将 fallback 到 StackFerry 当前供应商"
+            );
+        }
+    }
+
     // 1. 从本地 settings 读取
     if let Some(local_id) = get_current_provider(app_type) {
         // 2. 验证该 ID 在数据库中存在

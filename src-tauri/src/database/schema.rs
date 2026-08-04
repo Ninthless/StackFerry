@@ -68,7 +68,8 @@ impl Database {
             enabled_claude BOOLEAN NOT NULL DEFAULT 0, enabled_codex BOOLEAN NOT NULL DEFAULT 0,
             enabled_gemini BOOLEAN NOT NULL DEFAULT 0, enabled_grokbuild BOOLEAN NOT NULL DEFAULT 0,
             enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
-            enabled_hermes BOOLEAN NOT NULL DEFAULT 0
+            enabled_hermes BOOLEAN NOT NULL DEFAULT 0,
+            enabled_pi BOOLEAN NOT NULL DEFAULT 0
         )",
             [],
         )
@@ -126,7 +127,7 @@ impl Database {
 
         // 8. Proxy Config 表（三行结构，app_type 主键）
         conn.execute("CREATE TABLE IF NOT EXISTS proxy_config (
-            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild')),
+            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild','pi')),
             proxy_enabled INTEGER NOT NULL DEFAULT 0, listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
             listen_port INTEGER NOT NULL DEFAULT 15721, enable_logging INTEGER NOT NULL DEFAULT 1,
             enabled INTEGER NOT NULL DEFAULT 0, auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
@@ -137,10 +138,11 @@ impl Database {
             circuit_min_requests INTEGER NOT NULL DEFAULT 10,
             default_cost_multiplier TEXT NOT NULL DEFAULT '1',
             pricing_model_source TEXT NOT NULL DEFAULT 'response',
+            live_takeover_active INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         )", []).map_err(|e| AppError::Database(e.to_string()))?;
 
-        // 初始化三行数据（每应用不同默认值）
+        // 初始化各应用数据（每应用不同默认值）
         //
         // 兼容旧数据库：
         // - 老版本 proxy_config 是单例表（没有 app_type 列），此时不能执行三行 seed insert；
@@ -182,6 +184,27 @@ impl Database {
                 [],
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
+
+            // create_tables_on_conn runs before migrations, so an older table may
+            // still reject Pi until v19 rebuilds its CHECK constraint.
+            let proxy_config_sql: String = conn
+                .query_row(
+                    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'proxy_config'",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            if proxy_config_sql.to_ascii_lowercase().contains("'pi'") {
+                conn.execute(
+                    "INSERT OR IGNORE INTO proxy_config (app_type, max_retries,
+                    streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                    circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                    circuit_error_rate_threshold, circuit_min_requests)
+                    VALUES ('pi', 3, 60, 120, 600, 4, 2, 60, 0.6, 10)",
+                    [],
+                )
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            }
         }
 
         // 9. Provider Health 表
@@ -200,8 +223,13 @@ impl Database {
             request_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL, app_type TEXT NOT NULL, model TEXT NOT NULL,
             request_model TEXT,
             pricing_model TEXT,
+            api_type TEXT NOT NULL DEFAULT '',
+            upstream_response_id TEXT,
+            stop_reason TEXT,
             input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
             cache_read_tokens INTEGER NOT NULL DEFAULT 0, cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+            reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+            cache_creation_1h_tokens INTEGER NOT NULL DEFAULT 0,
             input_token_semantics INTEGER NOT NULL DEFAULT 0,
             input_cost_usd TEXT NOT NULL DEFAULT '0', output_cost_usd TEXT NOT NULL DEFAULT '0',
             cache_read_cost_usd TEXT NOT NULL DEFAULT '0', cache_creation_cost_usd TEXT NOT NULL DEFAULT '0',
@@ -231,6 +259,14 @@ impl Database {
             [],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
+        if Self::has_column(conn, "proxy_request_logs", "upstream_response_id")? {
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_request_logs_upstream_response
+                 ON proxy_request_logs(app_type, provider_id, upstream_response_id)",
+                [],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        }
         Self::create_request_logs_usage_indexes_if_supported(conn)?;
 
         // 11. Model Pricing 表
@@ -283,16 +319,19 @@ impl Database {
                 model TEXT NOT NULL,
                 request_model TEXT NOT NULL DEFAULT '',
                 pricing_model TEXT NOT NULL DEFAULT '',
+                api_type TEXT NOT NULL DEFAULT '',
                 request_count INTEGER NOT NULL DEFAULT 0,
                 success_count INTEGER NOT NULL DEFAULT 0,
                 input_tokens INTEGER NOT NULL DEFAULT 0,
                 output_tokens INTEGER NOT NULL DEFAULT 0,
                 cache_read_tokens INTEGER NOT NULL DEFAULT 0,
                 cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_creation_1h_tokens INTEGER NOT NULL DEFAULT 0,
                 input_token_semantics INTEGER NOT NULL DEFAULT 0,
                 total_cost_usd TEXT NOT NULL DEFAULT '0',
                 avg_latency_ms INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (date, app_type, provider_id, model, request_model, pricing_model)
+                PRIMARY KEY (date, app_type, provider_id, model, request_model, pricing_model, api_type)
             )",
             [],
         )
@@ -522,6 +561,26 @@ impl Database {
                         log::info!("迁移数据库从 v17 到 v18（故障转移队列使用独立加入顺序）");
                         Self::migrate_v17_to_v18(conn)?;
                         Self::set_user_version(conn, 18)?;
+                    }
+                    18 => {
+                        log::info!("迁移数据库从 v18 到 v19（添加 Pi 代理配置）");
+                        Self::migrate_v18_to_v19(conn)?;
+                        Self::set_user_version(conn, 19)?;
+                    }
+                    19 => {
+                        log::info!("迁移数据库从 v19 到 v20（保留 Pi 协议与细分 token 统计）");
+                        Self::migrate_v19_to_v20(conn)?;
+                        Self::set_user_version(conn, 20)?;
+                    }
+                    20 => {
+                        log::info!("迁移数据库从 v20 到 v21（关联 Pi 会话与代理用量）");
+                        Self::migrate_v20_to_v21(conn)?;
+                        Self::set_user_version(conn, 21)?;
+                    }
+                    21 => {
+                        log::info!("迁移数据库从 v21 到 v22（MCP 添加 Pi 支持）");
+                        Self::migrate_v21_to_v22(conn)?;
+                        Self::set_user_version(conn, 22)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1416,7 +1475,7 @@ impl Database {
             .map_err(|e| AppError::Database(e.to_string()))?;
         conn.execute(
             "CREATE TABLE proxy_config_v14 (
-                app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild')),
+                app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild','pi')),
                 proxy_enabled INTEGER NOT NULL DEFAULT 0,
                 listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
                 listen_port INTEGER NOT NULL DEFAULT 15721,
@@ -1592,6 +1651,176 @@ impl Database {
         )
         .map_err(|e| AppError::Database(format!("创建故障转移索引失败: {e}")))?;
 
+        Ok(())
+    }
+
+    fn migrate_v18_to_v19(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "proxy_config")? {
+            return Ok(());
+        }
+
+        conn.execute("ALTER TABLE proxy_config RENAME TO proxy_config_v18", [])
+            .map_err(|e| AppError::Database(format!("重命名旧代理配置表失败: {e}")))?;
+        conn.execute(
+            "CREATE TABLE proxy_config (
+                app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild','pi')),
+                proxy_enabled INTEGER NOT NULL DEFAULT 0,
+                listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
+                listen_port INTEGER NOT NULL DEFAULT 15721,
+                enable_logging INTEGER NOT NULL DEFAULT 1,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
+                max_retries INTEGER NOT NULL DEFAULT 3,
+                streaming_first_byte_timeout INTEGER NOT NULL DEFAULT 60,
+                streaming_idle_timeout INTEGER NOT NULL DEFAULT 120,
+                non_streaming_timeout INTEGER NOT NULL DEFAULT 600,
+                circuit_failure_threshold INTEGER NOT NULL DEFAULT 4,
+                circuit_success_threshold INTEGER NOT NULL DEFAULT 2,
+                circuit_timeout_seconds INTEGER NOT NULL DEFAULT 60,
+                circuit_error_rate_threshold REAL NOT NULL DEFAULT 0.6,
+                circuit_min_requests INTEGER NOT NULL DEFAULT 10,
+                default_cost_multiplier TEXT NOT NULL DEFAULT '1',
+                pricing_model_source TEXT NOT NULL DEFAULT 'response',
+                live_takeover_active INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 Pi 代理配置表失败: {e}")))?;
+        conn.execute(
+            "INSERT INTO proxy_config (
+                app_type, proxy_enabled, listen_address, listen_port, enable_logging,
+                enabled, auto_failover_enabled, max_retries, streaming_first_byte_timeout,
+                streaming_idle_timeout, non_streaming_timeout, circuit_failure_threshold,
+                circuit_success_threshold, circuit_timeout_seconds, circuit_error_rate_threshold,
+                circuit_min_requests, default_cost_multiplier, pricing_model_source,
+                live_takeover_active, created_at, updated_at
+            )
+            SELECT
+                app_type, proxy_enabled, listen_address, listen_port, enable_logging,
+                enabled, auto_failover_enabled, max_retries, streaming_first_byte_timeout,
+                streaming_idle_timeout, non_streaming_timeout, circuit_failure_threshold,
+                circuit_success_threshold, circuit_timeout_seconds, circuit_error_rate_threshold,
+                circuit_min_requests, default_cost_multiplier, pricing_model_source,
+                live_takeover_active, created_at, updated_at
+            FROM proxy_config_v18",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("迁移现有代理配置失败: {e}")))?;
+        conn.execute("DROP TABLE proxy_config_v18", [])
+            .map_err(|e| AppError::Database(format!("删除旧代理配置表失败: {e}")))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO proxy_config (app_type, max_retries,
+                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                circuit_error_rate_threshold, circuit_min_requests)
+             VALUES ('pi', 3, 60, 120, 600, 4, 2, 60, 0.6, 10)",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建 Pi 代理配置失败: {e}")))?;
+        Ok(())
+    }
+
+    fn migrate_v19_to_v20(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "proxy_request_logs")? {
+            Self::add_column_if_missing(
+                conn,
+                "proxy_request_logs",
+                "api_type",
+                "TEXT NOT NULL DEFAULT ''",
+            )?;
+            Self::add_column_if_missing(
+                conn,
+                "proxy_request_logs",
+                "reasoning_tokens",
+                "INTEGER NOT NULL DEFAULT 0",
+            )?;
+            Self::add_column_if_missing(
+                conn,
+                "proxy_request_logs",
+                "cache_creation_1h_tokens",
+                "INTEGER NOT NULL DEFAULT 0",
+            )?;
+        }
+
+        if !Self::table_exists(conn, "usage_daily_rollups")? {
+            return Ok(());
+        }
+
+        conn.execute_batch(
+            "ALTER TABLE usage_daily_rollups RENAME TO usage_daily_rollups_v19;
+             CREATE TABLE usage_daily_rollups (
+                 date TEXT NOT NULL,
+                 app_type TEXT NOT NULL,
+                 provider_id TEXT NOT NULL,
+                 model TEXT NOT NULL,
+                 request_model TEXT NOT NULL DEFAULT '',
+                 pricing_model TEXT NOT NULL DEFAULT '',
+                 api_type TEXT NOT NULL DEFAULT '',
+                 request_count INTEGER NOT NULL DEFAULT 0,
+                 success_count INTEGER NOT NULL DEFAULT 0,
+                 input_tokens INTEGER NOT NULL DEFAULT 0,
+                 output_tokens INTEGER NOT NULL DEFAULT 0,
+                 cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+                 cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                 reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+                 cache_creation_1h_tokens INTEGER NOT NULL DEFAULT 0,
+                 input_token_semantics INTEGER NOT NULL DEFAULT 0,
+                 total_cost_usd TEXT NOT NULL DEFAULT '0',
+                 avg_latency_ms INTEGER NOT NULL DEFAULT 0,
+                 PRIMARY KEY (date, app_type, provider_id, model, request_model, pricing_model, api_type)
+             );
+             INSERT INTO usage_daily_rollups
+                 (date, app_type, provider_id, model, request_model, pricing_model, api_type,
+                  request_count, success_count, input_tokens, output_tokens,
+                  cache_read_tokens, cache_creation_tokens, reasoning_tokens,
+                  cache_creation_1h_tokens, input_token_semantics,
+                  total_cost_usd, avg_latency_ms)
+             SELECT date, app_type, provider_id, model, request_model, pricing_model, '',
+                    request_count, success_count, input_tokens, output_tokens,
+                    cache_read_tokens, cache_creation_tokens, 0, 0,
+                    input_token_semantics, total_cost_usd, avg_latency_ms
+             FROM usage_daily_rollups_v19;
+             DROP TABLE usage_daily_rollups_v19;",
+        )
+        .map_err(|error| {
+            AppError::Database(format!(
+                "v19 -> v20 重建 usage_daily_rollups 失败: {error}"
+            ))
+        })?;
+
+        Ok(())
+    }
+
+    fn migrate_v20_to_v21(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "proxy_request_logs")? {
+            return Ok(());
+        }
+        Self::add_column_if_missing(conn, "proxy_request_logs", "upstream_response_id", "TEXT")?;
+        Self::add_column_if_missing(conn, "proxy_request_logs", "stop_reason", "TEXT")?;
+        if Self::has_column(conn, "proxy_request_logs", "app_type")?
+            && Self::has_column(conn, "proxy_request_logs", "provider_id")?
+        {
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_request_logs_upstream_response
+                 ON proxy_request_logs(app_type, provider_id, upstream_response_id)",
+                [],
+            )
+            .map_err(|error| AppError::Database(format!("创建上游响应 ID 索引失败: {error}")))?;
+        }
+        Ok(())
+    }
+
+    fn migrate_v21_to_v22(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "mcp_servers")? {
+            Self::add_column_if_missing(
+                conn,
+                "mcp_servers",
+                "enabled_pi",
+                "BOOLEAN NOT NULL DEFAULT 0",
+            )?;
+        }
         Ok(())
     }
 
@@ -3018,9 +3247,24 @@ mod tests {
             "CREATE TABLE proxy_request_logs (request_id TEXT PRIMARY KEY)",
             [],
         )?;
-        conn.execute(
-            "CREATE TABLE usage_daily_rollups (date TEXT PRIMARY KEY)",
-            [],
+        conn.execute_batch(
+            "CREATE TABLE usage_daily_rollups (
+                date TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                model TEXT NOT NULL,
+                request_model TEXT NOT NULL DEFAULT '',
+                pricing_model TEXT NOT NULL DEFAULT '',
+                request_count INTEGER NOT NULL DEFAULT 0,
+                success_count INTEGER NOT NULL DEFAULT 0,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                total_cost_usd TEXT NOT NULL DEFAULT '0',
+                avg_latency_ms INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (date, app_type, provider_id, model, request_model, pricing_model)
+             );",
         )?;
         Database::set_user_version(&conn, 12)?;
 
@@ -3249,6 +3493,194 @@ mod tests {
         )?;
         assert_eq!(other_app_order, 1);
 
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v18_to_v19_adds_pi_proxy_row_and_preserves_values() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE proxy_config (
+                app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild')),
+                proxy_enabled INTEGER NOT NULL DEFAULT 0,
+                listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
+                listen_port INTEGER NOT NULL DEFAULT 15721,
+                enable_logging INTEGER NOT NULL DEFAULT 1,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
+                max_retries INTEGER NOT NULL DEFAULT 3,
+                streaming_first_byte_timeout INTEGER NOT NULL DEFAULT 60,
+                streaming_idle_timeout INTEGER NOT NULL DEFAULT 120,
+                non_streaming_timeout INTEGER NOT NULL DEFAULT 600,
+                circuit_failure_threshold INTEGER NOT NULL DEFAULT 4,
+                circuit_success_threshold INTEGER NOT NULL DEFAULT 2,
+                circuit_timeout_seconds INTEGER NOT NULL DEFAULT 60,
+                circuit_error_rate_threshold REAL NOT NULL DEFAULT 0.6,
+                circuit_min_requests INTEGER NOT NULL DEFAULT 10,
+                default_cost_multiplier TEXT NOT NULL DEFAULT '1',
+                pricing_model_source TEXT NOT NULL DEFAULT 'response',
+                live_takeover_active INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO proxy_config (app_type, enabled, auto_failover_enabled, max_retries) VALUES
+                ('claude', 0, 0, 6),
+                ('codex', 1, 1, 9),
+                ('gemini', 0, 1, 5),
+                ('grokbuild', 1, 0, 3);",
+        )?;
+        Database::set_user_version(&conn, 18)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        let app_count: i64 =
+            conn.query_row("SELECT COUNT(*) FROM proxy_config", [], |row| row.get(0))?;
+        assert_eq!(app_count, 5);
+        let codex_values: (i64, i64, i64) = conn.query_row(
+            "SELECT enabled, auto_failover_enabled, max_retries
+             FROM proxy_config WHERE app_type = 'codex'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(codex_values, (1, 1, 9));
+        conn.execute(
+            "UPDATE proxy_config SET enabled = 1, auto_failover_enabled = 1
+             WHERE app_type = 'pi'",
+            [],
+        )?;
+        let pi_values: (i64, i64) = conn.query_row(
+            "SELECT enabled, auto_failover_enabled FROM proxy_config WHERE app_type = 'pi'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(pi_values, (1, 1));
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v19_to_v20_preserves_rollups_and_adds_protocol_usage_fields() -> Result<(), AppError>
+    {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE proxy_request_logs (
+                request_id TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                model TEXT NOT NULL
+             );
+             CREATE TABLE usage_daily_rollups (
+                date TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                model TEXT NOT NULL,
+                request_model TEXT NOT NULL DEFAULT '',
+                pricing_model TEXT NOT NULL DEFAULT '',
+                request_count INTEGER NOT NULL DEFAULT 0,
+                success_count INTEGER NOT NULL DEFAULT 0,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                input_token_semantics INTEGER NOT NULL DEFAULT 0,
+                total_cost_usd TEXT NOT NULL DEFAULT '0',
+                avg_latency_ms INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (date, app_type, provider_id, model, request_model, pricing_model)
+             );
+             INSERT INTO usage_daily_rollups (
+                date, app_type, provider_id, model, request_count,
+                success_count, input_tokens, output_tokens, total_cost_usd
+             ) VALUES ('2026-08-01', 'pi', 'p1', 'model-a', 3, 2, 100, 50, '0.25');",
+        )?;
+        Database::set_user_version(&conn, 19)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        for column in ["api_type", "reasoning_tokens", "cache_creation_1h_tokens"] {
+            assert!(Database::has_column(&conn, "proxy_request_logs", column)?);
+            assert!(Database::has_column(&conn, "usage_daily_rollups", column)?);
+        }
+        let preserved: (i64, i64, String, String) = conn.query_row(
+            "SELECT request_count, input_tokens, total_cost_usd, api_type
+             FROM usage_daily_rollups WHERE provider_id = 'p1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        assert_eq!(preserved, (3, 100, "0.25".to_string(), String::new()));
+
+        conn.execute(
+            "INSERT INTO usage_daily_rollups (
+                date, app_type, provider_id, model, api_type
+             ) VALUES ('2026-08-01', 'pi', 'p1', 'model-a', 'anthropic-messages')",
+            [],
+        )?;
+        let protocol_rows: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM usage_daily_rollups WHERE provider_id = 'p1'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(protocol_rows, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v20_to_v21_adds_pi_session_link_fields() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE proxy_request_logs (
+                request_id TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                model TEXT NOT NULL
+             );",
+        )?;
+        Database::set_user_version(&conn, 20)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        assert!(Database::has_column(
+            &conn,
+            "proxy_request_logs",
+            "upstream_response_id"
+        )?);
+        assert!(Database::has_column(
+            &conn,
+            "proxy_request_logs",
+            "stop_reason"
+        )?);
+        let index_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type = 'index' AND name = 'idx_request_logs_upstream_response'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(index_count, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v21_to_v22_adds_pi_mcp_disabled_by_default() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE mcp_servers (
+                id TEXT PRIMARY KEY,
+                enabled_codex BOOLEAN NOT NULL DEFAULT 0
+             );
+             INSERT INTO mcp_servers (id, enabled_codex) VALUES ('mcp-1', 1);",
+        )?;
+        Database::set_user_version(&conn, 21)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        assert!(Database::has_column(&conn, "mcp_servers", "enabled_pi")?);
+        let enabled: (bool, bool) = conn.query_row(
+            "SELECT enabled_codex, enabled_pi FROM mcp_servers WHERE id = 'mcp-1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(enabled, (true, false));
         Ok(())
     }
 }

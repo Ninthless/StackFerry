@@ -55,6 +55,10 @@ fn gemini_stream_usage_event_filter(data: &str) -> bool {
     data.contains("\"usageMetadata\"")
 }
 
+fn pi_messages_stream_usage_event_filter(data: &str) -> bool {
+    data.contains("\"usage\"") && (data.contains("\"done\"") || data.contains("\"error\""))
+}
+
 // ============================================================================
 // 模型提取器实现
 // ============================================================================
@@ -169,6 +173,70 @@ pub const GEMINI_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
     model_extractor: gemini_model_extractor,
     stream_event_filter: Some(gemini_stream_usage_event_filter),
     app_type_str: "gemini",
+};
+
+pub const PI_ANTHROPIC_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
+    stream_parser: TokenUsage::from_claude_stream_events,
+    response_parser: TokenUsage::from_claude_response,
+    model_extractor: claude_model_extractor,
+    stream_event_filter: Some(claude_stream_usage_event_filter),
+    app_type_str: "pi",
+};
+
+pub const PI_OPENAI_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
+    stream_parser: TokenUsage::from_openai_stream_events,
+    response_parser: TokenUsage::from_openai_response,
+    model_extractor: openai_model_extractor,
+    stream_event_filter: Some(openai_stream_usage_event_filter),
+    app_type_str: "pi",
+};
+
+pub const PI_RESPONSES_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
+    stream_parser: TokenUsage::from_codex_stream_events_auto,
+    response_parser: TokenUsage::from_codex_response_auto,
+    model_extractor: codex_auto_model_extractor,
+    stream_event_filter: Some(codex_stream_usage_event_filter),
+    app_type_str: "pi",
+};
+
+pub const PI_GEMINI_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
+    stream_parser: TokenUsage::from_gemini_stream_chunks,
+    response_parser: TokenUsage::from_gemini_response,
+    model_extractor: gemini_model_extractor,
+    stream_event_filter: Some(gemini_stream_usage_event_filter),
+    app_type_str: "pi",
+};
+
+pub const PI_MISTRAL_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
+    stream_parser: TokenUsage::from_mistral_stream_events,
+    response_parser: TokenUsage::from_mistral_response,
+    model_extractor: openai_model_extractor,
+    stream_event_filter: Some(openai_stream_usage_event_filter),
+    app_type_str: "pi",
+};
+
+pub const PI_MESSAGES_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
+    stream_parser: TokenUsage::from_pi_messages_stream_events,
+    response_parser: TokenUsage::from_pi_messages_event,
+    model_extractor: openai_model_extractor,
+    stream_event_filter: Some(pi_messages_stream_usage_event_filter),
+    app_type_str: "pi",
+};
+
+pub const PI_BEDROCK_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
+    stream_parser: TokenUsage::from_bedrock_stream_events,
+    response_parser: TokenUsage::from_bedrock_event,
+    model_extractor: openai_model_extractor,
+    stream_event_filter: None,
+    app_type_str: "pi",
+};
+
+pub const PI_OPENROUTER_IMAGES_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
+    stream_parser: TokenUsage::from_openrouter_images_stream_events,
+    response_parser: TokenUsage::from_openrouter_images_response,
+    model_extractor: openai_model_extractor,
+    stream_event_filter: Some(openai_stream_usage_event_filter),
+    app_type_str: "pi",
 };
 
 // ============================================================================

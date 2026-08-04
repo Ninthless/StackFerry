@@ -24,8 +24,6 @@ interface AppSidebarProps {
   activeApp: AppId;
   currentView: AppView;
   isRouteActive: boolean;
-  hasSkillsSupport: boolean;
-  hasSessionSupport: boolean;
   onViewChange: (view: AppView) => void;
   onOpenHermesWebUI: () => void;
   onOpenSettings: () => void;
@@ -45,8 +43,6 @@ export function AppSidebar({
   activeApp,
   currentView,
   isRouteActive,
-  hasSkillsSupport,
-  hasSessionSupport,
   onViewChange,
   onOpenHermesWebUI,
   onOpenSettings,
@@ -64,43 +60,31 @@ export function AppSidebar({
     },
   ];
 
-  const defaultItems: NavItem[] = [
-    ...(hasSkillsSupport
-      ? [
-          {
-            key: "skills",
-            label: t("skills.title", { defaultValue: "Skills" }),
-            icon: Wrench,
-            view: "skills" as AppView,
-          },
-        ]
-      : []),
+  const globalFeatureItems: NavItem[] = [
+    {
+      key: "skills",
+      label: t("skills.title", { defaultValue: "Skills" }),
+      icon: Wrench,
+      view: "skills",
+    },
     {
       key: "prompts",
       label: t("prompts.manage", { defaultValue: "Prompts" }),
       icon: BookOpen,
       view: "prompts",
     },
-    ...(hasSessionSupport
-      ? [
-          {
-            key: "sessions",
-            label: t("sessionManager.title", { defaultValue: "Sessions" }),
-            icon: SquareTerminal,
-            view: "sessions" as AppView,
-          },
-        ]
-      : []),
-    ...(activeApp !== "pi"
-      ? [
-          {
-            key: "mcp",
-            label: t("mcp.title", { defaultValue: "MCP servers" }),
-            icon: Cable,
-            view: "mcp" as AppView,
-          },
-        ]
-      : []),
+    {
+      key: "sessions",
+      label: t("sessionManager.title", { defaultValue: "Sessions" }),
+      icon: SquareTerminal,
+      view: "sessions",
+    },
+    {
+      key: "mcp",
+      label: t("mcp.title", { defaultValue: "MCP servers" }),
+      icon: Cable,
+      view: "mcp",
+    },
   ];
 
   const openClawItems: NavItem[] = [
@@ -128,21 +112,9 @@ export function AppSidebar({
       icon: Bot,
       view: "openclawAgents",
     },
-    {
-      key: "sessions",
-      label: t("sessionManager.title", { defaultValue: "Sessions" }),
-      icon: SquareTerminal,
-      view: "sessions",
-    },
   ];
 
   const hermesItems: NavItem[] = [
-    {
-      key: "skills",
-      label: t("skills.title", { defaultValue: "Skills" }),
-      icon: Wrench,
-      view: "skills",
-    },
     {
       key: "hermesMemory",
       label: t("hermes.memory.title", { defaultValue: "Memory" }),
@@ -155,26 +127,15 @@ export function AppSidebar({
       icon: LayoutGrid,
       onClick: onOpenHermesWebUI,
     },
-    {
-      key: "mcp",
-      label: t("mcp.title", { defaultValue: "MCP servers" }),
-      icon: Cable,
-      view: "mcp",
-    },
-    {
-      key: "sessions",
-      label: t("sessionManager.title", { defaultValue: "Sessions" }),
-      icon: SquareTerminal,
-      view: "sessions",
-    },
   ];
 
-  const featureItems =
+  const routeSpecificItems =
     activeApp === "openclaw"
       ? openClawItems
       : activeApp === "hermes"
         ? hermesItems
-        : defaultItems;
+        : [];
+  const featureItems = [...globalFeatureItems, ...routeSpecificItems];
 
   const renderNavItem = (item: NavItem) => {
     const Icon = item.icon;

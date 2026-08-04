@@ -19,12 +19,20 @@ use crate::error::AppError;
 ///
 /// 为了让 Windows CI/本地测试能稳定隔离真实用户数据，可通过 `STACKFERRY_TEST_HOME`
 /// 显式覆盖 home dir（仅用于测试/调试场景）。
-pub fn get_home_dir() -> PathBuf {
+pub fn get_home_dir_override() -> Option<PathBuf> {
     if let Ok(home) = std::env::var("STACKFERRY_TEST_HOME") {
         let trimmed = home.trim();
         if !trimmed.is_empty() {
-            return PathBuf::from(trimmed);
+            return Some(PathBuf::from(trimmed));
         }
+    }
+
+    None
+}
+
+pub fn get_home_dir() -> PathBuf {
+    if let Some(home) = get_home_dir_override() {
+        return home;
     }
 
     dirs::home_dir().unwrap_or_else(|| {
@@ -302,26 +310,63 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
         }
     }
 
-    #[cfg(windows)]
-    {
-        // Windows 上 rename 目标存在会失败，先移除再重命名（尽量接近原子性）
-        if path.exists() {
-            let _ = fs::remove_file(path);
-        }
-        fs::rename(&tmp, path).map_err(|e| AppError::IoContext {
+    if let Err(source) = replace_temp_file(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(AppError::IoContext {
             context: format!("原子替换失败: {} -> {}", tmp.display(), path.display()),
-            source: e,
-        })?;
-    }
-
-    #[cfg(not(windows))]
-    {
-        fs::rename(&tmp, path).map_err(|e| AppError::IoContext {
-            context: format!("原子替换失败: {} -> {}", tmp.display(), path.display()),
-            source: e,
-        })?;
+            source,
+        });
     }
     Ok(())
+}
+
+#[cfg(not(windows))]
+fn replace_temp_file(tmp: &Path, path: &Path) -> std::io::Result<()> {
+    fs::rename(tmp, path)
+}
+
+#[cfg(windows)]
+fn replace_temp_file(tmp: &Path, path: &Path) -> std::io::Result<()> {
+    use std::iter::once;
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, ReplaceFileW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+        REPLACEFILE_WRITE_THROUGH,
+    };
+
+    let tmp_wide = tmp
+        .as_os_str()
+        .encode_wide()
+        .chain(once(0))
+        .collect::<Vec<_>>();
+    let path_wide = path
+        .as_os_str()
+        .encode_wide()
+        .chain(once(0))
+        .collect::<Vec<_>>();
+    let replaced = unsafe {
+        if path.exists() {
+            ReplaceFileW(
+                path_wide.as_ptr(),
+                tmp_wide.as_ptr(),
+                std::ptr::null(),
+                REPLACEFILE_WRITE_THROUGH,
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        } else {
+            MoveFileExW(
+                tmp_wide.as_ptr(),
+                path_wide.as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        }
+    };
+    if replaced == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -493,6 +538,22 @@ mod tests {
             serde_json::to_string(&sorted_a).unwrap(),
             serde_json::to_string(&sorted_b).unwrap(),
         );
+    }
+
+    #[test]
+    fn atomic_write_replaces_existing_file_without_leaving_temporary_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, b"old").unwrap();
+
+        atomic_write(&path, b"new").unwrap();
+
+        assert_eq!(fs::read(&path).unwrap(), b"new");
+        let entries = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        assert_eq!(entries, vec![path.file_name().unwrap().to_os_string()]);
     }
 }
 

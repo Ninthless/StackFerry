@@ -4,6 +4,7 @@ use super::calculator::{CostBreakdown, CostCalculator, ModelPricing};
 use super::parser::TokenUsage;
 use crate::database::{Database, PRICING_SOURCE_REQUEST, PRICING_SOURCE_RESPONSE};
 use crate::error::AppError;
+#[cfg(test)]
 use crate::services::sql_helpers::{INPUT_TOKEN_SEMANTICS_FRESH, INPUT_TOKEN_SEMANTICS_TOTAL};
 use crate::services::usage_stats::{find_model_pricing_row, is_placeholder_pricing_model};
 use rusqlite::OptionalExtension;
@@ -14,6 +15,7 @@ use std::str::FromStr;
 #[derive(Debug, PartialEq, Eq)]
 struct UsageSemantic {
     app_type: String,
+    api_type: String,
     provider_id: String,
     model: String,
     input_token_semantics: i64,
@@ -21,20 +23,25 @@ struct UsageSemantic {
     output_tokens: u32,
     cache_read_tokens: u32,
     cache_creation_tokens: u32,
+    reasoning_tokens: u32,
+    cache_creation_1h_tokens: u32,
     status_code: u16,
 }
 
 impl UsageSemantic {
-    fn from_log(log: &RequestLog, input_token_semantics: i64) -> Self {
+    fn from_log(log: &RequestLog) -> Self {
         Self {
             app_type: log.app_type.clone(),
+            api_type: log.api_type.clone(),
             provider_id: log.provider_id.clone(),
             model: log.model.clone(),
-            input_token_semantics,
+            input_token_semantics: log.input_token_semantics,
             input_tokens: log.usage.input_tokens,
             output_tokens: log.usage.output_tokens,
             cache_read_tokens: log.usage.cache_read_tokens,
             cache_creation_tokens: log.usage.cache_creation_tokens,
+            reasoning_tokens: log.usage.reasoning_tokens,
+            cache_creation_1h_tokens: log.usage.cache_creation_1h_tokens,
             status_code: log.status_code,
         }
     }
@@ -42,6 +49,7 @@ impl UsageSemantic {
     fn sha256(&self) -> String {
         let encoded = serde_json::to_vec(&(
             &self.app_type,
+            &self.api_type,
             &self.provider_id,
             &self.model,
             self.input_token_semantics,
@@ -49,6 +57,8 @@ impl UsageSemantic {
             self.output_tokens,
             self.cache_read_tokens,
             self.cache_creation_tokens,
+            self.reasoning_tokens,
+            self.cache_creation_1h_tokens,
             self.status_code,
         ))
         .expect("usage semantic tuple is serializable");
@@ -65,6 +75,7 @@ pub struct RequestLog {
     pub request_id: String,
     pub provider_id: String,
     pub app_type: String,
+    pub api_type: String,
     pub model: String,
     pub request_model: String,
     /// 写入时实际用于计价的模型名（pricing_model_source 解析后的结果）。
@@ -72,6 +83,7 @@ pub struct RequestLog {
     /// 用 model/request_model 猜——路由接管下三者可能各不相同。
     /// 错误行（未计价）为空字符串。
     pub pricing_model: String,
+    pub input_token_semantics: i64,
     pub usage: TokenUsage,
     pub cost: Option<CostBreakdown>,
     pub latency_ms: u64,
@@ -121,13 +133,7 @@ impl<'a> UsageLogger<'a> {
             };
 
         let created_at = chrono::Utc::now().timestamp();
-        let input_token_semantics =
-            if crate::services::sql_helpers::is_cache_inclusive_app(log.app_type.as_str()) {
-                INPUT_TOKEN_SEMANTICS_TOTAL
-            } else {
-                INPUT_TOKEN_SEMANTICS_FRESH
-            };
-        let semantic = UsageSemantic::from_log(log, input_token_semantics);
+        let semantic = UsageSemantic::from_log(log);
         let existing = Self::load_existing_semantic(&conn, &log.request_id)?;
 
         let (request_id, replace_session_log, collision) = match existing {
@@ -168,13 +174,14 @@ impl<'a> UsageLogger<'a> {
         };
         let sql = format!(
             "{insert_verb} INTO proxy_request_logs (
-                request_id, provider_id, app_type, model, request_model, pricing_model,
+                request_id, provider_id, app_type, model, request_model, pricing_model, api_type,
+                upstream_response_id,
                 input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-                input_token_semantics,
+                reasoning_tokens, cache_creation_1h_tokens, input_token_semantics,
                 input_cost_usd, output_cost_usd, cache_read_cost_usd, cache_creation_cost_usd, total_cost_usd,
                 latency_ms, first_token_ms, status_code, error_message, session_id,
                 provider_type, is_streaming, cost_multiplier, created_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)"
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29)"
         );
         let affected_rows = conn
             .execute(
@@ -186,11 +193,15 @@ impl<'a> UsageLogger<'a> {
                     log.model,
                     log.request_model,
                     log.pricing_model,
+                    log.api_type,
+                    log.usage.message_id.as_deref(),
                     log.usage.input_tokens,
                     log.usage.output_tokens,
                     log.usage.cache_read_tokens,
                     log.usage.cache_creation_tokens,
-                    input_token_semantics,
+                    log.usage.reasoning_tokens,
+                    log.usage.cache_creation_1h_tokens,
+                    log.input_token_semantics,
                     input_cost,
                     output_cost,
                     cache_read_cost,
@@ -227,9 +238,10 @@ impl<'a> UsageLogger<'a> {
         request_id: &str,
     ) -> Result<Option<(Option<String>, UsageSemantic)>, AppError> {
         conn.query_row(
-            "SELECT data_source, app_type, provider_id, model, input_token_semantics,
+            "SELECT data_source, app_type, api_type, provider_id, model, input_token_semantics,
                     input_tokens, output_tokens, cache_read_tokens,
-                    cache_creation_tokens, status_code
+                    cache_creation_tokens, reasoning_tokens,
+                    cache_creation_1h_tokens, status_code
              FROM proxy_request_logs WHERE request_id = ?1",
             [request_id],
             |row| {
@@ -237,14 +249,17 @@ impl<'a> UsageLogger<'a> {
                     row.get(0)?,
                     UsageSemantic {
                         app_type: row.get(1)?,
-                        provider_id: row.get(2)?,
-                        model: row.get(3)?,
-                        input_token_semantics: row.get(4)?,
-                        input_tokens: row.get::<_, i64>(5)? as u32,
-                        output_tokens: row.get::<_, i64>(6)? as u32,
-                        cache_read_tokens: row.get::<_, i64>(7)? as u32,
-                        cache_creation_tokens: row.get::<_, i64>(8)? as u32,
-                        status_code: row.get::<_, i64>(9)? as u16,
+                        api_type: row.get(2)?,
+                        provider_id: row.get(3)?,
+                        model: row.get(4)?,
+                        input_token_semantics: row.get(5)?,
+                        input_tokens: row.get::<_, i64>(6)? as u32,
+                        output_tokens: row.get::<_, i64>(7)? as u32,
+                        cache_read_tokens: row.get::<_, i64>(8)? as u32,
+                        cache_creation_tokens: row.get::<_, i64>(9)? as u32,
+                        reasoning_tokens: row.get::<_, i64>(10)? as u32,
+                        cache_creation_1h_tokens: row.get::<_, i64>(11)? as u32,
+                        status_code: row.get::<_, i64>(12)? as u16,
                     },
                 ))
             },
@@ -268,14 +283,19 @@ impl<'a> UsageLogger<'a> {
         latency_ms: u64,
     ) -> Result<(), AppError> {
         let request_model = model.clone();
+        let api_type = app_type.clone();
+        let input_token_semantics =
+            crate::services::sql_helpers::default_input_token_semantics(&app_type);
         let log = RequestLog {
             request_id,
             provider_id,
             app_type,
+            api_type,
             model,
             request_model,
             // 错误行未经过计价，留空（回填的 has_usage 闸门也不会碰全 0 行）
             pricing_model: String::new(),
+            input_token_semantics,
             usage: TokenUsage::default(),
             cost: None,
             latency_ms,
@@ -300,6 +320,8 @@ impl<'a> UsageLogger<'a> {
         request_id: String,
         provider_id: String,
         app_type: String,
+        api_type: String,
+        input_token_semantics: i64,
         model: String,
         status_code: u16,
         error_message: String,
@@ -313,10 +335,12 @@ impl<'a> UsageLogger<'a> {
             request_id,
             provider_id,
             app_type,
+            api_type,
             model,
             request_model,
             // 错误行未经过计价，留空（回填的 has_usage 闸门也不会碰全 0 行）
             pricing_model: String::new(),
+            input_token_semantics,
             usage: TokenUsage::default(),
             cost: None,
             latency_ms,
@@ -448,6 +472,8 @@ impl<'a> UsageLogger<'a> {
         request_id: String,
         provider_id: String,
         app_type: String,
+        api_type: String,
+        input_token_semantics: i64,
         model: String,
         request_model: String,
         pricing_model: String,
@@ -460,6 +486,48 @@ impl<'a> UsageLogger<'a> {
         provider_type: Option<String>,
         is_streaming: bool,
     ) -> Result<(), AppError> {
+        self.log_with_calculation_and_error(
+            request_id,
+            provider_id,
+            app_type,
+            api_type,
+            input_token_semantics,
+            model,
+            request_model,
+            pricing_model,
+            usage,
+            cost_multiplier,
+            latency_ms,
+            first_token_ms,
+            status_code,
+            session_id,
+            provider_type,
+            is_streaming,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn log_with_calculation_and_error(
+        &self,
+        request_id: String,
+        provider_id: String,
+        app_type: String,
+        api_type: String,
+        input_token_semantics: i64,
+        model: String,
+        request_model: String,
+        pricing_model: String,
+        usage: TokenUsage,
+        cost_multiplier: Decimal,
+        latency_ms: u64,
+        first_token_ms: Option<u64>,
+        status_code: u16,
+        session_id: Option<String>,
+        provider_type: Option<String>,
+        is_streaming: bool,
+        error_message: Option<String>,
+    ) -> Result<(), AppError> {
         let pricing = self.get_model_pricing(&pricing_model)?;
 
         let has_usage = usage.input_tokens > 0
@@ -471,8 +539,8 @@ impl<'a> UsageLogger<'a> {
             log::warn!("[USG-002] 模型定价未找到，成本将记录为 0: {pricing_model}");
         }
 
-        let cost = CostCalculator::try_calculate_for_app(
-            &app_type,
+        let cost = CostCalculator::try_calculate_with_input_semantics(
+            input_token_semantics,
             &usage,
             pricing.as_ref(),
             cost_multiplier,
@@ -482,15 +550,17 @@ impl<'a> UsageLogger<'a> {
             request_id,
             provider_id,
             app_type,
+            api_type,
             model,
             request_model,
             pricing_model,
+            input_token_semantics,
             usage,
             cost,
             latency_ms,
             first_token_ms,
             status_code,
-            error_message: None,
+            error_message,
             session_id,
             provider_type,
             is_streaming,
@@ -510,14 +580,18 @@ mod tests {
             request_id: request_id.to_string(),
             provider_id: "provider-1".to_string(),
             app_type: "codex".to_string(),
+            api_type: "codex".to_string(),
             model: "gpt-5.6".to_string(),
             request_model: "gpt-5.6".to_string(),
             pricing_model: "gpt-5.6".to_string(),
+            input_token_semantics: INPUT_TOKEN_SEMANTICS_TOTAL,
             usage: TokenUsage {
                 input_tokens,
                 output_tokens: 5,
                 cache_read_tokens: 2,
                 cache_creation_tokens: 0,
+                reasoning_tokens: 0,
+                cache_creation_1h_tokens: 0,
                 model: None,
                 message_id: Some("resp-1".to_string()),
             },
@@ -555,6 +629,8 @@ mod tests {
             output_tokens: 500,
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
+            reasoning_tokens: 0,
+            cache_creation_1h_tokens: 0,
             model: None,
             message_id: None,
         };
@@ -563,6 +639,8 @@ mod tests {
             "req-123".to_string(),
             "provider-1".to_string(),
             "claude".to_string(),
+            "claude".to_string(),
+            INPUT_TOKEN_SEMANTICS_FRESH,
             "test-model".to_string(),
             "req-model".to_string(),
             "test-model".to_string(),
@@ -724,9 +802,11 @@ mod tests {
             request_id: "grok-semantics".to_string(),
             provider_id: "grok-provider".to_string(),
             app_type: "grokbuild".to_string(),
+            api_type: "grokbuild".to_string(),
             model: "grok-4.5".to_string(),
             request_model: "grok-4.5".to_string(),
             pricing_model: String::new(),
+            input_token_semantics: INPUT_TOKEN_SEMANTICS_TOTAL,
             usage: TokenUsage::default(),
             cost: None,
             latency_ms: 1,
@@ -748,6 +828,77 @@ mod tests {
             |row| row.get(0),
         )?;
         assert_eq!(semantics, INPUT_TOKEN_SEMANTICS_TOTAL);
+        Ok(())
+    }
+
+    #[test]
+    fn pi_log_uses_explicit_protocol_semantics_and_preserves_subsets() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        {
+            let conn = crate::database::lock_conn!(db.conn);
+            conn.execute(
+                "INSERT INTO model_pricing (
+                    model_id, display_name, input_cost_per_million,
+                    output_cost_per_million, cache_read_cost_per_million,
+                    cache_creation_cost_per_million
+                 ) VALUES ('pi-model', 'Pi Model', '10', '20', '1', '2')",
+                [],
+            )?;
+        }
+        let logger = UsageLogger::new(&db);
+        logger.log_with_calculation(
+            "pi-total".to_string(),
+            "pi-provider".to_string(),
+            "pi".to_string(),
+            "openai-responses".to_string(),
+            INPUT_TOKEN_SEMANTICS_TOTAL,
+            "pi-model".to_string(),
+            "pi-model".to_string(),
+            "pi-model".to_string(),
+            TokenUsage {
+                input_tokens: 1_000,
+                output_tokens: 100,
+                cache_read_tokens: 300,
+                cache_creation_tokens: 200,
+                reasoning_tokens: 60,
+                cache_creation_1h_tokens: 150,
+                model: None,
+                message_id: None,
+            },
+            Decimal::from(2),
+            25,
+            Some(5),
+            200,
+            None,
+            Some("pi".to_string()),
+            true,
+        )?;
+
+        let conn = crate::database::lock_conn!(db.conn);
+        let row: (String, i64, i64, i64, String) = conn.query_row(
+            "SELECT api_type, input_token_semantics, reasoning_tokens,
+                    cache_creation_1h_tokens, total_cost_usd
+             FROM proxy_request_logs WHERE request_id = 'pi-total'",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )?;
+        assert_eq!(row.0, "openai-responses");
+        assert_eq!(
+            (row.1, row.2, row.3),
+            (INPUT_TOKEN_SEMANTICS_TOTAL, 60, 150)
+        );
+        assert_eq!(
+            Decimal::from_str(&row.4).unwrap(),
+            Decimal::from_str("0.0154").unwrap()
+        );
         Ok(())
     }
 }

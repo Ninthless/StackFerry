@@ -7,29 +7,13 @@ use crate::error::AppError;
 use crate::provider::{UsageData, UsageResult, UsageScript};
 use crate::settings;
 use crate::store::AppState;
-use crate::usage_script;
+use crate::usage_script::{self, UsageScriptExecution};
 
 /// Execute usage script and format result (private helper method)
 pub(crate) async fn execute_and_format_usage_result(
-    script_code: &str,
-    api_key: &str,
-    base_url: &str,
-    timeout: u64,
-    access_token: Option<&str>,
-    user_id: Option<&str>,
-    template_type: Option<&str>,
+    execution: UsageScriptExecution<'_>,
 ) -> Result<UsageResult, AppError> {
-    match usage_script::execute_usage_script(
-        script_code,
-        api_key,
-        base_url,
-        timeout,
-        access_token,
-        user_id,
-        template_type,
-    )
-    .await
-    {
+    match usage_script::execute_usage_script(&execution).await {
         Ok(data) => {
             let usage_list: Vec<UsageData> = if data.is_array() {
                 serde_json::from_value(data).map_err(|e| {
@@ -57,6 +41,17 @@ pub(crate) async fn execute_and_format_usage_result(
             })
         }
         Err(err) => {
+            let err = if execution.include_http_error_body {
+                err
+            } else {
+                redact_usage_error(
+                    err,
+                    &[
+                        execution.api_key,
+                        execution.access_token.unwrap_or_default(),
+                    ],
+                )
+            };
             // 瞬时传输失败（send 失败/超时、读体中断）以 Err 传播，让前端 invoke
             // reject → react-query retry 并保留上次成功值；按错误 key 判定而非
             // 文案匹配。其余脚本/配置/HTTP 业务错误折叠成 success:false 展示文案。
@@ -93,17 +88,42 @@ pub(crate) async fn execute_and_format_usage_result(
     }
 }
 
+fn redact_usage_error(error: AppError, secrets: &[&str]) -> AppError {
+    let redact = |text: String| {
+        secrets
+            .iter()
+            .filter(|secret| secret.len() >= 4)
+            .fold(text, |text, secret| text.replace(secret, "[REDACTED]"))
+    };
+    match error {
+        AppError::Localized { key, zh, en } => AppError::Localized {
+            key,
+            zh: redact(zh),
+            en: redact(en),
+        },
+        other => AppError::Message(redact(other.to_string())),
+    }
+}
+
 /// Resolve `(api_key, base_url)` for the JS-script path: explicit non-empty
 /// script values win, otherwise fall back to the provider's stored config via
 /// `Provider::resolve_usage_credentials` — the same per-app resolver the
 /// native balance/coding-plan path and the frontend `getProviderCredentials`
 /// use, so `{{apiKey}}`/`{{baseUrl}}` match what the UI shows for them.
-fn resolve_script_credentials(
+async fn resolve_script_credentials(
     app_type: &AppType,
     provider: &crate::provider::Provider,
     api_key: Option<&str>,
     base_url: Option<&str>,
-) -> (String, String) {
+) -> Result<(String, String), AppError> {
+    if app_type == &AppType::Pi {
+        let (base_url, api_key) =
+            crate::proxy::providers::resolve_pi_usage_credentials(provider, api_key, base_url)
+                .await
+                .map_err(|error| AppError::Config(error.to_string()))?;
+        return Ok((api_key, base_url));
+    }
+
     let (provider_base_url, provider_api_key) = provider.resolve_usage_credentials(app_type);
 
     let api_key = api_key
@@ -119,7 +139,7 @@ fn resolve_script_credentials(
         .map(|value| value.trim_end_matches('/').to_owned())
         .unwrap_or(provider_base_url);
 
-    (api_key, base_url)
+    Ok((api_key, base_url))
 }
 
 /// Query provider usage (using saved script configuration)
@@ -163,7 +183,8 @@ pub async fn query_usage(
             provider,
             usage_script.api_key.as_deref(),
             usage_script.base_url.as_deref(),
-        );
+        )
+        .await?;
 
         (
             usage_script.code.clone(),
@@ -176,15 +197,16 @@ pub async fn query_usage(
         )
     };
 
-    execute_and_format_usage_result(
-        &script_code,
-        &api_key,
-        &base_url,
-        timeout,
-        access_token.as_deref(),
-        user_id.as_deref(),
-        template_type.as_deref(),
-    )
+    execute_and_format_usage_result(UsageScriptExecution {
+        script_code: &script_code,
+        api_key: &api_key,
+        base_url: &base_url,
+        timeout_secs: timeout,
+        access_token: access_token.as_deref(),
+        user_id: user_id.as_deref(),
+        template_type: template_type.as_deref(),
+        include_http_error_body: app_type != AppType::Pi,
+    })
     .await
 }
 
@@ -213,17 +235,19 @@ pub async fn test_usage_script(
 
     // Resolve like the real query so testing matches what a saved script does:
     // explicit values win, empty ones fall back to the provider config.
-    let (api_key, base_url) = resolve_script_credentials(&app_type, provider, api_key, base_url);
+    let (api_key, base_url) =
+        resolve_script_credentials(&app_type, provider, api_key, base_url).await?;
 
-    execute_and_format_usage_result(
+    execute_and_format_usage_result(UsageScriptExecution {
         script_code,
-        &api_key,
-        &base_url,
-        timeout,
+        api_key: &api_key,
+        base_url: &base_url,
+        timeout_secs: timeout,
         access_token,
         user_id,
         template_type,
-    )
+        include_http_error_body: app_type != AppType::Pi,
+    })
     .await
 }
 
@@ -247,8 +271,9 @@ pub(crate) fn validate_usage_script(script: &UsageScript) -> Result<(), AppError
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_script_credentials;
+    use super::{redact_usage_error, resolve_script_credentials};
     use crate::app_config::AppType;
+    use crate::error::AppError;
     use crate::provider::Provider;
     use serde_json::json;
 
@@ -261,8 +286,8 @@ mod tests {
         )
     }
 
-    #[test]
-    fn script_values_override_provider_credentials() {
+    #[tokio::test]
+    async fn script_values_override_provider_credentials() {
         let provider = provider_with_settings(json!({
             "env": {
                 "ANTHROPIC_AUTH_TOKEN": "provider-key",
@@ -275,13 +300,15 @@ mod tests {
             &provider,
             Some(" script-key "),
             Some(" https://script.example.com/ "),
-        );
+        )
+        .await
+        .unwrap();
         assert_eq!(api_key, "script-key");
         assert_eq!(base_url, "https://script.example.com");
     }
 
-    #[test]
-    fn empty_script_values_fall_back_to_provider_credentials() {
+    #[tokio::test]
+    async fn empty_script_values_fall_back_to_provider_credentials() {
         let provider = provider_with_settings(json!({
             "env": {
                 "ANTHROPIC_AUTH_TOKEN": "provider-key",
@@ -290,13 +317,15 @@ mod tests {
         }));
 
         let (api_key, base_url) =
-            resolve_script_credentials(&AppType::Claude, &provider, Some(""), None);
+            resolve_script_credentials(&AppType::Claude, &provider, Some(""), None)
+                .await
+                .unwrap();
         assert_eq!(api_key, "provider-key");
         assert_eq!(base_url, "https://provider.example.com");
     }
 
-    #[test]
-    fn codex_fallback_reads_auth_and_config_toml() {
+    #[tokio::test]
+    async fn codex_fallback_reads_auth_and_config_toml() {
         let provider = provider_with_settings(json!({
             "auth": {
                 "OPENAI_API_KEY": "openai-key"
@@ -312,8 +341,41 @@ base_url = "https://other.example.com/v1"
         }));
 
         let (api_key, base_url) =
-            resolve_script_credentials(&AppType::Codex, &provider, None, None);
+            resolve_script_credentials(&AppType::Codex, &provider, None, None)
+                .await
+                .unwrap();
         assert_eq!(api_key, "openai-key");
         assert_eq!(base_url, "https://azure.example.com/v1");
+    }
+
+    #[tokio::test]
+    async fn pi_credentials_preserve_api_key_and_base_url_order() {
+        let provider = provider_with_settings(json!({
+            "apiKey": "pi-secret",
+            "baseUrl": "https://pi.example.com/v1/",
+            "api": "openai-responses",
+            "models": [{"id": "gpt"}]
+        }));
+
+        let (api_key, base_url) = resolve_script_credentials(&AppType::Pi, &provider, None, None)
+            .await
+            .unwrap();
+        assert_eq!(api_key, "pi-secret");
+        assert_eq!(base_url, "https://pi.example.com/v1");
+    }
+
+    #[test]
+    fn pi_error_redaction_removes_resolved_credentials() {
+        let error = AppError::localized(
+            "usage_script.request_failed",
+            "请求 https://api.example.test?key=resolved-secret 失败",
+            "Request https://api.example.test?key=resolved-secret failed",
+        );
+
+        let error = redact_usage_error(error, &["resolved-secret"]);
+        let message = error.to_string();
+
+        assert!(message.contains("[REDACTED]"));
+        assert!(!message.contains("resolved-secret"));
     }
 }

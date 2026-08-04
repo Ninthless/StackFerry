@@ -46,7 +46,9 @@ vi.mock("@/lib/query/usage", async () => {
 });
 
 vi.mock("@/components/usage/UsageHero", () => ({
-  UsageHero: () => <div data-testid="usage-hero" />,
+  UsageHero: ({ appType }: { appType?: string }) => (
+    <div data-testid="usage-hero" data-app-type={appType ?? "all"} />
+  ),
 }));
 
 vi.mock("@/components/usage/UsageTrendChart", () => ({
@@ -150,6 +152,22 @@ describe("UsageDashboard", () => {
     );
     await waitFor(() =>
       expect(screen.getByTestId("select-30000")).toBeInTheDocument(),
+    );
+  });
+
+  it("offers Pi as an application filter and scopes dashboard data", () => {
+    renderDashboard();
+
+    fireEvent.click(screen.getByRole("button", { name: "usage.appFilter.pi" }));
+
+    expect(screen.getByTestId("usage-hero")).toHaveAttribute(
+      "data-app-type",
+      "pi",
+    );
+    expect(useProviderStatsMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ appType: "pi" }),
+      expect.anything(),
     );
   });
 });

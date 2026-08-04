@@ -19,7 +19,7 @@ use super::{
     providers::{
         codex_chat_common::extract_reasoning_field_text,
         codex_chat_history::record_responses_sse_stream,
-        get_adapter, get_claude_api_format,
+        get_adapter, get_claude_api_format, parse_pi_request_body, pi_parser_config,
         streaming::create_anthropic_sse_stream,
         streaming_codex_anthropic::{
             create_responses_sse_stream_from_anthropic_with_context,
@@ -30,6 +30,7 @@ use super::{
         streaming_responses::create_anthropic_sse_stream_from_responses,
         transform, transform_codex_anthropic, transform_codex_chat,
         transform_codex_responses_namespace, transform_gemini, transform_responses,
+        PiRequestMetadata,
     },
     response_processor::{
         create_logged_passthrough_stream, create_usage_collector, process_response,
@@ -44,7 +45,12 @@ use super::{
 };
 use crate::app_config::AppType;
 use crate::database::PRICING_SOURCE_REQUEST;
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::{ws::WebSocketUpgrade, Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 use bytes::Bytes;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -443,7 +449,8 @@ async fn handle_claude_transform(
             Some(SseUsageCollector::new(
                 start_time,
                 Some(claude_stream_usage_event_filter),
-                move |events, first_token_ms| {
+                move |events, first_token_ms, finish_status| {
+                    let status_code = finish_status.usage_status_code(status_code);
                     if let Some(usage) = TokenUsage::from_claude_stream_events(&events) {
                         let model = usage
                             .model
@@ -492,6 +499,8 @@ async fn handle_claude_transform(
             usage_collector,
             timeout_config,
             connection_guard,
+            true,
+            false,
         );
 
         let mut headers = axum::http::HeaderMap::new();
@@ -1154,6 +1163,8 @@ async fn handle_codex_responses_namespace_restore(
             usage_collector,
             ctx.streaming_timeout_config(),
             connection_guard,
+            true,
+            false,
         );
 
         let body = axum::body::Body::from_stream(logged_stream);
@@ -1293,7 +1304,8 @@ async fn handle_codex_chat_to_responses_transform(
             Some(SseUsageCollector::new(
                 start_time,
                 Some(codex_stream_usage_event_filter),
-                move |events, first_token_ms| {
+                move |events, first_token_ms, finish_status| {
+                    let status_code = finish_status.usage_status_code(status.as_u16());
                     let usage =
                         TokenUsage::from_codex_stream_events_auto(&events).unwrap_or_default();
                     // 上游遵守 OpenAI 语义省略 usage 时，Chat→Responses 转换器会合成一个
@@ -1330,7 +1342,7 @@ async fn handle_codex_chat_to_responses_transform(
                             latency_ms,
                             first_token_ms,
                             true,
-                            status.as_u16(),
+                            status_code,
                             Some(session_id),
                         )
                         .await;
@@ -1347,6 +1359,8 @@ async fn handle_codex_chat_to_responses_transform(
             usage_collector,
             ctx.streaming_timeout_config(),
             connection_guard,
+            true,
+            false,
         );
 
         let mut headers = axum::http::HeaderMap::new();
@@ -1672,7 +1686,8 @@ fn build_codex_anthropic_sse_response(
         Some(SseUsageCollector::new(
             start_time,
             Some(codex_stream_usage_event_filter),
-            move |events, first_token_ms| {
+            move |events, first_token_ms, finish_status| {
+                let status_code = finish_status.usage_status_code(status.as_u16());
                 let usage = TokenUsage::from_codex_stream_events_auto(&events).unwrap_or_default();
                 if !usage.has_billable_tokens() {
                     log::debug!("[Codex] Anthropic streaming response usage is all-zero or missing, skipping usage recording");
@@ -1703,7 +1718,7 @@ fn build_codex_anthropic_sse_response(
                         latency_ms,
                         first_token_ms,
                         true,
-                        status.as_u16(),
+                        status_code,
                         Some(session_id),
                     )
                     .await;
@@ -1720,6 +1735,8 @@ fn build_codex_anthropic_sse_response(
         usage_collector,
         ctx.streaming_timeout_config(),
         connection_guard,
+        true,
+        false,
     );
 
     let mut headers = axum::http::HeaderMap::new();
@@ -2000,6 +2017,117 @@ fn compact_error_message(message: &str, max_chars: usize) -> String {
 // ============================================================================
 // Gemini API 处理器
 // ============================================================================
+
+pub async fn handle_pi(
+    State(state): State<ProxyState>,
+    Path((source_provider_id, _path)): Path<(String, String)>,
+    websocket: Option<WebSocketUpgrade>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_pi_request(state, source_provider_id, websocket, request).await
+}
+
+pub async fn handle_pi_root(
+    State(state): State<ProxyState>,
+    Path(source_provider_id): Path<String>,
+    websocket: Option<WebSocketUpgrade>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_pi_request(state, source_provider_id, websocket, request).await
+}
+
+async fn handle_pi_request(
+    state: ProxyState,
+    source_provider_id: String,
+    websocket: Option<WebSocketUpgrade>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    if let Some(websocket) = websocket {
+        let endpoint = pi_endpoint(request.uri())?;
+        let headers = request.headers().clone();
+        return Ok(websocket
+            .on_upgrade(move |socket| {
+                super::pi_websocket::proxy(socket, state, source_provider_id, endpoint, headers)
+            })
+            .into_response());
+    }
+    let (parts, request_body) = request.into_parts();
+    let method = parts.method;
+    let uri = parts.uri;
+    let headers = parts.headers;
+    let mut extensions = parts.extensions;
+    let body_bytes = request_body
+        .collect()
+        .await
+        .map_err(|error| ProxyError::Internal(format!("Failed to read Pi request body: {error}")))?
+        .to_bytes();
+    let body = parse_pi_request_body(&body_bytes, &headers)?;
+    let endpoint = pi_endpoint(&uri)?;
+    let (mut ctx, api, source_header_names) =
+        RequestContext::new_for_pi(&state, &body, &headers, &source_provider_id, &endpoint).await?;
+    extensions.insert(PiRequestMetadata::new(
+        body_bytes,
+        source_provider_id,
+        source_header_names,
+    ));
+    let is_stream = body
+        .get("stream")
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| {
+            headers
+                .get(axum::http::header::ACCEPT)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.contains("text/event-stream"))
+        });
+
+    let forwarder = ctx.create_forwarder(&state);
+    let mut result = match forwarder
+        .forward_pi_with_retry(
+            method,
+            &endpoint,
+            body,
+            headers,
+            extensions,
+            ctx.get_providers(),
+        )
+        .await
+    {
+        Ok(result) => result,
+        Err(mut error) => {
+            if let Some(provider) = error.provider.take() {
+                ctx.provider = provider;
+            }
+            log_forward_error(&state, &ctx, is_stream, &error.error);
+            return Err(error.error);
+        }
+    };
+
+    let connection_guard = result.connection_guard.take();
+    ctx.outbound_model = result.outbound_model.take();
+    ctx.provider = result.provider;
+    process_response(
+        result.response,
+        &ctx,
+        &state,
+        pi_parser_config(api),
+        connection_guard,
+    )
+    .await
+}
+
+fn pi_endpoint(uri: &axum::http::Uri) -> Result<String, ProxyError> {
+    let namespaced = uri.path().strip_prefix("/pi/").ok_or_else(|| {
+        ProxyError::InvalidRequest("Pi request is missing its provider namespace".to_string())
+    })?;
+    let path = namespaced
+        .find('/')
+        .map(|index| &namespaced[index..])
+        .unwrap_or("/");
+    Ok(match uri.query() {
+        Some(query) if !query.is_empty() => format!("{path}?{query}"),
+        _ => path.to_string(),
+    })
+}
 
 /// 处理 Gemini API 请求（透传，包括查询参数）
 pub async fn handle_gemini(
@@ -2689,6 +2817,8 @@ fn log_forward_error_message(
         request_id,
         ctx.provider.id.clone(),
         ctx.app_type_str.to_string(),
+        ctx.api_type.clone(),
+        ctx.input_token_semantics,
         ctx.request_model.clone(),
         status_code,
         error_message,
@@ -2743,6 +2873,8 @@ async fn log_usage(
         request_id,
         provider_id.to_string(),
         app_type.to_string(),
+        app_type.to_string(),
+        crate::services::sql_helpers::default_input_token_semantics(app_type),
         model.to_string(),
         request_model.to_string(),
         pricing_model.to_string(),

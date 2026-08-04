@@ -1,6 +1,4 @@
 import { getVersion } from "@tauri-apps/api/app";
-import { relaunch } from "@tauri-apps/plugin-process";
-import type { Update } from "@tauri-apps/plugin-updater";
 import { APP_VERSION } from "./appVersion";
 import { isUpdateAvailable } from "./version";
 
@@ -15,11 +13,6 @@ export interface CheckOptions {
   timeout?: number;
 }
 
-export interface UpdateHandle {
-  version: string;
-  downloadAndInstall: () => Promise<void>;
-}
-
 export async function getCurrentVersion(): Promise<string> {
   try {
     return await getVersion();
@@ -31,8 +24,7 @@ export async function getCurrentVersion(): Promise<string> {
 export async function checkForUpdate(
   opts: CheckOptions = {},
 ): Promise<
-  | { status: "up-to-date" }
-  | { status: "available"; info: UpdateInfo; update: UpdateHandle }
+  { status: "up-to-date" } | { status: "available"; info: UpdateInfo }
 > {
   const currentVersion = await getCurrentVersion();
   const { check } = await import("@tauri-apps/plugin-updater");
@@ -49,16 +41,5 @@ export async function checkForUpdate(
     pubDate: update.date ?? undefined,
   };
 
-  return { status: "available", info, update: mapUpdate(update) };
-}
-
-function mapUpdate(update: Update): UpdateHandle {
-  return {
-    version: update.version,
-    downloadAndInstall: () => update.downloadAndInstall(),
-  };
-}
-
-export async function relaunchApp(): Promise<void> {
-  await relaunch();
+  return { status: "available", info };
 }

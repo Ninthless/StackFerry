@@ -201,6 +201,36 @@ export const handlers = [
 
   http.post(`${TAURI_ENDPOINT}/import_mcp_from_claude`, () => success(1)),
   http.post(`${TAURI_ENDPOINT}/import_mcp_from_codex`, () => success(1)),
+  http.post(`${TAURI_ENDPOINT}/get_pi_mcp_adapter_status`, () =>
+    success({
+      state: "inactive",
+      configuredVersion: null,
+      installedVersion: null,
+      configPath: "~/.pi/agent/mcp.json",
+      projectOverridePath: null,
+      error: null,
+    }),
+  ),
+
+  http.post(`${TAURI_ENDPOINT}/get_mcp_servers`, () =>
+    success({
+      "matrix-server": {
+        id: "matrix-server",
+        name: "Matrix Server",
+        server: { type: "stdio", command: "matrix-server" },
+        apps: {
+          claude: false,
+          codex: true,
+          pi: false,
+          gemini: true,
+          grokbuild: false,
+          opencode: false,
+          openclaw: false,
+          hermes: false,
+        },
+      },
+    }),
+  ),
 
   http.post(`${TAURI_ENDPOINT}/set_mcp_enabled`, async ({ request }) => {
     const { app, id, enabled } = await withJson<{
@@ -364,6 +394,7 @@ export const handlers = [
       codex: false,
       gemini: false,
       grokbuild: false,
+      pi: false,
     }),
   ),
 

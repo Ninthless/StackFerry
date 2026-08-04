@@ -31,6 +31,14 @@ pub(crate) const INPUT_TOKEN_SEMANTICS_LEGACY: i64 = 0;
 pub(crate) const INPUT_TOKEN_SEMANTICS_TOTAL: i64 = 1;
 pub(crate) const INPUT_TOKEN_SEMANTICS_FRESH: i64 = 2;
 
+pub(crate) fn default_input_token_semantics(app_type: &str) -> i64 {
+    if is_cache_inclusive_app(app_type) {
+        INPUT_TOKEN_SEMANTICS_TOTAL
+    } else {
+        INPUT_TOKEN_SEMANTICS_FRESH
+    }
+}
+
 /// Build an SQL expression that returns the cache-normalized `input_tokens`
 /// for a single row in `proxy_request_logs` or `usage_daily_rollups`.
 ///
@@ -54,8 +62,7 @@ pub fn fresh_input_sql(alias: &str) -> String {
     format!(
         "CASE \
               WHEN {prefix}input_token_semantics = {INPUT_TOKEN_SEMANTICS_FRESH} THEN {prefix}input_tokens \
-              WHEN {prefix}app_type IN ({app_type_list}) \
-                   AND {prefix}input_token_semantics = {INPUT_TOKEN_SEMANTICS_TOTAL} \
+              WHEN {prefix}input_token_semantics = {INPUT_TOKEN_SEMANTICS_TOTAL} \
                    AND {prefix}input_tokens >= ({prefix}cache_read_tokens + {prefix}cache_creation_tokens) \
               THEN ({prefix}input_tokens - {prefix}cache_read_tokens - {prefix}cache_creation_tokens) \
               WHEN {prefix}app_type IN ({app_type_list}) \
@@ -193,5 +200,45 @@ mod tests {
         let sql = format!("SELECT {expr} FROM proxy_request_logs l");
         let value: i64 = conn.query_row(&sql, [], |row| row.get(0)).unwrap();
         assert_eq!(value, 500);
+    }
+
+    #[test]
+    fn pi_mixed_protocol_rows_follow_explicit_semantics() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO proxy_request_logs (
+                request_id, app_type, input_tokens, cache_read_tokens,
+                cache_creation_tokens, input_token_semantics
+             ) VALUES ('pi-anthropic', 'pi', 200, 300, 100, ?1)",
+            [INPUT_TOKEN_SEMANTICS_FRESH],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO proxy_request_logs (
+                request_id, app_type, input_tokens, cache_read_tokens,
+                cache_creation_tokens, input_token_semantics
+             ) VALUES ('pi-openai', 'pi', 1000, 300, 200, ?1)",
+            [INPUT_TOKEN_SEMANTICS_TOTAL],
+        )
+        .unwrap();
+
+        let expr = fresh_input_sql("l");
+        let sql =
+            format!("SELECT request_id, {expr} FROM proxy_request_logs l ORDER BY request_id");
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                ("pi-anthropic".to_string(), 200),
+                ("pi-openai".to_string(), 500),
+            ]
+        );
     }
 }

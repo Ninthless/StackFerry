@@ -3445,7 +3445,7 @@ impl ProviderService {
         // normal live write.
         let _switch_guard = if matches!(
             app_type,
-            AppType::Claude | AppType::Codex | AppType::Gemini | AppType::GrokBuild
+            AppType::Claude | AppType::Codex | AppType::Gemini | AppType::GrokBuild | AppType::Pi
         ) {
             Some(futures::executor::block_on(
                 state.proxy_service.lock_switch_for_app(app_type.as_str()),
@@ -3584,10 +3584,16 @@ impl ProviderService {
         }
 
         let previous_local_current = crate::settings::get_current_provider(&app_type);
-        let previous_database_current = if app_type.is_additive_mode() {
-            None
+        let previous_database_current =
+            if app_type.is_additive_mode() && !matches!(app_type, AppType::Pi) {
+                None
+            } else {
+                state.db.get_current_provider(app_type.as_str())?
+            };
+        let previous_pi_settings = if matches!(app_type, AppType::Pi) {
+            Some(crate::pi_config::read_settings()?)
         } else {
-            state.db.get_current_provider(app_type.as_str())?
+            None
         };
 
         // Additive mode apps skip setting is_current (no such concept)
@@ -3674,6 +3680,27 @@ impl ProviderService {
 
         if matches!(app_type, AppType::Pi) {
             crate::pi_config::apply_switch_defaults(&provider.id, &provider.settings_config)?;
+            if let Err(error) = crate::settings::set_current_provider(&app_type, Some(id)) {
+                if let Some(settings) = previous_pi_settings.as_ref() {
+                    let _ = crate::pi_config::restore_settings(settings);
+                }
+                return Err(error);
+            }
+            if let Err(error) = state.db.set_current_provider(app_type.as_str(), id) {
+                let mut rollback_errors = Vec::new();
+                if let Err(rollback_error) = crate::settings::set_current_provider(
+                    &app_type,
+                    previous_local_current.as_deref(),
+                ) {
+                    rollback_errors.push(format!("local current: {rollback_error}"));
+                }
+                if let Some(settings) = previous_pi_settings.as_ref() {
+                    if let Err(rollback_error) = crate::pi_config::restore_settings(settings) {
+                        rollback_errors.push(format!("Pi defaults: {rollback_error}"));
+                    }
+                }
+                return Err(Self::rollback_error(error, rollback_errors));
+            }
         }
 
         // For additive-mode providers that were DB-only (live_config_managed == Some(false)),
@@ -3694,6 +3721,21 @@ impl ProviderService {
                     AppType::Pi => remove_pi_provider_from_live(&provider.id),
                     _ => Ok(()),
                 };
+
+                if matches!(app_type, AppType::Pi) {
+                    let _ = crate::settings::set_current_provider(
+                        &app_type,
+                        previous_local_current.as_deref(),
+                    );
+                    let _ = Self::restore_database_current(
+                        state,
+                        &app_type,
+                        previous_database_current.as_deref(),
+                    );
+                    if let Some(settings) = previous_pi_settings.as_ref() {
+                        let _ = crate::pi_config::restore_settings(settings);
+                    }
+                }
 
                 match rollback_result {
                     Ok(()) => {
@@ -3735,7 +3777,7 @@ impl ProviderService {
         state: &AppState,
         app_type: AppType,
     ) -> Result<(), AppError> {
-        if app_type.is_additive_mode() {
+        if app_type.is_additive_mode() && !matches!(app_type, AppType::Pi) {
             return sync_current_provider_for_app_to_live(state, &app_type);
         }
 

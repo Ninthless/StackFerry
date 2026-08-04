@@ -1,6 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Server } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  Edit3,
+  ExternalLink,
+  Package,
+  Server,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -8,12 +17,12 @@ import {
   useToggleMcpApp,
   useDeleteMcpServer,
   useImportMcpFromApps,
+  usePiMcpAdapterStatus,
 } from "@/hooks/useMcp";
-import type { McpServer } from "@/types";
+import type { McpServer, PiMcpAdapterStatus } from "@/types";
 import type { AppId } from "@/lib/api/types";
 import McpFormModal from "./McpFormModal";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { Edit3, Trash2, ExternalLink } from "lucide-react";
 import { settingsApi } from "@/lib/api";
 import { mcpPresets } from "@/config/mcpPresets";
 import { toast } from "sonner";
@@ -47,6 +56,11 @@ const UnifiedMcpPanel = React.forwardRef<
   } | null>(null);
 
   const { data: serversMap, isLoading } = useAllMcpServers();
+  const {
+    data: piAdapterStatus,
+    isLoading: isPiAdapterStatusLoading,
+    error: piAdapterStatusError,
+  } = usePiMcpAdapterStatus();
   const toggleAppMutation = useToggleMcpApp();
   const deleteServerMutation = useDeleteMcpServer();
   const importMutation = useImportMcpFromApps();
@@ -66,6 +80,7 @@ const UnifiedMcpPanel = React.forwardRef<
       opencode: 0,
       openclaw: 0,
       hermes: 0,
+      pi: 0,
     };
     serverEntries.forEach(([_, server]) => {
       for (const app of MCP_APP_IDS) {
@@ -149,6 +164,12 @@ const UnifiedMcpPanel = React.forwardRef<
         appIds={MCP_APP_IDS}
       />
 
+      <PiMcpAdapterStatusRow
+        status={piAdapterStatus}
+        isLoading={isPiAdapterStatusLoading}
+        queryError={piAdapterStatusError}
+      />
+
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
         {isLoading ? (
           <div className="text-center py-12 text-muted-foreground">
@@ -214,6 +235,75 @@ const UnifiedMcpPanel = React.forwardRef<
 });
 
 UnifiedMcpPanel.displayName = "UnifiedMcpPanel";
+
+const PiMcpAdapterStatusRow: React.FC<{
+  status?: PiMcpAdapterStatus;
+  isLoading: boolean;
+  queryError: Error | null;
+}> = ({ status, isLoading, queryError }) => {
+  const { t } = useTranslation();
+  const state = queryError ? "error" : status?.state;
+
+  if (!state && !isLoading) return null;
+
+  const stateStyles = {
+    inactive: "text-muted-foreground",
+    pending: "text-amber-600 dark:text-amber-400",
+    installed: "text-emerald-600 dark:text-emerald-400",
+    error: "text-destructive",
+  } as const;
+  const StateIcon =
+    state === "installed"
+      ? CheckCircle2
+      : state === "pending"
+        ? Clock3
+        : state === "error"
+          ? AlertTriangle
+          : Package;
+  const version = status?.installedVersion ?? status?.configuredVersion;
+  const error = queryError ? String(queryError) : status?.error;
+
+  return (
+    <div
+      className="-mt-2 mb-4 flex min-h-8 flex-shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/60 pb-3 text-xs"
+      aria-live="polite"
+    >
+      <Package className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="font-medium" title={status?.configPath}>
+        {t("mcp.piAdapter.label")}
+      </span>
+      {isLoading && !state ? (
+        <span className="text-muted-foreground">
+          {t("mcp.piAdapter.loading")}
+        </span>
+      ) : (
+        <span
+          className={`inline-flex items-center gap-1 ${stateStyles[state!]}`}
+        >
+          <StateIcon className="h-3.5 w-3.5" />
+          {t(`mcp.piAdapter.${state}`)}
+          {version ? ` v${version}` : ""}
+        </span>
+      )}
+      {status?.projectOverridePath && (
+        <span
+          className="ml-auto truncate text-amber-600 dark:text-amber-400"
+          title={status.projectOverridePath}
+        >
+          {t("mcp.piAdapter.projectOverride")}
+        </span>
+      )}
+      {error && (
+        <span
+          className="min-w-0 flex-1 truncate text-destructive"
+          title={error}
+        >
+          {error}
+        </span>
+      )}
+    </div>
+  );
+};
 
 interface UnifiedMcpListItemProps {
   id: string;
