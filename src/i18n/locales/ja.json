@@ -2389,7 +2389,7 @@
       "url": "リポジトリ URL",
       "urlPlaceholder": "owner/name または https://github.com/owner/name",
       "branch": "ブランチ",
-      "branchPlaceholder": "main",
+      "branchPlaceholder": "空欄で main/master を自動検出",
       "path": "スキルパス",
       "pathPlaceholder": "skills（任意。空欄はルート）",
       "add": "リポジトリを追加",
@@ -2400,7 +2400,8 @@
       "addFailed": "追加に失敗しました",
       "removeSuccess": "リポジトリ {{owner}}/{{name}} を削除しました",
       "removeFailed": "削除に失敗しました",
-      "skillCount": "{{count}} 件のスキルを検出"
+      "skillCount": "{{count}} 件のスキルを検出",
+      "defaultBranch": "既定のブランチ"
     },
     "search": "スキルを検索",
     "searchPlaceholder": "スキル名またはリポジトリで検索...",
@@ -2474,6 +2475,10 @@
       "successSingle": "スキル {{name}} をインストールしました",
       "successMultiple": "{{count}} 件のスキルをインストールしました",
       "noSkillsFound": "ZIP ファイルにスキルが見つかりません（SKILL.md が必要です）"
+    },
+    "discoveryFailures": {
+      "title": "{{count}} 件のリポジトリを更新できませんでした。他のスキルは引き続き利用できます。",
+      "item": "{{repo}}（{{branch}}）：{{error}}"
     }
   },
   "deeplink": {

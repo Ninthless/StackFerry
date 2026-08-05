@@ -8,6 +8,8 @@ import {
   skillsApi,
   type SkillBackupEntry,
   type DiscoverableSkill,
+  type DiscoverAvailableResult,
+  type SkillRepo,
   type ImportSkillSelection,
   type InstalledSkill,
   type SkillUpdateInfo,
@@ -93,16 +95,16 @@ export function useInstallSkill() {
         skill.directory.toLowerCase();
       const skillKey = `${installName}:${skill.repoOwner.toLowerCase()}:${skill.repoName.toLowerCase()}`;
 
-      queryClient.setQueryData<DiscoverableSkill[]>(
+      queryClient.setQueryData<DiscoverAvailableResult>(
         ["skills", "discoverable"],
         (oldData) => {
           if (!oldData) return oldData;
-          return oldData.map((s) => {
-            if (s.key === skillKey) {
-              return { ...s, installed: true };
-            }
-            return s;
-          });
+          return {
+            ...oldData,
+            skills: oldData.skills.map((s) =>
+              s.key === skillKey ? { ...s, installed: true } : s,
+            ),
+          };
         },
       );
     },
@@ -131,16 +133,16 @@ export function useUninstallSkill() {
       );
 
       // 更新 discoverable 缓存中对应技能的 installed 状态
-      queryClient.setQueryData<DiscoverableSkill[]>(
+      queryClient.setQueryData<DiscoverAvailableResult>(
         ["skills", "discoverable"],
         (oldData) => {
           if (!oldData) return oldData;
-          return oldData.map((s) => {
-            if (s.key === skillKey) {
-              return { ...s, installed: false };
-            }
-            return s;
-          });
+          return {
+            ...oldData,
+            skills: oldData.skills.map((s) =>
+              s.key === skillKey ? { ...s, installed: false } : s,
+            ),
+          };
         },
       );
     },
@@ -241,8 +243,20 @@ export function useAddSkillRepo() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: skillsApi.addRepo,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["skills", "repos"] });
+    onSuccess: ({ repo }) => {
+      queryClient.setQueryData<SkillRepo[]>(["skills", "repos"], (oldData) => {
+        if (!oldData) return [repo];
+        const index = oldData.findIndex(
+          (item) => item.owner === repo.owner && item.name === repo.name,
+        );
+        if (index === -1) return [...oldData, repo];
+        const next = oldData.slice();
+        next[index] = repo;
+        return next;
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["skills", "discoverable"],
+      });
     },
   });
 }

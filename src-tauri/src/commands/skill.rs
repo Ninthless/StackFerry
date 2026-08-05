@@ -7,9 +7,9 @@
 use crate::app_config::{AppType, InstalledSkill, UnmanagedSkill};
 use crate::error::format_skill_error;
 use crate::services::skill::{
-    DiscoverableSkill, ImportSkillSelection, MigrationResult, Skill, SkillBackupEntry, SkillRepo,
-    SkillService, SkillStorageLocation, SkillUninstallResult, SkillUpdateInfo,
-    SkillsShSearchResult,
+    AddSkillRepoResult, DiscoverAvailableResult, DiscoverableSkill, ImportSkillSelection,
+    MigrationResult, Skill, SkillBackupEntry, SkillRepo, SkillService, SkillStorageLocation,
+    SkillUninstallResult, SkillUpdateInfo, SkillsShSearchResult,
 };
 use crate::store::AppState;
 use std::str::FromStr;
@@ -121,13 +121,9 @@ pub fn import_skills_from_apps(
 pub async fn discover_available_skills(
     service: State<'_, SkillServiceState>,
     app_state: State<'_, AppState>,
-) -> Result<Vec<DiscoverableSkill>, String> {
+) -> Result<DiscoverAvailableResult, String> {
     let repos = app_state.db.get_skill_repos().map_err(|e| e.to_string())?;
-    service
-        .0
-        .discover_available(repos)
-        .await
-        .map_err(|e| e.to_string())
+    Ok(service.0.discover_available(repos).await)
 }
 
 /// 检查 Skills 更新
@@ -228,11 +224,7 @@ pub async fn install_skill_for_app(
 
     // 先获取技能信息
     let repos = app_state.db.get_skill_repos().map_err(|e| e.to_string())?;
-    let skills = service
-        .0
-        .discover_available(repos)
-        .await
-        .map_err(|e| e.to_string())?;
+    let skills = service.0.discover_available(repos).await.skills;
 
     let skill = skills
         .into_iter()
@@ -300,16 +292,16 @@ pub fn get_skill_repos(app_state: State<'_, AppState>) -> Result<Vec<SkillRepo>,
 
 /// 添加技能仓库
 #[tauri::command]
-pub fn add_skill_repo(repo: SkillRepo, app_state: State<'_, AppState>) -> Result<bool, String> {
-    // 整个结构体由前端反序列化而来，owner/name/branch 会被拼进归档下载 URL。
-    // 主防线在 download_repo，这里让非法值当场报错而不是沉淀进表。
-    SkillService::validate_repo_ref(&repo.owner, &repo.name, &repo.branch)
-        .map_err(|e| e.to_string())?;
-    app_state
-        .db
-        .save_skill_repo(&repo)
-        .map_err(|e| e.to_string())?;
-    Ok(true)
+pub async fn add_skill_repo(
+    repo: SkillRepo,
+    service: State<'_, SkillServiceState>,
+    app_state: State<'_, AppState>,
+) -> Result<AddSkillRepoResult, String> {
+    service
+        .0
+        .add_skill_repo(&app_state.db, repo)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 删除技能仓库

@@ -418,20 +418,22 @@ const UnifiedSkillsPanel = React.forwardRef<
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
         {isLoading ? (
-          <div className="text-center py-12 text-muted-foreground">
+          <div className="flex h-full items-center justify-center text-muted-foreground">
             {t("skills.loading")}
           </div>
         ) : !skills || skills.length === 0 ? (
-          <WorkbenchEmptyState
-            icon={<Sparkles className="h-5 w-5" />}
-            title={t("skills.noInstalled")}
-            description={t("skills.noInstalledDescription")}
-            actions={
-              <Button type="button" size="sm" onClick={onOpenDiscovery}>
-                {t("skills.discover")}
-              </Button>
-            }
-          />
+          <div className="flex h-full items-center justify-center">
+            <WorkbenchEmptyState
+              icon={<Sparkles className="h-5 w-5" />}
+              title={t("skills.noInstalled")}
+              description={t("skills.noInstalledDescription")}
+              actions={
+                <Button type="button" size="sm" onClick={onOpenDiscovery}>
+                  {t("skills.discover")}
+                </Button>
+              }
+            />
+          </div>
         ) : (
           <TooltipProvider delayDuration={300}>
             <div className="overflow-hidden rounded-md border border-border bg-card">

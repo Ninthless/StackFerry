@@ -288,12 +288,22 @@ export const createBrowserPreviewCommandHandler = () => {
       case "get_current_omo_provider_id":
       case "get_current_omo_slim_provider_id":
         return "";
+      case "discover_available_skills":
+        return { skills: [], failures: [] };
+      case "add_skill_repo": {
+        const repo = args.repo as { branch?: string };
+        return {
+          repo: { ...repo, branch: repo.branch || "main" },
+          skillCount: 0,
+        };
+      }
+      case "remove_skill_repo":
+        return true;
       case "get_installed_skills":
       case "get_skill_backups":
       case "get_skill_repos":
       case "get_skills":
       case "get_skills_for_app":
-      case "discover_available_skills":
       case "scan_unmanaged_skills":
       case "list_sessions":
       case "get_session_messages":

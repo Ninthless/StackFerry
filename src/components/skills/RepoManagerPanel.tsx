@@ -3,23 +3,39 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, ExternalLink, Plus } from "lucide-react";
+import { Trash2, ExternalLink, Loader2, Plus } from "lucide-react";
 import { settingsApi } from "@/lib/api";
 import { FullScreenPanel } from "@/components/common/FullScreenPanel";
 import type { DiscoverableSkill, SkillRepo } from "@/lib/api/skills";
+import { formatSkillError } from "@/lib/errors/skillErrorParser";
 
-interface RepoManagerPanelProps {
+export interface RepoManagerPanelProps {
   repos: SkillRepo[];
   skills: DiscoverableSkill[];
   onAdd: (repo: SkillRepo) => Promise<void>;
+  isAdding: boolean;
   onRemove: (owner: string, name: string) => Promise<void>;
   onClose: () => void;
+}
+
+export function parseSkillRepoUrl(
+  url: string,
+): { owner: string; name: string } | null {
+  let cleaned = url.trim();
+  cleaned = cleaned.replace(/^https?:\/\/github\.com\//, "");
+  cleaned = cleaned.replace(/\.git$/, "");
+  const parts = cleaned.split("/");
+  if (parts.length === 2 && parts[0] && parts[1]) {
+    return { owner: parts[0], name: parts[1] };
+  }
+  return null;
 }
 
 export function RepoManagerPanel({
   repos,
   skills,
   onAdd,
+  isAdding,
   onRemove,
   onClose,
 }: RepoManagerPanelProps) {
@@ -33,23 +49,10 @@ export function RepoManagerPanel({
       (skill) =>
         skill.repoOwner === repo.owner &&
         skill.repoName === repo.name &&
-        (skill.repoBranch || "main") === (repo.branch || "main"),
+        skill.repoBranch === repo.branch,
     ).length;
 
-  const parseRepoUrl = (
-    url: string,
-  ): { owner: string; name: string } | null => {
-    let cleaned = url.trim();
-    cleaned = cleaned.replace(/^https?:\/\/github\.com\//, "");
-    cleaned = cleaned.replace(/\.git$/, "");
-
-    const parts = cleaned.split("/");
-    if (parts.length === 2 && parts[0] && parts[1]) {
-      return { owner: parts[0], name: parts[1] };
-    }
-
-    return null;
-  };
+  const parseRepoUrl = parseSkillRepoUrl;
 
   const handleAdd = async () => {
     setError("");
@@ -64,14 +67,20 @@ export function RepoManagerPanel({
       await onAdd({
         owner: parsed.owner,
         name: parsed.name,
-        branch: branch || "main",
+        branch,
         enabled: true,
       });
 
       setRepoUrl("");
       setBranch("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("skills.repo.addFailed"));
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      const { description } = formatSkillError(
+        errorMessage,
+        t,
+        "skills.repo.addFailed",
+      );
+      setError(description);
     }
   };
 
@@ -103,6 +112,7 @@ export function RepoManagerPanel({
               placeholder={t("skills.repo.urlPlaceholder")}
               value={repoUrl}
               onChange={(e) => setRepoUrl(e.target.value)}
+              disabled={isAdding}
               className="mt-2"
             />
           </div>
@@ -115,6 +125,7 @@ export function RepoManagerPanel({
               placeholder={t("skills.repo.branchPlaceholder")}
               value={branch}
               onChange={(e) => setBranch(e.target.value)}
+              disabled={isAdding}
               className="mt-2"
             />
           </div>
@@ -123,8 +134,13 @@ export function RepoManagerPanel({
             onClick={handleAdd}
             className="bg-primary text-primary-foreground hover:bg-primary/90"
             type="button"
+            disabled={isAdding}
           >
-            <Plus className="h-4 w-4 mr-2" />
+            {isAdding ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4 mr-2" />
+            )}
             {t("skills.repo.add")}
           </Button>
         </div>
@@ -152,7 +168,8 @@ export function RepoManagerPanel({
                     {repo.owner}/{repo.name}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {t("skills.repo.branch")}: {repo.branch || "main"}
+                    {t("skills.repo.branch")}:{" "}
+                    {repo.branch || t("skills.repo.defaultBranch")}
                     <span className="ml-3 inline-flex items-center rounded-full border border-border-default px-2 py-0.5 text-[11px]">
                       {t("skills.repo.skillCount", {
                         count: getSkillCount(repo),

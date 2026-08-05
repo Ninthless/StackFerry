@@ -38,6 +38,36 @@ describe("browser preview IPC", () => {
     });
   });
 
+  it("returns Skills IPC contract defaults", () => {
+    const invoke = createBrowserPreviewCommandHandler();
+    const repo = {
+      owner: "example",
+      name: "skills",
+      branch: "",
+      enabled: true,
+    };
+
+    expect(invoke("discover_available_skills")).toEqual({
+      skills: [],
+      failures: [],
+    });
+    expect(invoke("get_skill_repos")).toEqual([]);
+    expect(invoke("add_skill_repo", { repo })).toEqual({
+      repo: { ...repo, branch: "main" },
+      skillCount: 0,
+    });
+    expect(
+      invoke("add_skill_repo", {
+        repo: { ...repo, branch: "develop" },
+      }),
+    ).toEqual({
+      repo: { ...repo, branch: "develop" },
+      skillCount: 0,
+    });
+    expect(
+      invoke("remove_skill_repo", { owner: repo.owner, name: repo.name }),
+    ).toBe(true);
+  });
   it("returns complete settings metadata", () => {
     const invoke = createBrowserPreviewCommandHandler();
 

@@ -135,6 +135,23 @@ export interface SkillRepo {
   enabled: boolean;
 }
 
+export interface SkillRepoFailure {
+  owner: string;
+  name: string;
+  branch: string;
+  error: string;
+}
+
+export interface DiscoverAvailableResult {
+  skills: DiscoverableSkill[];
+  failures: SkillRepoFailure[];
+}
+
+export interface AddSkillRepoResult {
+  repo: SkillRepo;
+  skillCount: number;
+}
+
 // ========== API ==========
 
 export const skillsApi = {
@@ -194,7 +211,7 @@ export const skillsApi = {
   },
 
   /** 发现可安装的 Skills（从仓库获取） */
-  async discoverAvailable(): Promise<DiscoverableSkill[]> {
+  async discoverAvailable(): Promise<DiscoverAvailableResult> {
     return await invoke("discover_available_skills");
   },
 
@@ -261,7 +278,7 @@ export const skillsApi = {
   },
 
   /** 添加仓库 */
-  async addRepo(repo: SkillRepo): Promise<boolean> {
+  async addRepo(repo: SkillRepo): Promise<AddSkillRepoResult> {
     return await invoke("add_skill_repo", { repo });
   },
 

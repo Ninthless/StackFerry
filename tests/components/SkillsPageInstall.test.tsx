@@ -2,6 +2,7 @@ import { createRef } from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { toast } from "sonner";
 
 import {
   SkillsPage,
@@ -16,6 +17,7 @@ import type {
 } from "@/lib/api/skills";
 
 const installMutateAsyncMock = vi.fn();
+const addRepoMutateAsyncMock = vi.fn();
 let discoverableSkillsMock: DiscoverableSkill[] = [];
 let skillReposMock: SkillRepo[] = [];
 const refetchDiscoverableMock = vi.fn();
@@ -61,7 +63,7 @@ vi.mock("sonner", () => ({
 
 vi.mock("@/hooks/useSkills", () => ({
   useDiscoverableSkills: () => ({
-    data: discoverableSkillsMock,
+    data: { skills: discoverableSkillsMock, failures: [] },
     isLoading: false,
     isFetching: false,
     refetch: refetchDiscoverableMock,
@@ -72,16 +74,19 @@ vi.mock("@/hooks/useSkills", () => ({
   }),
   useInstallSkill: () => ({
     mutateAsync: installMutateAsyncMock,
+    isPending: false,
   }),
   useSkillRepos: () => ({
     data: skillReposMock,
     refetch: vi.fn(),
   }),
   useAddSkillRepo: () => ({
-    mutateAsync: vi.fn(),
+    mutateAsync: addRepoMutateAsyncMock,
+    isPending: false,
   }),
   useRemoveSkillRepo: () => ({
     mutateAsync: vi.fn(),
+    isPending: false,
   }),
   useSearchSkillsSh: (query: string, _limit: number, offset: number) => {
     const cached = searchCache.get(`${query}:${offset}`);
@@ -130,6 +135,7 @@ describe("SkillsPage - skills.sh install (regression)", () => {
   beforeEach(() => {
     installMutateAsyncMock.mockReset();
     installMutateAsyncMock.mockResolvedValue({});
+    addRepoMutateAsyncMock.mockReset();
     discoverableSkillsMock = [];
     skillReposMock = [];
     refetchDiscoverableMock.mockReset();
@@ -315,10 +321,7 @@ describe("SkillsPage - skills.sh install (regression)", () => {
     const onSourceChange = vi.fn();
 
     render(
-      <SkillsPage
-        availableApps={["claude"]}
-        onSourceChange={onSourceChange}
-      />,
+      <SkillsPage availableApps={["claude"]} onSourceChange={onSourceChange} />,
     );
 
     await waitFor(() => {
@@ -331,10 +334,7 @@ describe("SkillsPage - skills.sh install (regression)", () => {
     const onSourceChange = vi.fn();
 
     render(
-      <SkillsPage
-        availableApps={["claude"]}
-        onSourceChange={onSourceChange}
-      />,
+      <SkillsPage availableApps={["claude"]} onSourceChange={onSourceChange} />,
     );
 
     await waitFor(() => {
@@ -349,10 +349,7 @@ describe("SkillsPage - skills.sh install (regression)", () => {
     const onSourceChange = vi.fn();
     const user = userEvent.setup();
     const { rerender } = render(
-      <SkillsPage
-        availableApps={["claude"]}
-        onSourceChange={onSourceChange}
-      />,
+      <SkillsPage availableApps={["claude"]} onSourceChange={onSourceChange} />,
     );
 
     await waitFor(() => {
@@ -364,10 +361,7 @@ describe("SkillsPage - skills.sh install (regression)", () => {
     discoverableSkillsMock = [makeDiscoverableSkill()];
     skillReposMock = [makeSkillRepo()];
     rerender(
-      <SkillsPage
-        availableApps={["claude"]}
-        onSourceChange={onSourceChange}
-      />,
+      <SkillsPage availableApps={["claude"]} onSourceChange={onSourceChange} />,
     );
 
     await user.click(
@@ -376,6 +370,38 @@ describe("SkillsPage - skills.sh install (regression)", () => {
 
     expect(screen.getByText("Repo Skill")).toBeInTheDocument();
     expect(onSourceChange).toHaveBeenCalledWith("repos");
+  });
+
+  it("formats add repository errors for the toast and form", async () => {
+    const structuredError = JSON.stringify({
+      code: "INVALID_REPO_REF",
+      context: { owner: "owner-a", name: "repo-a" },
+      suggestion: "checkRepoUrl",
+    });
+    addRepoMutateAsyncMock.mockRejectedValue(new Error(structuredError));
+    skillReposMock = [makeSkillRepo()];
+
+    render(<SkillsPage availableApps={["claude"]} />);
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "skills.addRepo" }));
+    await user.type(
+      screen.getByPlaceholderText("skills.repo.urlPlaceholder"),
+      "owner-a/repo-a",
+    );
+    await user.click(screen.getByRole("button", { name: "skills.repo.add" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("skills.repo.addFailed", {
+        description:
+          "skills.error.invalidRepoRef\n\nskills.error.suggestion.checkRepoUrl",
+      });
+    });
+    expect(
+      screen.getByText(
+        "skills.error.invalidRepoRef skills.error.suggestion.checkRepoUrl",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("exposes repository-only header actions for the parent chrome", () => {

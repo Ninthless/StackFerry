@@ -2389,7 +2389,7 @@
       "url": "Repository URL",
       "urlPlaceholder": "owner/name or https://github.com/owner/name",
       "branch": "Branch",
-      "branchPlaceholder": "main",
+      "branchPlaceholder": "Leave empty to auto-detect main/master",
       "path": "Skills Path",
       "pathPlaceholder": "skills (optional, leave empty for root)",
       "add": "Add Repository",
@@ -2400,7 +2400,8 @@
       "addFailed": "Failed to add",
       "removeSuccess": "Repository {{owner}}/{{name}} removed",
       "removeFailed": "Failed to remove",
-      "skillCount": "{{count}} skills detected"
+      "skillCount": "{{count}} skills detected",
+      "defaultBranch": "default branch"
     },
     "search": "Search Skills",
     "searchPlaceholder": "Search skill name or repo...",
@@ -2474,6 +2475,10 @@
       "successSingle": "Skill {{name}} installed",
       "successMultiple": "Successfully installed {{count}} skills",
       "noSkillsFound": "No skills found in ZIP file (requires SKILL.md file)"
+    },
+    "discoveryFailures": {
+      "title": "{{count}} repository could not be refreshed. Other skills remain available.",
+      "item": "{{repo}} ({{branch}}): {{error}}"
     }
   },
   "deeplink": {

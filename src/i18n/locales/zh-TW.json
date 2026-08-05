@@ -2360,7 +2360,7 @@
       "url": "儲存庫 URL",
       "urlPlaceholder": "owner/name 或 https://github.com/owner/name",
       "branch": "分支",
-      "branchPlaceholder": "main",
+      "branchPlaceholder": "留空自動偵測 main/master",
       "path": "技能路徑",
       "pathPlaceholder": "skills (選填，留空掃描根目錄)",
       "add": "新增儲存庫",
@@ -2371,7 +2371,8 @@
       "addFailed": "新增失敗",
       "removeSuccess": "儲存庫 {{owner}}/{{name}} 已刪除",
       "removeFailed": "刪除失敗",
-      "skillCount": "識別到 {{count}} 個技能"
+      "skillCount": "識別到 {{count}} 個技能",
+      "defaultBranch": "預設分支"
     },
     "search": "搜尋技能",
     "searchPlaceholder": "搜尋技能名稱或儲存庫名稱...",
@@ -2445,6 +2446,10 @@
       "successSingle": "技能 {{name}} 已安裝",
       "successMultiple": "成功安裝 {{count}} 個技能",
       "noSkillsFound": "ZIP 檔案中未找到技能（需包含 SKILL.md 檔案）"
+    },
+    "discoveryFailures": {
+      "title": "有 {{count}} 個儲存庫重新整理失敗，其他技能仍可正常使用。",
+      "item": "{{repo}}（{{branch}}）：{{error}}"
     }
   },
   "deeplink": {

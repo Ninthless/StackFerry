@@ -64,6 +64,20 @@ export const handlers = [
     });
   }),
   http.post(`${TAURI_ENDPOINT}/get_installed_skills`, () => success([])),
+  http.post(`${TAURI_ENDPOINT}/discover_available_skills`, () =>
+    success({ skills: [], failures: [] }),
+  ),
+  http.post(`${TAURI_ENDPOINT}/get_skill_repos`, () => success([])),
+  http.post(`${TAURI_ENDPOINT}/add_skill_repo`, async ({ request }) => {
+    const { repo } = await withJson<{
+      repo: { branch?: string } & Record<string, unknown>;
+    }>(request);
+    return success({
+      repo: { ...repo, branch: repo.branch || "main" },
+      skillCount: 0,
+    });
+  }),
+  http.post(`${TAURI_ENDPOINT}/remove_skill_repo`, () => success(true)),
   http.post(`${TAURI_ENDPOINT}/get_providers`, async ({ request }) => {
     const { app } = await withJson<{ app: AppId }>(request);
     return success(getProviders(app));

@@ -20,6 +20,7 @@ import {
   Search,
   Loader2,
   Settings,
+  AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -123,11 +124,13 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
 
     // Queries
     const {
-      data: discoverableSkills,
+      data: discoveryResult,
       isLoading: loadingDiscoverable,
       isFetching: fetchingDiscoverable,
       refetch: refetchDiscoverable,
     } = useDiscoverableSkills();
+    const discoverableSkills = discoveryResult?.skills;
+    const discoveryFailures = discoveryResult?.failures ?? [];
     const { data: installedSkills } = useInstalledSkills();
     const { data: repos = [], refetch: refetchRepos } = useSkillRepos();
 
@@ -216,9 +219,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
     };
 
     const loading =
-      searchSource === "repos"
-        ? loadingDiscoverable || fetchingDiscoverable
-        : false;
+      searchSource === "repos" && loadingDiscoverable && !discoveryResult;
 
     useImperativeHandle(ref, () => ({
       refresh: () => {
@@ -297,28 +298,25 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
 
     const handleAddRepo = async (repo: SkillRepo) => {
       try {
-        await addRepoMutation.mutateAsync(repo);
-        // Await discovery so we can report the real count
-        const { data: freshSkills } = await refetchDiscoverable();
-        const count =
-          freshSkills?.filter(
-            (s) =>
-              s.repoOwner === repo.owner &&
-              s.repoName === repo.name &&
-              (s.repoBranch || "main") === (repo.branch || "main"),
-          ).length ?? 0;
+        const result = await addRepoMutation.mutateAsync(repo);
         toast.success(
           t("skills.repo.addSuccess", {
-            owner: repo.owner,
-            name: repo.name,
-            count,
+            owner: result.repo.owner,
+            name: result.repo.name,
+            count: result.skillCount,
           }),
           { closeButton: true },
         );
       } catch (error) {
-        toast.error(t("common.error"), {
-          description: String(error),
-        });
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        const { title, description } = formatSkillError(
+          errorMessage,
+          t,
+          "skills.repo.addFailed",
+        );
+        toast.error(title, { description });
+        throw error;
       }
     };
 
@@ -383,12 +381,12 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
     }, [effectiveSource, onSourceChange]);
 
     return (
-      <div className="px-6 flex flex-col flex-1 min-h-0 overflow-hidden bg-background/50">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background/50 px-6">
         {/* 技能网格（可滚动详情区域） */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden animate-fade-in">
-          <div className="py-4">
+        <div className="flex min-h-0 flex-1 flex-col animate-fade-in">
+          <div className="shrink-0 py-4">
             {/* 搜索来源切换 + 搜索框 */}
-            <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
               {/* 来源切换 */}
               <div className="inline-flex gap-1 rounded-md border border-border-default bg-background p-1 shrink-0">
                 <Button
@@ -543,14 +541,53 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
             </div>
 
             {/* 内容区域 */}
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-6">
+            {effectiveSource === "repos" && discoveryFailures.length > 0 && (
+              <div className="mb-4 shrink-0 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-medium">
+                      {t("skills.discoveryFailures.title", {
+                        count: discoveryFailures.length,
+                      })}
+                    </p>
+                    <div className="mt-1 space-y-1 text-xs opacity-90">
+                      {discoveryFailures.map((failure) => (
+                        <p
+                          key={`${failure.owner}/${failure.name}:${failure.branch}`}
+                        >
+                          {t("skills.discoveryFailures.item", {
+                            repo: `${failure.owner}/${failure.name}`,
+                            branch:
+                              failure.branch || t("skills.repo.defaultBranch"),
+                            error: failure.error,
+                          })}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {effectiveSource === "repos" &&
+              fetchingDiscoverable &&
+              !loading && (
+                <div className="mb-3 flex shrink-0 items-center justify-end gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {t("skills.refreshing")}
+                </div>
+              )}
             {effectiveSource === "repos" ? (
               /* ===== 仓库模式 ===== */
               loading ? (
-                <div className="flex items-center justify-center h-64">
+                <div className="flex flex-1 items-center justify-center">
                   <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : skills.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-center">
+                <div className="flex flex-1 flex-col items-center justify-center text-center">
                   <p className="text-lg font-medium text-foreground">
                     {t("skills.empty")}
                   </p>
@@ -566,7 +603,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
                   </Button>
                 </div>
               ) : filteredSkills.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-48 text-center">
+                <div className="flex flex-1 flex-col items-center justify-center text-center">
                   <p className="text-lg font-medium text-foreground">
                     {t("skills.noResults")}
                   </p>
@@ -590,21 +627,21 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
               /* ===== skills.sh 模式 ===== */
               <>
                 {searchingSkillsSh ? (
-                  <div className="flex items-center justify-center h-64">
+                  <div className="flex flex-1 items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                     <span className="ml-3 text-sm text-muted-foreground">
                       {t("skills.skillssh.loading")}
                     </span>
                   </div>
                 ) : skillsShQuery.length < 2 ? (
-                  <div className="flex flex-col items-center justify-center h-64 text-center">
+                  <div className="flex flex-1 flex-col items-center justify-center text-center">
                     <Search className="h-12 w-12 text-muted-foreground/30 mb-4" />
                     <p className="text-sm text-muted-foreground">
                       {t("skills.skillssh.searchPlaceholder")}
                     </p>
                   </div>
                 ) : accumulatedResults.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-48 text-center">
+                  <div className="flex flex-1 flex-col items-center justify-center text-center">
                     <p className="text-lg font-medium text-foreground">
                       {t("skills.skillssh.noResults", {
                         query: skillsShQuery,
@@ -667,6 +704,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
             repos={repos}
             skills={skills}
             onAdd={handleAddRepo}
+            isAdding={addRepoMutation.isPending}
             onRemove={handleRemoveRepo}
             onClose={() => setRepoManagerOpen(false)}
           />

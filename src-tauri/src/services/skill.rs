@@ -7,6 +7,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
+use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -110,6 +111,29 @@ pub struct SkillRepo {
     pub branch: String,
     /// 是否启用
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillRepoFailure {
+    pub owner: String,
+    pub name: String,
+    pub branch: String,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoverAvailableResult {
+    pub skills: Vec<DiscoverableSkill>,
+    pub failures: Vec<SkillRepoFailure>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddSkillRepoResult {
+    pub repo: SkillRepo,
+    pub skill_count: usize,
 }
 
 /// 技能安装状态（旧版兼容）
@@ -274,6 +298,8 @@ const SKILL_BACKUP_RETAIN_COUNT: usize = 20;
 /// 取值对齐 `webdav_sync/archive.rs` 里同款保护的量级。
 const MAX_ARCHIVE_ENTRIES: usize = 10_000;
 const MAX_ARCHIVE_TOTAL_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_SCAN_DEPTH: usize = 16;
+const MAX_SCAN_DIRECTORIES: usize = 10_000;
 /// symlink 目标就是一条路径，几十字节就够；给到 4 KiB 是宽松上限。
 /// 必须有这个上限：zip 2.4.2 的 `make_reader` 不按声明的 uncompressed_size
 /// 截断读取，所以一个打了 symlink 标志、deflate 流却能膨胀到数 GB 的条目，
@@ -977,7 +1003,12 @@ impl SkillService {
 
             // 扫描仓库中的所有 Skill 目录
             let mut remote_skills: Vec<DiscoverableSkill> = Vec::new();
-            let _ = self.scan_dir_recursive(temp_dir, temp_dir, &repo, &mut remote_skills);
+            if let Err(error) =
+                self.scan_dir_recursive(temp_dir, temp_dir, &repo, &mut remote_skills)
+            {
+                log::warn!("Skill repository scan failed for {owner}/{name}: {error}");
+                continue;
+            }
 
             for skill in group_skills {
                 // 在远程仓库中找到匹配的 Skill 目录
@@ -1094,7 +1125,7 @@ impl SkillService {
 
         // 在解压的仓库中查找 Skill 源目录
         let mut remote_skills: Vec<DiscoverableSkill> = Vec::new();
-        let _ = self.scan_dir_recursive(temp_dir, temp_dir, &repo, &mut remote_skills);
+        self.scan_dir_recursive(temp_dir, temp_dir, &repo, &mut remote_skills)?;
 
         let remote_match = remote_skills
             .iter()
@@ -1921,44 +1952,62 @@ impl SkillService {
     // ========== 发现功能（保留原有逻辑）==========
 
     /// 列出所有可发现的技能（从仓库获取）
-    pub async fn discover_available(
-        &self,
-        repos: Vec<SkillRepo>,
-    ) -> Result<Vec<DiscoverableSkill>> {
+    pub async fn discover_available(&self, repos: Vec<SkillRepo>) -> DiscoverAvailableResult {
+        let enabled_repos = repos.into_iter().filter(|repo| repo.enabled);
+        let mut results = stream::iter(enabled_repos.map(|repo| async move {
+            let result = self.fetch_repo_skills(&repo).await;
+            (repo, result)
+        }))
+        .buffer_unordered(4);
         let mut skills = Vec::new();
+        let mut failures = Vec::new();
 
-        // 仅使用启用的仓库
-        let enabled_repos: Vec<SkillRepo> = repos.into_iter().filter(|repo| repo.enabled).collect();
-
-        let fetch_tasks = enabled_repos
-            .iter()
-            .map(|repo| self.fetch_repo_skills(repo));
-
-        let results: Vec<Result<Vec<DiscoverableSkill>>> =
-            futures::future::join_all(fetch_tasks).await;
-
-        for (repo, result) in enabled_repos.into_iter().zip(results) {
+        while let Some((repo, result)) = results.next().await {
             match result {
-                Ok(repo_skills) => skills.extend(repo_skills),
-                Err(e) => log::warn!("获取仓库 {}/{} 技能失败: {}", repo.owner, repo.name, e),
+                Ok((_, repo_skills)) => skills.extend(repo_skills),
+                Err(error) => {
+                    log::warn!(
+                        "Failed to fetch skills from {}/{}: {error}",
+                        repo.owner,
+                        repo.name
+                    );
+                    failures.push(SkillRepoFailure {
+                        owner: repo.owner,
+                        name: repo.name,
+                        branch: repo.branch,
+                        error: error.to_string(),
+                    });
+                }
             }
         }
 
-        // 去重并排序
         Self::deduplicate_discoverable_skills(&mut skills);
         skills.sort_by_key(|skill| skill.name.to_lowercase());
-
-        Ok(skills)
+        failures
+            .sort_by(|a, b| (&a.owner, &a.name, &a.branch).cmp(&(&b.owner, &b.name, &b.branch)));
+        DiscoverAvailableResult { skills, failures }
     }
 
-    /// 列出所有技能（兼容旧 API）
+    pub async fn add_skill_repo(
+        &self,
+        db: &Arc<Database>,
+        repo: SkillRepo,
+    ) -> Result<AddSkillRepoResult> {
+        let (resolved_repo, skills) = self.fetch_repo_skills(&repo).await?;
+        db.save_skill_repo(&resolved_repo)?;
+        Ok(AddSkillRepoResult {
+            repo: resolved_repo,
+            skill_count: skills.len(),
+        })
+    }
+
     pub async fn list_skills(
         &self,
         repos: Vec<SkillRepo>,
         db: &Arc<Database>,
     ) -> Result<Vec<Skill>> {
         // 获取可发现的技能
-        let discoverable = self.discover_available(repos).await?;
+        let discoverable = self.discover_available(repos).await.skills;
 
         // 获取已安装的技能
         let installed = db.get_all_installed_skills()?;
@@ -2019,7 +2068,10 @@ impl SkillService {
     }
 
     /// 从仓库获取技能列表
-    async fn fetch_repo_skills(&self, repo: &SkillRepo) -> Result<Vec<DiscoverableSkill>> {
+    async fn fetch_repo_skills(
+        &self,
+        repo: &SkillRepo,
+    ) -> Result<(SkillRepo, Vec<DiscoverableSkill>)> {
         let (temp_guard, resolved_branch) =
             timeout(std::time::Duration::from_secs(60), self.download_repo(repo))
                 .await
@@ -2034,17 +2086,22 @@ impl SkillService {
                         Some("checkNetwork"),
                     ))
                 })??;
-
         let mut skills = Vec::new();
         let scan_dir = temp_guard.path();
         let mut resolved_repo = repo.clone();
         resolved_repo.branch = resolved_branch;
         self.scan_dir_recursive(scan_dir, scan_dir, &resolved_repo, &mut skills)?;
-
-        Ok(skills)
+        Ok((resolved_repo, skills))
     }
 
-    /// 递归扫描目录查找 SKILL.md
+    fn branch_candidates(branch: &str) -> Vec<&str> {
+        if branch.is_empty() || branch.eq_ignore_ascii_case("HEAD") {
+            vec!["main", "master"]
+        } else {
+            vec![branch]
+        }
+    }
+
     fn scan_dir_recursive(
         &self,
         current_dir: &Path,
@@ -2052,9 +2109,32 @@ impl SkillService {
         repo: &SkillRepo,
         skills: &mut Vec<DiscoverableSkill>,
     ) -> Result<()> {
-        let skill_md = current_dir.join("SKILL.md");
+        let mut directory_count = 0;
+        self.scan_dir_recursive_inner(current_dir, base_dir, repo, skills, 0, &mut directory_count)
+    }
 
-        if skill_md.exists() {
+    fn scan_dir_recursive_inner(
+        &self,
+        current_dir: &Path,
+        base_dir: &Path,
+        repo: &SkillRepo,
+        skills: &mut Vec<DiscoverableSkill>,
+        depth: usize,
+        directory_count: &mut usize,
+    ) -> Result<()> {
+        if depth > MAX_SCAN_DEPTH {
+            return Err(anyhow!(
+                "Skill repository scan exceeded maximum depth of {MAX_SCAN_DEPTH}"
+            ));
+        }
+        *directory_count += 1;
+        if *directory_count > MAX_SCAN_DIRECTORIES {
+            return Err(anyhow!(
+                "Skill repository scan exceeded maximum directory count of {MAX_SCAN_DIRECTORIES}"
+            ));
+        }
+        let skill_md = current_dir.join("SKILL.md");
+        if skill_md.is_file() {
             let directory = if current_dir == base_dir {
                 repo.name.clone()
             } else {
@@ -2064,31 +2144,35 @@ impl SkillService {
                     .to_string_lossy()
                     .replace('\\', "/")
             };
-
             let doc_path = skill_md
                 .strip_prefix(base_dir)
                 .unwrap_or(skill_md.as_path())
                 .to_string_lossy()
                 .replace('\\', "/");
-
             if let Ok(skill) =
                 self.build_skill_from_metadata(&skill_md, &directory, &doc_path, repo)
             {
                 skills.push(skill);
             }
-
             return Ok(());
         }
-
         for entry in fs::read_dir(current_dir)? {
             let entry = entry?;
-            let path = entry.path();
-
-            if path.is_dir() {
-                self.scan_dir_recursive(&path, base_dir, repo, skills)?;
+            if entry.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
+            let file_type = entry.file_type()?;
+            if file_type.is_dir() && !file_type.is_symlink() {
+                self.scan_dir_recursive_inner(
+                    &entry.path(),
+                    base_dir,
+                    repo,
+                    skills,
+                    depth + 1,
+                    directory_count,
+                )?;
             }
         }
-
         Ok(())
     }
 
@@ -2443,16 +2527,7 @@ impl SkillService {
         let temp_dir = tempfile::tempdir()?;
         let temp_path = temp_dir.path().to_path_buf();
 
-        let mut branches = Vec::new();
-        if !repo.branch.is_empty() && !repo.branch.eq_ignore_ascii_case("HEAD") {
-            branches.push(repo.branch.as_str());
-        }
-        if !branches.contains(&"main") {
-            branches.push("main");
-        }
-        if !branches.contains(&"master") {
-            branches.push("master");
-        }
+        let branches = Self::branch_candidates(&repo.branch);
 
         let mut last_error = None;
         for branch in branches {
@@ -3570,6 +3645,26 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    #[test]
+    fn skill_repo_failure_serializes_flat_repo_coordinates() {
+        let failure = SkillRepoFailure {
+            owner: "owner".to_string(),
+            name: "repo".to_string(),
+            branch: "develop".to_string(),
+            error: "network error".to_string(),
+        };
+
+        assert_eq!(
+            serde_json::to_value(failure).expect("serialize failure"),
+            serde_json::json!({
+                "owner": "owner",
+                "name": "repo",
+                "branch": "develop",
+                "error": "network error"
+            })
+        );
+    }
+
     /// 构造一个模拟 GitHub 归档的 ZIP：带一层 `repo-main/` 根目录，
     /// 其中掺入用 `../` 逃逸的恶意条目。
     ///
@@ -4458,5 +4553,77 @@ mod tests {
             dest.join("SKILL.md").is_file(),
             "existing destination skill should be preserved"
         );
+    }
+
+    #[test]
+    fn branch_candidates_probe_defaults_only_for_unspecified_branch() {
+        assert_eq!(SkillService::branch_candidates(""), vec!["main", "master"]);
+        assert_eq!(
+            SkillService::branch_candidates("HEAD"),
+            vec!["main", "master"]
+        );
+        assert_eq!(SkillService::branch_candidates("develop"), vec!["develop"]);
+    }
+
+    #[test]
+    fn scan_dir_recursive_skips_hidden_directories() {
+        let temp = tempdir().expect("tempdir");
+        write_skill(&temp.path().join("visible"), "Visible");
+        write_skill(&temp.path().join(".hidden"), "Hidden");
+        let repo = SkillRepo {
+            owner: "owner".to_string(),
+            name: "repo".to_string(),
+            branch: "main".to_string(),
+            enabled: true,
+        };
+        let mut skills = Vec::new();
+        SkillService::new()
+            .scan_dir_recursive(temp.path(), temp.path(), &repo, &mut skills)
+            .expect("scan");
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].directory, "visible");
+    }
+
+    #[test]
+    fn scan_dir_recursive_rejects_excessive_directory_count() {
+        let temp = tempdir().expect("tempdir");
+        let repo = SkillRepo {
+            owner: "owner".to_string(),
+            name: "repo".to_string(),
+            branch: "main".to_string(),
+            enabled: true,
+        };
+        let mut directory_count = MAX_SCAN_DIRECTORIES;
+        let error = SkillService::new()
+            .scan_dir_recursive_inner(
+                temp.path(),
+                temp.path(),
+                &repo,
+                &mut Vec::new(),
+                0,
+                &mut directory_count,
+            )
+            .expect_err("directory count limit");
+        assert!(error.to_string().contains("maximum directory count"));
+    }
+
+    #[test]
+    fn scan_dir_recursive_rejects_excessive_depth() {
+        let temp = tempdir().expect("tempdir");
+        let mut current = temp.path().to_path_buf();
+        for index in 0..=MAX_SCAN_DEPTH {
+            current = current.join(format!("level-{index}"));
+            fs::create_dir_all(&current).expect("create level");
+        }
+        let repo = SkillRepo {
+            owner: "owner".to_string(),
+            name: "repo".to_string(),
+            branch: "main".to_string(),
+            enabled: true,
+        };
+        let error = SkillService::new()
+            .scan_dir_recursive(temp.path(), temp.path(), &repo, &mut Vec::new())
+            .expect_err("depth limit");
+        assert!(error.to_string().contains("maximum depth"));
     }
 }
