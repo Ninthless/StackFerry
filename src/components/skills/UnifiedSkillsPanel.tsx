@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Sparkles,
@@ -33,9 +33,11 @@ import { settingsApi, skillsApi } from "@/lib/api";
 import { toast } from "sonner";
 import { SKILLS_APP_IDS } from "@/config/appConfig";
 import { AppCountBar } from "@/components/common/AppCountBar";
+import { AppSelect } from "@/components/common/AppSelect";
 import { AppToggleGroup } from "@/components/common/AppToggleGroup";
 import { ListItemRow } from "@/components/common/ListItemRow";
 import { WorkbenchEmptyState } from "@/components/common/WorkbenchEmptyState";
+import { SkillTargetAppDialog } from "@/components/skills/SkillTargetAppDialog";
 import {
   Dialog,
   DialogContent,
@@ -47,7 +49,7 @@ import {
 
 interface UnifiedSkillsPanelProps {
   onOpenDiscovery: () => void;
-  targetApp: AppId;
+  availableApps: readonly AppId[];
 }
 
 export interface UnifiedSkillsPanelHandle {
@@ -68,7 +70,7 @@ function formatSkillBackupDate(unixSeconds: number): string {
 const UnifiedSkillsPanel = React.forwardRef<
   UnifiedSkillsPanelHandle,
   UnifiedSkillsPanelProps
->(({ onOpenDiscovery, targetApp }, ref) => {
+>(({ onOpenDiscovery, availableApps }, ref) => {
   const { t } = useTranslation();
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -80,6 +82,16 @@ const UnifiedSkillsPanel = React.forwardRef<
   } | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [zipTargetDialogOpen, setZipTargetDialogOpen] = useState(false);
+  const [actionTargetApp, setActionTargetApp] = useState<AppId>(
+    () => availableApps[0] ?? "claude",
+  );
+
+  useEffect(() => {
+    if (!availableApps.includes(actionTargetApp)) {
+      setActionTargetApp(availableApps[0] ?? "claude");
+    }
+  }, [actionTargetApp, availableApps]);
 
   const { data: skills, isLoading } = useInstalledSkills();
   const {
@@ -200,14 +212,14 @@ const UnifiedSkillsPanel = React.forwardRef<
   };
 
   const handleInstallFromZip = async () => {
-    const installTarget = targetApp;
+    setZipTargetDialogOpen(false);
     try {
       const filePath = await skillsApi.openZipFileDialog();
       if (!filePath) return;
 
       const installed = await installFromZipMutation.mutateAsync({
         filePath,
-        currentApp: installTarget,
+        currentApp: actionTargetApp,
       });
 
       if (installed.length === 0) {
@@ -291,11 +303,10 @@ const UnifiedSkillsPanel = React.forwardRef<
   };
 
   const handleRestoreFromBackup = async (backupId: string) => {
-    const restoreTarget = targetApp;
     try {
       const restored = await restoreBackupMutation.mutateAsync({
         backupId,
-        currentApp: restoreTarget,
+        currentApp: actionTargetApp,
       });
       setRestoreDialogOpen(false);
       toast.success(
@@ -345,7 +356,7 @@ const UnifiedSkillsPanel = React.forwardRef<
   React.useImperativeHandle(ref, () => ({
     openDiscovery: onOpenDiscovery,
     openImport: handleOpenImport,
-    openInstallFromZip: handleInstallFromZip,
+    openInstallFromZip: () => setZipTargetDialogOpen(true),
     openRestoreFromBackup: handleOpenRestoreFromBackup,
     checkUpdates: handleCheckUpdates,
   }));
@@ -466,12 +477,28 @@ const UnifiedSkillsPanel = React.forwardRef<
         />
       )}
 
+      <SkillTargetAppDialog
+        open={zipTargetDialogOpen}
+        appIds={availableApps}
+        value={actionTargetApp}
+        title={t("skills.installFromZip.button")}
+        description={t("skills.installTargetDescription")}
+        confirmLabel={t("skills.install")}
+        isPending={installFromZipMutation.isPending}
+        onValueChange={setActionTargetApp}
+        onConfirm={() => void handleInstallFromZip()}
+        onClose={() => setZipTargetDialogOpen(false)}
+      />
+
       <RestoreSkillsDialog
         backups={skillBackups}
+        appIds={availableApps}
+        targetApp={actionTargetApp}
         isDeleting={deleteBackupMutation.isPending}
         isLoading={isFetchingSkillBackups}
         onDelete={handleDeleteBackup}
         isRestoring={restoreBackupMutation.isPending}
+        onTargetAppChange={setActionTargetApp}
         onRestore={handleRestoreFromBackup}
         onClose={() => setRestoreDialogOpen(false)}
         open={restoreDialogOpen}
@@ -612,9 +639,12 @@ interface ImportSkillsDialogProps {
 
 interface RestoreSkillsDialogProps {
   backups: SkillBackupEntry[];
+  appIds: readonly AppId[];
+  targetApp: AppId;
   isDeleting: boolean;
   isLoading: boolean;
   isRestoring: boolean;
+  onTargetAppChange: (app: AppId) => void;
   onDelete: (backup: SkillBackupEntry) => void;
   onRestore: (backupId: string) => void;
   onClose: () => void;
@@ -623,9 +653,12 @@ interface RestoreSkillsDialogProps {
 
 const RestoreSkillsDialog: React.FC<RestoreSkillsDialogProps> = ({
   backups,
+  appIds,
+  targetApp,
   isDeleting,
   isLoading,
   isRestoring,
+  onTargetAppChange,
   onDelete,
   onRestore,
   onClose,
@@ -645,6 +678,15 @@ const RestoreSkillsDialog: React.FC<RestoreSkillsDialogProps> = ({
             {t("skills.restoreFromBackup.description")}
           </DialogDescription>
         </DialogHeader>
+
+        <div className="px-6 pt-4">
+          <AppSelect
+            value={targetApp}
+            appIds={appIds}
+            onValueChange={onTargetAppChange}
+            ariaLabel={t("skills.selectTargetApplication")}
+          />
+        </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {isLoading ? (

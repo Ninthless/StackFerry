@@ -243,7 +243,6 @@ export function useAddSkillRepo() {
     mutationFn: skillsApi.addRepo,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["skills", "repos"] });
-      queryClient.invalidateQueries({ queryKey: ["skills", "discoverable"] });
     },
   });
 }

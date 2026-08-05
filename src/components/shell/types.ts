@@ -5,8 +5,6 @@ export type AppView =
   | "skills"
   | "skillsDiscovery"
   | "mcp"
-  | "agents"
-  | "universal"
   | "sessions"
   | "workspace"
   | "openclawEnv"

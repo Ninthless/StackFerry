@@ -163,7 +163,22 @@ impl Database {
             }
         }
 
+        if let Err(e) = db.optimize_query_planner(true) {
+            log::warn!("Startup query planner optimization failed: {e}");
+        }
+
         Ok(db)
+    }
+
+    pub(crate) fn optimize_query_planner(&self, inspect_all_tables: bool) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        let pragma = if inspect_all_tables {
+            "PRAGMA optimize=0x10002;"
+        } else {
+            "PRAGMA optimize;"
+        };
+        conn.execute_batch(pragma)
+            .map_err(|e| AppError::Database(format!("优化 SQLite 查询规划失败: {e}")))
     }
 
     /// 读取磁盘上数据库的 `user_version`；仅当它比应用支持的 [`SCHEMA_VERSION`]

@@ -32,10 +32,6 @@ import { AppToggleGroup } from "@/components/common/AppToggleGroup";
 import { ListItemRow } from "@/components/common/ListItemRow";
 import { WorkbenchEmptyState } from "@/components/common/WorkbenchEmptyState";
 
-interface UnifiedMcpPanelProps {
-  onOpenChange: (open: boolean) => void;
-}
-
 export interface UnifiedMcpPanelHandle {
   openAdd: () => void;
   openImport: () => void;
@@ -43,8 +39,8 @@ export interface UnifiedMcpPanelHandle {
 
 const UnifiedMcpPanel = React.forwardRef<
   UnifiedMcpPanelHandle,
-  UnifiedMcpPanelProps
->(({ onOpenChange: _onOpenChange }, ref) => {
+  Record<never, never>
+>((_, ref) => {
   const { t } = useTranslation();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

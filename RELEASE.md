@@ -1,6 +1,25 @@
-# StackFerry v0.1.4
+# StackFerry v0.1.5
 
 ## 简体中文
+
+### 故障转移与恢复
+
+- 新增故障转移卡片的手动恢复熔断按钮；熔断通道无需等待冷却时间即可立即恢复，并在恢复高优先级通道时按后端规则自动切回。
+- 手动恢复提供明确的加载、成功和失败状态，健康缓存会先行更新，随后刷新供应商列表与代理目标。
+- 健康状态轮询仅在代理接管、自动故障转移和队列成员同时成立时运行，减少无效后台请求。
+
+### 使用统计与数据库性能
+
+- 将使用统计查询移出 Tauri 命令主线程，避免打开使用统计时阻塞前端和代理服务。
+- 优化 SQLite 查询规划与会话/代理日志去重路径，保留 Pi 响应 ID 和 Token 指纹两种匹配策略。
+- 合并供应商卡片中的使用统计查询，避免同一供应商重复创建查询订阅。
+
+### 前端作用域与缓存生命周期
+
+- Prompt 应用选择移动到页面标题栏，移除重复的页面级供应商选择和无效文件读取。
+- Skills 的安装、ZIP 导入和备份恢复改为操作级目标应用选择，不再被供应商路由切换影响。
+- 删除失效的 Agents/Universal 独立路由，持久化视图与当前应用不兼容时自动回到供应商页面。
+- 收敛数据库恢复、深链导入和同步后的缓存失效范围，避免重复刷新和无关查询。
 
 ### 代理、故障转移与供应商兼容性
 
@@ -37,6 +56,25 @@
 - CI 在 Ubuntu、Windows 和 macOS 上执行格式、Clippy 与测试检查，提前发现平台条件编译问题。
 
 ## English
+
+### Failover Recovery
+
+- Added a manual circuit-breaker recovery action to failover provider cards, so a circuit can be reset immediately without waiting for its cooldown; higher-priority recovery still follows the backend switch rule.
+- Manual recovery now exposes loading, success, and error states, updates the health cache immediately, and refreshes providers and proxy targets.
+- Health polling only runs when proxy takeover, automatic failover, and queue membership are all active, reducing unnecessary background requests.
+
+### Usage and Database Performance
+
+- Moved usage-statistics queries off the Tauri command thread so opening Usage does not block the renderer or proxy service.
+- Optimized SQLite query planning and session/proxy log deduplication while preserving both Pi response-ID and token-fingerprint matching paths.
+- Consolidated provider-card usage queries so each provider creates only one usage subscription.
+
+### Frontend Scope and Cache Lifecycle
+
+- Moved the Prompt application selector into the page header and removed duplicate page-level selectors and unused file reads.
+- Made Skills installation, ZIP import, and backup restore choose their target application per action instead of following provider-route switching.
+- Removed obsolete standalone Agents/Universal routes and normalize incompatible persisted views back to the Providers page.
+- Narrowed cache invalidation after database restore, deep-link import, and sync operations to avoid duplicate refreshes and unrelated queries.
 
 ### Proxy, Failover, and Provider Compatibility
 

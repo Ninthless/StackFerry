@@ -39,6 +39,7 @@ import {
   useFailoverQueue,
   useAddToFailoverQueue,
   useRemoveFromFailoverQueue,
+  useResetCircuitBreaker,
 } from "@/lib/query/failover";
 import {
   useCurrentOmoProviderId,
@@ -157,6 +158,7 @@ export function ProviderList({
   const { data: failoverQueue } = useFailoverQueue(appId);
   const addToQueue = useAddToFailoverQueue();
   const removeFromQueue = useRemoveFromFailoverQueue();
+  const resetCircuitBreaker = useResetCircuitBreaker();
   const failoverMutationPendingRef = useRef(false);
   const isFailoverMutationPending =
     addToQueue.isPending || removeFromQueue.isPending;
@@ -424,6 +426,7 @@ export function ProviderList({
               appId === "hermes" && hermesCurrentProviderId === provider.id;
             const isPiCurrent =
               appId === "pi" && piDefaultProvider === provider.id;
+            const inFailoverQueue = isInFailoverQueue(provider.id);
             return (
               <SortableProviderCard
                 key={provider.id}
@@ -459,10 +462,23 @@ export function ProviderList({
                 isProxyTakeover={isProxyTakeover}
                 isAutoFailoverEnabled={isFailoverModeActive}
                 failoverPriority={getFailoverPriority(provider.id)}
-                isInFailoverQueue={isInFailoverQueue(provider.id)}
+                isInFailoverQueue={inFailoverQueue}
                 isFailoverMutationPending={isFailoverMutationPending}
                 onToggleFailover={(enabled) =>
                   handleToggleFailover(provider.id, enabled)
+                }
+                isCircuitBreakerResetting={
+                  resetCircuitBreaker.isPending &&
+                  resetCircuitBreaker.variables?.providerId === provider.id
+                }
+                onResetCircuitBreaker={
+                  inFailoverQueue
+                    ? () =>
+                        resetCircuitBreaker.mutate({
+                          appType: appId,
+                          providerId: provider.id,
+                        })
+                    : undefined
                 }
                 activeProviderId={activeProviderId}
                 // OpenClaw: default model / Hermes: model.provider === provider.id
@@ -604,6 +620,8 @@ interface SortableProviderCardProps {
   isInFailoverQueue: boolean;
   isFailoverMutationPending: boolean;
   onToggleFailover: (enabled: boolean) => void;
+  isCircuitBreakerResetting: boolean;
+  onResetCircuitBreaker?: () => void;
   activeProviderId?: string;
   // OpenClaw: default model
   isDefaultModel?: boolean;
@@ -636,6 +654,8 @@ function SortableProviderCard({
   isInFailoverQueue,
   isFailoverMutationPending,
   onToggleFailover,
+  isCircuitBreakerResetting,
+  onResetCircuitBreaker,
   activeProviderId,
   isDefaultModel,
   onSetAsDefault,
@@ -689,6 +709,8 @@ function SortableProviderCard({
         isInFailoverQueue={isInFailoverQueue}
         isFailoverMutationPending={isFailoverMutationPending}
         onToggleFailover={onToggleFailover}
+        isCircuitBreakerResetting={isCircuitBreakerResetting}
+        onResetCircuitBreaker={onResetCircuitBreaker}
         activeProviderId={activeProviderId}
         // OpenClaw: default model
         isDefaultModel={isDefaultModel}

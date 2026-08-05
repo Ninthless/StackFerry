@@ -11,6 +11,14 @@ const PROVIDER_CARD_TSX = path.resolve(
   "providers",
   "ProviderCard.tsx",
 );
+const USAGE_FOOTER_TSX = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "src",
+  "components",
+  "UsageFooter.tsx",
+);
 
 describe("ProviderCard layout", () => {
   const source = fs.readFileSync(PROVIDER_CARD_TSX, "utf8");
@@ -37,5 +45,14 @@ describe("ProviderCard layout", () => {
     expect(source).toContain('t("provider.inConfig")');
     expect(source).not.toContain("bg-slate-");
     expect(source).not.toContain("text-gray-");
+  });
+
+  it("owns one usage query and passes its state to the footer", () => {
+    const usageFooterSource = fs.readFileSync(USAGE_FOOTER_TSX, "utf8");
+
+    expect(source.match(/useUsageQuery\(/g)).toHaveLength(1);
+    expect(usageFooterSource).not.toContain("useUsageQuery");
+    expect(source).toContain("lastQueriedAt={usageLastQueriedAt}");
+    expect(source).toContain("onRefresh={refetchUsage}");
   });
 });

@@ -3,18 +3,23 @@ import { failoverApi } from "@/lib/api/failover";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { extractErrorMessage } from "@/utils/errorUtils";
+import type { ProviderHealth } from "@/types/proxy";
 
 // ========== 熔断器 Hooks ==========
 
 /**
  * 获取供应商健康状态
  */
-export function useProviderHealth(providerId: string, appType: string) {
+export function useProviderHealth(
+  providerId: string,
+  appType: string,
+  enabled = true,
+) {
   return useQuery({
     queryKey: ["providerHealth", providerId, appType],
     queryFn: () => failoverApi.getProviderHealth(providerId, appType),
-    enabled: !!providerId && !!appType,
-    refetchInterval: 5000, // 每 5 秒刷新一次
+    enabled: enabled && !!providerId && !!appType,
+    refetchInterval: enabled ? 5000 : false,
     retry: false,
   });
 }
@@ -27,6 +32,7 @@ export function useProviderHealth(providerId: string, appType: string) {
  */
 export function useResetCircuitBreaker() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   return useMutation({
     mutationFn: ({
@@ -37,18 +43,44 @@ export function useResetCircuitBreaker() {
       appType: string;
     }) => failoverApi.resetCircuitBreaker(providerId, appType),
     onSuccess: (_, variables) => {
-      // 刷新健康状态
+      queryClient.setQueryData<ProviderHealth>(
+        ["providerHealth", variables.providerId, variables.appType],
+        (current) =>
+          current
+            ? {
+                ...current,
+                is_healthy: true,
+                consecutive_failures: 0,
+                last_error: null,
+              }
+            : current,
+      );
       queryClient.invalidateQueries({
         queryKey: ["providerHealth", variables.providerId, variables.appType],
       });
-      // 刷新供应商列表（因为可能发生了自动恢复切换）
       queryClient.invalidateQueries({
         queryKey: ["providers", variables.appType],
       });
-      // 刷新代理状态（更新 active_targets）
       queryClient.invalidateQueries({
         queryKey: ["proxyStatus"],
       });
+      toast.success(
+        t("failover.recovery.success", {
+          defaultValue: "熔断已手动恢复",
+        }),
+        { closeButton: true },
+      );
+    },
+    onError: (error) => {
+      const detail =
+        extractErrorMessage(error) ||
+        t("common.unknown", { defaultValue: "未知错误" });
+      toast.error(
+        t("failover.recovery.failed", {
+          detail,
+          defaultValue: `恢复失败: ${detail}`,
+        }),
+      );
     },
   });
 }

@@ -23,7 +23,9 @@ const toastErrorMock = vi.fn();
 const SESSION_PROVIDER_FILTER_STORAGE_KEY =
   "stackferry.sessions.providerFilter";
 const PROMPT_APP_STORAGE_KEY = "stackferry.prompts.app";
-const SKILLS_TARGET_APP_STORAGE_KEY = "stackferry.skills.targetApp";
+const LEGACY_SKILLS_TARGET_APP_STORAGE_KEY = "stackferry.skills.targetApp";
+const ROUTE_APP_STORAGE_KEY = "stackferry-last-app";
+const VIEW_STORAGE_KEY = "stackferry-last-view";
 
 vi.mock("sonner", () => ({
   toast: {
@@ -188,7 +190,22 @@ describe("App integration with MSW", () => {
     Element.prototype.scrollIntoView = vi.fn();
     window.localStorage.removeItem(SESSION_PROVIDER_FILTER_STORAGE_KEY);
     window.localStorage.removeItem(PROMPT_APP_STORAGE_KEY);
-    window.localStorage.removeItem(SKILLS_TARGET_APP_STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_SKILLS_TARGET_APP_STORAGE_KEY);
+    window.localStorage.removeItem(ROUTE_APP_STORAGE_KEY);
+    window.localStorage.removeItem(VIEW_STORAGE_KEY);
+  });
+
+  it("normalizes an application-incompatible persisted view", async () => {
+    window.localStorage.setItem(ROUTE_APP_STORAGE_KEY, "codex");
+    window.localStorage.setItem(VIEW_STORAGE_KEY, "openclawAgents");
+
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("provider-list")).toHaveTextContent("codex-1"),
+    );
+    expect(window.localStorage.getItem(VIEW_STORAGE_KEY)).toBe("providers");
   });
 
   it("covers basic provider flows via real hooks", async () => {
@@ -443,7 +460,7 @@ describe("App integration with MSW", () => {
 
   it("keeps every feature scope unchanged across route and provider switching", async () => {
     window.localStorage.setItem(PROMPT_APP_STORAGE_KEY, "codex");
-    window.localStorage.setItem(SKILLS_TARGET_APP_STORAGE_KEY, "pi");
+    window.localStorage.setItem(LEGACY_SKILLS_TARGET_APP_STORAGE_KEY, "pi");
     window.localStorage.setItem(SESSION_PROVIDER_FILTER_STORAGE_KEY, "gemini");
 
     const { default: App } = await import("@/App");
@@ -472,31 +489,29 @@ describe("App integration with MSW", () => {
     fireEvent.click(screen.getByText("switch-claude"));
 
     expect(window.localStorage.getItem(PROMPT_APP_STORAGE_KEY)).toBe("codex");
-    expect(window.localStorage.getItem(SKILLS_TARGET_APP_STORAGE_KEY)).toBe(
-      "pi",
-    );
+    expect(
+      window.localStorage.getItem(LEGACY_SKILLS_TARGET_APP_STORAGE_KEY),
+    ).toBeNull();
     expect(
       window.localStorage.getItem(SESSION_PROVIDER_FILTER_STORAGE_KEY),
     ).toBe("gemini");
 
     const sidebar = screen.getByRole("complementary");
     fireEvent.click(within(sidebar).getByRole("button", { name: "Prompts" }));
-    expect(
-      within(
-        await screen.findByRole("combobox", {
-          name: "prompts.selectApplication",
-        }),
-      ).getByText("Codex"),
-    ).toBeInTheDocument();
+    const promptAppSelect = within(await screen.findByRole("banner")).getByRole(
+      "combobox",
+      {
+        name: "prompts.selectApplication",
+      },
+    );
+    expect(within(promptAppSelect).getByText("Codex")).toBeInTheDocument();
 
     fireEvent.click(within(sidebar).getByRole("button", { name: "Skills" }));
     expect(
-      within(
-        await screen.findByRole("combobox", {
-          name: "skills.selectTargetApplication",
-        }),
-      ).getByText("Pi"),
-    ).toBeInTheDocument();
+      screen.queryByRole("combobox", {
+        name: "skills.selectTargetApplication",
+      }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(within(sidebar).getByRole("button", { name: "Sessions" }));
     const sessionFilter = await screen.findByRole("combobox", {

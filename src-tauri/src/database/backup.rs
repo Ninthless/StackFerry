@@ -349,6 +349,9 @@ impl Database {
                 log::warn!("Periodic incremental vacuum failed: {e}");
             }
         }
+        if let Err(e) = self.optimize_query_planner(false) {
+            log::warn!("Periodic query planner optimization failed: {e}");
+        }
 
         Ok(())
     }

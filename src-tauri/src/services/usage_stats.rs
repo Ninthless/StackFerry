@@ -309,45 +309,55 @@ fn push_provider_model_filters(
 
 pub(crate) fn effective_usage_log_filter(log_alias: &str) -> String {
     let data_source = data_source_expr(log_alias);
-    let proxy_data_source = data_source_expr("proxy_dedup");
+    let response_proxy_data_source = data_source_expr("proxy_by_response");
+    let usage_proxy_data_source = data_source_expr("proxy_by_usage");
+
+    // Keep the two lookup strategies in separate EXISTS clauses. Combining them
+    // with OR prevents SQLite from applying either branch's full composite index.
     format!(
         "NOT (
-            {data_source} IN ('session_log', 'codex_session', 'gemini_session', 'opencode_session', 'pi_session')
-            AND EXISTS (
-                SELECT 1
-                FROM proxy_request_logs proxy_dedup
-                WHERE {proxy_data_source} = 'proxy'
-                  AND proxy_dedup.app_type = {log_alias}.app_type
-                  AND proxy_dedup.status_code >= 200
-                  AND proxy_dedup.status_code < 300
-                  AND (
-                      (
-                          {data_source} = 'pi_session'
-                          AND NULLIF({log_alias}.upstream_response_id, '') IS NOT NULL
-                          AND proxy_dedup.provider_id = {log_alias}.provider_id
-                          AND proxy_dedup.upstream_response_id = {log_alias}.upstream_response_id
-                      )
-                      OR (
-                          proxy_dedup.input_tokens = {log_alias}.input_tokens
-                          AND proxy_dedup.output_tokens = {log_alias}.output_tokens
-                          AND proxy_dedup.cache_read_tokens = {log_alias}.cache_read_tokens
-                          AND (
-                              proxy_dedup.cache_creation_tokens = {log_alias}.cache_creation_tokens
-                              OR (
-                                  {log_alias}.cache_creation_tokens = 0
-                                  AND {data_source} IN ('codex_session', 'gemini_session', 'opencode_session')
-                              )
-                          )
-                          AND proxy_dedup.created_at BETWEEN
-                              {log_alias}.created_at - {SESSION_PROXY_DEDUP_WINDOW_SECONDS}
-                              AND {log_alias}.created_at + {SESSION_PROXY_DEDUP_WINDOW_SECONDS}
-                          AND (
-                              LOWER(proxy_dedup.model) = LOWER({log_alias}.model)
-                              OR LOWER(proxy_dedup.model) = 'unknown'
-                              OR LOWER({log_alias}.model) = 'unknown'
+            (
+                {data_source} = 'pi_session'
+                AND NULLIF({log_alias}.upstream_response_id, '') IS NOT NULL
+                AND EXISTS (
+                    SELECT 1
+                    FROM proxy_request_logs proxy_by_response
+                    WHERE {response_proxy_data_source} = 'proxy'
+                      AND proxy_by_response.app_type = {log_alias}.app_type
+                      AND proxy_by_response.status_code >= 200
+                      AND proxy_by_response.status_code < 300
+                      AND proxy_by_response.provider_id = {log_alias}.provider_id
+                      AND proxy_by_response.upstream_response_id = {log_alias}.upstream_response_id
+                )
+            )
+            OR (
+                {data_source} IN ('session_log', 'codex_session', 'gemini_session', 'opencode_session', 'pi_session')
+                AND EXISTS (
+                    SELECT 1
+                    FROM proxy_request_logs proxy_by_usage
+                    WHERE {usage_proxy_data_source} = 'proxy'
+                      AND proxy_by_usage.app_type = {log_alias}.app_type
+                      AND proxy_by_usage.status_code >= 200
+                      AND proxy_by_usage.status_code < 300
+                      AND proxy_by_usage.input_tokens = {log_alias}.input_tokens
+                      AND proxy_by_usage.output_tokens = {log_alias}.output_tokens
+                      AND proxy_by_usage.cache_read_tokens = {log_alias}.cache_read_tokens
+                      AND (
+                          proxy_by_usage.cache_creation_tokens = {log_alias}.cache_creation_tokens
+                          OR (
+                              {log_alias}.cache_creation_tokens = 0
+                              AND {data_source} IN ('codex_session', 'gemini_session', 'opencode_session')
                           )
                       )
-                  )
+                      AND proxy_by_usage.created_at BETWEEN
+                          {log_alias}.created_at - {SESSION_PROXY_DEDUP_WINDOW_SECONDS}
+                          AND {log_alias}.created_at + {SESSION_PROXY_DEDUP_WINDOW_SECONDS}
+                      AND (
+                          LOWER(proxy_by_usage.model) = LOWER({log_alias}.model)
+                          OR LOWER(proxy_by_usage.model) = 'unknown'
+                          OR LOWER({log_alias}.model) = 'unknown'
+                      )
+                )
             )
         )"
     )
@@ -2494,6 +2504,81 @@ mod tests {
         let count: i64 = conn.query_row(&sql, [], |row| row.get(0))?;
         assert_eq!(count, 1);
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_effective_filter_preserves_pi_response_id_and_usage_fallback() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        let conn = lock_conn!(db.conn);
+
+        conn.execute_batch(
+            "INSERT INTO proxy_request_logs (
+                request_id, provider_id, app_type, model, input_tokens, output_tokens,
+                status_code, latency_ms, created_at, data_source, upstream_response_id
+             ) VALUES
+                ('proxy-id', 'pi-provider', 'pi', 'pi-model', 10, 2, 200, 0, 1000, 'proxy', 'resp-shared'),
+                ('session-id', 'pi-provider', 'pi', 'pi-model', 999, 999, 200, 0, 9000, 'pi_session', 'resp-shared'),
+                ('proxy-usage', 'pi-provider', 'pi', 'pi-model', 20, 3, 200, 0, 2000, 'proxy', NULL),
+                ('session-usage', 'pi-provider', 'pi', 'pi-model', 20, 3, 200, 0, 2010, 'pi_session', NULL),
+                ('session-usage-fallback', 'pi-provider', 'pi', 'pi-model', 20, 3, 200, 0, 2020, 'pi_session', 'resp-unmatched'),
+                ('session-unique', 'pi-provider', 'pi', 'pi-model', 77, 8, 200, 0, 3000, 'pi_session', 'resp-unique'),
+                ('failed-proxy-id', 'pi-provider', 'pi', 'pi-model', 30, 4, 500, 0, 4000, 'proxy', 'resp-failed'),
+                ('session-after-failed', 'pi-provider', 'pi', 'pi-model', 88, 9, 200, 0, 8000, 'pi_session', 'resp-failed'),
+                ('session-other-provider', 'other-pi-provider', 'pi', 'pi-model', 66, 7, 200, 0, 9500, 'pi_session', 'resp-shared');",
+        )?;
+
+        let filter = effective_usage_log_filter("l");
+        let sql = format!(
+            "SELECT request_id FROM proxy_request_logs l WHERE {filter} ORDER BY request_id"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let request_ids = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        assert_eq!(
+            request_ids,
+            vec![
+                "failed-proxy-id".to_string(),
+                "proxy-id".to_string(),
+                "proxy-usage".to_string(),
+                "session-after-failed".to_string(),
+                "session-other-provider".to_string(),
+                "session-unique".to_string(),
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_effective_filter_uses_branch_specific_indexes() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        let conn = lock_conn!(db.conn);
+        let filter = effective_usage_log_filter("l");
+        let sql = format!(
+            "EXPLAIN QUERY PLAN
+             SELECT COUNT(*) FROM proxy_request_logs l
+             WHERE {filter} AND l.created_at BETWEEN ?1 AND ?2"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let plan = stmt
+            .query_map(params![1_i64, 2_i64], |row| row.get::<_, String>(3))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        assert!(
+            plan.iter()
+                .any(|line| line.contains("idx_request_logs_upstream_response")),
+            "response-id branch must use its index: {plan:?}"
+        );
+        assert!(
+            plan.iter().any(|line| {
+                line.contains("idx_request_logs_dedup_lookup_expr")
+                    && line.contains("input_tokens=?")
+                    && line.contains("created_at>?")
+            }),
+            "usage-fingerprint branch must retain token and time index constraints: {plan:?}"
+        );
         Ok(())
     }
 

@@ -98,6 +98,8 @@ export function UsageDashboard({
     undefined,
   );
   const [model, setModel] = useState<string | undefined>(undefined);
+  const [providerOptionsOpen, setProviderOptionsOpen] = useState(false);
+  const [modelOptionsOpen, setModelOptionsOpen] = useState(false);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(() =>
     normalizeRefreshInterval(savedRefreshIntervalMs),
   );
@@ -197,24 +199,31 @@ export function UsageDashboard({
     return `${startStr} - ${endStr}`;
   }, [locale, range, resolvedRange.endDate, resolvedRange.startDate, t]);
 
-  // 顶栏下拉的选项池：Provider 列表只跟应用/时间范围走（不受自身选中值影响），
-  // 模型列表随所选 Provider 级联。两者都只列当前范围内真实有数据的条目。
-  // refetchInterval 必须跟随面板的刷新设置——未筛选时这两个查询与统计表共享
-  // query key，落下的话会以默认 30s 拖着同 key 查询一起轮询，"--" 形同虚设。
-  const optionsRefetch = {
-    refetchInterval:
-      refreshIntervalMs > 0 ? refreshIntervalMs : (false as const),
-  };
-  const { data: providerOptionsData } = useProviderStats(
-    range,
-    { appType },
-    optionsRefetch,
+  // 这两个选项查询会扫描完整统计范围，仅在用户打开对应菜单时执行。
+  const optionsStaleTimeMs = Math.max(
+    refreshIntervalMs,
+    DEFAULT_REFRESH_INTERVAL_MS,
   );
-  const { data: modelOptionsData } = useModelStats(
-    range,
-    { appType, providerName },
-    optionsRefetch,
-  );
+  const { data: providerOptionsData, isFetching: providerOptionsLoading } =
+    useProviderStats(
+      range,
+      { appType },
+      {
+        enabled: providerOptionsOpen,
+        refetchInterval: false,
+        staleTime: optionsStaleTimeMs,
+      },
+    );
+  const { data: modelOptionsData, isFetching: modelOptionsLoading } =
+    useModelStats(
+      range,
+      { appType, providerName },
+      {
+        enabled: modelOptionsOpen,
+        refetchInterval: false,
+        staleTime: optionsStaleTimeMs,
+      },
+    );
 
   const providerOptions = useMemo(() => {
     const names = new Set<string>();
@@ -286,6 +295,7 @@ export function UsageDashboard({
               providerName != null ? encodeOptionValue(providerName) : "all"
             }
             onValueChange={(v) => changeProviderName(decodeOptionValue(v))}
+            onOpenChange={setProviderOptionsOpen}
           >
             <SelectTrigger
               className="h-9 w-[100px] bg-background text-xs focus:border-border-default [&>span]:min-w-0 [&>span]:truncate"
@@ -295,6 +305,11 @@ export function UsageDashboard({
             </SelectTrigger>
             <SelectContent className="max-w-[280px]">
               <SelectItem value="all">{t("usage.allSources")}</SelectItem>
+              {providerOptionsLoading && providerOptions.length === 0 && (
+                <div className="flex h-8 items-center justify-center">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                </div>
+              )}
               {providerOptions.map((name) => (
                 <SelectItem
                   key={name}
@@ -311,6 +326,7 @@ export function UsageDashboard({
           <Select
             value={model != null ? encodeOptionValue(model) : "all"}
             onValueChange={(v) => setModel(decodeOptionValue(v))}
+            onOpenChange={setModelOptionsOpen}
           >
             <SelectTrigger
               className="h-9 w-[100px] bg-background text-xs focus:border-border-default [&>span]:min-w-0 [&>span]:truncate"
@@ -320,6 +336,11 @@ export function UsageDashboard({
             </SelectTrigger>
             <SelectContent className="max-w-[280px]">
               <SelectItem value="all">{t("usage.allModels")}</SelectItem>
+              {modelOptionsLoading && modelOptions.length === 0 && (
+                <div className="flex h-8 items-center justify-center">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                </div>
+              )}
               {modelOptions.map((name) => (
                 <SelectItem
                   key={name}

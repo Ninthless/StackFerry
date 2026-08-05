@@ -6,9 +6,19 @@ use crate::services::usage_stats::*;
 use crate::store::AppState;
 use tauri::State;
 
+async fn run_usage_query<T, F>(name: &'static str, query: F) -> Result<T, AppError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, AppError> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(query)
+        .await
+        .map_err(|error| AppError::Message(format!("{name} task failed: {error}")))?
+}
+
 /// 获取使用量汇总
 #[tauri::command]
-pub fn get_usage_summary(
+pub async fn get_usage_summary(
     state: State<'_, AppState>,
     start_date: Option<i64>,
     end_date: Option<i64>,
@@ -16,35 +26,43 @@ pub fn get_usage_summary(
     provider_name: Option<String>,
     model: Option<String>,
 ) -> Result<UsageSummary, AppError> {
-    state.db.get_usage_summary(
-        start_date,
-        end_date,
-        app_type.as_deref(),
-        provider_name.as_deref(),
-        model.as_deref(),
-    )
+    let db = state.db.clone();
+    run_usage_query("get_usage_summary", move || {
+        db.get_usage_summary(
+            start_date,
+            end_date,
+            app_type.as_deref(),
+            provider_name.as_deref(),
+            model.as_deref(),
+        )
+    })
+    .await
 }
 
 /// 获取按 app_type 拆分的使用量汇总
 #[tauri::command]
-pub fn get_usage_summary_by_app(
+pub async fn get_usage_summary_by_app(
     state: State<'_, AppState>,
     start_date: Option<i64>,
     end_date: Option<i64>,
     provider_name: Option<String>,
     model: Option<String>,
 ) -> Result<Vec<UsageSummaryByApp>, AppError> {
-    state.db.get_usage_summary_by_app(
-        start_date,
-        end_date,
-        provider_name.as_deref(),
-        model.as_deref(),
-    )
+    let db = state.db.clone();
+    run_usage_query("get_usage_summary_by_app", move || {
+        db.get_usage_summary_by_app(
+            start_date,
+            end_date,
+            provider_name.as_deref(),
+            model.as_deref(),
+        )
+    })
+    .await
 }
 
 /// 获取每日趋势
 #[tauri::command]
-pub fn get_usage_trends(
+pub async fn get_usage_trends(
     state: State<'_, AppState>,
     start_date: Option<i64>,
     end_date: Option<i64>,
@@ -52,18 +70,22 @@ pub fn get_usage_trends(
     provider_name: Option<String>,
     model: Option<String>,
 ) -> Result<Vec<DailyStats>, AppError> {
-    state.db.get_daily_trends(
-        start_date,
-        end_date,
-        app_type.as_deref(),
-        provider_name.as_deref(),
-        model.as_deref(),
-    )
+    let db = state.db.clone();
+    run_usage_query("get_usage_trends", move || {
+        db.get_daily_trends(
+            start_date,
+            end_date,
+            app_type.as_deref(),
+            provider_name.as_deref(),
+            model.as_deref(),
+        )
+    })
+    .await
 }
 
 /// 获取 Provider 统计
 #[tauri::command]
-pub fn get_provider_stats(
+pub async fn get_provider_stats(
     state: State<'_, AppState>,
     start_date: Option<i64>,
     end_date: Option<i64>,
@@ -71,18 +93,22 @@ pub fn get_provider_stats(
     provider_name: Option<String>,
     model: Option<String>,
 ) -> Result<Vec<ProviderStats>, AppError> {
-    state.db.get_provider_stats(
-        start_date,
-        end_date,
-        app_type.as_deref(),
-        provider_name.as_deref(),
-        model.as_deref(),
-    )
+    let db = state.db.clone();
+    run_usage_query("get_provider_stats", move || {
+        db.get_provider_stats(
+            start_date,
+            end_date,
+            app_type.as_deref(),
+            provider_name.as_deref(),
+            model.as_deref(),
+        )
+    })
+    .await
 }
 
 /// 获取模型统计
 #[tauri::command]
-pub fn get_model_stats(
+pub async fn get_model_stats(
     state: State<'_, AppState>,
     start_date: Option<i64>,
     end_date: Option<i64>,
@@ -90,33 +116,45 @@ pub fn get_model_stats(
     provider_name: Option<String>,
     model: Option<String>,
 ) -> Result<Vec<ModelStats>, AppError> {
-    state.db.get_model_stats(
-        start_date,
-        end_date,
-        app_type.as_deref(),
-        provider_name.as_deref(),
-        model.as_deref(),
-    )
+    let db = state.db.clone();
+    run_usage_query("get_model_stats", move || {
+        db.get_model_stats(
+            start_date,
+            end_date,
+            app_type.as_deref(),
+            provider_name.as_deref(),
+            model.as_deref(),
+        )
+    })
+    .await
 }
 
 /// 获取请求日志列表
 #[tauri::command]
-pub fn get_request_logs(
+pub async fn get_request_logs(
     state: State<'_, AppState>,
     filters: LogFilters,
     page: u32,
     page_size: u32,
 ) -> Result<PaginatedLogs, AppError> {
-    state.db.get_request_logs(&filters, page, page_size)
+    let db = state.db.clone();
+    run_usage_query("get_request_logs", move || {
+        db.get_request_logs(&filters, page, page_size)
+    })
+    .await
 }
 
 /// 获取单个请求详情
 #[tauri::command]
-pub fn get_request_detail(
+pub async fn get_request_detail(
     state: State<'_, AppState>,
     request_id: String,
 ) -> Result<Option<RequestLogDetail>, AppError> {
-    state.db.get_request_detail(&request_id)
+    let db = state.db.clone();
+    run_usage_query("get_request_detail", move || {
+        db.get_request_detail(&request_id)
+    })
+    .await
 }
 
 /// 获取模型定价列表

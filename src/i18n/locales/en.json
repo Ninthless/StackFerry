@@ -2313,6 +2313,7 @@
   "skills": {
     "manage": "Skills",
     "selectTargetApplication": "Select Skills install target",
+    "installTargetDescription": "Choose the application that should receive this Skill. You can change its assignments later from the Skills list.",
     "title": "Skills Management",
     "description": "Discover and install skills from popular repositories for Claude Code, Codex, Pi, Gemini CLI and other supported tools",
     "refresh": "Refresh",
@@ -2602,6 +2603,11 @@
     "toggleFailed": "Operation failed: {{detail}}",
     "inQueue": "In queue",
     "addQueue": "Add",
+    "recovery": {
+      "action": "Reset circuit breaker",
+      "success": "Circuit breaker reset",
+      "failed": "Recovery failed: {{detail}}"
+    },
     "priority": {
       "tooltip": "Failover priority {{priority}}"
     },

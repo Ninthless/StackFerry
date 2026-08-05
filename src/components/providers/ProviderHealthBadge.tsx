@@ -1,10 +1,19 @@
 import { cn } from "@/lib/utils";
 import { ProviderHealthStatus } from "@/types/proxy";
 import { useTranslation } from "react-i18next";
+import { Loader2, RotateCcw } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ProviderHealthBadgeProps {
   consecutiveFailures: number;
   isHealthy?: boolean;
+  isRecovering?: boolean;
+  onRecover?: () => void;
   className?: string;
 }
 
@@ -15,6 +24,8 @@ interface ProviderHealthBadgeProps {
 export function ProviderHealthBadge({
   consecutiveFailures,
   isHealthy,
+  isRecovering = false,
+  onRecover,
   className,
 }: ProviderHealthBadgeProps) {
   const { t } = useTranslation();
@@ -56,6 +67,9 @@ export function ProviderHealthBadge({
   const label = t(statusConfig.labelKey, {
     defaultValue: statusConfig.labelFallback,
   });
+  const recoveryLabel = t("failover.recovery.action", {
+    defaultValue: "手动恢复熔断",
+  });
 
   return (
     <div
@@ -72,6 +86,31 @@ export function ProviderHealthBadge({
     >
       <div className={cn("w-2 h-2 rounded-full", statusConfig.color)} />
       <span>{label}</span>
+      {isHealthy === false && onRecover && (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRecover();
+                }}
+                disabled={isRecovering}
+                className="ml-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label={recoveryLabel}
+              >
+                {isRecovering ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-3 w-3" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">{recoveryLabel}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
     </div>
   );
 }

@@ -111,14 +111,8 @@ export function DeepLinkImportDialog() {
         importedIds: string[];
         failed: Array<{ id: string; error: string }>;
       }) => {
-        // 强制刷新 MCP 相关缓存，确保管理页重新从数据库加载
         await queryClient.invalidateQueries({
           queryKey: ["mcp", "all"],
-          refetchType: "all",
-        });
-        await queryClient.refetchQueries({
-          queryKey: ["mcp", "all"],
-          type: "all",
         });
 
         if (summary.failed.length > 0) {
@@ -166,14 +160,8 @@ export function DeepLinkImportDialog() {
         } else if (result.type === "mcp") {
           await refreshMcp(result);
         } else if (result.type === "skill") {
-          // Refresh Skills with aggressive strategy
-          queryClient.invalidateQueries({
+          await queryClient.invalidateQueries({
             queryKey: ["skills"],
-            refetchType: "all",
-          });
-          await queryClient.refetchQueries({
-            queryKey: ["skills"],
-            type: "all",
           });
           toast.success(t("deeplink.skillImportSuccess"), {
             description: t("deeplink.skillImportSuccessDescription", {

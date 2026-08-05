@@ -94,6 +94,11 @@ vi.mock("@/lib/query/failover", () => ({
   useFailoverQueue: () => ({ data: [] }),
   useAddToFailoverQueue: () => ({ mutate: vi.fn() }),
   useRemoveFromFailoverQueue: () => ({ mutate: vi.fn() }),
+  useResetCircuitBreaker: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    variables: undefined,
+  }),
   useReorderFailoverQueue: () => ({ mutate: vi.fn() }),
 }));
 

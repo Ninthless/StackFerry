@@ -4,8 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { usageKeys } from "@/lib/query/usage";
 
 /**
- * 监听后端 `usage-log-recorded` 事件，收到后立刻 invalidate 所有
- * UsageDashboard 相关查询，让用户无需等待 30s 轮询周期。
+ * 监听后端 `usage-log-recorded` 事件，合并短时间内的多次写入后刷新
+ * UsageDashboard，避免日志导入期间重复启动统计查询。
  *
  * 后端在 `proxy_request_logs` 写入新行时会 emit 该事件（200ms 防抖合并），
  * 来源覆盖代理日志、Claude/Codex/Gemini 会话同步、启动归档。
@@ -18,13 +18,37 @@ export function useUsageEventBridge() {
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
     let disposed = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    let refreshPending = false;
+    let refreshInFlight = false;
+
+    const flushRefresh = async () => {
+      refreshTimer = undefined;
+      if (disposed || !refreshPending || refreshInFlight) return;
+
+      refreshPending = false;
+      refreshInFlight = true;
+      try {
+        await queryClient.invalidateQueries(
+          { queryKey: usageKeys.all },
+          { cancelRefetch: false },
+        );
+      } finally {
+        refreshInFlight = false;
+        if (!disposed && refreshPending) {
+          refreshTimer = setTimeout(() => void flushRefresh(), 300);
+        }
+      }
+    };
+
+    const scheduleRefresh = () => {
+      refreshPending = true;
+      if (refreshTimer || refreshInFlight) return;
+      refreshTimer = setTimeout(() => void flushRefresh(), 300);
+    };
 
     (async () => {
-      const off = await listen("usage-log-recorded", () => {
-        // invalidate 整个 usage 命名空间：summary / trends / providerStats /
-        // modelStats / logs 全部跟着重拉
-        queryClient.invalidateQueries({ queryKey: usageKeys.all });
-      });
+      const off = await listen("usage-log-recorded", scheduleRefresh);
 
       if (disposed) {
         off();
@@ -35,6 +59,8 @@ export function useUsageEventBridge() {
 
     return () => {
       disposed = true;
+      refreshPending = false;
+      if (refreshTimer) clearTimeout(refreshTimer);
       unlisten?.();
     };
   }, [queryClient]);

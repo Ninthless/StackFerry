@@ -2313,6 +2313,7 @@
   "skills": {
     "manage": "Skills",
     "selectTargetApplication": "Skills のインストール先を選択",
+    "installTargetDescription": "この Skill を有効にするアプリを選択します。割り当ては後で Skills 一覧から変更できます。",
     "title": "Skills 管理",
     "description": "人気リポジトリからスキルを探してインストールし、Claude Code、Codex、Pi、Gemini CLI などの対応ツールを拡張",
     "refresh": "更新",
@@ -2602,6 +2603,11 @@
     "toggleFailed": "操作に失敗しました: {{detail}}",
     "inQueue": "キュー内",
     "addQueue": "追加",
+    "recovery": {
+      "action": "サーキットブレーカーを手動復旧",
+      "success": "サーキットブレーカーを復旧しました",
+      "failed": "復旧に失敗しました: {{detail}}"
+    },
     "priority": {
       "tooltip": "フェイルオーバー優先度 {{priority}}"
     },

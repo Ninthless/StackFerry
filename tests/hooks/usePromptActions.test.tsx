@@ -4,7 +4,6 @@ import { usePromptActions } from "@/hooks/usePromptActions";
 
 const promptsApiMock = vi.hoisted(() => ({
   getPrompts: vi.fn(),
-  getCurrentFileContent: vi.fn(),
   upsertPrompt: vi.fn(),
   deletePrompt: vi.fn(),
   enablePrompt: vi.fn(),
@@ -25,7 +24,6 @@ describe("usePromptActions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     promptsApiMock.getPrompts.mockResolvedValue({ "prompt-1": prompt });
-    promptsApiMock.getCurrentFileContent.mockResolvedValue("Content");
     promptsApiMock.upsertPrompt.mockResolvedValue(undefined);
     promptsApiMock.deletePrompt.mockResolvedValue(undefined);
     promptsApiMock.enablePrompt.mockResolvedValue(undefined);
@@ -43,7 +41,6 @@ describe("usePromptActions", () => {
     await act(async () => result.current.importFromFile());
 
     expect(promptsApiMock.getPrompts).toHaveBeenCalledWith("pi");
-    expect(promptsApiMock.getCurrentFileContent).toHaveBeenCalledWith("pi");
     expect(promptsApiMock.upsertPrompt).toHaveBeenCalledWith(
       "pi",
       "prompt-1",

@@ -64,6 +64,8 @@ interface ProviderCardProps {
   isInFailoverQueue?: boolean; // 是否在故障转移队列中
   isFailoverMutationPending?: boolean;
   onToggleFailover?: (enabled: boolean) => void; // 切换故障转移队列
+  isCircuitBreakerResetting?: boolean;
+  onResetCircuitBreaker?: () => void;
   activeProviderId?: string; // 代理当前实际使用的供应商 ID（用于故障转移模式下标注绿色边框）
   // OpenClaw: default model
   isDefaultModel?: boolean;
@@ -164,6 +166,8 @@ export function ProviderCard({
   isInFailoverQueue = false,
   isFailoverMutationPending = false,
   onToggleFailover,
+  isCircuitBreakerResetting = false,
+  onResetCircuitBreaker,
   activeProviderId,
   // OpenClaw: default model
   isDefaultModel,
@@ -180,7 +184,13 @@ export function ProviderCard({
     appId === "hermes" ||
     appId === "pi";
 
-  const { data: health } = useProviderHealth(provider.id, appId);
+  const shouldMonitorHealth =
+    isProxyRunning && isAutoFailoverEnabled && isInFailoverQueue;
+  const { data: health } = useProviderHealth(
+    provider.id,
+    appId,
+    shouldMonitorHealth,
+  );
 
   const fallbackUrlText = t("provider.notConfigured", {
     defaultValue: "未配置接口地址",
@@ -253,7 +263,13 @@ export function ProviderCard({
     ? provider.meta?.usage_script?.autoQueryInterval || 0
     : 0;
 
-  const { data: usage } = useUsageQuery(provider.id, appId, {
+  const {
+    data: usage,
+    isFetching: usageLoading,
+    isError: usageError,
+    lastQueriedAt: usageLastQueriedAt,
+    refetch: refetchUsage,
+  } = useUsageQuery(provider.id, appId, {
     enabled: usageEnabled && !isOfficial && !isOfficialSubscriptionUsage,
     autoQueryInterval,
   });
@@ -423,10 +439,12 @@ export function ProviderCard({
                   </span>
                 )}
 
-              {isProxyRunning && isInFailoverQueue && health && (
+              {shouldMonitorHealth && health && (
                 <ProviderHealthBadge
                   consecutiveFailures={health.consecutive_failures}
                   isHealthy={health.is_healthy}
+                  isRecovering={isCircuitBreakerResetting}
+                  onRecover={onResetCircuitBreaker}
                 />
               )}
 
@@ -513,11 +531,12 @@ export function ProviderCard({
               ) : (
                 <UsageFooter
                   provider={provider}
-                  providerId={provider.id}
-                  appId={appId}
                   usageEnabled={usageEnabled}
-                  isCurrent={isCurrent}
-                  isInConfig={isInConfig}
+                  usage={usage}
+                  loading={usageLoading}
+                  isError={usageError}
+                  lastQueriedAt={usageLastQueriedAt}
+                  onRefresh={refetchUsage}
                   inline={true}
                 />
               )}
@@ -595,11 +614,12 @@ export function ProviderCard({
         <div className="mt-4 border-t border-border pt-4">
           <UsageFooter
             provider={provider}
-            providerId={provider.id}
-            appId={appId}
             usageEnabled={usageEnabled}
-            isCurrent={isCurrent}
-            isInConfig={isInConfig}
+            usage={usage}
+            loading={usageLoading}
+            isError={usageError}
+            lastQueriedAt={usageLastQueriedAt}
+            onRefresh={refetchUsage}
             inline={false}
           />
         </div>

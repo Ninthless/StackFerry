@@ -40,6 +40,7 @@ import type {
   S3SyncSettings,
   WebDavSyncSettings,
 } from "@/types";
+import { invalidateDatabaseState } from "@/lib/query/invalidateDatabaseState";
 
 // ─── WebDAV service presets ─────────────────────────────────
 
@@ -514,7 +515,7 @@ export function WebdavSyncSection({
         setJustSaved(false);
         justSavedTimerRef.current = null;
       }, 2000);
-      await queryClient.invalidateQueries();
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
     } catch (error) {
       pendingPasswordPreservationRef.current = null;
       toast.error(
@@ -577,7 +578,7 @@ export function WebdavSyncSection({
     try {
       await settingsApi.webdavSyncUpload();
       toast.success(t("settings.webdavSync.uploadSuccess"));
-      await queryClient.invalidateQueries();
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
     } catch (error) {
       toast.error(
         t("settings.webdavSync.uploadFailed", {
@@ -637,7 +638,7 @@ export function WebdavSyncSection({
     try {
       await settingsApi.webdavSyncDownload();
       toast.success(t("settings.webdavSync.downloadSuccess"));
-      await queryClient.invalidateQueries();
+      await invalidateDatabaseState(queryClient);
     } catch (error) {
       toast.error(
         t("settings.webdavSync.downloadFailed", {
@@ -733,7 +734,7 @@ export function WebdavSyncSection({
         setS3JustSaved(false);
         s3JustSavedTimerRef.current = null;
       }, 2000);
-      await queryClient.invalidateQueries();
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
     } catch (error) {
       toast.error(
         t("settings.s3Sync.saveFailed", {
@@ -793,7 +794,7 @@ export function WebdavSyncSection({
     try {
       await settingsApi.s3SyncUpload();
       toast.success(t("settings.s3Sync.uploadSuccess"));
-      await queryClient.invalidateQueries();
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
     } catch (error) {
       toast.error(
         t("settings.s3Sync.uploadFailed", {
@@ -848,7 +849,7 @@ export function WebdavSyncSection({
     try {
       await settingsApi.s3SyncDownload();
       toast.success(t("settings.s3Sync.downloadSuccess"));
-      await queryClient.invalidateQueries();
+      await invalidateDatabaseState(queryClient);
     } catch (error) {
       toast.error(
         t("settings.s3Sync.downloadFailed", {
@@ -906,7 +907,7 @@ export function WebdavSyncSection({
         setS3Enabled(false);
         setS3AutoSync(false);
       }
-      await queryClient.invalidateQueries();
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
       setSyncType(pendingSyncType);
     } catch (error) {
       toast.error(

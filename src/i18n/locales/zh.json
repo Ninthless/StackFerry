@@ -2313,6 +2313,7 @@
   "skills": {
     "manage": "Skills",
     "selectTargetApplication": "选择 Skills 安装目标",
+    "installTargetDescription": "选择本次安装或恢复要启用 Skill 的应用，之后仍可在 Skills 列表中调整。",
     "title": "Skills 管理",
     "description": "从流行的仓库发现并安装技能，扩展 Claude Code、Codex、Pi、Gemini CLI 等工具的能力",
     "refresh": "刷新",
@@ -2602,6 +2603,11 @@
     "toggleFailed": "操作失败: {{detail}}",
     "inQueue": "已加入",
     "addQueue": "加入",
+    "recovery": {
+      "action": "手动恢复熔断",
+      "success": "熔断已手动恢复",
+      "failed": "恢复失败: {{detail}}"
+    },
     "priority": {
       "tooltip": "故障转移优先级 {{priority}}"
     },

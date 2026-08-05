@@ -9,14 +9,9 @@ import PromptFormPanel from "./PromptFormPanel";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { WorkbenchEmptyState } from "@/components/common/WorkbenchEmptyState";
-import { AppSelect } from "@/components/common/AppSelect";
 
 interface PromptPanelProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   appId: AppId;
-  availableApps: AppId[];
-  onAppChange: (app: AppId) => void;
 }
 
 export interface PromptPanelHandle {
@@ -24,7 +19,7 @@ export interface PromptPanelHandle {
 }
 
 const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
-  ({ open, appId, availableApps, onAppChange }, ref) => {
+  ({ appId }, ref) => {
     const { t } = useTranslation();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -46,8 +41,8 @@ const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
     } = usePromptActions(appId);
 
     useEffect(() => {
-      if (open) reload();
-    }, [open, reload]);
+      reload();
+    }, [reload]);
 
     useEffect(() => {
       const handlePromptImported = (event: Event) => {
@@ -79,16 +74,6 @@ const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
       setIsFormOpen(true);
     };
 
-    const handleAppChange = (nextApp: string) => {
-      const app = nextApp as AppId;
-      if (app === appId || !availableApps.includes(app)) return;
-
-      setIsFormOpen(false);
-      setEditingId(null);
-      setConfirmDialog(null);
-      onAppChange(app);
-    };
-
     const handleDelete = (id: string) => {
       const prompt = prompts[id];
       setConfirmDialog({
@@ -111,19 +96,13 @@ const PromptPanel = React.forwardRef<PromptPanelHandle, PromptPanelProps>(
 
     return (
       <div className="flex flex-col flex-1 min-h-0 px-6">
-        <div className="mb-4 flex flex-shrink-0 items-center justify-between gap-3 border-b border-border py-3">
+        <div className="mb-4 flex flex-shrink-0 items-center border-b border-border py-3">
           <div className="min-w-0 truncate text-sm text-muted-foreground">
             {t("prompts.count", { count: promptEntries.length })} ·{" "}
             {enabledPrompt
               ? t("prompts.enabledName", { name: enabledPrompt[1].name })
               : t("prompts.noneEnabled")}
           </div>
-          <AppSelect
-            value={appId}
-            appIds={availableApps}
-            onValueChange={handleAppChange}
-            ariaLabel={t("prompts.selectApplication")}
-          />
         </div>
 
         <div className="flex-1 overflow-y-auto pb-16">

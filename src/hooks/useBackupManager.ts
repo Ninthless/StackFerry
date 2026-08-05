@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { backupsApi } from "@/lib/api";
+import { invalidateDatabaseState } from "@/lib/query/invalidateDatabaseState";
 
 export function useBackupManager() {
   const queryClient = useQueryClient();
@@ -21,10 +22,7 @@ export function useBackupManager() {
   const restoreMutation = useMutation({
     mutationFn: (filename: string) => backupsApi.restoreDbBackup(filename),
     onSuccess: async () => {
-      // Invalidate all queries to refresh data from restored database
-      await queryClient.invalidateQueries();
-      // Refetch backup list
-      await refetch();
+      await invalidateDatabaseState(queryClient);
     },
   });
 

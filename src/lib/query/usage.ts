@@ -10,8 +10,10 @@ import type {
 const DEFAULT_REFETCH_INTERVAL_MS = 30000;
 
 type UsageQueryOptions = {
+  enabled?: boolean;
   refetchInterval?: number | false;
   refetchIntervalInBackground?: boolean;
+  staleTime?: number;
 };
 
 type RequestLogsQueryArgs = {
@@ -268,8 +270,10 @@ export function useProviderStats(
         effective.model,
       );
     },
+    enabled: options?.enabled,
     refetchInterval: options?.refetchInterval ?? DEFAULT_REFETCH_INTERVAL_MS,
     refetchIntervalInBackground: options?.refetchIntervalInBackground ?? false,
+    staleTime: options?.staleTime,
   });
 }
 
@@ -297,8 +301,10 @@ export function useModelStats(
         effective.model,
       );
     },
+    enabled: options?.enabled,
     refetchInterval: options?.refetchInterval ?? DEFAULT_REFETCH_INTERVAL_MS,
     refetchIntervalInBackground: options?.refetchIntervalInBackground ?? false,
+    staleTime: options?.staleTime,
   });
 }
 

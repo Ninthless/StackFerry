@@ -1,5 +1,5 @@
 import { createRef } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
@@ -157,7 +157,7 @@ describe("SkillsPage - skills.sh install (regression)", () => {
     });
 
     const ref = createRef<SkillsPageHandle>();
-    render(<SkillsPage ref={ref} targetApp="pi" />);
+    render(<SkillsPage ref={ref} availableApps={["pi"]} />);
 
     const user = userEvent.setup();
 
@@ -187,6 +187,11 @@ describe("SkillsPage - skills.sh install (regression)", () => {
     ) as HTMLButtonElement;
     expect(installButton).not.toBeNull();
     await user.click(installButton);
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "skills.install",
+      }),
+    );
 
     // Verify the SECOND skill was passed to the install mutation, not the first
     await waitFor(() => {
@@ -203,7 +208,7 @@ describe("SkillsPage - skills.sh install (regression)", () => {
     discoverableSkillsMock = [makeDiscoverableSkill()];
     skillReposMock = [makeSkillRepo()];
 
-    render(<SkillsPage targetApp="codex" />);
+    render(<SkillsPage availableApps={["codex"]} />);
 
     const card = screen.getByText("Repo Skill").closest("[data-skill-key]");
     expect(card).not.toBeNull();
@@ -211,7 +216,13 @@ describe("SkillsPage - skills.sh install (regression)", () => {
     const installButton = card!.querySelector(
       "button:last-of-type",
     ) as HTMLButtonElement;
-    await userEvent.setup().click(installButton);
+    const user = userEvent.setup();
+    await user.click(installButton);
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "skills.install",
+      }),
+    );
 
     await waitFor(() => {
       expect(installMutateAsyncMock).toHaveBeenCalledWith({
@@ -236,7 +247,7 @@ describe("SkillsPage - skills.sh install (regression)", () => {
       query: "figma",
     });
 
-    render(<SkillsPage targetApp="claude" />);
+    render(<SkillsPage availableApps={["claude"]} />);
     const user = userEvent.setup();
 
     await user.click(screen.getByRole("button", { name: /skills\.sh/i }));
@@ -275,7 +286,7 @@ describe("SkillsPage - skills.sh install (regression)", () => {
     });
     setSearchResult("react", 0, undefined, { isFetching: true });
 
-    render(<SkillsPage targetApp="claude" />);
+    render(<SkillsPage availableApps={["claude"]} />);
     const user = userEvent.setup();
 
     await user.click(screen.getByRole("button", { name: /skills\.sh/i }));
@@ -303,7 +314,12 @@ describe("SkillsPage - skills.sh install (regression)", () => {
   it("reports the effective skills.sh source to parent chrome", async () => {
     const onSourceChange = vi.fn();
 
-    render(<SkillsPage targetApp="claude" onSourceChange={onSourceChange} />);
+    render(
+      <SkillsPage
+        availableApps={["claude"]}
+        onSourceChange={onSourceChange}
+      />,
+    );
 
     await waitFor(() => {
       expect(onSourceChange).toHaveBeenCalledWith("skillssh");
@@ -314,7 +330,12 @@ describe("SkillsPage - skills.sh install (regression)", () => {
     skillReposMock = [makeSkillRepo()];
     const onSourceChange = vi.fn();
 
-    render(<SkillsPage targetApp="claude" onSourceChange={onSourceChange} />);
+    render(
+      <SkillsPage
+        availableApps={["claude"]}
+        onSourceChange={onSourceChange}
+      />,
+    );
 
     await waitFor(() => {
       expect(onSourceChange).toHaveBeenCalledWith("repos");
@@ -328,7 +349,10 @@ describe("SkillsPage - skills.sh install (regression)", () => {
     const onSourceChange = vi.fn();
     const user = userEvent.setup();
     const { rerender } = render(
-      <SkillsPage targetApp="claude" onSourceChange={onSourceChange} />,
+      <SkillsPage
+        availableApps={["claude"]}
+        onSourceChange={onSourceChange}
+      />,
     );
 
     await waitFor(() => {
@@ -339,7 +363,12 @@ describe("SkillsPage - skills.sh install (regression)", () => {
 
     discoverableSkillsMock = [makeDiscoverableSkill()];
     skillReposMock = [makeSkillRepo()];
-    rerender(<SkillsPage targetApp="claude" onSourceChange={onSourceChange} />);
+    rerender(
+      <SkillsPage
+        availableApps={["claude"]}
+        onSourceChange={onSourceChange}
+      />,
+    );
 
     await user.click(
       screen.getByRole("button", { name: "skills.searchSource.repos" }),

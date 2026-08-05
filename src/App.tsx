@@ -57,10 +57,7 @@ import {
 import UnifiedSkillsPanel from "@/components/skills/UnifiedSkillsPanel";
 import { DeepLinkImportDialog } from "@/components/DeepLinkImportDialog";
 import { FirstRunNoticeDialog } from "@/components/FirstRunNoticeDialog";
-import { AgentsPanel } from "@/components/agents/AgentsPanel";
-import { UniversalProviderPanel } from "@/components/universal";
 import { Button } from "@/components/ui/button";
-import { AppSelect } from "@/components/common/AppSelect";
 import { SessionManagerPage } from "@/components/sessions/SessionManagerPage";
 import {
   useDisableCurrentOmo,
@@ -73,6 +70,7 @@ import AgentsDefaultsPanel from "@/components/openclaw/AgentsDefaultsPanel";
 import OpenClawHealthBanner from "@/components/openclaw/OpenClawHealthBanner";
 import HermesMemoryPanel from "@/components/hermes/HermesMemoryPanel";
 import { AppSwitcher } from "@/components/AppSwitcher";
+import { AppSelect } from "@/components/common/AppSelect";
 import { AppSidebar } from "@/components/shell/AppSidebar";
 import {
   PageHeader,
@@ -80,6 +78,7 @@ import {
 } from "@/components/shell/PageHeader";
 import type { AppView } from "@/components/shell/types";
 import { PROMPT_APP_IDS, SKILLS_APP_IDS } from "@/config/appConfig";
+import { invalidateDatabaseState } from "@/lib/query/invalidateDatabaseState";
 
 interface SyncStatusUpdatedPayload {
   source?: string;
@@ -89,7 +88,7 @@ interface SyncStatusUpdatedPayload {
 
 const STORAGE_KEY = "stackferry-last-app";
 const PROMPT_APP_STORAGE_KEY = "stackferry.prompts.app";
-const SKILLS_TARGET_APP_STORAGE_KEY = "stackferry.skills.targetApp";
+const LEGACY_SKILLS_TARGET_APP_STORAGE_KEY = "stackferry.skills.targetApp";
 const VALID_APPS: AppId[] = [
   "claude",
   "claude-desktop",
@@ -118,8 +117,6 @@ const VALID_VIEWS: AppView[] = [
   "skills",
   "skillsDiscovery",
   "mcp",
-  "agents",
-  "universal",
   "sessions",
   "workspace",
   "openclawEnv",
@@ -128,9 +125,30 @@ const VALID_VIEWS: AppView[] = [
   "hermesMemory",
 ];
 
-const getInitialView = (): AppView => {
+const isViewCompatibleWithApp = (view: AppView, appId: AppId): boolean => {
+  if (
+    view === "workspace" ||
+    view === "openclawEnv" ||
+    view === "openclawTools" ||
+    view === "openclawAgents"
+  ) {
+    return appId === "openclaw";
+  }
+
+  if (view === "hermesMemory") {
+    return appId === "hermes";
+  }
+
+  return true;
+};
+
+const getInitialView = (appId: AppId): AppView => {
   const saved = localStorage.getItem(VIEW_STORAGE_KEY) as AppView | null;
-  if (saved && VALID_VIEWS.includes(saved)) {
+  if (
+    saved &&
+    VALID_VIEWS.includes(saved) &&
+    isViewCompatibleWithApp(saved, appId)
+  ) {
     return saved;
   }
   return "providers";
@@ -141,7 +159,9 @@ function App() {
   const queryClient = useQueryClient();
 
   const [activeApp, setActiveApp] = useState<AppId>(getInitialApp);
-  const [currentView, setCurrentView] = useState<AppView>(getInitialView);
+  const [currentView, setCurrentView] = useState<AppView>(() =>
+    getInitialView(activeApp),
+  );
   const [skillsDiscoverySource, setSkillsDiscoverySource] =
     useState<SkillsPageSource>("repos");
   const [settingsDefaultTab, setSettingsDefaultTab] = useState("general");
@@ -150,6 +170,12 @@ function App() {
   useEffect(() => {
     localStorage.setItem(VIEW_STORAGE_KEY, currentView);
   }, [currentView]);
+
+  useEffect(() => {
+    if (!isViewCompatibleWithApp(currentView, activeApp)) {
+      setCurrentView("providers");
+    }
+  }, [activeApp, currentView]);
 
   const { data: settingsData } = useSettingsQuery();
   const visibleApps: VisibleApps = settingsData?.visibleApps ?? {
@@ -175,10 +201,10 @@ function App() {
     const apps = SKILLS_APP_IDS.filter((app) => visibleApps[app]);
     return apps.length > 0 ? apps : (["claude"] as AppId[]);
   }, [visibleApps]);
-  const [skillsTargetApp, setSkillsTargetApp] = usePersistedAppPreference(
-    SKILLS_TARGET_APP_STORAGE_KEY,
-    availableSkillsApps,
-  );
+
+  useEffect(() => {
+    localStorage.removeItem(LEGACY_SKILLS_TARGET_APP_STORAGE_KEY);
+  }, []);
 
   const getFirstVisibleApp = (): AppId => {
     if (visibleApps.claude) return "claude";
@@ -235,8 +261,9 @@ function App() {
     return target?.provider_id;
   }, [proxyStatus?.active_targets, activeApp]);
 
-  const { data, isLoading, refetch } = useProvidersQuery(activeApp, {
+  const { data, isLoading } = useProvidersQuery(activeApp, {
     isProxyRunning,
+    enabled: currentView === "providers",
   });
   const providers = useMemo(() => data?.providers ?? {}, [data]);
   const currentProviderId = data?.currentProviderId ?? "";
@@ -244,7 +271,6 @@ function App() {
     activeApp === "openclaw" &&
     (currentView === "providers" ||
       currentView === "workspace" ||
-      currentView === "sessions" ||
       currentView === "openclawEnv" ||
       currentView === "openclawTools" ||
       currentView === "openclawAgents");
@@ -306,9 +332,9 @@ function App() {
       try {
         const off = await providersApi.onSwitched(
           async (event: ProviderSwitchEvent) => {
-            if (event.appType === activeApp) {
-              await refetch();
-            }
+            await queryClient.invalidateQueries({
+              queryKey: ["providers", event.appType],
+            });
           },
         );
         if (!active) {
@@ -326,7 +352,7 @@ function App() {
       active = false;
       unsubscribe?.();
     };
-  }, [activeApp, refetch]);
+  }, [queryClient]);
 
   useTauriEvent("universal-provider-synced", async () => {
     await queryClient.invalidateQueries({ queryKey: ["providers"] });
@@ -745,17 +771,9 @@ function App() {
 
   const handleImportSuccess = async () => {
     try {
-      await queryClient.invalidateQueries({
-        queryKey: ["providers"],
-        refetchType: "all",
-      });
-      await queryClient.refetchQueries({
-        queryKey: ["providers"],
-        type: "all",
-      });
+      await invalidateDatabaseState(queryClient);
     } catch (error) {
-      console.error("[App] Failed to refresh providers after import", error);
-      await refetch();
+      console.error("[App] Failed to refresh imported data", error);
     }
     try {
       await providersApi.updateTrayMenu();
@@ -787,12 +805,6 @@ function App() {
         return t("skills.title");
       case "mcp":
         return t("mcp.unifiedPanel.title");
-      case "agents":
-        return t("agents.title");
-      case "universal":
-        return t("universalProvider.title", {
-          defaultValue: "Universal providers",
-        });
       case "sessions":
         return t("sessionManager.title");
       case "workspace":
@@ -814,12 +826,6 @@ function App() {
     }
     if (currentView === "settings") {
       return t("settings.description");
-    }
-    if (currentView === "prompts") {
-      return t(`apps.${promptApp}`);
-    }
-    if (currentView === "skills" || currentView === "skillsDiscovery") {
-      return t(`apps.${skillsTargetApp}`);
     }
     return undefined;
   };
@@ -856,14 +862,22 @@ function App() {
 
     if (currentView === "prompts") {
       return (
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => promptPanelRef.current?.openAdd()}
-        >
-          <Plus className="h-4 w-4" />
-          <span>{t("prompts.add")}</span>
-        </Button>
+        <>
+          <AppSelect
+            value={promptApp}
+            appIds={availablePromptApps}
+            onValueChange={setPromptApp}
+            ariaLabel={t("prompts.selectApplication")}
+          />
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => promptPanelRef.current?.openAdd()}
+          >
+            <Plus className="h-4 w-4" />
+            <span>{t("prompts.add")}</span>
+          </Button>
+        </>
       );
     }
 
@@ -882,41 +896,25 @@ function App() {
 
     if (currentView === "skills") {
       return (
-        <>
-          <AppSelect
-            value={skillsTargetApp}
-            appIds={availableSkillsApps}
-            onValueChange={setSkillsTargetApp}
-            ariaLabel={t("skills.selectTargetApplication")}
-          />
-          <Button type="button" size="sm" onClick={handleOpenSkillsDiscovery}>
-            <Search className="h-4 w-4" />
-            <span>{t("skills.discover")}</span>
-          </Button>
-        </>
+        <Button type="button" size="sm" onClick={handleOpenSkillsDiscovery}>
+          <Search className="h-4 w-4" />
+          <span>{t("skills.discover")}</span>
+        </Button>
       );
     }
 
     if (currentView === "skillsDiscovery") {
       return (
-        <>
-          <AppSelect
-            value={skillsTargetApp}
-            appIds={availableSkillsApps}
-            onValueChange={setSkillsTargetApp}
-            ariaLabel={t("skills.selectTargetApplication")}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={() => setCurrentView("skills")}
-            title={t("common.back", { defaultValue: "Back" })}
-            aria-label={t("common.back", { defaultValue: "Back" })}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={() => setCurrentView("skills")}
+          title={t("common.back", { defaultValue: "Back" })}
+          aria-label={t("common.back", { defaultValue: "Back" })}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
       );
     }
 
@@ -991,11 +989,7 @@ function App() {
             <PromptPanel
               key={promptApp}
               ref={promptPanelRef}
-              open={true}
-              onOpenChange={() => setCurrentView("providers")}
               appId={promptApp}
-              availableApps={availablePromptApps}
-              onAppChange={setPromptApp}
             />
           );
         case "hermesMemory":
@@ -1005,34 +999,19 @@ function App() {
             <UnifiedSkillsPanel
               ref={unifiedSkillsPanelRef}
               onOpenDiscovery={handleOpenSkillsDiscovery}
-              targetApp={skillsTargetApp}
+              availableApps={availableSkillsApps}
             />
           );
         case "skillsDiscovery":
           return (
             <SkillsPage
               ref={skillsPageRef}
-              targetApp={skillsTargetApp}
+              availableApps={availableSkillsApps}
               onSourceChange={setSkillsDiscoverySource}
             />
           );
         case "mcp":
-          return (
-            <UnifiedMcpPanel
-              ref={mcpPanelRef}
-              onOpenChange={() => setCurrentView("providers")}
-            />
-          );
-        case "agents":
-          return (
-            <AgentsPanel onOpenChange={() => setCurrentView("providers")} />
-          );
-        case "universal":
-          return (
-            <div className="px-6 pt-4">
-              <UniversalProviderPanel />
-            </div>
-          );
+          return <UnifiedMcpPanel ref={mcpPanelRef} />;
 
         case "sessions":
           return <SessionManagerPage />;

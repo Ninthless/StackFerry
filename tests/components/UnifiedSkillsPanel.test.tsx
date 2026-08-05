@@ -1,5 +1,5 @@
 import { createRef } from "react";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import UnifiedSkillsPanel, {
@@ -87,6 +87,7 @@ vi.mock("@/hooks/useSkills", () => ({
   }),
   useInstallSkillsFromZip: () => ({
     mutateAsync: installFromZipMock,
+    isPending: false,
   }),
   useCheckSkillUpdates: () => ({
     data: [],
@@ -132,7 +133,7 @@ describe("UnifiedSkillsPanel", () => {
       <UnifiedSkillsPanel
         ref={ref}
         onOpenDiscovery={() => {}}
-        targetApp="claude"
+        availableApps={["claude"]}
       />,
     );
 
@@ -160,22 +161,18 @@ describe("UnifiedSkillsPanel", () => {
     });
   });
 
-  it("captures the target application before opening the ZIP dialog", async () => {
-    let resolveFilePath: (path: string) => void = () => {};
-    const filePathPromise = new Promise<string>((resolve) => {
-      resolveFilePath = resolve;
-    });
+  it("chooses the target application before opening the ZIP file dialog", async () => {
     const openDialogSpy = vi
       .spyOn(skillsApi, "openZipFileDialog")
-      .mockReturnValue(filePathPromise);
+      .mockResolvedValue("/tmp/skills.zip");
     installFromZipMock.mockResolvedValue([makeInstalledSkill()]);
 
     const ref = createRef<UnifiedSkillsPanelHandle>();
-    const { rerender } = render(
+    render(
       <UnifiedSkillsPanel
         ref={ref}
         onOpenDiscovery={() => {}}
-        targetApp="pi"
+        availableApps={["pi"]}
       />,
     );
 
@@ -183,16 +180,10 @@ describe("UnifiedSkillsPanel", () => {
       ref.current?.openInstallFromZip();
     });
 
-    rerender(
-      <UnifiedSkillsPanel
-        ref={ref}
-        onOpenDiscovery={() => {}}
-        targetApp="gemini"
-      />,
-    );
+    expect(openDialogSpy).not.toHaveBeenCalled();
 
     await act(async () => {
-      resolveFilePath("/tmp/skills.zip");
+      within(screen.getByRole("dialog")).getByText("skills.install").click();
     });
 
     await waitFor(() => {
@@ -221,7 +212,7 @@ describe("UnifiedSkillsPanel", () => {
       <UnifiedSkillsPanel
         ref={ref}
         onOpenDiscovery={() => {}}
-        targetApp="gemini"
+        availableApps={["gemini"]}
       />,
     );
 
@@ -242,7 +233,12 @@ describe("UnifiedSkillsPanel", () => {
     installedSkillsMock = [makeInstalledSkill()];
     toggleSkillAppMock.mockResolvedValue(true);
 
-    render(<UnifiedSkillsPanel onOpenDiscovery={() => {}} targetApp="pi" />);
+    render(
+      <UnifiedSkillsPanel
+        onOpenDiscovery={() => {}}
+        availableApps={["pi"]}
+      />,
+    );
 
     screen.getByRole("button", { name: "Codex" }).click();
 

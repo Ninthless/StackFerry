@@ -41,11 +41,12 @@ import type {
   SkillsShDiscoverableSkill,
 } from "@/lib/api/skills";
 import { formatSkillError } from "@/lib/errors/skillErrorParser";
+import { SkillTargetAppDialog } from "./SkillTargetAppDialog";
 
 export type SkillsPageSource = "repos" | "skillssh";
 
 interface SkillsPageProps {
-  targetApp: AppId;
+  availableApps: readonly AppId[];
   onSourceChange?: (source: SkillsPageSource) => void;
 }
 
@@ -91,9 +92,14 @@ const SKILLSSH_PAGE_SIZE = 20;
  * 用于浏览和安装来自仓库或 skills.sh 的 Skills
  */
 export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
-  ({ targetApp, onSourceChange }, ref) => {
+  ({ availableApps, onSourceChange }, ref) => {
     const { t } = useTranslation();
     const [repoManagerOpen, setRepoManagerOpen] = useState(false);
+    const [pendingInstallSkill, setPendingInstallSkill] =
+      useState<DiscoverableSkill | null>(null);
+    const [installTargetApp, setInstallTargetApp] = useState<AppId>(
+      () => availableApps[0] ?? "claude",
+    );
     const [searchQuery, setSearchQuery] = useState("");
     const [filterRepo, setFilterRepo] = useState<string>("all");
     const [filterStatus, setFilterStatus] = useState<
@@ -108,6 +114,12 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
     const [accumulatedResults, setAccumulatedResults] = useState<
       SkillsShDiscoverableSkill[]
     >([]);
+
+    useEffect(() => {
+      if (!availableApps.includes(installTargetApp)) {
+        setInstallTargetApp(availableApps[0] ?? "claude");
+      }
+    }, [availableApps, installTargetApp]);
 
     // Queries
     const {
@@ -247,15 +259,21 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
         return;
       }
 
+      setPendingInstallSkill(skill);
+    };
+
+    const handleConfirmInstall = async () => {
+      if (!pendingInstallSkill) return;
       try {
-        const installTarget = targetApp;
         await installMutation.mutateAsync({
-          skill,
-          currentApp: installTarget,
+          skill: pendingInstallSkill,
+          currentApp: installTargetApp,
         });
-        toast.success(t("skills.installSuccess", { name: skill.name }), {
-          closeButton: true,
-        });
+        toast.success(
+          t("skills.installSuccess", { name: pendingInstallSkill.name }),
+          { closeButton: true },
+        );
+        setPendingInstallSkill(null);
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
@@ -653,6 +671,19 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
             onClose={() => setRepoManagerOpen(false)}
           />
         )}
+
+        <SkillTargetAppDialog
+          open={Boolean(pendingInstallSkill)}
+          appIds={availableApps}
+          value={installTargetApp}
+          title={pendingInstallSkill?.name ?? t("skills.install")}
+          description={t("skills.installTargetDescription")}
+          confirmLabel={t("skills.install")}
+          isPending={installMutation.isPending}
+          onValueChange={setInstallTargetApp}
+          onConfirm={() => void handleConfirmInstall()}
+          onClose={() => setPendingInstallSkill(null)}
+        />
       </div>
     );
   },

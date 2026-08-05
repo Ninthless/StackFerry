@@ -47,7 +47,7 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       error: null,
     };
 
-    render(<UnifiedMcpPanel onOpenChange={vi.fn()} />);
+    render(<UnifiedMcpPanel />);
 
     expect(screen.getByText("mcp.piAdapter.label")).toHaveAttribute(
       "title",
@@ -72,7 +72,7 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       error: "adapter package is disabled",
     };
 
-    render(<UnifiedMcpPanel onOpenChange={vi.fn()} />);
+    render(<UnifiedMcpPanel />);
 
     expect(screen.getByText("mcp.piAdapter.error")).toBeInTheDocument();
     expect(screen.getByText("adapter package is disabled")).toBeInTheDocument();
@@ -97,7 +97,7 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       },
     };
 
-    render(<UnifiedMcpPanel onOpenChange={vi.fn()} />);
+    render(<UnifiedMcpPanel />);
 
     expect(screen.getByRole("button", { name: "Pi" })).toBeInTheDocument();
     expect(

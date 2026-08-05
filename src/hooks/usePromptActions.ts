@@ -7,23 +7,12 @@ export function usePromptActions(appId: AppId) {
   const { t } = useTranslation();
   const [prompts, setPrompts] = useState<Record<string, Prompt>>({});
   const [loading, setLoading] = useState(false);
-  const [currentFileContent, setCurrentFileContent] = useState<string | null>(
-    null,
-  );
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
       const data = await promptsApi.getPrompts(appId);
       setPrompts(data);
-
-      // 同时加载当前文件内容
-      try {
-        const content = await promptsApi.getCurrentFileContent(appId);
-        setCurrentFileContent(content);
-      } catch (error) {
-        setCurrentFileContent(null);
-      }
     } catch (error) {
       toast.error(t("prompts.loadFailed"));
     } finally {
@@ -141,7 +130,6 @@ export function usePromptActions(appId: AppId) {
   return {
     prompts,
     loading,
-    currentFileContent,
     reload,
     savePrompt,
     deletePrompt,
