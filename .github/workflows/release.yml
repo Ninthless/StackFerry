@@ -32,7 +32,11 @@ jobs:
         run: node scripts/validate-release-version.mjs
 
       - name: Test Node scripts
-        run: node --test scripts/dev.node.mjs scripts/generate-updater-manifest.node.mjs
+        run: >-
+          node --test
+          scripts/dev.node.mjs
+          scripts/generate-updater-manifest.node.mjs
+          scripts/verify-bundle-marker.node.mjs
 
       - name: Validate updater signing secret
         shell: bash
@@ -191,6 +195,30 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: pnpm tauri build --bundles appimage,deb,rpm
+
+      - name: Verify Linux DEB bundle marker
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DEB=$(find src-tauri/target/release/bundle -type f -name "*.deb" -print -quit)
+          if [ -z "$DEB" ]; then
+            echo "No .deb found for bundle marker verification" >&2
+            exit 1
+          fi
+
+          EXTRACT_DIR=$(mktemp -d)
+          trap 'rm -rf "$EXTRACT_DIR"' EXIT
+          dpkg-deb --extract "$DEB" "$EXTRACT_DIR"
+
+          DEB_BINARY=$(find "$EXTRACT_DIR/usr/bin" -maxdepth 1 -type f -print -quit)
+          if [ -z "$DEB_BINARY" ]; then
+            echo "No executable found in $DEB" >&2
+            exit 1
+          fi
+
+          node scripts/verify-bundle-marker.mjs "$DEB_BINARY" deb
 
       - name: Prepare macOS Assets
         if: runner.os == 'macOS'
