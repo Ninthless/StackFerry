@@ -1,6 +1,6 @@
 {
   "name": "stackferry",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Provider and configuration manager for AI coding tools",
   "type": "module",
   "scripts": {

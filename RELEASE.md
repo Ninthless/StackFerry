@@ -1,10 +1,13 @@
-# StackFerry v0.1.6
+# StackFerry v0.1.7
 
 ## 简体中文
 
 ### 本次发布
 
-- 对齐设置页高级选项底部保存栏，并优化构建流程与 CI 检查，提升发布构建的一致性与可靠性。
+- 增加从 cc-switch 导入 Codex 供应商的事务化流程，支持幂等合并、来源追踪和跨平台数据库发现。
+- 重构会话管理的供应商隔离、元数据缓存、虚拟列表和分页预览，超大消息改为按需加载，显著降低大历史记录的打开开销。
+- 修复 Linux、Windows 和 macOS 的自启动状态保存与代理开关持久化，并补齐跨平台窗口和更新相关的兼容处理。
+- 补充供应商使用统计入口、会话供应商切换、导入流程和性能回归测试，保持普通 CI 的多平台校验。
 
 ### 故障转移与恢复
 
@@ -63,7 +66,10 @@
 
 ### This Release
 
-- Aligned the bottom save bar in the Settings advanced section and optimized the build pipeline and CI checks for more consistent, reliable releases.
+- Added a transactional Codex provider importer from cc-switch with idempotent reconciliation, source tracking, and cross-platform database discovery.
+- Scoped session management by provider and added metadata caching, virtualization, bounded message pagination, and on-demand oversized-message loading to keep large histories responsive.
+- Fixed persisted auto-launch and proxy-toggle state across Linux, Windows, and macOS, with additional cross-platform window and updater compatibility fixes.
+- Added provider usage visibility, session-provider switching, import coverage, and performance regression fixtures while preserving the regular multi-platform CI checks.
 
 ### Failover Recovery
 
