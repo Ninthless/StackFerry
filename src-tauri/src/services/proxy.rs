@@ -1346,33 +1346,45 @@ impl ProxyService {
         Ok(())
     }
 
-    /// 停止代理服务器
-    pub async fn stop(&self) -> Result<(), String> {
+    async fn stop_runtime(&self) -> Result<(), String> {
         if let Some(server) = self.server.write().await.take() {
             server
                 .stop()
                 .await
                 .map_err(|e| format!("停止代理服务器失败: {e}"))?;
 
-            // 停止时设置 proxy_enabled = false
-            let mut global_config = self
-                .db
-                .get_global_proxy_config()
-                .await
-                .map_err(|e| format!("获取全局代理配置失败: {e}"))?;
-
-            if global_config.proxy_enabled {
-                global_config.proxy_enabled = false;
-                if let Err(e) = self.db.update_global_proxy_config(global_config).await {
-                    log::warn!("更新代理总开关失败: {e}");
-                }
-            }
-
-            log::info!("代理服务器已停止");
             Ok(())
         } else {
             Err("代理服务器未运行".to_string())
         }
+    }
+
+    /// 停止代理服务器
+    pub async fn stop(&self) -> Result<(), String> {
+        self.stop_runtime().await?;
+
+        // 停止时设置 proxy_enabled = false
+        let mut global_config = self
+            .db
+            .get_global_proxy_config()
+            .await
+            .map_err(|e| format!("获取全局代理配置失败: {e}"))?;
+
+        if global_config.proxy_enabled {
+            global_config.proxy_enabled = false;
+            if let Err(e) = self.db.update_global_proxy_config(global_config).await {
+                log::warn!("更新代理总开关失败: {e}");
+            }
+        }
+
+        log::info!("代理服务器已停止");
+        Ok(())
+    }
+
+    pub(crate) async fn stop_preserving_enabled(&self) -> Result<(), String> {
+        self.stop_runtime().await?;
+        log::info!("代理服务器已停止，已保留启用状态");
+        Ok(())
     }
 
     /// 停止代理服务器（恢复 Live 配置，用户手动关闭时使用）
@@ -1415,7 +1427,7 @@ impl ProxyService {
     /// 用于程序正常退出时，保留代理状态以便下次启动时自动恢复
     pub async fn stop_with_restore_keep_state(&self) -> Result<(), String> {
         // 1. 停止代理服务器（即使未运行也继续执行恢复逻辑）
-        if let Err(e) = self.stop().await {
+        if let Err(e) = self.stop_preserving_enabled().await {
             log::warn!("停止代理服务器失败（将继续恢复 Live 配置）: {e}");
         }
 
@@ -2339,18 +2351,12 @@ impl ProxyService {
     /// 从异常退出中恢复（启动时调用）
     ///
     /// 检测到 Live 备份残留时调用此方法。
-    /// 会恢复 Live 配置、清除接管标志、删除备份。
+    /// 会恢复 Live 配置并删除备份，保留接管状态供启动流程重建。
     pub async fn recover_from_crash(&self) -> Result<(), String> {
         // 1. 恢复 Live 配置
         self.restore_live_configs().await?;
 
-        // 2. 清除接管标志
-        self.db
-            .clear_all_takeover_enabled()
-            .await
-            .map_err(|e| format!("清除接管状态失败: {e}"))?;
-
-        // 3. 删除备份
+        // 2. 删除备份
         self.db
             .delete_all_live_backups()
             .await
@@ -3650,6 +3656,26 @@ mod tests {
         db.update_proxy_config(proxy_config)
             .await
             .expect("set test proxy config to an ephemeral port");
+    }
+
+    #[tokio::test]
+    async fn lifecycle_stop_preserves_route_enabled_state() {
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+        use_ephemeral_proxy_port(&db).await;
+
+        service.start().await.expect("start proxy");
+        service
+            .stop_preserving_enabled()
+            .await
+            .expect("stop proxy for app exit");
+
+        assert!(
+            db.get_global_proxy_config()
+                .await
+                .expect("read preserved proxy state")
+                .proxy_enabled
+        );
     }
 
     async fn running_codex_base_url(service: &ProxyService) -> String {
@@ -8001,11 +8027,17 @@ experimental_bearer_token = "PROXY_MANAGED"
             .expect("recover Pi takeover after forced termination");
         service.stop().await.expect("stop recovered proxy");
         assert!(
-            !service
+            service
                 .get_takeover_status()
                 .await
                 .expect("read recovered takeover status")
                 .pi
+        );
+        assert!(
+            db.get_proxy_config_for_app("pi")
+                .await
+                .expect("read recovered Pi proxy config")
+                .auto_failover_enabled
         );
         McpService::sync_all_enabled(&state).expect("reproject Pi MCP after restart");
         McpService::toggle_app(&state, "rollout-mcp", AppType::Pi, false)

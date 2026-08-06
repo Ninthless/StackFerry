@@ -8,7 +8,7 @@ use serde_json::Value;
 use crate::openclaw_config::get_openclaw_dir;
 use crate::{
     config::write_json_file,
-    session_manager::{SessionMessage, SessionMeta},
+    session_manager::{pagination, SessionMessage, SessionMessagePage, SessionMeta},
 };
 
 use super::utils::{
@@ -89,37 +89,44 @@ pub fn load_messages(path: &Path) -> Result<Vec<SessionMessage>, String> {
             Err(_) => continue,
         };
 
-        if value.get("type").and_then(Value::as_str) != Some("message") {
-            continue;
+        if let Some(message) = message_from_value(&value) {
+            messages.push(message);
         }
-
-        let message = match value.get("message") {
-            Some(msg) => msg,
-            None => continue,
-        };
-
-        let raw_role = message
-            .get("role")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-
-        // Map OpenClaw roles to our standard roles
-        let role = match raw_role {
-            "toolResult" => "tool".to_string(),
-            other => other.to_string(),
-        };
-
-        let content = message.get("content").map(extract_text).unwrap_or_default();
-        if content.trim().is_empty() {
-            continue;
-        }
-
-        let ts = value.get("timestamp").and_then(parse_timestamp_to_ms);
-
-        messages.push(SessionMessage { role, content, ts });
     }
 
     Ok(messages)
+}
+
+pub fn load_message_page(path: &Path, cursor: Option<&str>) -> Result<SessionMessagePage, String> {
+    pagination::load_jsonl_page(path, cursor, message_from_value)
+}
+
+pub fn load_message_content(path: &Path, cursor: &str) -> Result<String, String> {
+    pagination::load_jsonl_content(path, cursor, message_from_value)
+}
+
+fn message_from_value(value: &Value) -> Option<SessionMessage> {
+    if value.get("type").and_then(Value::as_str) != Some("message") {
+        return None;
+    }
+    let message = value.get("message")?;
+    let role = match message
+        .get("role")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+    {
+        "toolResult" => "tool".to_string(),
+        other => other.to_string(),
+    };
+    let content = message.get("content").map(extract_text).unwrap_or_default();
+    if content.trim().is_empty() {
+        return None;
+    }
+    Some(SessionMessage {
+        role,
+        content,
+        ts: value.get("timestamp").and_then(parse_timestamp_to_ms),
+    })
 }
 
 pub fn delete_session(_root: &Path, path: &Path, session_id: &str) -> Result<bool, String> {

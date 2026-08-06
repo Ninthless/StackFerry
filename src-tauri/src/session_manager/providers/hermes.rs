@@ -6,7 +6,13 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 use crate::hermes_config::get_hermes_dir;
-use crate::session_manager::{SessionMessage, SessionMeta};
+use crate::session_manager::{
+    pagination::{
+        self, decode_id_cursor, decode_index_cursor, encode_id_cursor, encode_index_cursor,
+        MessagePageBuilder, PushOutcome, MESSAGE_PAGE_MAX_ITEMS,
+    },
+    SessionMessage, SessionMessagePage, SessionMeta,
+};
 
 use super::utils::{
     extract_text, parse_timestamp_to_ms, read_head_tail_lines, truncate_summary, TITLE_MAX_CHARS,
@@ -229,6 +235,97 @@ pub fn load_messages_sqlite(source: &str) -> Result<Vec<SessionMessage>, String>
     Ok(messages)
 }
 
+pub fn load_messages_sqlite_page(
+    source: &str,
+    cursor: Option<&str>,
+) -> Result<SessionMessagePage, String> {
+    let (db_path, session_id) = parse_sqlite_source(source)
+        .ok_or_else(|| format!("Invalid SQLite source reference: {source}"))?;
+    let conn = Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| format!("Failed to open Hermes database: {error}"))?;
+    let mut raw_index = decode_index_cursor(cursor)?;
+    let batch_size = MESSAGE_PAGE_MAX_ITEMS + 1;
+    let mut builder = MessagePageBuilder::new();
+
+    loop {
+        let mut statement = conn
+            .prepare(
+                "SELECT role, content, created_at FROM messages WHERE session_id = ?1 ORDER BY created_at ASC LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(|error| format!("Failed to prepare Hermes message page query: {error}"))?;
+        let rows = statement
+            .query_map(
+                rusqlite::params![session_id, batch_size as i64, raw_index as i64],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<i64>>(2).ok().flatten(),
+                    ))
+                },
+            )
+            .map_err(|error| format!("Failed to query Hermes message page: {error}"))?;
+        let records = rows.flatten().collect::<Vec<_>>();
+        drop(statement);
+        if records.is_empty() {
+            return Ok(builder.finish(None));
+        }
+
+        let record_count = records.len();
+        for (role, content, timestamp) in records {
+            if builder.is_full() {
+                return Ok(builder.finish(Some(encode_index_cursor(raw_index))));
+            }
+            if content.trim().is_empty() {
+                raw_index = raw_index.saturating_add(1);
+                continue;
+            }
+            let message = SessionMessage {
+                role,
+                content,
+                ts: timestamp.and_then(|value| parse_timestamp_to_ms(&Value::Number(value.into()))),
+            };
+            let content_cursor = encode_id_cursor("hermes-sqlite", &raw_index.to_string());
+            if matches!(builder.push(message, content_cursor), PushOutcome::PageFull) {
+                return Ok(builder.finish(Some(encode_index_cursor(raw_index))));
+            }
+            raw_index = raw_index.saturating_add(1);
+        }
+
+        if record_count < batch_size {
+            return Ok(builder.finish(None));
+        }
+    }
+}
+
+pub fn load_message_content_sqlite(source: &str, cursor: &str) -> Result<String, String> {
+    let (db_path, session_id) = parse_sqlite_source(source)
+        .ok_or_else(|| format!("Invalid SQLite source reference: {source}"))?;
+    let raw_index = decode_id_cursor(cursor, "hermes-sqlite")?
+        .parse::<usize>()
+        .map_err(|_| "Invalid Hermes message content cursor".to_string())?;
+    let conn = Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| format!("Failed to open Hermes database: {error}"))?;
+    let content = conn
+        .query_row(
+            "SELECT content FROM messages WHERE session_id = ?1 ORDER BY created_at ASC LIMIT 1 OFFSET ?2",
+            rusqlite::params![session_id, raw_index as i64],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| format!("Failed to load Hermes message content: {error}"))?;
+    if content.trim().is_empty() {
+        Err("Hermes message content is no longer available".to_string())
+    } else {
+        Ok(content)
+    }
+}
+
 /// Delete a session from the Hermes SQLite database.
 pub fn delete_session_sqlite(session_id: &str, source: &str) -> Result<bool, String> {
     let (db_path, ref_session_id) = parse_sqlite_source(source)
@@ -447,41 +544,48 @@ pub fn load_messages(path: &Path) -> Result<Vec<SessionMessage>, String> {
             Err(_) => continue,
         };
 
-        // Support both flat messages and nested {type:"message", message:{...}} format
-        let (role_val, content_val, ts_val) =
-            if value.get("type").and_then(Value::as_str) == Some("message") {
-                let msg = match value.get("message") {
-                    Some(m) => m,
-                    None => continue,
-                };
-                (
-                    msg.get("role"),
-                    msg.get("content"),
-                    value.get("timestamp").or_else(|| msg.get("ts")),
-                )
-            } else {
-                (
-                    value.get("role"),
-                    value.get("content"),
-                    value.get("timestamp").or_else(|| value.get("ts")),
-                )
-            };
-
-        let role = match role_val.and_then(Value::as_str) {
-            Some(r) => r.to_string(),
-            None => continue,
-        };
-
-        let content = content_val.map(extract_text).unwrap_or_default();
-        if content.trim().is_empty() {
-            continue;
+        if let Some(message) = message_from_value(&value) {
+            messages.push(message);
         }
-
-        let ts = ts_val.and_then(parse_timestamp_to_ms);
-        messages.push(SessionMessage { role, content, ts });
     }
 
     Ok(messages)
+}
+
+pub fn load_message_page(path: &Path, cursor: Option<&str>) -> Result<SessionMessagePage, String> {
+    pagination::load_jsonl_page(path, cursor, message_from_value)
+}
+
+pub fn load_message_content(path: &Path, cursor: &str) -> Result<String, String> {
+    pagination::load_jsonl_content(path, cursor, message_from_value)
+}
+
+fn message_from_value(value: &Value) -> Option<SessionMessage> {
+    let (role_value, content_value, timestamp_value) =
+        if value.get("type").and_then(Value::as_str) == Some("message") {
+            let message = value.get("message")?;
+            (
+                message.get("role"),
+                message.get("content"),
+                value.get("timestamp").or_else(|| message.get("ts")),
+            )
+        } else {
+            (
+                value.get("role"),
+                value.get("content"),
+                value.get("timestamp").or_else(|| value.get("ts")),
+            )
+        };
+    let role = role_value.and_then(Value::as_str)?.to_string();
+    let content = content_value.map(extract_text).unwrap_or_default();
+    if content.trim().is_empty() {
+        return None;
+    }
+    Some(SessionMessage {
+        role,
+        content,
+        ts: timestamp_value.and_then(parse_timestamp_to_ms),
+    })
 }
 
 /// Delete a Hermes JSONL session file.

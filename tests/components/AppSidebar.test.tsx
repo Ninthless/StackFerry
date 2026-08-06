@@ -32,19 +32,29 @@ describe("AppSidebar", () => {
       />,
     );
 
-  it.each<AppId>(["claude", "claude-desktop", "pi", "openclaw", "hermes"])(
-    "keeps global feature navigation visible for %s routing",
-    (activeApp) => {
-      const { unmount } = renderSidebar(activeApp);
+  it.each<AppId>([
+    "claude",
+    "claude-desktop",
+    "codex",
+    "pi",
+    "gemini",
+    "grokbuild",
+    "opencode",
+    "openclaw",
+    "hermes",
+  ])("keeps global navigation and usage visible for %s routing", (activeApp) => {
+    const { unmount } = renderSidebar(activeApp);
 
-      expect(screen.getByText("Skills")).toBeInTheDocument();
-      expect(screen.getByText("Prompts")).toBeInTheDocument();
-      expect(screen.getByText("Sessions")).toBeInTheDocument();
-      expect(screen.getByText("MCP servers")).toBeInTheDocument();
+    expect(screen.getByText("Skills")).toBeInTheDocument();
+    expect(screen.getByText("Prompts")).toBeInTheDocument();
+    expect(screen.getByText("Sessions")).toBeInTheDocument();
+    expect(screen.getByText("MCP servers")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Routing activity" }),
+    ).toBeInTheDocument();
 
-      unmount();
-    },
-  );
+    unmount();
+  });
 
   it("adds route-specific tools without duplicating global navigation", () => {
     const { rerender } = renderSidebar("openclaw");

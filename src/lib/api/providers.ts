@@ -21,6 +21,16 @@ export interface SwitchResult {
   warnings: string[];
 }
 
+export interface CcSwitchImportResult {
+  imported: number;
+  added: number;
+  updated: number;
+  merged: number;
+  skipped: number;
+  warnings: string[];
+  providers: Provider[];
+}
+
 export interface OpenTerminalOptions {
   cwd?: string;
 }
@@ -93,6 +103,14 @@ export const providersApi = {
 
   async importDefault(appId: AppId): Promise<boolean> {
     return await invoke("import_default_config", { app: appId });
+  },
+
+  async importCcSwitchCodexProviders(
+    dbPath?: string | null,
+  ): Promise<CcSwitchImportResult> {
+    return await invoke("import_ccswitch_codex_providers", {
+      dbPath: dbPath ?? null,
+    });
   },
 
   async importClaudeDesktopFromClaude(): Promise<number> {

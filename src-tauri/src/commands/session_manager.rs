@@ -3,11 +3,15 @@
 use crate::session_manager;
 
 #[tauri::command]
-pub async fn list_sessions() -> Result<Vec<session_manager::SessionMeta>, String> {
-    let sessions = tauri::async_runtime::spawn_blocking(session_manager::scan_sessions)
-        .await
-        .map_err(|e| format!("Failed to scan sessions: {e}"))?;
-    Ok(sessions)
+pub async fn list_sessions(
+    providerId: String,
+    forceRefresh: bool,
+) -> Result<Vec<session_manager::SessionMeta>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        session_manager::scan_sessions(&providerId, forceRefresh)
+    })
+    .await
+    .map_err(|e| format!("Failed to scan sessions: {e}"))?
 }
 
 #[tauri::command]
@@ -22,6 +26,32 @@ pub async fn get_session_messages(
     })
     .await
     .map_err(|e| format!("Failed to load session messages: {e}"))?
+}
+
+#[tauri::command]
+pub async fn get_session_message_page(
+    providerId: String,
+    sourcePath: String,
+    cursor: Option<String>,
+) -> Result<session_manager::SessionMessagePage, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        session_manager::load_message_page(&providerId, &sourcePath, cursor.as_deref())
+    })
+    .await
+    .map_err(|error| format!("Failed to load session message page: {error}"))?
+}
+
+#[tauri::command]
+pub async fn get_session_message_content(
+    providerId: String,
+    sourcePath: String,
+    contentCursor: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        session_manager::load_message_content(&providerId, &sourcePath, &contentCursor)
+    })
+    .await
+    .map_err(|error| format!("Failed to load session message content: {error}"))?
 }
 
 /// 在用户选定的终端里恢复一个会话。

@@ -3,6 +3,7 @@ import type {
   McpServer,
   Provider,
   SessionMessage,
+  SessionMessagePage,
   SessionMeta,
   Settings,
 } from "@/types";
@@ -411,12 +412,92 @@ export const deleteMcpServer = (appType: AppId, id: string) => {
   delete mcpConfigs[appType][id];
 };
 
-export const listSessions = () => deepClone(sessionsState) as SessionMeta[];
+export const listSessions = (providerId: string) =>
+  deepClone(
+    sessionsState.filter((session) => session.providerId === providerId),
+  ) as SessionMeta[];
 
 export const getSessionMessages = (providerId: string, sourcePath: string) =>
   deepClone(
     sessionMessagesState[sessionMessageKey(providerId, sourcePath)] ?? [],
   ) as SessionMessage[];
+
+const SESSION_MESSAGE_PAGE_MAX_ITEMS = 50;
+const SESSION_MESSAGE_PAGE_MAX_BYTES = 512 * 1024;
+
+const truncateUtf8 = (value: string, maxBytes: number) => {
+  const encoder = new TextEncoder();
+  if (encoder.encode(value).length <= maxBytes) return value;
+  let end = Math.min(value.length, maxBytes);
+  while (end > 0 && encoder.encode(value.slice(0, end)).length > maxBytes) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+};
+
+export const getSessionMessagePage = (
+  providerId: string,
+  sourcePath: string,
+  cursor?: string,
+): SessionMessagePage => {
+  const messages = getSessionMessages(providerId, sourcePath);
+  const start = cursor ? Number(cursor.replace(/^(?:index|fixture):/, "")) : 0;
+  if (!Number.isInteger(start) || start < 0) {
+    throw new Error("Invalid session message cursor");
+  }
+
+  const encoder = new TextEncoder();
+  const items: SessionMessage[] = [];
+  let contentBytes = 0;
+  let index = start;
+
+  while (
+    index < messages.length &&
+    items.length < SESSION_MESSAGE_PAGE_MAX_ITEMS
+  ) {
+    const source = messages[index];
+    const sourceBytes = encoder.encode(source.content).length;
+    const remainingBytes = SESSION_MESSAGE_PAGE_MAX_BYTES - contentBytes;
+    if (items.length > 0 && sourceBytes > remainingBytes) break;
+
+    const truncated = sourceBytes > remainingBytes;
+    const content = truncated
+      ? truncateUtf8(source.content, remainingBytes)
+      : source.content;
+    items.push({
+      role: source.role,
+      content,
+      ts: source.ts,
+      ...(truncated
+        ? {
+            contentCursor: `fixture:${index}`,
+            contentBytes: sourceBytes,
+          }
+        : {}),
+    });
+    contentBytes += encoder.encode(content).length;
+    index += 1;
+  }
+
+  return {
+    items,
+    nextCursor: index < messages.length ? `index:${index}` : undefined,
+    hasMore: index < messages.length,
+  };
+};
+
+export const getSessionMessageContent = (
+  providerId: string,
+  sourcePath: string,
+  cursor: string,
+) => {
+  const index = Number(cursor.replace(/^(?:index|fixture):/, ""));
+  const messages = getSessionMessages(providerId, sourcePath);
+  if (!Number.isInteger(index) || index < 0 || index >= messages.length) {
+    throw new Error("Invalid session message content cursor");
+  }
+  return messages[index].content;
+};
 
 export const deleteSession = (
   providerId: string,

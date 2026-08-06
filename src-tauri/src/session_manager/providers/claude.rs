@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::config::get_claude_config_dir;
-use crate::session_manager::{SessionMessage, SessionMeta};
+use crate::session_manager::{pagination, SessionMessage, SessionMessagePage, SessionMeta};
 
 use super::utils::{
     extract_text, parse_timestamp_to_ms, path_basename, read_head_tail_lines, truncate_summary,
@@ -44,45 +44,55 @@ pub fn load_messages(path: &Path) -> Result<Vec<SessionMessage>, String> {
             Err(_) => continue,
         };
 
-        if value.get("isMeta").and_then(Value::as_bool) == Some(true) {
-            continue;
+        if let Some(message) = message_from_value(&value) {
+            messages.push(message);
         }
-
-        let message = match value.get("message") {
-            Some(message) => message,
-            None => continue,
-        };
-
-        let mut role = message
-            .get("role")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown")
-            .to_string();
-
-        // Claude wraps tool_result inside user messages; reclassify as "tool" role
-        if role == "user" {
-            if let Some(Value::Array(items)) = message.get("content") {
-                let all_tool_results = !items.is_empty()
-                    && items.iter().all(|item| {
-                        item.get("type").and_then(Value::as_str) == Some("tool_result")
-                    });
-                if all_tool_results {
-                    role = "tool".to_string();
-                }
-            }
-        }
-
-        let content = message.get("content").map(extract_text).unwrap_or_default();
-        if content.trim().is_empty() {
-            continue;
-        }
-
-        let ts = value.get("timestamp").and_then(parse_timestamp_to_ms);
-
-        messages.push(SessionMessage { role, content, ts });
     }
 
     Ok(messages)
+}
+
+pub fn load_message_page(path: &Path, cursor: Option<&str>) -> Result<SessionMessagePage, String> {
+    pagination::load_jsonl_page(path, cursor, message_from_value)
+}
+
+pub fn load_message_content(path: &Path, cursor: &str) -> Result<String, String> {
+    pagination::load_jsonl_content(path, cursor, message_from_value)
+}
+
+fn message_from_value(value: &Value) -> Option<SessionMessage> {
+    if value.get("isMeta").and_then(Value::as_bool) == Some(true) {
+        return None;
+    }
+
+    let message = value.get("message")?;
+    let mut role = message
+        .get("role")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+
+    if role == "user" {
+        if let Some(Value::Array(items)) = message.get("content") {
+            let all_tool_results = !items.is_empty()
+                && items
+                    .iter()
+                    .all(|item| item.get("type").and_then(Value::as_str) == Some("tool_result"));
+            if all_tool_results {
+                role = "tool".to_string();
+            }
+        }
+    }
+
+    let content = message.get("content").map(extract_text).unwrap_or_default();
+    if content.trim().is_empty() {
+        return None;
+    }
+    Some(SessionMessage {
+        role,
+        content,
+        ts: value.get("timestamp").and_then(parse_timestamp_to_ms),
+    })
 }
 
 pub fn delete_session(_root: &Path, path: &Path, session_id: &str) -> Result<bool, String> {

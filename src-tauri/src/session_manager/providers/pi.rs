@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::session_manager::{SessionMessage, SessionMeta};
+use crate::session_manager::{pagination, SessionMessage, SessionMessagePage, SessionMeta};
 
 use super::utils::{parse_timestamp_to_ms, path_basename, truncate_summary, TITLE_MAX_CHARS};
 
@@ -34,6 +34,14 @@ pub fn load_messages(path: &Path) -> Result<Vec<SessionMessage>, String> {
     }
 
     Ok(messages)
+}
+
+pub fn load_message_page(path: &Path, cursor: Option<&str>) -> Result<SessionMessagePage, String> {
+    pagination::load_jsonl_page(path, cursor, entry_to_message)
+}
+
+pub fn load_message_content(path: &Path, cursor: &str) -> Result<String, String> {
+    pagination::load_jsonl_content(path, cursor, entry_to_message)
 }
 
 pub fn delete_session(_root: &Path, path: &Path, session_id: &str) -> Result<bool, String> {

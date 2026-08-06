@@ -185,6 +185,10 @@ impl Database {
 
         let mut meta_clone = provider.meta.clone().unwrap_or_default();
         let endpoints = std::mem::take(&mut meta_clone.custom_endpoints);
+        let settings_config = serde_json::to_string(&provider.settings_config)
+            .map_err(|e| AppError::Database(format!("Failed to serialize settings_config: {e}")))?;
+        let meta = serde_json::to_string(&meta_clone)
+            .map_err(|e| AppError::Database(format!("Failed to serialize meta: {e}")))?;
 
         let existing: Option<(bool, bool)> = tx
             .query_row(
@@ -201,6 +205,12 @@ impl Database {
         if is_update {
             tx.execute(
                 "UPDATE providers SET
+                    source_dirty = CASE
+                        WHEN source_id IS NOT NULL
+                             AND (name <> ?1 OR settings_config <> ?2)
+                        THEN 1
+                        ELSE source_dirty
+                    END,
                     name = ?1,
                     settings_config = ?2,
                     website_url = ?3,
@@ -216,9 +226,7 @@ impl Database {
                 WHERE id = ?13 AND app_type = ?14",
                 params![
                     provider.name,
-                    serde_json::to_string(&provider.settings_config).map_err(|e| {
-                        AppError::Database(format!("Failed to serialize settings_config: {e}"))
-                    })?,
+                    settings_config,
                     provider.website_url,
                     provider.category,
                     provider.created_at,
@@ -226,9 +234,7 @@ impl Database {
                     provider.notes,
                     provider.icon,
                     provider.icon_color,
-                    serde_json::to_string(&meta_clone).map_err(|e| AppError::Database(format!(
-                        "Failed to serialize meta: {e}"
-                    )))?,
+                    meta,
                     is_current,
                     in_failover_queue,
                     provider.id,
@@ -246,8 +252,7 @@ impl Database {
                     provider.id,
                     app_type,
                     provider.name,
-                    serde_json::to_string(&provider.settings_config)
-                        .map_err(|e| AppError::Database(format!("Failed to serialize settings_config: {e}")))?,
+                    settings_config,
                     provider.website_url,
                     provider.category,
                     provider.created_at,
@@ -255,8 +260,7 @@ impl Database {
                     provider.notes,
                     provider.icon,
                     provider.icon_color,
-                    serde_json::to_string(&meta_clone)
-                        .map_err(|e| AppError::Database(format!("Failed to serialize meta: {e}")))?,
+                    meta,
                     is_current,
                     in_failover_queue,
                 ],

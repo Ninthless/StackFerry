@@ -307,6 +307,11 @@ export const createBrowserPreviewCommandHandler = () => {
       case "scan_unmanaged_skills":
       case "list_sessions":
       case "get_session_messages":
+        return [];
+      case "get_session_message_page":
+        return { items: [], hasMore: false };
+      case "get_session_message_content":
+        return "";
       case "list_profiles":
       case "list_db_backups":
       case "check_env_conflicts":

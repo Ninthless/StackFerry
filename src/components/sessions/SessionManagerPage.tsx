@@ -1,11 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSessionSearch } from "@/hooks/useSessionSearch";
 import { useTranslation } from "react-i18next";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { observeElementRect, useVirtualizer } from "@tanstack/react-virtual";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
+  Loader2,
   RefreshCw,
   Search,
   Play,
@@ -27,8 +35,13 @@ import {
   useSessionMessagesQuery,
   useSessionsQuery,
 } from "@/lib/query";
-import { sessionsApi } from "@/lib/api";
-import type { SessionMeta } from "@/types";
+import {
+  isSessionProviderId,
+  SESSION_PROVIDER_IDS,
+  sessionsApi,
+  type SessionProviderId,
+} from "@/lib/api";
+import type { SessionMessage, SessionMeta } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -79,31 +92,26 @@ const SESSION_LIST_VIEW_MODE_STORAGE_KEY =
   "stackferry.sessionManager.listViewMode";
 const SESSION_GROUP_EXPANSION_STORAGE_KEY =
   "stackferry.sessionManager.groupExpansionState";
-const SESSION_PROVIDER_FILTER_STORAGE_KEY =
-  "stackferry.sessions.providerFilter";
+const SESSION_PROVIDER_STORAGE_KEY = "stackferry.sessions.providerFilter";
+const SESSION_LIST_ROW_ESTIMATE = 68;
+const SESSION_LIST_FALLBACK_RECT = { width: 320, height: 640 };
+const MESSAGE_LIST_FALLBACK_RECT = { width: 640, height: 640 };
 
-type ProviderFilter =
-  | "all"
-  | "codex"
-  | "pi"
-  | "grokbuild"
-  | "claude"
-  | "opencode"
-  | "openclaw"
-  | "gemini"
-  | "hermes";
+const observeSessionListRect: typeof observeElementRect = (instance, onRect) =>
+  observeElementRect(instance, (rect) =>
+    onRect({
+      width: rect.width > 0 ? rect.width : SESSION_LIST_FALLBACK_RECT.width,
+      height: rect.height > 0 ? rect.height : SESSION_LIST_FALLBACK_RECT.height,
+    }),
+  );
 
-const PROVIDER_FILTERS: readonly ProviderFilter[] = [
-  "all",
-  "codex",
-  "pi",
-  "grokbuild",
-  "claude",
-  "opencode",
-  "openclaw",
-  "gemini",
-  "hermes",
-];
+const observeMessageListRect: typeof observeElementRect = (instance, onRect) =>
+  observeElementRect(instance, (rect) =>
+    onRect({
+      width: rect.width > 0 ? rect.width : MESSAGE_LIST_FALLBACK_RECT.width,
+      height: rect.height > 0 ? rect.height : MESSAGE_LIST_FALLBACK_RECT.height,
+    }),
+  );
 
 type SessionListViewMode = "flat" | "grouped";
 
@@ -119,14 +127,10 @@ type SessionGroupExpansionState = {
   expandedDirectoryKeys: Set<string>;
 };
 
-const readInitialProviderFilter = (): ProviderFilter => {
-  if (typeof window === "undefined") return "all";
-  const stored = window.localStorage.getItem(
-    SESSION_PROVIDER_FILTER_STORAGE_KEY,
-  );
-  return PROVIDER_FILTERS.includes(stored as ProviderFilter)
-    ? (stored as ProviderFilter)
-    : "all";
+const readInitialSessionProvider = (): SessionProviderId => {
+  if (typeof window === "undefined") return "codex";
+  const stored = window.localStorage.getItem(SESSION_PROVIDER_STORAGE_KEY);
+  return isSessionProviderId(stored) ? stored : "codex";
 };
 
 const readInitialSessionListViewMode = (): SessionListViewMode => {
@@ -214,10 +218,10 @@ const filterSetToAllowedValues = (
 export function SessionManagerPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { data, isLoading, refetch } = useSessionsQuery();
-  const sessions = data ?? [];
   const detailRef = useRef<HTMLDivElement | null>(null);
+  const sessionListRootRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const messageLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const [activeMessageIndex, setActiveMessageIndex] = useState<number | null>(
     null,
   );
@@ -234,9 +238,12 @@ export function SessionManagerPage() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [search, setSearch] = useState("");
-  const [providerFilter, setProviderFilter] = useState<ProviderFilter>(
-    readInitialProviderFilter,
+  const [sessionProvider, setSessionProvider] = useState<SessionProviderId>(
+    readInitialSessionProvider,
   );
+  const { data, isLoading, refreshSessions } =
+    useSessionsQuery(sessionProvider);
+  const sessions = data ?? [];
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [listViewMode, setListViewMode] = useState<SessionListViewMode>(
     readInitialSessionListViewMode,
@@ -254,42 +261,72 @@ export function SessionManagerPage() {
   // 使用 FlexSearch 全文搜索
   const { search: searchSessions } = useSessionSearch({
     sessions,
-    providerFilter,
   });
+  const deferredSearch = useDeferredValue(search);
 
   const filteredSessions = useMemo(() => {
-    return searchSessions(search);
-  }, [searchSessions, search]);
+    return searchSessions(deferredSearch);
+  }, [deferredSearch, searchSessions]);
 
-  const groupedSessions = useMemo(
-    () =>
-      groupSessionsByProviderAndDirectory(
-        filteredSessions,
-        t("sessionManager.unknownDirectory", {
-          defaultValue: "未知目录",
-        }),
-      ),
-    [filteredSessions, t],
-  );
+  const sessionListVirtualizer = useVirtualizer({
+    count: listViewMode === "flat" ? filteredSessions.length : 0,
+    getScrollElement: () =>
+      sessionListRootRef.current?.querySelector<HTMLElement>(
+        "[data-radix-scroll-area-viewport]",
+      ) ?? null,
+    estimateSize: () => SESSION_LIST_ROW_ESTIMATE,
+    measureElement: (element) =>
+      element.getBoundingClientRect().height || SESSION_LIST_ROW_ESTIMATE,
+    getItemKey: (index) => getSessionKey(filteredSessions[index]),
+    overscan: 6,
+    initialRect: SESSION_LIST_FALLBACK_RECT,
+    observeElementRect: observeSessionListRect,
+  });
 
-  const validGroupExpansionKeys = useMemo(
-    () => ({
+  const groupedSessions = useMemo(() => {
+    if (listViewMode !== "grouped") return [];
+    return groupSessionsByProviderAndDirectory(
+      filteredSessions,
+      t("sessionManager.unknownDirectory", {
+        defaultValue: "未知目录",
+      }),
+    );
+  }, [filteredSessions, listViewMode, t]);
+
+  const validGroupExpansionKeys = useMemo(() => {
+    if (listViewMode !== "grouped") {
+      return {
+        providerIds: new Set<string>(),
+        directoryKeys: new Set<string>(),
+      };
+    }
+    return {
       providerIds: new Set(sessions.map((session) => session.providerId)),
       directoryKeys: new Set(
         sessions.map((session) =>
           getSessionDirectoryGroupKey(session.providerId, session.projectDir),
         ),
       ),
-    }),
-    [sessions],
-  );
+    };
+  }, [listViewMode, sessions]);
 
   useEffect(() => {
-    window.localStorage.setItem(
-      SESSION_PROVIDER_FILTER_STORAGE_KEY,
-      providerFilter,
-    );
-  }, [providerFilter]);
+    window.localStorage.setItem(SESSION_PROVIDER_STORAGE_KEY, sessionProvider);
+  }, [sessionProvider]);
+
+  const handleSessionProviderChange = (value: string) => {
+    if (!isSessionProviderId(value) || value === sessionProvider) return;
+
+    setSelectedKey(null);
+    setSelectedSessionKeys(new Set());
+    setDeleteTargets(null);
+    setSelectionMode(false);
+    setSearch("");
+    setIsSearchOpen(false);
+    setTocDialogOpen(false);
+    setActiveMessageIndex(null);
+    setSessionProvider(value);
+  };
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -309,7 +346,7 @@ export function SessionManagerPage() {
   }, [expandedDirectoryGroups, expandedProviderGroups]);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || listViewMode !== "grouped") return;
 
     setExpandedProviderGroups((current) =>
       filterSetToAllowedValues(current, validGroupExpansionKeys.providerIds),
@@ -317,7 +354,7 @@ export function SessionManagerPage() {
     setExpandedDirectoryGroups((current) =>
       filterSetToAllowedValues(current, validGroupExpansionKeys.directoryKeys),
     );
-  }, [isLoading, validGroupExpansionKeys]);
+  }, [isLoading, listViewMode, validGroupExpansionKeys]);
 
   useEffect(() => {
     if (filteredSessions.length === 0) {
@@ -352,22 +389,114 @@ export function SessionManagerPage() {
           defaultValue: "列表",
         });
 
-  const { data: messages = [], isLoading: isLoadingMessages } =
-    useSessionMessagesQuery(
-      selectedSession?.providerId,
-      selectedSession?.sourcePath,
+  const {
+    data: messagePages,
+    isLoading: isLoadingMessages,
+    isError: isMessageQueryError,
+    error: messageQueryError,
+    refetch: refetchMessages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useSessionMessagesQuery(
+    selectedSession?.providerId,
+    selectedSession?.sourcePath,
+  );
+  const messages = useMemo(
+    () => messagePages?.pages.flatMap((page) => page.items) ?? [],
+    [messagePages],
+  );
+
+  const loadMessageContent = useCallback(
+    async (message: SessionMessage) => {
+      if (
+        !message.contentCursor ||
+        !selectedSession?.providerId ||
+        !selectedSession.sourcePath
+      ) {
+        return message.content;
+      }
+
+      return queryClient.fetchQuery({
+        queryKey: [
+          "sessionMessageContent",
+          selectedSession.providerId,
+          selectedSession.sourcePath,
+          message.contentCursor,
+        ],
+        queryFn: () =>
+          sessionsApi.getMessageContent(
+            selectedSession.providerId,
+            selectedSession.sourcePath!,
+            message.contentCursor!,
+          ),
+        staleTime: 5 * 60 * 1000,
+      });
+    },
+    [queryClient, selectedSession],
+  );
+
+  useEffect(() => {
+    const sentinel = messageLoadMoreRef.current;
+    const root = scrollContainerRef.current;
+    if (
+      !sentinel ||
+      !root ||
+      !hasNextPage ||
+      isFetchNextPageError ||
+      typeof IntersectionObserver === "undefined"
+    ) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting && !isFetchingNextPage) {
+          void fetchNextPage();
+        }
+      },
+      { root, rootMargin: "320px 0px" },
     );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    selectedKey,
+  ]);
+
   const deleteSessionMutation = useDeleteSessionMutation();
   const isDeleting = deleteSessionMutation.isPending || isBatchDeleting;
 
   const virtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => scrollContainerRef.current,
+    observeElementRect: observeMessageListRect,
     estimateSize: () => 120,
     overscan: 5,
     gap: 12,
+    getItemKey: (index) =>
+      `${selectedSession?.providerId ?? ""}:${selectedSession?.sourcePath ?? ""}:${index}`,
   });
-
+  const measuredMessageRows = virtualizer.getVirtualItems();
+  const messageRows =
+    measuredMessageRows.length > 0
+      ? measuredMessageRows
+      : messages.slice(0, 8).map((_, index) => ({
+          key: `${selectedSession?.providerId ?? ""}:${selectedSession?.sourcePath ?? ""}:fallback:${index}`,
+          index,
+          start: index * 120,
+          size: 120,
+          end: (index + 1) * 120,
+          lane: 0,
+        }));
+  const messageListHeight = Math.max(
+    virtualizer.getTotalSize(),
+    messages.length * 120,
+  );
   useEffect(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
@@ -439,7 +568,7 @@ export function SessionManagerPage() {
 
   const handleMessageCopy = useCallback(
     (content: string) => {
-      void handleCopy(
+      return handleCopy(
         content,
         t("sessionManager.messageCopied", { defaultValue: "已复制消息内容" }),
       );
@@ -521,10 +650,12 @@ export function SessionManagerPage() {
 
       if (deletedKeys.length > 0) {
         const deletedKeySet = new Set(deletedKeys);
-        queryClient.setQueryData<SessionMeta[]>(["sessions"], (current) =>
-          (current ?? []).filter(
-            (session) => !deletedKeySet.has(getSessionKey(session)),
-          ),
+        queryClient.setQueryData<SessionMeta[]>(
+          ["sessions", sessionProvider],
+          (current) =>
+            (current ?? []).filter(
+              (session) => !deletedKeySet.has(getSessionKey(session)),
+            ),
         );
       }
 
@@ -542,7 +673,9 @@ export function SessionManagerPage() {
         return next;
       });
 
-      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["sessions", sessionProvider],
+      });
 
       if (deletedKeys.length > 0) {
         toast.success(
@@ -721,7 +854,7 @@ export function SessionManagerPage() {
         session={session}
         isSelected={isSelected}
         selectionMode={selectionMode}
-        searchQuery={search}
+        searchQuery={deferredSearch}
         isChecked={selectedSessionKeys.has(sessionKey)}
         isCheckDisabled={!session.sourcePath}
         onSelect={setSelectedKey}
@@ -1049,10 +1182,8 @@ export function SessionManagerPage() {
                         </Tooltip>
 
                         <Select
-                          value={providerFilter}
-                          onValueChange={(value) =>
-                            setProviderFilter(value as ProviderFilter)
-                          }
+                          value={sessionProvider}
+                          onValueChange={handleSessionProviderChange}
                         >
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -1061,121 +1192,39 @@ export function SessionManagerPage() {
                                 aria-label={t(
                                   "sessionManager.providerFilterTooltip",
                                   {
-                                    defaultValue: "供应商筛选",
+                                    defaultValue: "会话供应商",
                                   },
                                 )}
                               >
                                 <span className="sr-only">
                                   {t("sessionManager.providerFilterTooltip", {
-                                    defaultValue: "供应商筛选",
+                                    defaultValue: "会话供应商",
                                   })}
                                 </span>
                                 <ProviderIcon
-                                  icon={
-                                    providerFilter === "all"
-                                      ? "apps"
-                                      : getProviderIconName(providerFilter)
-                                  }
-                                  name={providerFilter}
+                                  icon={getProviderIconName(sessionProvider)}
+                                  name={sessionProvider}
                                   size={14}
                                 />
                               </SelectTrigger>
                             </TooltipTrigger>
                             <TooltipContent>
-                              {providerFilter === "all"
-                                ? t("sessionManager.providerFilterAll")
-                                : providerFilter}
+                              {getProviderLabel(sessionProvider, t)}
                             </TooltipContent>
                           </Tooltip>
                           <SelectContent>
-                            <SelectItem value="all">
-                              <div className="flex items-center gap-2">
-                                <ProviderIcon
-                                  icon="apps"
-                                  name="all"
-                                  size={14}
-                                />
-                                <span>
-                                  {t("sessionManager.providerFilterAll")}
-                                </span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="codex">
-                              <div className="flex items-center gap-2">
-                                <ProviderIcon
-                                  icon="openai"
-                                  name="codex"
-                                  size={14}
-                                />
-                                <span>Codex</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="pi">
-                              <div className="flex items-center gap-2">
-                                <ProviderIcon icon="pi" name="pi" size={14} />
-                                <span>Pi</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="grokbuild">
-                              <div className="flex items-center gap-2">
-                                <ProviderIcon
-                                  icon="grok"
-                                  name="grokbuild"
-                                  size={14}
-                                />
-                                <span>Grok Build</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="claude">
-                              <div className="flex items-center gap-2">
-                                <ProviderIcon
-                                  icon="claude"
-                                  name="claude"
-                                  size={14}
-                                />
-                                <span>Claude Code</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="opencode">
-                              <div className="flex items-center gap-2">
-                                <ProviderIcon
-                                  icon="opencode"
-                                  name="opencode"
-                                  size={14}
-                                />
-                                <span>OpenCode</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="openclaw">
-                              <div className="flex items-center gap-2">
-                                <ProviderIcon
-                                  icon="openclaw"
-                                  name="openclaw"
-                                  size={14}
-                                />
-                                <span>OpenClaw</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="gemini">
-                              <div className="flex items-center gap-2">
-                                <ProviderIcon
-                                  icon="gemini"
-                                  name="gemini"
-                                  size={14}
-                                />
-                                <span>Gemini CLI</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="hermes">
-                              <div className="flex items-center gap-2">
-                                <ProviderIcon
-                                  icon="hermes"
-                                  name="hermes"
-                                  size={14}
-                                />
-                                <span>Hermes</span>
-                              </div>
-                            </SelectItem>
+                            {SESSION_PROVIDER_IDS.map((providerId) => (
+                              <SelectItem key={providerId} value={providerId}>
+                                <div className="flex items-center gap-2">
+                                  <ProviderIcon
+                                    icon={getProviderIconName(providerId)}
+                                    name={providerId}
+                                    size={14}
+                                  />
+                                  <span>{getProviderLabel(providerId, t)}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
 
@@ -1185,12 +1234,17 @@ export function SessionManagerPage() {
                               variant="ghost"
                               size="icon"
                               className="size-7"
-                              onClick={() => void refetch()}
+                              aria-label={t("common.refresh", {
+                                defaultValue: "刷新",
+                              })}
+                              onClick={() => void refreshSessions()}
                             >
                               <RefreshCw className="size-3.5" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>{t("common.refresh")}</TooltipContent>
+                          <TooltipContent>
+                            {t("common.refresh", { defaultValue: "刷新" })}
+                          </TooltipContent>
                         </Tooltip>
                       </div>
                     </div>
@@ -1266,7 +1320,7 @@ export function SessionManagerPage() {
                 )}
               </CardHeader>
               <CardContent className="flex-1 min-h-0 p-0">
-                <ScrollArea className="h-full">
+                <ScrollArea ref={sessionListRootRef} className="h-full">
                   <div className="p-2">
                     {isLoading ? (
                       <div className="flex items-center justify-center py-12">
@@ -1436,10 +1490,30 @@ export function SessionManagerPage() {
                         })}
                       </div>
                     ) : (
-                      <div className="space-y-1">
-                        {filteredSessions.map((session) =>
-                          renderSessionItem(session),
-                        )}
+                      <div
+                        data-testid="virtualized-session-list"
+                        className="relative"
+                        style={{
+                          height: sessionListVirtualizer.getTotalSize(),
+                        }}
+                      >
+                        {sessionListVirtualizer
+                          .getVirtualItems()
+                          .map((virtualRow) => (
+                            <div
+                              key={virtualRow.key}
+                              ref={sessionListVirtualizer.measureElement}
+                              data-index={virtualRow.index}
+                              className="absolute left-0 top-0 w-full pb-1"
+                              style={{
+                                transform: `translateY(${virtualRow.start}px)`,
+                              }}
+                            >
+                              {renderSessionItem(
+                                filteredSessions[virtualRow.index],
+                              )}
+                            </div>
+                          ))}
                       </div>
                     )}
                   </div>
@@ -1673,7 +1747,11 @@ export function SessionManagerPage() {
                                 defaultValue: "对话记录",
                               })}
                             </span>
-                            <Badge variant="secondary" className="text-xs">
+                            <Badge
+                              variant="secondary"
+                              className="text-xs"
+                              data-testid="loaded-message-count"
+                            >
                               {messages.length}
                             </Badge>
                           </div>
@@ -1682,9 +1760,27 @@ export function SessionManagerPage() {
                           ref={scrollContainerRef}
                           className="flex-1 overflow-y-auto px-4 pb-4 min-w-0"
                         >
-                          {isLoadingMessages ? (
+                          {isLoadingMessages && messages.length === 0 ? (
                             <div className="flex items-center justify-center py-12">
                               <RefreshCw className="size-5 animate-spin text-muted-foreground" />
+                            </div>
+                          ) : isMessageQueryError && messages.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+                              <p className="text-sm text-destructive">
+                                {extractErrorMessage(messageQueryError) ||
+                                  t("sessionManager.messageLoadFailed", {
+                                    defaultValue: "加载对话记录失败",
+                                  })}
+                              </p>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void refetchMessages()}
+                              >
+                                <RefreshCw className="size-3.5" />
+                                {t("common.retry", { defaultValue: "重试" })}
+                              </Button>
                             </div>
                           ) : messages.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -1696,35 +1792,71 @@ export function SessionManagerPage() {
                           ) : (
                             <div
                               style={{
-                                height: virtualizer.getTotalSize(),
+                                height:
+                                  messageListHeight + (hasNextPage ? 56 : 0),
                                 position: "relative",
                               }}
                             >
-                              {virtualizer
-                                .getVirtualItems()
-                                .map((virtualRow) => (
-                                  <div
-                                    key={virtualRow.key}
-                                    data-index={virtualRow.index}
-                                    ref={virtualizer.measureElement}
-                                    style={{
-                                      position: "absolute",
-                                      top: 0,
-                                      left: 0,
-                                      width: "100%",
-                                      transform: `translateY(${virtualRow.start}px)`,
-                                    }}
+                              {messageRows.map((virtualRow) => (
+                                <div
+                                  key={virtualRow.key}
+                                  data-index={virtualRow.index}
+                                  ref={virtualizer.measureElement}
+                                  style={{
+                                    position: "absolute",
+                                    top: 0,
+                                    left: 0,
+                                    width: "100%",
+                                    transform: `translateY(${virtualRow.start}px)`,
+                                  }}
+                                >
+                                  <SessionMessageItem
+                                    message={messages[virtualRow.index]}
+                                    isActive={
+                                      activeMessageIndex === virtualRow.index
+                                    }
+                                    searchQuery={search}
+                                    onCopy={handleMessageCopy}
+                                    onLoadFullContent={loadMessageContent}
+                                  />
+                                </div>
+                              ))}
+                              {hasNextPage && (
+                                <div
+                                  ref={messageLoadMoreRef}
+                                  className="absolute left-0 right-0 flex justify-center py-3"
+                                  style={{ top: messageListHeight }}
+                                >
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => void fetchNextPage()}
+                                    disabled={isFetchingNextPage}
                                   >
-                                    <SessionMessageItem
-                                      message={messages[virtualRow.index]}
-                                      isActive={
-                                        activeMessageIndex === virtualRow.index
-                                      }
-                                      searchQuery={search}
-                                      onCopy={handleMessageCopy}
-                                    />
-                                  </div>
-                                ))}
+                                    {isFetchingNextPage ? (
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                    ) : isFetchNextPageError ? (
+                                      <RefreshCw className="size-3.5" />
+                                    ) : (
+                                      <ChevronDown className="size-3.5" />
+                                    )}
+                                    {isFetchingNextPage
+                                      ? t(
+                                          "sessionManager.loadingMoreMessages",
+                                          { defaultValue: "加载中..." },
+                                        )
+                                      : isFetchNextPageError
+                                        ? t(
+                                            "sessionManager.retryMoreMessages",
+                                            { defaultValue: "重试加载" },
+                                          )
+                                        : t("sessionManager.loadMoreMessages", {
+                                            defaultValue: "加载更多消息",
+                                          })}
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

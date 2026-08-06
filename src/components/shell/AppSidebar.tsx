@@ -184,19 +184,17 @@ export function AppSidebar({
       </div>
 
       <div className="shrink-0 border-t border-sidebar-border p-3">
-        {isRouteActive && (
-          <button
-            type="button"
-            onClick={onOpenUsage}
-            className="mb-2 flex h-9 w-full items-center gap-2.5 rounded-md bg-sidebar-active px-2.5 text-left text-xs text-sidebar-foreground hover:bg-sidebar-hover"
-          >
-            <ChartNoAxesCombined className="h-4 w-4" />
-            <span className="truncate">
-              {t("usage.title", { defaultValue: "Routing activity" })}
-            </span>
-            <CircleGauge className="ml-auto h-3.5 w-3.5" />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onOpenUsage}
+          className="mb-2 flex h-9 w-full items-center gap-2.5 rounded-md bg-sidebar-active px-2.5 text-left text-xs text-sidebar-foreground hover:bg-sidebar-hover"
+        >
+          <ChartNoAxesCombined className="h-4 w-4" />
+          <span className="truncate">
+            {t("usage.title", { defaultValue: "Routing activity" })}
+          </span>
+          <CircleGauge className="ml-auto h-3.5 w-3.5" />
+        </button>
         <div className="flex items-center gap-1">
           <button
             type="button"

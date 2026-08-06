@@ -217,9 +217,22 @@ describe("App integration with MSW", () => {
         "claude-1",
       ),
     );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "firstRunNotice.confirm" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "firstRunNotice.title" }),
+      ).not.toBeInTheDocument(),
+    );
 
     expect(screen.getAllByTestId("app-switcher")).toHaveLength(1);
     expect(screen.queryByText("StackFerry")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("complementary")).getByRole("button", {
+        name: "Routing activity",
+      }),
+    ).toBeVisible();
 
     fireEvent.click(screen.getByText("switch-codex"));
     await waitFor(() =>
@@ -227,6 +240,11 @@ describe("App integration with MSW", () => {
         "codex-1",
       ),
     );
+    expect(
+      within(screen.getByRole("complementary")).getByRole("button", {
+        name: "Routing activity",
+      }),
+    ).toBeVisible();
 
     fireEvent.click(screen.getByText("usage"));
     expect(screen.getByTestId("usage-modal")).toBeInTheDocument();
@@ -355,7 +373,7 @@ describe("App integration with MSW", () => {
     );
 
     const filter = await screen.findByRole("combobox", {
-      name: /供应商筛选/i,
+      name: /会话供应商/i,
     });
     await userEvent.click(filter);
     await userEvent.click(
@@ -383,7 +401,7 @@ describe("App integration with MSW", () => {
       }),
     );
     const restoredFilter = await screen.findByRole("combobox", {
-      name: /供应商筛选/i,
+      name: /会话供应商/i,
     });
     await userEvent.click(restoredFilter);
 
@@ -515,7 +533,7 @@ describe("App integration with MSW", () => {
 
     fireEvent.click(within(sidebar).getByRole("button", { name: "Sessions" }));
     const sessionFilter = await screen.findByRole("combobox", {
-      name: /供应商筛选/i,
+      name: /会话供应商/i,
     });
     await userEvent.click(sessionFilter);
     const geminiOption = await screen.findByRole("option", { name: /Gemini/i });

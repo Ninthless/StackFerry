@@ -1,5 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { SessionMessage, SessionMeta } from "@/types";
+import type { SessionMessage, SessionMessagePage, SessionMeta } from "@/types";
+
+export const SESSION_PROVIDER_IDS = [
+  "codex",
+  "claude",
+  "opencode",
+  "openclaw",
+  "gemini",
+  "hermes",
+  "grokbuild",
+  "pi",
+] as const;
+
+export type SessionProviderId = (typeof SESSION_PROVIDER_IDS)[number];
+
+export const isSessionProviderId = (
+  value: string | null | undefined,
+): value is SessionProviderId =>
+  value !== null &&
+  value !== undefined &&
+  SESSION_PROVIDER_IDS.includes(value as SessionProviderId);
 
 export interface DeleteSessionOptions {
   providerId: string;
@@ -13,8 +33,11 @@ export interface DeleteSessionResult extends DeleteSessionOptions {
 }
 
 export const sessionsApi = {
-  async list(): Promise<SessionMeta[]> {
-    return await invoke("list_sessions");
+  async list(
+    providerId: SessionProviderId,
+    forceRefresh = false,
+  ): Promise<SessionMeta[]> {
+    return await invoke("list_sessions", { providerId, forceRefresh });
   },
 
   async getMessages(
@@ -22,6 +45,30 @@ export const sessionsApi = {
     sourcePath: string,
   ): Promise<SessionMessage[]> {
     return await invoke("get_session_messages", { providerId, sourcePath });
+  },
+
+  async getMessagePage(
+    providerId: string,
+    sourcePath: string,
+    cursor?: string,
+  ): Promise<SessionMessagePage> {
+    return await invoke("get_session_message_page", {
+      providerId,
+      sourcePath,
+      cursor,
+    });
+  },
+
+  async getMessageContent(
+    providerId: string,
+    sourcePath: string,
+    contentCursor: string,
+  ): Promise<string> {
+    return await invoke("get_session_message_content", {
+      providerId,
+      sourcePath,
+      contentCursor,
+    });
   },
 
   async delete(options: DeleteSessionOptions): Promise<boolean> {

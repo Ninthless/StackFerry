@@ -11,7 +11,12 @@ export { subscriptionApi } from "./subscription";
 export { vscodeApi } from "./vscode";
 export { proxyApi } from "./proxy";
 export { openclawApi } from "./openclaw";
-export { sessionsApi } from "./sessions";
+export {
+  sessionsApi,
+  SESSION_PROVIDER_IDS,
+  isSessionProviderId,
+} from "./sessions";
+export type { SessionProviderId } from "./sessions";
 export { workspaceApi } from "./workspace";
 export * as configApi from "./config";
 export * as authApi from "./auth";

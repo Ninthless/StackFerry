@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import {
+  useInfiniteQuery,
   useQuery,
   type UseQueryResult,
   keepPreviousData,
@@ -10,13 +11,14 @@ import {
   usageApi,
   sessionsApi,
   type AppId,
+  type SessionProviderId,
 } from "@/lib/api";
 import type {
   Provider,
   Settings,
   UsageResult,
   SessionMeta,
-  SessionMessage,
+  SessionMessagePage,
 } from "@/types";
 import { usageKeys } from "@/lib/query/usage";
 import { extractErrorMessage } from "@/utils/errorUtils";
@@ -306,22 +308,41 @@ export const useUsageQuery = (
   };
 };
 
-export const useSessionsQuery = () => {
-  return useQuery<SessionMeta[]>({
-    queryKey: ["sessions"],
-    queryFn: async () => sessionsApi.list(),
+export const useSessionsQuery = (providerId: SessionProviderId) => {
+  const forceRefreshRef = useRef(false);
+  const query = useQuery<SessionMeta[]>({
+    queryKey: ["sessions", providerId],
+    queryFn: async () => sessionsApi.list(providerId, forceRefreshRef.current),
     staleTime: 30 * 1000,
   });
+
+  const refreshSessions = async () => {
+    forceRefreshRef.current = true;
+    try {
+      return await query.refetch();
+    } finally {
+      forceRefreshRef.current = false;
+    }
+  };
+
+  return { ...query, refreshSessions };
 };
 
 export const useSessionMessagesQuery = (
   providerId?: string,
   sourcePath?: string,
 ) => {
-  return useQuery<SessionMessage[]>({
+  const query = useInfiniteQuery<SessionMessagePage>({
     queryKey: ["sessionMessages", providerId, sourcePath],
-    queryFn: async () => sessionsApi.getMessages(providerId!, sourcePath!),
+    queryFn: async ({ pageParam }) => {
+      const cursor = typeof pageParam === "string" ? pageParam : undefined;
+      return sessionsApi.getMessagePage(providerId!, sourcePath!, cursor);
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore ? lastPage.nextCursor : undefined,
     enabled: Boolean(providerId && sourcePath),
     staleTime: 30 * 1000,
   });
+  return query;
 };

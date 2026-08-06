@@ -1,8 +1,15 @@
+mod pagination;
 pub mod providers;
 pub mod terminal;
 
+pub use pagination::SessionMessagePage;
+
 use serde::{Deserialize, Serialize};
+use std::collections::{hash_map::DefaultHasher, HashMap};
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::UNIX_EPOCH;
 
 use providers::{claude, codex, gemini, grokbuild, hermes, openclaw, opencode, pi};
 
@@ -55,45 +62,233 @@ pub struct DeleteSessionOutcome {
     pub error: Option<String>,
 }
 
-pub fn scan_sessions() -> Vec<SessionMeta> {
-    let (r1, r2, r3, r4, r5, r6, r7, r8) = std::thread::scope(|s| {
-        let h1 = s.spawn(codex::scan_sessions);
-        let h2 = s.spawn(claude::scan_sessions);
-        let h3 = s.spawn(opencode::scan_sessions);
-        let h4 = s.spawn(openclaw::scan_sessions);
-        let h5 = s.spawn(gemini::scan_sessions);
-        let h6 = s.spawn(hermes::scan_sessions);
-        let h7 = s.spawn(grokbuild::scan_sessions);
-        let h8 = s.spawn(pi::scan_sessions);
-        (
-            h1.join().unwrap_or_default(),
-            h2.join().unwrap_or_default(),
-            h3.join().unwrap_or_default(),
-            h4.join().unwrap_or_default(),
-            h5.join().unwrap_or_default(),
-            h6.join().unwrap_or_default(),
-            h7.join().unwrap_or_default(),
-            h8.join().unwrap_or_default(),
-        )
-    });
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum SessionProvider {
+    Codex,
+    Claude,
+    OpenCode,
+    OpenClaw,
+    Gemini,
+    Hermes,
+    GrokBuild,
+    Pi,
+}
 
-    let mut sessions = Vec::new();
-    sessions.extend(r1);
-    sessions.extend(r2);
-    sessions.extend(r3);
-    sessions.extend(r4);
-    sessions.extend(r5);
-    sessions.extend(r6);
-    sessions.extend(r7);
-    sessions.extend(r8);
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ScanFingerprint {
+    file_count: u64,
+    digest_xor: u64,
+    digest_sum: u64,
+    error_count: u64,
+}
 
+impl ScanFingerprint {
+    fn record_file(&mut self, path: &Path, metadata: &std::fs::Metadata) {
+        let modified = metadata
+            .modified()
+            .ok()
+            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+            .map(|value| value.as_nanos())
+            .unwrap_or_default();
+        let mut hasher = DefaultHasher::new();
+        path.hash(&mut hasher);
+        metadata.len().hash(&mut hasher);
+        modified.hash(&mut hasher);
+        let digest = hasher.finish();
+
+        self.file_count = self.file_count.saturating_add(1);
+        self.digest_xor ^= digest;
+        self.digest_sum = self.digest_sum.wrapping_add(digest);
+    }
+
+    fn record_error(&mut self, path: &Path) {
+        let mut hasher = DefaultHasher::new();
+        path.hash(&mut hasher);
+        "unreadable".hash(&mut hasher);
+        let digest = hasher.finish();
+
+        self.error_count = self.error_count.saturating_add(1);
+        self.digest_xor ^= digest;
+        self.digest_sum = self.digest_sum.wrapping_add(digest);
+    }
+}
+
+#[derive(Clone)]
+struct CachedSessionScan {
+    fingerprint: ScanFingerprint,
+    sessions: Vec<SessionMeta>,
+}
+
+#[derive(Default)]
+struct SessionScanCache {
+    entries: Mutex<HashMap<SessionProvider, CachedSessionScan>>,
+}
+
+impl SessionScanCache {
+    fn get_or_scan<F>(
+        &self,
+        provider: SessionProvider,
+        roots: &[PathBuf],
+        force_refresh: bool,
+        scan: F,
+    ) -> Vec<SessionMeta>
+    where
+        F: FnOnce() -> Vec<SessionMeta>,
+    {
+        let fingerprint_before = fingerprint_roots(roots);
+
+        if !force_refresh {
+            let entries = self
+                .entries
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(cached) = entries.get(&provider) {
+                if cached.fingerprint == fingerprint_before {
+                    return cached.sessions.clone();
+                }
+            }
+        }
+
+        let sessions = scan();
+        let fingerprint_after = fingerprint_roots(roots);
+        let mut entries = self
+            .entries
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        if fingerprint_before == fingerprint_after {
+            entries.insert(
+                provider,
+                CachedSessionScan {
+                    fingerprint: fingerprint_after,
+                    sessions: sessions.clone(),
+                },
+            );
+        } else {
+            entries.remove(&provider);
+        }
+
+        sessions
+    }
+}
+
+static SESSION_SCAN_CACHE: OnceLock<SessionScanCache> = OnceLock::new();
+
+fn fingerprint_roots(roots: &[PathBuf]) -> ScanFingerprint {
+    let mut fingerprint = ScanFingerprint::default();
+    for root in roots {
+        fingerprint_path(root, &mut fingerprint);
+    }
+    fingerprint
+}
+
+fn fingerprint_path(path: &Path, fingerprint: &mut ScanFingerprint) {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+        Err(_) => {
+            fingerprint.record_error(path);
+            return;
+        }
+    };
+
+    if !metadata.is_dir() {
+        fingerprint.record_file(path, &metadata);
+        return;
+    }
+
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(_) => {
+            fingerprint.record_error(path);
+            return;
+        }
+    };
+
+    for entry in entries {
+        match entry {
+            Ok(entry) => fingerprint_path(&entry.path(), fingerprint),
+            Err(_) => fingerprint.record_error(path),
+        }
+    }
+}
+
+fn scan_roots(provider: SessionProvider) -> Vec<PathBuf> {
+    match provider {
+        SessionProvider::Codex => {
+            let mut roots = codex::session_roots();
+            roots.push(crate::codex_config::get_codex_config_dir().join("session_index.jsonl"));
+            roots
+        }
+        SessionProvider::Claude => vec![crate::config::get_claude_config_dir().join("projects")],
+        SessionProvider::OpenCode => vec![opencode::get_opencode_base_dir()],
+        SessionProvider::OpenClaw => {
+            vec![crate::openclaw_config::get_openclaw_dir().join("agents")]
+        }
+        SessionProvider::Gemini => {
+            vec![crate::gemini_config::get_gemini_dir().join("tmp")]
+        }
+        SessionProvider::Hermes => vec![crate::hermes_config::get_hermes_dir()],
+        SessionProvider::GrokBuild => grokbuild::session_roots(),
+        SessionProvider::Pi => vec![crate::pi_config::get_sessions_dir()],
+    }
+}
+
+impl SessionProvider {
+    fn parse(provider_id: &str) -> Result<Self, String> {
+        match provider_id {
+            "codex" => Ok(Self::Codex),
+            "claude" => Ok(Self::Claude),
+            "opencode" => Ok(Self::OpenCode),
+            "openclaw" => Ok(Self::OpenClaw),
+            "gemini" => Ok(Self::Gemini),
+            "hermes" => Ok(Self::Hermes),
+            "grokbuild" => Ok(Self::GrokBuild),
+            "pi" => Ok(Self::Pi),
+            _ => Err(format!("Unsupported session provider: {provider_id}")),
+        }
+    }
+}
+
+fn scan_provider(provider: SessionProvider) -> Vec<SessionMeta> {
+    match provider {
+        SessionProvider::Codex => codex::scan_sessions(),
+        SessionProvider::Claude => claude::scan_sessions(),
+        SessionProvider::OpenCode => opencode::scan_sessions(),
+        SessionProvider::OpenClaw => openclaw::scan_sessions(),
+        SessionProvider::Gemini => gemini::scan_sessions(),
+        SessionProvider::Hermes => hermes::scan_sessions(),
+        SessionProvider::GrokBuild => grokbuild::scan_sessions(),
+        SessionProvider::Pi => pi::scan_sessions(),
+    }
+}
+
+fn sort_sessions(sessions: &mut [SessionMeta]) {
     sessions.sort_by(|a, b| {
         let a_ts = a.last_active_at.or(a.created_at).unwrap_or(0);
         let b_ts = b.last_active_at.or(b.created_at).unwrap_or(0);
         b_ts.cmp(&a_ts)
     });
+}
 
-    sessions
+fn scan_sessions_with<F>(provider_id: &str, scan: F) -> Result<Vec<SessionMeta>, String>
+where
+    F: FnOnce(SessionProvider) -> Vec<SessionMeta>,
+{
+    let provider = SessionProvider::parse(provider_id)?;
+    let mut sessions = scan(provider);
+    sort_sessions(&mut sessions);
+    Ok(sessions)
+}
+
+pub fn scan_sessions(provider_id: &str, force_refresh: bool) -> Result<Vec<SessionMeta>, String> {
+    let provider = SessionProvider::parse(provider_id)?;
+    let roots = scan_roots(provider);
+    let cache = SESSION_SCAN_CACHE.get_or_init(SessionScanCache::default);
+    let mut sessions =
+        cache.get_or_scan(provider, &roots, force_refresh, || scan_provider(provider));
+    sort_sessions(&mut sessions);
+    Ok(sessions)
 }
 
 pub fn load_messages(provider_id: &str, source_path: &str) -> Result<Vec<SessionMessage>, String> {
@@ -115,6 +310,58 @@ pub fn load_messages(provider_id: &str, source_path: &str) -> Result<Vec<Session
         "grokbuild" => grokbuild::load_messages(path),
         "hermes" => hermes::load_messages(path),
         "pi" => pi::load_messages(path),
+        _ => Err(format!("Unsupported provider: {provider_id}")),
+    }
+}
+
+pub fn load_message_page(
+    provider_id: &str,
+    source_path: &str,
+    cursor: Option<&str>,
+) -> Result<SessionMessagePage, String> {
+    if provider_id == "opencode" && source_path.starts_with("sqlite:") {
+        return opencode::load_messages_sqlite_page(source_path, cursor);
+    }
+    if provider_id == "hermes" && source_path.starts_with("sqlite:") {
+        return hermes::load_messages_sqlite_page(source_path, cursor);
+    }
+
+    let path = Path::new(source_path);
+    match provider_id {
+        "codex" => codex::load_message_page(path, cursor),
+        "claude" => claude::load_message_page(path, cursor),
+        "opencode" => opencode::load_message_page(path, cursor),
+        "openclaw" => openclaw::load_message_page(path, cursor),
+        "gemini" => gemini::load_message_page(path, cursor),
+        "grokbuild" => grokbuild::load_message_page(path, cursor),
+        "hermes" => hermes::load_message_page(path, cursor),
+        "pi" => pi::load_message_page(path, cursor),
+        _ => Err(format!("Unsupported provider: {provider_id}")),
+    }
+}
+
+pub fn load_message_content(
+    provider_id: &str,
+    source_path: &str,
+    content_cursor: &str,
+) -> Result<String, String> {
+    if provider_id == "opencode" && source_path.starts_with("sqlite:") {
+        return opencode::load_message_content_sqlite(source_path, content_cursor);
+    }
+    if provider_id == "hermes" && source_path.starts_with("sqlite:") {
+        return hermes::load_message_content_sqlite(source_path, content_cursor);
+    }
+
+    let path = Path::new(source_path);
+    match provider_id {
+        "codex" => codex::load_message_content(path, content_cursor),
+        "claude" => claude::load_message_content(path, content_cursor),
+        "opencode" => opencode::load_message_content(path, content_cursor),
+        "openclaw" => openclaw::load_message_content(path, content_cursor),
+        "gemini" => gemini::load_message_content(path, content_cursor),
+        "grokbuild" => grokbuild::load_message_content(path, content_cursor),
+        "hermes" => hermes::load_message_content(path, content_cursor),
+        "pi" => pi::load_message_content(path, content_cursor),
         _ => Err(format!("Unsupported provider: {provider_id}")),
     }
 }
@@ -262,7 +509,89 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
     use tempfile::tempdir;
+
+    #[test]
+    fn dispatches_one_selected_provider() {
+        let mut dispatched = None;
+        let sessions = scan_sessions_with("claude", |provider| {
+            dispatched = Some(provider);
+            vec![SessionMeta {
+                provider_id: "claude".to_string(),
+                session_id: "session-1".to_string(),
+                title: None,
+                summary: None,
+                project_dir: None,
+                created_at: Some(1),
+                last_active_at: None,
+                source_path: None,
+                resume_command: None,
+            }]
+        })
+        .expect("selected provider should dispatch");
+
+        assert_eq!(dispatched, Some(SessionProvider::Claude));
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].provider_id, "claude");
+    }
+
+    #[test]
+    fn rejects_aggregate_and_unknown_provider_ids() {
+        for provider_id in ["all", "invalid"] {
+            let error = scan_sessions_with(provider_id, |_| unreachable!())
+                .expect_err("invalid provider should not scan");
+            assert!(error.contains("Unsupported session provider"));
+        }
+    }
+
+    #[test]
+    fn metadata_cache_reuses_unchanged_and_refreshes_changed_or_missing_files() {
+        let root = tempdir().expect("session root");
+        let source = root.path().join("session.jsonl");
+        std::fs::write(&source, "first").expect("write initial source");
+        let cache = SessionScanCache::default();
+        let scan_count = Cell::new(0);
+        let roots = [root.path().to_path_buf()];
+
+        let scan = || {
+            scan_count.set(scan_count.get() + 1);
+            if !source.exists() {
+                return Vec::new();
+            }
+            vec![SessionMeta {
+                provider_id: "codex".to_string(),
+                session_id: "session-1".to_string(),
+                title: std::fs::read_to_string(&source).ok(),
+                summary: None,
+                project_dir: None,
+                created_at: None,
+                last_active_at: None,
+                source_path: Some(source.display().to_string()),
+                resume_command: None,
+            }]
+        };
+
+        let first = cache.get_or_scan(SessionProvider::Codex, &roots, false, scan);
+        let unchanged = cache.get_or_scan(SessionProvider::Codex, &roots, false, scan);
+        assert_eq!(scan_count.get(), 1);
+        assert_eq!(first[0].title.as_deref(), Some("first"));
+        assert_eq!(unchanged[0].title.as_deref(), Some("first"));
+
+        let forced = cache.get_or_scan(SessionProvider::Codex, &roots, true, scan);
+        assert_eq!(scan_count.get(), 2);
+        assert_eq!(forced[0].title.as_deref(), Some("first"));
+
+        std::fs::write(&source, "changed and longer").expect("change source");
+        let changed = cache.get_or_scan(SessionProvider::Codex, &roots, false, scan);
+        assert_eq!(scan_count.get(), 3);
+        assert_eq!(changed[0].title.as_deref(), Some("changed and longer"));
+
+        std::fs::remove_file(&source).expect("remove source");
+        let missing = cache.get_or_scan(SessionProvider::Codex, &roots, false, scan);
+        assert_eq!(scan_count.get(), 4);
+        assert!(missing.is_empty());
+    }
 
     fn write_codex_session(path: &Path, session_id: &str) {
         std::fs::write(

@@ -2,6 +2,8 @@
 //!
 //! Handles provider CRUD operations, switching, and configuration management.
 
+pub(crate) mod ccswitch_import;
+pub(crate) mod ccswitch_reconcile;
 mod endpoints;
 mod gemini_auth;
 mod live;

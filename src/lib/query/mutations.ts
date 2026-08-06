@@ -379,21 +379,25 @@ export const useDeleteSessionMutation = () => {
       return input;
     },
     onSuccess: async (input) => {
-      queryClient.setQueryData<SessionMeta[]>(["sessions"], (current) =>
-        (current ?? []).filter(
-          (session) =>
-            !(
-              session.providerId === input.providerId &&
-              session.sessionId === input.sessionId &&
-              session.sourcePath === input.sourcePath
-            ),
-        ),
+      queryClient.setQueryData<SessionMeta[]>(
+        ["sessions", input.providerId],
+        (current) =>
+          (current ?? []).filter(
+            (session) =>
+              !(
+                session.providerId === input.providerId &&
+                session.sessionId === input.sessionId &&
+                session.sourcePath === input.sourcePath
+              ),
+          ),
       );
       queryClient.removeQueries({
         queryKey: ["sessionMessages", input.providerId, input.sourcePath],
       });
 
-      await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["sessions", input.providerId],
+      });
 
       toast.success(
         t("sessionManager.sessionDeleted", {

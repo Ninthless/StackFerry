@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::session_manager::{SessionMessage, SessionMeta};
+use crate::session_manager::{pagination, SessionMessage, SessionMessagePage, SessionMeta};
 
 use super::utils::{extract_text, parse_timestamp_to_ms, truncate_summary, TITLE_MAX_CHARS};
 
@@ -51,10 +51,7 @@ pub fn scan_sessions() -> Vec<SessionMeta> {
 }
 
 pub fn load_messages(path: &Path) -> Result<Vec<SessionMessage>, String> {
-    let session_dir = path
-        .parent()
-        .ok_or_else(|| format!("Invalid Grok Build session path: {}", path.display()))?;
-    let chat_path = session_dir.join("chat_history.jsonl");
+    let chat_path = chat_history_path(path)?;
     let file = File::open(&chat_path)
         .map_err(|e| format!("Failed to open Grok Build chat history: {e}"))?;
     let reader = BufReader::new(file);
@@ -64,29 +61,45 @@ pub fn load_messages(path: &Path) -> Result<Vec<SessionMessage>, String> {
         let Ok(value) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
-        let kind = value.get("type").and_then(Value::as_str).unwrap_or("");
-        let role = match kind {
-            "system" | "user" | "assistant" | "tool" => kind,
-            // Reasoning records can contain encrypted/internal state and are not
-            // conversation messages shown by Grok's own history view.
-            _ => continue,
-        };
-        let content = value.get("content").map(extract_text).unwrap_or_default();
-        if content.trim().is_empty() {
-            continue;
+        if let Some(message) = message_from_value(&value) {
+            messages.push(message);
         }
-        let ts = value
-            .get("timestamp")
-            .or_else(|| value.get("ts"))
-            .and_then(parse_timestamp_to_ms);
-        messages.push(SessionMessage {
-            role: role.to_string(),
-            content,
-            ts,
-        });
     }
 
     Ok(messages)
+}
+
+pub fn load_message_page(path: &Path, cursor: Option<&str>) -> Result<SessionMessagePage, String> {
+    pagination::load_jsonl_page(&chat_history_path(path)?, cursor, message_from_value)
+}
+
+pub fn load_message_content(path: &Path, cursor: &str) -> Result<String, String> {
+    pagination::load_jsonl_content(&chat_history_path(path)?, cursor, message_from_value)
+}
+
+fn chat_history_path(path: &Path) -> Result<PathBuf, String> {
+    path.parent()
+        .map(|session_dir| session_dir.join("chat_history.jsonl"))
+        .ok_or_else(|| format!("Invalid Grok Build session path: {}", path.display()))
+}
+
+fn message_from_value(value: &Value) -> Option<SessionMessage> {
+    let role = match value.get("type").and_then(Value::as_str).unwrap_or("") {
+        "system" | "user" | "assistant" | "tool" => value.get("type").and_then(Value::as_str)?,
+        _ => return None,
+    };
+    let content = value.get("content").map(extract_text).unwrap_or_default();
+    if content.trim().is_empty() {
+        return None;
+    }
+    Some(SessionMessage {
+        role: role.to_string(),
+        content,
+        ts: value
+            .get("timestamp")
+            .or_else(|| value.get("ts"))
+            .and_then(parse_timestamp_to_ms),
+    })
 }
 
 pub fn delete_session(root: &Path, path: &Path, session_id: &str) -> Result<bool, String> {

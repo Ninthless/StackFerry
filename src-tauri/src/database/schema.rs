@@ -40,6 +40,9 @@ impl Database {
                 is_current BOOLEAN NOT NULL DEFAULT 0,
                 in_failover_queue BOOLEAN NOT NULL DEFAULT 0,
                 failover_order INTEGER,
+                source TEXT NOT NULL DEFAULT 'manual',
+                source_id TEXT,
+                source_dirty BOOLEAN NOT NULL DEFAULT 0,
                 PRIMARY KEY (id, app_type)
             )",
             [],
@@ -442,6 +445,17 @@ impl Database {
              ON providers(app_type, in_failover_queue, failover_order)",
             [],
         );
+        if Self::has_column(conn, "providers", "source")?
+            && Self::has_column(conn, "providers", "source_id")?
+        {
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_providers_source_identity
+                 ON providers(app_type, source, source_id)
+                 WHERE source_id IS NOT NULL",
+                [],
+            )
+            .map_err(|e| AppError::Database(format!("创建供应商来源索引失败: {e}")))?;
+        }
 
         Ok(())
     }
@@ -581,6 +595,11 @@ impl Database {
                         log::info!("迁移数据库从 v21 到 v22（MCP 添加 Pi 支持）");
                         Self::migrate_v21_to_v22(conn)?;
                         Self::set_user_version(conn, 22)?;
+                    }
+                    22 => {
+                        log::info!("迁移数据库从 v22 到 v23（添加供应商导入来源）");
+                        Self::migrate_v22_to_v23(conn)?;
+                        Self::set_user_version(conn, 23)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1821,6 +1840,33 @@ impl Database {
                 "BOOLEAN NOT NULL DEFAULT 0",
             )?;
         }
+        Ok(())
+    }
+
+    fn migrate_v22_to_v23(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "providers")? {
+            return Ok(());
+        }
+        Self::add_column_if_missing(
+            conn,
+            "providers",
+            "source",
+            "TEXT NOT NULL DEFAULT 'manual'",
+        )?;
+        Self::add_column_if_missing(conn, "providers", "source_id", "TEXT")?;
+        Self::add_column_if_missing(
+            conn,
+            "providers",
+            "source_dirty",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_providers_source_identity
+             ON providers(app_type, source, source_id)
+             WHERE source_id IS NOT NULL",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("创建供应商来源索引失败: {e}")))?;
         Ok(())
     }
 
@@ -3681,6 +3727,49 @@ mod tests {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         assert_eq!(enabled, (true, false));
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v22_to_v23_adds_provider_source_without_changing_existing_state(
+    ) -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE providers (
+                id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                settings_config TEXT NOT NULL,
+                is_current BOOLEAN NOT NULL DEFAULT 0,
+                in_failover_queue BOOLEAN NOT NULL DEFAULT 0,
+                failover_order INTEGER,
+                PRIMARY KEY (id, app_type)
+             );
+             INSERT INTO providers
+                (id, app_type, name, settings_config, is_current, in_failover_queue, failover_order)
+             VALUES ('existing', 'codex', 'Existing', '{}', 1, 1, 4);",
+        )?;
+        Database::set_user_version(&conn, 22)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        let state: (String, Option<String>, bool, bool, bool, i64) = conn.query_row(
+            "SELECT source, source_id, source_dirty, is_current, in_failover_queue, failover_order
+             FROM providers WHERE id = 'existing' AND app_type = 'codex'",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )?;
+        assert_eq!(state, ("manual".into(), None, false, true, true, 4));
         Ok(())
     }
 }

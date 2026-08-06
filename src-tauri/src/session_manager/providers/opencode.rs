@@ -3,11 +3,24 @@ use std::path::{Path, PathBuf};
 use rusqlite::Connection;
 use serde_json::Value;
 
-use crate::session_manager::{SessionMessage, SessionMeta};
+use crate::session_manager::{
+    pagination::{
+        decode_id_cursor, decode_index_cursor, encode_id_cursor, encode_index_cursor,
+        MessagePageBuilder, PushOutcome, MESSAGE_PAGE_MAX_ITEMS,
+    },
+    SessionMessage, SessionMessagePage, SessionMeta,
+};
 
 use super::utils::{parse_timestamp_to_ms, path_basename, truncate_summary};
 
 const PROVIDER_ID: &str = "opencode";
+
+struct FileMessageDescriptor {
+    id: String,
+    role: String,
+    created_at: i64,
+    ordinal: usize,
+}
 
 /// Return the OpenCode base directory (`$XDG_DATA_HOME/opencode`).
 ///
@@ -156,72 +169,61 @@ fn scan_sessions_sqlite() -> Vec<SessionMeta> {
 }
 
 pub fn load_messages(path: &Path) -> Result<Vec<SessionMessage>, String> {
-    // `path` is the message directory: storage/message/{sessionID}/
-    if !path.is_dir() {
-        return Err(format!("Message directory not found: {}", path.display()));
-    }
-
-    let storage = path
-        .parent()
-        .and_then(|p| p.parent())
-        .ok_or_else(|| "Cannot determine storage root from message path".to_string())?;
-
-    let mut msg_files = Vec::new();
-    collect_json_files(path, &mut msg_files);
-
-    // Parse all messages and collect (created_ts, message_id, role, parts_text)
-    let mut entries: Vec<(i64, String, String, String)> = Vec::new();
-
-    for msg_path in &msg_files {
-        let data = match std::fs::read_to_string(msg_path) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-        let value: Value = match serde_json::from_str(&data) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-
-        let msg_id = match value.get("id").and_then(Value::as_str) {
-            Some(id) => id.to_string(),
-            None => continue,
-        };
-
-        let role = value
-            .get("role")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown")
-            .to_string();
-
-        let created_ts = value
-            .get("time")
-            .and_then(|t| t.get("created"))
-            .and_then(parse_timestamp_to_ms)
-            .unwrap_or(0);
-
-        // Collect text parts from storage/part/{messageID}/
-        let part_dir = storage.join("part").join(&msg_id);
-        let text = collect_parts_text(&part_dir);
-        if text.trim().is_empty() {
-            continue;
-        }
-
-        entries.push((created_ts, msg_id, role, text));
-    }
-
-    // Sort by created timestamp
-    entries.sort_by_key(|(ts, _, _, _)| *ts);
-
+    let (storage, entries) = file_message_descriptors(path)?;
     let messages = entries
         .into_iter()
-        .map(|(ts, _, role, content)| SessionMessage {
-            role,
-            content,
-            ts: if ts > 0 { Some(ts) } else { None },
+        .filter_map(|entry| {
+            let content = collect_parts_text(&storage.join("part").join(&entry.id));
+            (!content.trim().is_empty()).then_some(SessionMessage {
+                role: entry.role,
+                content,
+                ts: (entry.created_at > 0).then_some(entry.created_at),
+            })
         })
         .collect();
 
     Ok(messages)
+}
+
+pub fn load_message_page(path: &Path, cursor: Option<&str>) -> Result<SessionMessagePage, String> {
+    let (storage, entries) = file_message_descriptors(path)?;
+    let start = decode_index_cursor(cursor)?;
+    if start > entries.len() {
+        return Err("OpenCode message cursor is beyond the session".to_string());
+    }
+
+    let mut builder = MessagePageBuilder::new();
+    for (index, entry) in entries.iter().enumerate().skip(start) {
+        if builder.is_full() {
+            return Ok(builder.finish(Some(encode_index_cursor(index))));
+        }
+        let content = collect_parts_text(&storage.join("part").join(&entry.id));
+        if content.trim().is_empty() {
+            continue;
+        }
+        let message = SessionMessage {
+            role: entry.role.clone(),
+            content,
+            ts: (entry.created_at > 0).then_some(entry.created_at),
+        };
+        let content_cursor = encode_id_cursor("opencode-file", &entry.id);
+        if matches!(builder.push(message, content_cursor), PushOutcome::PageFull) {
+            return Ok(builder.finish(Some(encode_index_cursor(index))));
+        }
+    }
+    Ok(builder.finish(None))
+}
+
+pub fn load_message_content(path: &Path, cursor: &str) -> Result<String, String> {
+    let (storage, _) = file_message_descriptors(path)?;
+    let message_id = decode_id_cursor(cursor, "opencode-file")?;
+    validate_message_id(&message_id)?;
+    let content = collect_parts_text(&storage.join("part").join(message_id));
+    if content.trim().is_empty() {
+        Err("OpenCode message content is no longer available".to_string())
+    } else {
+        Ok(content)
+    }
 }
 
 /// Load messages from the OpenCode SQLite database for a given source reference.
@@ -311,6 +313,113 @@ pub fn load_messages_sqlite(source: &str) -> Result<Vec<SessionMessage>, String>
     }
 
     Ok(messages)
+}
+
+pub fn load_messages_sqlite_page(
+    source: &str,
+    cursor: Option<&str>,
+) -> Result<SessionMessagePage, String> {
+    let (db_path, session_id) = parse_sqlite_source(source)
+        .ok_or_else(|| format!("Invalid SQLite source reference: {source}"))?;
+    let conn = Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| format!("Failed to open OpenCode database: {error}"))?;
+
+    let mut raw_index = decode_index_cursor(cursor)?;
+    let mut builder = MessagePageBuilder::new();
+    let batch_size = MESSAGE_PAGE_MAX_ITEMS + 1;
+
+    loop {
+        let mut statement = conn
+            .prepare(
+                "SELECT id, time_created, data FROM message WHERE session_id = ?1 ORDER BY time_created ASC LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(|error| format!("Failed to prepare message page query: {error}"))?;
+        let rows = statement
+            .query_map(
+                rusqlite::params![session_id, batch_size as i64, raw_index as i64],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .map_err(|error| format!("Failed to query message page: {error}"))?;
+        let records = rows.flatten().collect::<Vec<_>>();
+        drop(statement);
+        if records.is_empty() {
+            return Ok(builder.finish(None));
+        }
+
+        let record_count = records.len();
+        for (message_id, timestamp, data) in records {
+            if builder.is_full() {
+                return Ok(builder.finish(Some(encode_index_cursor(raw_index))));
+            }
+            let message_value: Value = match serde_json::from_str(&data) {
+                Ok(value) => value,
+                Err(_) => {
+                    raw_index = raw_index.saturating_add(1);
+                    continue;
+                }
+            };
+            let role = message_value
+                .get("role")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+                .to_string();
+            let content = collect_sqlite_parts_text(&conn, &session_id, &message_id)?;
+            if content.trim().is_empty() {
+                raw_index = raw_index.saturating_add(1);
+                continue;
+            }
+            let message = SessionMessage {
+                role,
+                content,
+                ts: Some(timestamp),
+            };
+            let content_cursor = encode_id_cursor("opencode-sqlite", &message_id);
+            if matches!(builder.push(message, content_cursor), PushOutcome::PageFull) {
+                return Ok(builder.finish(Some(encode_index_cursor(raw_index))));
+            }
+            raw_index = raw_index.saturating_add(1);
+        }
+
+        if record_count < batch_size {
+            return Ok(builder.finish(None));
+        }
+    }
+}
+
+pub fn load_message_content_sqlite(source: &str, cursor: &str) -> Result<String, String> {
+    let (db_path, session_id) = parse_sqlite_source(source)
+        .ok_or_else(|| format!("Invalid SQLite source reference: {source}"))?;
+    let message_id = decode_id_cursor(cursor, "opencode-sqlite")?;
+    let conn = Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| format!("Failed to open OpenCode database: {error}"))?;
+    let belongs_to_session = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM message WHERE session_id = ?1 AND id = ?2)",
+            rusqlite::params![session_id, message_id],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|error| format!("Failed to validate OpenCode message cursor: {error}"))?;
+    if !belongs_to_session {
+        return Err("OpenCode message content is no longer available".to_string());
+    }
+    let content = collect_sqlite_parts_text(&conn, &session_id, &message_id)?;
+    if content.trim().is_empty() {
+        Err("OpenCode message content is no longer available".to_string())
+    } else {
+        Ok(content)
+    }
 }
 
 pub fn delete_session(storage: &Path, path: &Path, session_id: &str) -> Result<bool, String> {
@@ -573,6 +682,92 @@ fn collect_parts_text(part_dir: &Path) -> String {
     }
 
     texts.join("\n")
+}
+
+fn file_message_descriptors(path: &Path) -> Result<(PathBuf, Vec<FileMessageDescriptor>), String> {
+    if !path.is_dir() {
+        return Err(format!("Message directory not found: {}", path.display()));
+    }
+    let storage = path
+        .parent()
+        .and_then(|parent| parent.parent())
+        .ok_or_else(|| "Cannot determine storage root from message path".to_string())?
+        .to_path_buf();
+    let mut message_files = Vec::new();
+    collect_json_files(path, &mut message_files);
+    let mut entries = Vec::new();
+
+    for (ordinal, message_path) in message_files.into_iter().enumerate() {
+        let data = match std::fs::read_to_string(message_path) {
+            Ok(data) => data,
+            Err(_) => continue,
+        };
+        let value: Value = match serde_json::from_str(&data) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        let Some(id) = value.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        if validate_message_id(id).is_err() {
+            continue;
+        }
+        entries.push(FileMessageDescriptor {
+            id: id.to_string(),
+            role: value
+                .get("role")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+                .to_string(),
+            created_at: value
+                .get("time")
+                .and_then(|time| time.get("created"))
+                .and_then(parse_timestamp_to_ms)
+                .unwrap_or(0),
+            ordinal,
+        });
+    }
+    entries.sort_by_key(|entry| (entry.created_at, entry.ordinal));
+    Ok((storage, entries))
+}
+
+fn collect_sqlite_parts_text(
+    connection: &Connection,
+    session_id: &str,
+    message_id: &str,
+) -> Result<String, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT data FROM part WHERE session_id = ?1 AND message_id = ?2 ORDER BY time_created ASC",
+        )
+        .map_err(|error| format!("Failed to prepare OpenCode part query: {error}"))?;
+    let rows = statement
+        .query_map(rusqlite::params![session_id, message_id], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|error| format!("Failed to query OpenCode message parts: {error}"))?;
+    let mut texts = Vec::new();
+    for data in rows.flatten() {
+        let Ok(value) = serde_json::from_str::<Value>(&data) else {
+            continue;
+        };
+        if let Some(text) = extract_part_text(&value) {
+            texts.push(text);
+        }
+    }
+    Ok(texts.join("\n"))
+}
+
+fn validate_message_id(message_id: &str) -> Result<(), String> {
+    if message_id.is_empty()
+        || message_id == "."
+        || message_id == ".."
+        || message_id.contains(['/', '\\'])
+    {
+        Err("Invalid OpenCode message identifier".to_string())
+    } else {
+        Ok(())
+    }
 }
 
 fn collect_json_files(root: &Path, files: &mut Vec<PathBuf>) {

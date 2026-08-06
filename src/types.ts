@@ -479,6 +479,14 @@ export interface SessionMessage {
   role: string;
   content: string;
   ts?: number;
+  contentCursor?: string;
+  contentBytes?: number;
+}
+
+export interface SessionMessagePage {
+  items: SessionMessage[];
+  nextCursor?: string;
+  hasMore: boolean;
 }
 
 // MCP 服务器连接参数（宽松：允许扩展字段）

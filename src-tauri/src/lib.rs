@@ -1293,6 +1293,11 @@ pub fn run() {
 
             // 静默启动：根据设置决定是否显示主窗口
             let settings = crate::settings::get_settings();
+            if let Err(error) = crate::auto_launch::reconcile_auto_launch_on_startup(
+                settings.launch_on_startup,
+            ) {
+                log::warn!("同步开机自启配置失败: {error}");
+            }
             if let Some(window) = app.get_webview_window("main") {
                 if let Err(error) = window_chrome::apply_window_decorations(&window) {
                     log::warn!("同步主窗口装饰状态失败: {error}");
@@ -1332,6 +1337,7 @@ pub fn run() {
             commands::remove_provider_from_live_config,
             commands::switch_provider,
             commands::import_default_config,
+            commands::import_ccswitch_codex_providers,
             commands::get_claude_desktop_status,
             commands::get_claude_desktop_default_routes,
             commands::import_claude_desktop_providers_from_claude,
@@ -1559,6 +1565,8 @@ pub fn run() {
             // Session manager
             commands::list_sessions,
             commands::get_session_messages,
+            commands::get_session_message_page,
+            commands::get_session_message_content,
             commands::delete_session,
             commands::delete_sessions,
             commands::launch_session_terminal,
@@ -1854,7 +1862,7 @@ pub async fn cleanup_before_exit(app_handle: &tauri::AppHandle) {
         // 非接管模式：代理在运行则仅停止代理
         if proxy_service.is_running().await {
             log::info!("检测到代理服务器正在运行，开始停止...");
-            if let Err(e) = proxy_service.stop().await {
+            if let Err(e) = proxy_service.stop_preserving_enabled().await {
                 log::error!("退出时停止代理失败: {e}");
             }
             log::info!("代理服务器清理完成");
@@ -1886,10 +1894,9 @@ pub(crate) fn remove_tray_icon_before_exit(app_handle: &tauri::AppHandle) {
 // 启动时恢复代理状态
 // ============================================================
 
-/// 启动时根据 proxy_config 表中的代理状态自动恢复代理服务
+/// 启动时根据 proxy_config 表中的路由和接管状态自动恢复代理服务
 ///
-/// 检查 `proxy_config.enabled` 字段，如果有任一应用的状态为 `true`，
-/// 则自动启动代理服务并接管对应应用的 Live 配置。
+/// `proxy_enabled` 恢复仅运行本地路由的场景；逐应用 `enabled` 恢复 Live 接管。
 const PROXY_STARTUP_APP_TYPES: [&str; 5] = ["claude", "codex", "gemini", "grokbuild", "pi"];
 
 async fn enabled_proxy_apps_on_startup(db: &database::Database) -> Vec<&'static str> {
@@ -1906,16 +1913,32 @@ async fn enabled_proxy_apps_on_startup(db: &database::Database) -> Vec<&'static 
     apps
 }
 
+async fn proxy_server_enabled_on_startup(db: &database::Database) -> bool {
+    db.get_global_proxy_config()
+        .await
+        .is_ok_and(|config| config.proxy_enabled)
+}
+
 async fn restore_proxy_state_on_startup(state: &store::AppState) {
     // 收集需要恢复接管的应用列表（从 proxy_config.enabled 读取）
     let apps_to_restore = enabled_proxy_apps_on_startup(&state.db).await;
+    let proxy_server_enabled = proxy_server_enabled_on_startup(&state.db).await;
 
-    if apps_to_restore.is_empty() {
+    if !proxy_server_enabled && apps_to_restore.is_empty() {
         log::debug!("启动时无需恢复代理状态");
         return;
     }
 
-    log::info!("检测到上次代理状态需要恢复，应用列表: {apps_to_restore:?}");
+    if proxy_server_enabled {
+        match state.proxy_service.start().await {
+            Ok(_) => log::info!("已恢复本地路由服务"),
+            Err(e) => log::error!("恢复本地路由服务失败: {e}"),
+        }
+    }
+
+    if !apps_to_restore.is_empty() {
+        log::info!("检测到应用接管状态需要恢复，应用列表: {apps_to_restore:?}");
+    }
 
     // 逐个恢复接管状态
     for app_type in apps_to_restore {
@@ -2227,9 +2250,9 @@ pub fn restart_process(app_handle: &tauri::AppHandle) -> ! {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_exit_request, enabled_proxy_apps_on_startup, redact_url_for_log,
-        redact_url_for_log_with_secrets, redact_url_origin_for_log, runtime_log_level_allows,
-        ExitRequestAction,
+        classify_exit_request, enabled_proxy_apps_on_startup, proxy_server_enabled_on_startup,
+        redact_url_for_log, redact_url_for_log_with_secrets, redact_url_origin_for_log,
+        runtime_log_level_allows, ExitRequestAction,
     };
     use crate::database::Database;
 
@@ -2371,5 +2394,21 @@ mod tests {
         let apps = enabled_proxy_apps_on_startup(&db).await;
 
         assert_eq!(apps, vec!["pi"]);
+    }
+
+    #[tokio::test]
+    async fn startup_restore_includes_route_only_state() {
+        let db = Database::memory().expect("initialize database");
+        let mut config = db
+            .get_global_proxy_config()
+            .await
+            .expect("read global proxy config");
+        config.proxy_enabled = true;
+        db.update_global_proxy_config(config)
+            .await
+            .expect("enable global proxy config");
+
+        assert!(proxy_server_enabled_on_startup(&db).await);
+        assert!(enabled_proxy_apps_on_startup(&db).await.is_empty());
     }
 }

@@ -38,6 +38,7 @@ import { isTextEditableTarget } from "@/utils/domUtils";
 import { deepClone } from "@/utils/deepClone";
 import { ProfileSwitcher } from "@/components/profiles/ProfileSwitcher";
 import { ProviderList } from "@/components/providers/ProviderList";
+import { CcSwitchImportButton } from "@/components/providers/CcSwitchImportButton";
 import { AddProviderDialog } from "@/components/providers/AddProviderDialog";
 import { EditProviderDialog } from "@/components/providers/EditProviderDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -851,6 +852,7 @@ function App() {
                   )}
               </div>
             )}
+          <CcSwitchImportButton appId={activeApp} />
           <ProfileSwitcher activeApp={activeApp} />
           <Button type="button" size="sm" onClick={() => setIsAddOpen(true)}>
             <Plus className="h-4 w-4" />

@@ -19,6 +19,64 @@ const TEMPLATE_TYPE_BALANCE: &str = "balance";
 const TEMPLATE_TYPE_OFFICIAL_SUBSCRIPTION: &str = "official_subscription";
 const COPILOT_UNIT_PREMIUM: &str = "requests";
 
+async fn run_ccswitch_import_task<T, F>(task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| format!("cc-switch 导入任务执行失败: {error}"))?
+}
+
+#[tauri::command]
+pub async fn import_ccswitch_codex_providers(
+    app_handle: tauri::AppHandle,
+    #[allow(non_snake_case)] dbPath: Option<String>,
+) -> Result<crate::services::provider::ccswitch_reconcile::CcSwitchImportResult, String> {
+    run_ccswitch_import_task(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态不可用".to_string())?;
+        crate::services::provider::ccswitch_reconcile::import_ccswitch_codex_providers(
+            &state.db,
+            dbPath.as_deref(),
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[cfg(test)]
+mod ccswitch_import_command_tests {
+    use super::run_ccswitch_import_task;
+    use crate::services::provider::ccswitch_reconcile::CcSwitchImportResult;
+
+    #[tokio::test]
+    async fn worker_propagates_import_errors() {
+        let result =
+            run_ccswitch_import_task(|| Err::<(), _>("source database failed".into())).await;
+        assert_eq!(result.expect_err("worker error"), "source database failed");
+    }
+
+    #[test]
+    fn result_serializes_with_frontend_field_names() {
+        let value = serde_json::to_value(CcSwitchImportResult {
+            imported: 4,
+            added: 1,
+            updated: 1,
+            merged: 1,
+            skipped: 1,
+            warnings: vec!["warning".into()],
+            providers: Vec::new(),
+        })
+        .expect("serialize import result");
+        assert_eq!(value["imported"], 4);
+        assert_eq!(value["warnings"][0], "warning");
+        assert!(value.get("providers").is_some());
+    }
+}
+
 /// 获取所有供应商
 #[tauri::command]
 pub fn get_providers(

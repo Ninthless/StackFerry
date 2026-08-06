@@ -18,7 +18,7 @@ const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
 const GROUP_EXPANSION_STORAGE_KEY =
   "stackferry.sessionManager.groupExpansionState";
-const PROVIDER_FILTER_STORAGE_KEY = "stackferry.sessions.providerFilter";
+const PROVIDER_STORAGE_KEY = "stackferry.sessions.providerFilter";
 
 vi.mock("sonner", () => ({
   toast: {
@@ -60,9 +60,9 @@ vi.mock("@/components/ConfirmDialog", () => ({
     ) : null,
 }));
 
-const renderPage = (providerFilter: string | null = "codex") => {
-  if (providerFilter !== null) {
-    window.localStorage.setItem(PROVIDER_FILTER_STORAGE_KEY, providerFilter);
+const renderPage = (sessionProvider: string | null = "codex") => {
+  if (sessionProvider !== null) {
+    window.localStorage.setItem(PROVIDER_STORAGE_KEY, sessionProvider);
   }
   const client = new QueryClient({
     defaultOptions: {
@@ -120,12 +120,12 @@ const switchToGroupedView = async () => {
   );
 };
 
-const switchProviderFilter = async (providerLabel: RegExp) => {
-  const providerFilterTrigger = screen.getByRole("combobox", {
-    name: /供应商筛选/i,
+const switchSessionProvider = async (providerLabel: RegExp) => {
+  const providerTrigger = screen.getByRole("combobox", {
+    name: /会话供应商/i,
   });
 
-  await userEvent.click(providerFilterTrigger);
+  await userEvent.click(providerTrigger);
   await userEvent.click(
     await screen.findByRole("option", { name: providerLabel }),
   );
@@ -160,7 +160,7 @@ describe("SessionManagerPage", () => {
     Element.prototype.scrollIntoView = vi.fn();
     window.localStorage.removeItem("stackferry.sessionManager.listViewMode");
     window.localStorage.removeItem(GROUP_EXPANSION_STORAGE_KEY);
-    window.localStorage.removeItem(PROVIDER_FILTER_STORAGE_KEY);
+    window.localStorage.removeItem(PROVIDER_STORAGE_KEY);
 
     const sessions: SessionMeta[] = [
       {
@@ -232,36 +232,7 @@ describe("SessionManagerPage", () => {
     expect(container.firstElementChild).toHaveClass("py-4");
   });
 
-  it("defaults a clean profile to all session providers", async () => {
-    renderPage(null);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Claude Session" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Alpha Session")).toBeInTheDocument();
-    });
-    expect(window.localStorage.getItem(PROVIDER_FILTER_STORAGE_KEY)).toBe(
-      "all",
-    );
-  });
-
-  it("restores a valid provider filter after remounting", async () => {
-    const firstRender = renderPage(null);
-
-    await waitFor(() =>
-      expect(
-        screen.getByRole("heading", { name: "Claude Session" }),
-      ).toBeInTheDocument(),
-    );
-    await switchProviderFilter(/Codex/i);
-    await waitFor(() =>
-      expect(window.localStorage.getItem(PROVIDER_FILTER_STORAGE_KEY)).toBe(
-        "codex",
-      ),
-    );
-
-    firstRender.unmount();
+  it("defaults a clean profile to Codex sessions", async () => {
     renderPage(null);
 
     await waitFor(() => {
@@ -270,39 +241,64 @@ describe("SessionManagerPage", () => {
       ).toBeInTheDocument();
       expect(screen.queryByText("Claude Session")).not.toBeInTheDocument();
     });
+    expect(window.localStorage.getItem(PROVIDER_STORAGE_KEY)).toBe("codex");
   });
 
-  it("replaces an invalid stored provider filter with all", async () => {
-    window.localStorage.setItem(PROVIDER_FILTER_STORAGE_KEY, "invalid-client");
+  it("restores a valid session provider after remounting", async () => {
+    const firstRender = renderPage(null);
 
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Alpha Session" }),
+      ).toBeInTheDocument(),
+    );
+    await switchSessionProvider(/Claude/i);
+    await waitFor(() =>
+      expect(window.localStorage.getItem(PROVIDER_STORAGE_KEY)).toBe("claude"),
+    );
+
+    firstRender.unmount();
     renderPage(null);
 
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Claude Session" }),
       ).toBeInTheDocument();
-      expect(window.localStorage.getItem(PROVIDER_FILTER_STORAGE_KEY)).toBe(
-        "all",
-      );
+      expect(screen.queryByText("Alpha Session")).not.toBeInTheDocument();
     });
   });
 
-  it("reconciles the selected detail when filtering hides it", async () => {
-    renderPage("all");
+  it.each(["all", "invalid-client"])(
+    "replaces legacy or invalid provider %s with Codex",
+    async (storedProvider) => {
+      window.localStorage.setItem(PROVIDER_STORAGE_KEY, storedProvider);
+
+      renderPage(null);
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Alpha Session" }),
+        ).toBeInTheDocument();
+        expect(window.localStorage.getItem(PROVIDER_STORAGE_KEY)).toBe("codex");
+      });
+    },
+  );
+
+  it("clears the selected detail when switching session provider", async () => {
+    renderPage();
 
     await waitFor(() =>
       expect(
-        screen.getByRole("heading", { name: "Claude Session" }),
+        screen.getByRole("heading", { name: "Alpha Session" }),
       ).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: /Alpha Session/ }));
     await waitFor(() =>
       expect(
         screen.getByRole("heading", { name: "Alpha Session" }),
       ).toBeInTheDocument(),
     );
 
-    await switchProviderFilter(/Claude Code/i);
+    await switchSessionProvider(/Claude/i);
 
     await waitFor(() => {
       expect(
@@ -465,6 +461,193 @@ describe("SessionManagerPage", () => {
     );
   });
 
+  it("forces a metadata rescan from the refresh action", async () => {
+    const listSpy = vi.spyOn(sessionsApi, "list");
+    renderPage();
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Alpha Session" }),
+      ).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /刷新/i }));
+
+    await waitFor(() => expect(listSpy).toHaveBeenCalledWith("codex", true));
+    listSpy.mockRestore();
+  });
+
+  it("mounts only a bounded viewport for a large flat session list", async () => {
+    const sessions = Array.from({ length: 2000 }, (_, index) => ({
+      providerId: "codex",
+      sessionId: `large-${index}`,
+      title: `Large Session ${index}`,
+      projectDir: "/mock/large",
+      createdAt: 2000 - index,
+      lastActiveAt: 2000 - index,
+      sourcePath: `/mock/large/${index}.jsonl`,
+      resumeCommand: `codex resume large-${index}`,
+    })) satisfies SessionMeta[];
+    setSessionFixtures(sessions, {});
+    renderPage();
+
+    const list = await screen.findByTestId("virtualized-session-list");
+    await waitFor(() =>
+      expect(within(list).getAllByRole("button").length).toBeGreaterThan(0),
+    );
+
+    expect(within(list).getAllByRole("button").length).toBeLessThan(40);
+    expect(list).toHaveStyle({ height: "136000px" });
+    expect(
+      screen.getByRole("heading", { name: "Large Session 0" }),
+    ).toBeInTheDocument();
+  });
+
+  it("loads later message pages only after the first page is requested", async () => {
+    const messages = Array.from({ length: 55 }, (_, index) => ({
+      role: "user",
+      content: `message-${index}`,
+      ts: index,
+    }));
+    setSessionFixtures(
+      [
+        {
+          providerId: "codex",
+          sessionId: "paged-session",
+          title: "Paged Session",
+          sourcePath: "/mock/codex/paged.jsonl",
+          lastActiveAt: 1,
+        },
+      ],
+      { "codex:/mock/codex/paged.jsonl": messages },
+    );
+    const pageSpy = vi.spyOn(sessionsApi, "getMessagePage");
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("loaded-message-count")).toHaveTextContent(
+        "50",
+      ),
+    );
+    expect(pageSpy).toHaveBeenCalledWith(
+      "codex",
+      "/mock/codex/paged.jsonl",
+      undefined,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /加载更多消息/i }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("loaded-message-count")).toHaveTextContent(
+        "55",
+      ),
+    );
+    expect(pageSpy).toHaveBeenCalledWith(
+      "codex",
+      "/mock/codex/paged.jsonl",
+      "index:50",
+    );
+    pageSpy.mockRestore();
+  });
+
+  it("loads full message content on expansion and copy", async () => {
+    const fullContent = "full message content ".repeat(250);
+    const pageSpy = vi
+      .spyOn(sessionsApi, "getMessagePage")
+      .mockResolvedValueOnce({
+        items: [
+          {
+            role: "assistant",
+            content: "preview message",
+            contentCursor: "fixture:0",
+            contentBytes: fullContent.length,
+          },
+        ],
+        hasMore: false,
+      });
+    const contentSpy = vi
+      .spyOn(sessionsApi, "getMessageContent")
+      .mockResolvedValue(fullContent);
+    const copySpy = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: copySpy },
+    });
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText(/preview message/)).toBeInTheDocument(),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /展开完整内容/i }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/full message content/)).toBeInTheDocument(),
+    );
+    expect(contentSpy).toHaveBeenCalledWith(
+      "codex",
+      "/mock/codex/session-1.jsonl",
+      "fixture:0",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /复制消息/i }));
+    await waitFor(() => expect(copySpy).toHaveBeenCalledWith(fullContent));
+    expect(contentSpy).toHaveBeenCalledTimes(1);
+
+    pageSpy.mockRestore();
+    contentSpy.mockRestore();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
+  });
+
+  it("does not render a stale page after switching session providers", async () => {
+    let resolveCodex!: (page: {
+      items: SessionMessage[];
+      hasMore: boolean;
+    }) => void;
+    const pageSpy = vi
+      .spyOn(sessionsApi, "getMessagePage")
+      .mockImplementation(async (providerId) => {
+        if (providerId === "codex") {
+          return await new Promise((resolve) => {
+            resolveCodex = resolve;
+          });
+        }
+        return {
+          items: [{ role: "assistant", content: "claude-current" }],
+          hasMore: false,
+        };
+      });
+
+    renderPage();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Alpha Session" }),
+      ).toBeInTheDocument(),
+    );
+
+    await switchSessionProvider(/Claude/i);
+    await waitFor(() =>
+      expect(screen.getByText("claude-current")).toBeInTheDocument(),
+    );
+
+    resolveCodex({
+      items: [{ role: "assistant", content: "codex-stale" }],
+      hasMore: false,
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("codex-stale")).not.toBeInTheDocument(),
+    );
+    pageSpy.mockRestore();
+  });
+
   it("removes successfully deleted sessions from the UI before refetch completes", async () => {
     const view = renderPage();
     let resolveInvalidate!: () => void;
@@ -504,11 +687,11 @@ describe("SessionManagerPage", () => {
   });
 
   it("switches to grouped view collapsed by default and shows collapse control", async () => {
-    renderPage("all");
+    renderPage();
 
     await waitFor(() =>
       expect(
-        screen.getByRole("heading", { name: "Claude Session" }),
+        screen.getByRole("heading", { name: "Alpha Session" }),
       ).toBeInTheDocument(),
     );
 
@@ -523,10 +706,10 @@ describe("SessionManagerPage", () => {
       }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
+      screen.queryByRole("button", {
         name: /展开或折叠 claude 供应商分组/,
       }),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /展开或折叠 codex 目录分组/ }),
     ).not.toBeInTheDocument();
@@ -579,16 +762,15 @@ describe("SessionManagerPage", () => {
     );
   });
 
-  it("keeps filtered grouped sessions collapsed until expanding the group", async () => {
-    renderPage("all");
+  it("keeps switched provider groups collapsed until expanding the group", async () => {
+    renderPage();
 
     await waitFor(() =>
       expect(screen.getByText("Alpha Session")).toBeInTheDocument(),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Alpha Session/ }));
     await switchToGroupedView();
-    await switchProviderFilter(/Claude Code/i);
+    await switchSessionProvider(/Claude/i);
 
     await waitFor(() =>
       expect(screen.queryByText("Alpha Session")).not.toBeInTheDocument(),
@@ -647,11 +829,11 @@ describe("SessionManagerPage", () => {
   });
 
   it("selects visible deletable sessions by provider group in grouped batch mode", async () => {
-    renderPage("all");
+    renderPage();
 
     await waitFor(() =>
       expect(
-        screen.getByRole("heading", { name: "Claude Session" }),
+        screen.getByRole("heading", { name: "Alpha Session" }),
       ).toBeInTheDocument(),
     );
 
@@ -660,14 +842,14 @@ describe("SessionManagerPage", () => {
     const codexProviderCheckbox = screen.getByRole("checkbox", {
       name: /选择 codex 供应商分组内会话/,
     });
-    const claudeProviderCheckbox = screen.getByRole("checkbox", {
-      name: /选择 claude 供应商分组内会话/,
-    });
-
     fireEvent.click(codexProviderCheckbox);
 
     expect(codexProviderCheckbox).toBeChecked();
-    expect(claudeProviderCheckbox).not.toBeChecked();
+    expect(
+      screen.queryByRole("checkbox", {
+        name: /选择 claude 供应商分组内会话/,
+      }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("已选 3 项")).toBeInTheDocument();
 
     fireEvent.click(codexProviderCheckbox);

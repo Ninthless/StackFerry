@@ -1,5 +1,5 @@
-import { memo, useState } from "react";
-import { ChevronDown, ChevronUp, Copy } from "lucide-react";
+import { memo, useEffect, useState } from "react";
+import { ChevronDown, ChevronUp, Copy, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,8 @@ interface SessionMessageItemProps {
   message: SessionMessage;
   isActive: boolean;
   searchQuery?: string;
-  onCopy: (content: string) => void;
+  onCopy: (content: string) => void | Promise<void>;
+  onLoadFullContent?: (message: SessionMessage) => Promise<string>;
 }
 
 export const SessionMessageItem = memo(function SessionMessageItem({
@@ -32,20 +33,72 @@ export const SessionMessageItem = memo(function SessionMessageItem({
   isActive,
   searchQuery,
   onCopy,
+  onLoadFullContent,
 }: SessionMessageItemProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  const [fullContent, setFullContent] = useState<string | null>(null);
+  const [isLoadingContent, setIsLoadingContent] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
 
-  const isLong = message.content.length > COLLAPSE_THRESHOLD;
+  useEffect(() => {
+    setExpanded(false);
+    setFullContent(null);
+    setIsLoadingContent(false);
+    setContentError(null);
+  }, [message.content, message.contentCursor, message.role, message.ts]);
+
+  const content = fullContent ?? message.content;
+  const isLong =
+    Boolean(message.contentCursor) || content.length > COLLAPSE_THRESHOLD;
   const hasSearchMatch =
     isLong &&
     !expanded &&
     !!searchQuery &&
-    message.content.toLowerCase().includes(searchQuery.toLowerCase());
+    content.toLowerCase().includes(searchQuery.toLowerCase());
   const collapsed = isLong && !expanded && !hasSearchMatch;
   const displayContent = collapsed
-    ? message.content.slice(0, COLLAPSED_LENGTH) + "…"
-    : message.content;
+    ? content.slice(0, COLLAPSED_LENGTH) + "…"
+    : content;
+  const loadContent = async () => {
+    if (fullContent !== null) return fullContent;
+    if (!message.contentCursor || !onLoadFullContent) return message.content;
+
+    setIsLoadingContent(true);
+    setContentError(null);
+    try {
+      const loaded = await onLoadFullContent(message);
+      setFullContent(loaded);
+      return loaded;
+    } catch (error) {
+      setContentError(error instanceof Error ? error.message : String(error));
+      throw error;
+    } finally {
+      setIsLoadingContent(false);
+    }
+  };
+
+  const handleToggleExpanded = async () => {
+    if (expanded) {
+      setExpanded(false);
+      return;
+    }
+
+    try {
+      await loadContent();
+      setExpanded(true);
+    } catch {
+      return;
+    }
+  };
+
+  const handleCopy = async () => {
+    try {
+      await onCopy(await loadContent());
+    } catch {
+      return;
+    }
+  };
 
   return (
     <div
@@ -65,9 +118,17 @@ export const SessionMessageItem = memo(function SessionMessageItem({
             variant="ghost"
             size="icon"
             className="absolute top-2 right-2 size-6 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={() => onCopy(message.content)}
+            onClick={() => void handleCopy()}
+            disabled={isLoadingContent}
+            aria-label={t("sessionManager.copyMessage", {
+              defaultValue: "复制消息",
+            })}
           >
-            <Copy className="size-3" />
+            {isLoadingContent ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Copy className="size-3" />
+            )}
           </Button>
         </TooltipTrigger>
         <TooltipContent>
@@ -91,14 +152,29 @@ export const SessionMessageItem = memo(function SessionMessageItem({
           ? highlightText(displayContent, searchQuery)
           : displayContent}
       </div>
+      {contentError && (
+        <p className="mt-1.5 text-xs text-destructive" role="alert">
+          {t("sessionManager.contentLoadFailed", {
+            defaultValue: "完整内容加载失败，请重试",
+          })}
+        </p>
+      )}
       {isLong && !hasSearchMatch && (
         <button
           type="button"
           aria-expanded={expanded}
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => void handleToggleExpanded()}
+          disabled={isLoadingContent}
           className="flex items-center gap-1 mt-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          {expanded ? (
+          {isLoadingContent ? (
+            <>
+              <Loader2 className="size-3 animate-spin" />
+              {t("sessionManager.loadingContent", {
+                defaultValue: "加载完整内容...",
+              })}
+            </>
+          ) : expanded ? (
             <>
               <ChevronUp className="size-3" />
               {t("sessionManager.collapseContent", {
@@ -112,7 +188,7 @@ export const SessionMessageItem = memo(function SessionMessageItem({
                 defaultValue: "展开完整内容",
               })}
               <span className="text-muted-foreground/60">
-                ({Math.round(message.content.length / 1000)}k)
+                ({Math.round((message.contentBytes ?? content.length) / 1000)}k)
               </span>
             </>
           )}

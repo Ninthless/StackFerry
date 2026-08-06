@@ -9,6 +9,8 @@ import {
   getCurrentProviderId,
   getLiveProviderIds,
   getSessionMessages,
+  getSessionMessageContent,
+  getSessionMessagePage,
   getProviders,
   listProviders,
   listSessions,
@@ -165,7 +167,13 @@ export const handlers = [
 
   http.post(`${TAURI_ENDPOINT}/open_external`, () => success(true)),
 
-  http.post(`${TAURI_ENDPOINT}/list_sessions`, () => success(listSessions())),
+  http.post(`${TAURI_ENDPOINT}/list_sessions`, async ({ request }) => {
+    const { providerId } = await withJson<{
+      providerId: string;
+      forceRefresh?: boolean;
+    }>(request);
+    return success(listSessions(providerId));
+  }),
 
   http.post(`${TAURI_ENDPOINT}/get_session_messages`, async ({ request }) => {
     const { providerId, sourcePath } = await withJson<{
@@ -174,6 +182,32 @@ export const handlers = [
     }>(request);
     return success(getSessionMessages(providerId, sourcePath));
   }),
+
+  http.post(
+    `${TAURI_ENDPOINT}/get_session_message_page`,
+    async ({ request }) => {
+      const { providerId, sourcePath, cursor } = await withJson<{
+        providerId: string;
+        sourcePath: string;
+        cursor?: string;
+      }>(request);
+      return success(getSessionMessagePage(providerId, sourcePath, cursor));
+    },
+  ),
+
+  http.post(
+    `${TAURI_ENDPOINT}/get_session_message_content`,
+    async ({ request }) => {
+      const { providerId, sourcePath, contentCursor } = await withJson<{
+        providerId: string;
+        sourcePath: string;
+        contentCursor: string;
+      }>(request);
+      return success(
+        getSessionMessageContent(providerId, sourcePath, contentCursor),
+      );
+    },
+  ),
 
   http.post(`${TAURI_ENDPOINT}/delete_session`, async ({ request }) => {
     const { providerId, sessionId, sourcePath } = await withJson<{

@@ -1,10 +1,9 @@
-import { useCallback, useMemo } from "react";
-import FlexSearch from "flexsearch";
+import { useCallback, useMemo, useRef } from "react";
+import FlexSearch, { type Index } from "flexsearch";
 import type { SessionMeta } from "@/types";
 
 interface UseSessionSearchOptions {
   sessions: SessionMeta[];
-  providerFilter: string;
 }
 
 interface UseSessionSearchResult {
@@ -17,55 +16,61 @@ interface UseSessionSearchResult {
  */
 export function useSessionSearch({
   sessions,
-  providerFilter,
 }: UseSessionSearchOptions): UseSessionSearchResult {
-  const filteredByProvider = useMemo(() => {
-    if (providerFilter === "all") return sessions;
-    return sessions.filter((s) => s.providerId === providerFilter);
-  }, [sessions, providerFilter]);
+  const sortedSessions = useMemo(
+    () =>
+      [...sessions].sort((a, b) => {
+        const aTs = a.lastActiveAt ?? a.createdAt ?? 0;
+        const bTs = b.lastActiveAt ?? b.createdAt ?? 0;
+        return bTs - aTs;
+      }),
+    [sessions],
+  );
 
-  const index = useMemo(() => {
-    const nextIndex = new FlexSearch.Index({
-      tokenize: "full",
-      resolution: 9,
-    });
-
-    filteredByProvider.forEach((session, idx) => {
-      const metaContent = [
-        session.sessionId,
-        session.title,
-        session.summary,
-        session.projectDir,
-        session.sourcePath,
-      ]
-        .filter(Boolean)
-        .join(" ");
-
-      nextIndex.add(idx, metaContent);
-    });
-
-    return nextIndex;
-  }, [filteredByProvider]);
+  const indexRef = useRef<{
+    sessions: SessionMeta[];
+    index: Index;
+  } | null>(null);
 
   const search = useCallback(
     (query: string): SessionMeta[] => {
       const needle = query.trim();
 
       if (!needle) {
-        return [...filteredByProvider].sort((a, b) => {
-          const aTs = a.lastActiveAt ?? a.createdAt ?? 0;
-          const bTs = b.lastActiveAt ?? b.createdAt ?? 0;
-          return bTs - aTs;
-        });
+        return sortedSessions;
       }
 
-      const results = index.search(needle, {
-        limit: filteredByProvider.length,
+      let cached = indexRef.current;
+      if (!cached || cached.sessions !== sortedSessions) {
+        const nextIndex = new FlexSearch.Index({
+          tokenize: "full",
+          resolution: 9,
+        });
+
+        sortedSessions.forEach((session, idx) => {
+          const metaContent = [
+            session.sessionId,
+            session.title,
+            session.summary,
+            session.projectDir,
+            session.sourcePath,
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+          nextIndex.add(idx, metaContent);
+        });
+        cached = { sessions: sortedSessions, index: nextIndex };
+        indexRef.current = cached;
+      }
+
+      const results = cached.index.search(needle, {
+        limit: sortedSessions.length,
       }) as number[];
 
-      return results.map((idx) => filteredByProvider[idx]);
+      return results.map((idx) => sortedSessions[idx]);
     },
-    [index, filteredByProvider],
+    [sortedSessions],
   );
 
   return { search };

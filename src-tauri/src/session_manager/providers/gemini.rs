@@ -2,7 +2,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::session_manager::{SessionMessage, SessionMeta};
+use crate::session_manager::{pagination, SessionMessage, SessionMessagePage, SessionMeta};
 
 use super::utils::{parse_timestamp_to_ms, truncate_summary};
 
@@ -64,52 +64,53 @@ pub fn load_messages(path: &Path) -> Result<Vec<SessionMessage>, String> {
         .and_then(Value::as_array)
         .ok_or_else(|| "No messages array found".to_string())?;
 
-    let mut result = Vec::new();
-    for msg in messages {
-        let role = match msg.get("type").and_then(Value::as_str) {
-            Some("gemini") => "assistant",
-            Some("user") => "user",
-            Some("info") | Some("error") => continue,
-            Some(_) | None => continue,
-        };
+    Ok(messages.iter().filter_map(message_from_value).collect())
+}
 
-        // Gemini content may be a plain string or an array of {text: ...} objects
-        let mut content = match msg.get("content") {
-            Some(Value::String(s)) => s.to_string(),
-            Some(Value::Array(items)) => items
-                .iter()
-                .filter_map(|item| item.get("text").and_then(Value::as_str))
-                .collect::<Vec<_>>()
-                .join("\n"),
-            _ => String::new(),
-        };
+pub fn load_message_page(path: &Path, cursor: Option<&str>) -> Result<SessionMessagePage, String> {
+    pagination::load_json_array_page(path, "messages", cursor, message_from_value)
+}
 
-        // Append tool call names from the optional toolCalls array
-        if let Some(Value::Array(calls)) = msg.get("toolCalls") {
-            for call in calls {
-                if let Some(name) = call.get("name").and_then(Value::as_str) {
-                    if !content.is_empty() {
-                        content.push('\n');
-                    }
-                    content.push_str(&format!("[Tool: {name}]"));
+pub fn load_message_content(path: &Path, cursor: &str) -> Result<String, String> {
+    pagination::load_json_array_content(path, cursor, message_from_value)
+}
+
+fn message_from_value(msg: &Value) -> Option<SessionMessage> {
+    let role = match msg.get("type").and_then(Value::as_str) {
+        Some("gemini") => "assistant",
+        Some("user") => "user",
+        _ => return None,
+    };
+
+    let mut content = match msg.get("content") {
+        Some(Value::String(s)) => s.to_string(),
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(|item| item.get("text").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    };
+
+    if let Some(Value::Array(calls)) = msg.get("toolCalls") {
+        for call in calls {
+            if let Some(name) = call.get("name").and_then(Value::as_str) {
+                if !content.is_empty() {
+                    content.push('\n');
                 }
+                content.push_str(&format!("[Tool: {name}]"));
             }
         }
-
-        if content.trim().is_empty() {
-            continue;
-        }
-
-        let ts = msg.get("timestamp").and_then(parse_timestamp_to_ms);
-
-        result.push(SessionMessage {
-            role: role.to_string(),
-            content,
-            ts,
-        });
     }
 
-    Ok(result)
+    if content.trim().is_empty() {
+        return None;
+    }
+    Some(SessionMessage {
+        role: role.to_string(),
+        content,
+        ts: msg.get("timestamp").and_then(parse_timestamp_to_ms),
+    })
 }
 
 pub fn delete_session(_root: &Path, path: &Path, session_id: &str) -> Result<bool, String> {
