@@ -26,7 +26,9 @@ jobs:
           node-version: "20"
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
 
       - name: Validate release version
         run: node scripts/validate-release-version.mjs
@@ -36,6 +38,7 @@ jobs:
           node --test
           scripts/dev.node.mjs
           scripts/generate-updater-manifest.node.mjs
+          scripts/build-fast.node.mjs
           scripts/verify-bundle-marker.node.mjs
 
       - name: Validate updater signing secret
@@ -57,12 +60,17 @@ jobs:
       matrix:
         include:
           - os: windows-2022
+            rust-target: x86_64-pc-windows-msvc
           - os: windows-11-arm
             arch: arm64
+            rust-target: aarch64-pc-windows-msvc
           - os: ubuntu-22.04
+            rust-target: x86_64-unknown-linux-gnu
           - os: ubuntu-22.04-arm
             arch: arm64
+            rust-target: aarch64-unknown-linux-gnu
           - os: macos-14
+            rust-target: universal-apple-darwin
 
     steps:
       - name: Checkout
@@ -70,13 +78,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "20"
-
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
 
       - name: Add Windows ARM64 target
         if: runner.os == 'Windows' && matrix.arch == 'arm64'
@@ -87,6 +92,14 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: release-${{ runner.os }}-${{ runner.arch }}-${{ matrix.rust-target }}
+          key: ${{ runner.arch }}-${{ matrix.rust-target }}
+          cache-on-failure: true
 
       - name: Install Linux system deps
         if: runner.os == 'Linux'
@@ -127,6 +140,12 @@ jobs:
           version: 10.12.3
           run_install: false
 
+      - name: Setup Node.js (Windows ARM64)
+        if: runner.os == 'Windows' && matrix.arch == 'arm64'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
       - name: Setup pnpm (Windows ARM64)
         if: runner.os == 'Windows' && matrix.arch == 'arm64'
         shell: pwsh
@@ -137,19 +156,21 @@ jobs:
           node --version
           pnpm --version
 
-      - name: Get pnpm store directory
+      - name: Setup Node.js
         if: runner.os != 'Windows' || matrix.arch != 'arm64'
-        id: pnpm-store
-        shell: bash
-        run: echo "path=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        if: runner.os != 'Windows' || matrix.arch != 'arm64'
-        uses: actions/cache@v5
+        uses: actions/setup-node@v6
         with:
-          path: ${{ steps.pnpm-store.outputs.path }}
-          key: ${{ runner.os }}-${{ runner.arch }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-${{ runner.arch }}-pnpm-store-
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup pnpm cache (Windows ARM64)
+        if: runner.os == 'Windows' && matrix.arch == 'arm64'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup LLVM for Windows ARM64
         if: runner.os == 'Windows' && matrix.arch == 'arm64'
@@ -179,6 +200,7 @@ jobs:
       - name: Build Tauri App (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
+        timeout-minutes: 60
         env:
           WINDOWS_RELEASE_ARCH: ${{ matrix.arch || 'x86_64' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -187,11 +209,12 @@ jobs:
           if ($env:WINDOWS_RELEASE_ARCH -eq 'arm64') {
             pnpm tauri build --target aarch64-pc-windows-msvc --bundles msi
           } else {
-            pnpm tauri build
+            pnpm tauri build --bundles msi
           }
 
       - name: Build Tauri App (Linux)
         if: runner.os == 'Linux'
+        timeout-minutes: 60
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: pnpm tauri build --bundles appimage,deb,rpm

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "pnpm tauri build",
+    "build:fast": "pnpm tauri build --no-bundle -- --profile fast-release",
+    "bundle:fast": "node scripts/build-fast.mjs",
     "tauri": "tauri",
     "dev:renderer": "vite",
     "build:renderer": "vite build",

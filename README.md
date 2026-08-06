@@ -49,6 +49,10 @@ pnpm install
 pnpm dev
 ```
 
+`pnpm dev` starts the app in development mode with isolated local data. `pnpm build:fast` creates a faster optimized executable without an installer, while `pnpm bundle:fast` creates one platform-native installer (`msi` on Windows, `dmg` on macOS, or `appimage` on Linux). `pnpm build` remains the full production build used for release artifacts.
+
+To prevent rust-analyzer and CLI builds from invalidating each other's caches, set `rust-analyzer.cargo.targetDir` to `src-tauri/target/analyzer` in the workspace settings.
+
 ### Verification
 
 ```bash

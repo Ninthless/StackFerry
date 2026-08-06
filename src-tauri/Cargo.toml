@@ -39,7 +39,7 @@ tauri-plugin-window-state = "2"
 dirs = "5.0"
 toml = "0.8"
 toml_edit = "0.22"
-reqwest = { version = "0.12", features = ["rustls-tls", "json", "stream", "socks"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "socks"] }
 arboard = "3.6"
 flate2 = "1"
 brotli = "7"
@@ -113,6 +113,13 @@ opt-level = "s"
 # 使用 unwind 以便 panic hook 能捕获 backtrace（abort 会直接终止无法捕获）
 panic = "unwind"
 strip = "symbols"
+
+[profile.fast-release]
+inherits = "release"
+codegen-units = 16
+lto = false
+opt-level = 2
+strip = "none"
 
 [dev-dependencies]
 serial_test = "3"
