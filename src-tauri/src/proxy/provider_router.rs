@@ -247,6 +247,53 @@ impl ProviderRouter {
         }
     }
 
+    pub async fn select_health_neutral_providers(
+        &self,
+        app_type: &str,
+    ) -> Result<Vec<Provider>, AppError> {
+        let auto_failover_enabled = match self.db.get_proxy_config_for_app(app_type).await {
+            Ok(config) => config.auto_failover_enabled,
+            Err(error) => {
+                log::error!("[{app_type}] 读取 proxy_config 失败: {error}，默认禁用故障转移");
+                false
+            }
+        };
+
+        let providers = if auto_failover_enabled {
+            let all_providers = self.db.get_all_providers(app_type)?;
+            self.db
+                .get_failover_queue(app_type)?
+                .into_iter()
+                .filter_map(|item| all_providers.get(&item.provider_id).cloned())
+                .collect::<Vec<_>>()
+        } else {
+            let current_id = AppType::from_str(app_type)
+                .ok()
+                .and_then(|app_enum| {
+                    crate::settings::get_effective_current_provider(&self.db, &app_enum)
+                        .ok()
+                        .flatten()
+                })
+                .or_else(|| self.db.get_current_provider(app_type).ok().flatten());
+
+            match current_id {
+                Some(current_id) => self
+                    .db
+                    .get_provider_by_id(&current_id, app_type)?
+                    .into_iter()
+                    .collect(),
+                None => Vec::new(),
+            }
+        };
+
+        if providers.is_empty() {
+            log::warn!("[{app_type}] [FO-005] 未配置供应商");
+            Err(AppError::NoProvidersConfigured)
+        } else {
+            Ok(providers)
+        }
+    }
+
     pub async fn is_provider_safe_for_paid_image(
         &self,
         provider: &Provider,

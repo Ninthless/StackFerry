@@ -113,6 +113,13 @@ impl ForwardRequestKind {
         matches!(self, Self::Pi)
     }
 
+    const fn is_main_health_neutral(self) -> bool {
+        matches!(
+            self,
+            Self::CodexAuxiliary(CodexAuxiliaryEndpoint::AlphaSearch)
+        )
+    }
+
     const fn allows_request_mutation(self) -> bool {
         matches!(self, Self::Standard)
     }
@@ -571,7 +578,9 @@ impl RequestForwarder {
 
             // 发起请求前先获取熔断器放行许可（HalfOpen 会占用探测名额）
             // 单 Provider 场景下跳过此检查，避免熔断器阻塞所有请求
-            let (allowed, used_half_open_permit) = if paid_image_endpoint.is_some() {
+            let (allowed, used_half_open_permit) = if request_kind.is_main_health_neutral() {
+                (true, false)
+            } else if paid_image_endpoint.is_some() {
                 match self
                     .router
                     .is_provider_safe_for_paid_image(provider, app_type_str)
@@ -646,10 +655,16 @@ impl RequestForwarder {
                 .await
             {
                 Ok((response, claude_api_format, outbound_model)) => {
-                    // 成功：普通闭合熔断状态异步记录，避免阻塞流式首包返回；
-                    // HalfOpen 探测仍同步等待，保证 permit 与熔断状态及时释放。
-                    self.record_success_result(&provider.id, app_type_str, used_half_open_permit)
+                    if !request_kind.is_main_health_neutral() {
+                        // 成功：普通闭合熔断状态异步记录，避免阻塞流式首包返回；
+                        // HalfOpen 探测仍同步等待，保证 permit 与熔断状态及时释放。
+                        self.record_success_result(
+                            &provider.id,
+                            app_type_str,
+                            used_half_open_permit,
+                        )
                         .await;
+                    }
 
                     // 更新当前应用类型使用的 provider
                     if !request_kind.is_codex_auxiliary() {
@@ -1224,17 +1239,18 @@ impl RequestForwarder {
                                 &e,
                                 request_kind.is_codex_auxiliary(),
                             );
-                            // 可重试：真正的 provider 故障 → 记录失败并更新熔断器/DB 健康度
-                            let _ = self
-                                .router
-                                .record_result(
-                                    &provider.id,
-                                    app_type_str,
-                                    used_half_open_permit,
-                                    false,
-                                    Some(observable_error.clone()),
-                                )
-                                .await;
+                            if !request_kind.is_main_health_neutral() {
+                                let _ = self
+                                    .router
+                                    .record_result(
+                                        &provider.id,
+                                        app_type_str,
+                                        used_half_open_permit,
+                                        false,
+                                        Some(observable_error.clone()),
+                                    )
+                                    .await;
+                            }
 
                             {
                                 let mut status = self.status.write().await;

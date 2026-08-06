@@ -78,6 +78,13 @@ pub struct RequestContext {
     pub copilot_optimizer_config: CopilotOptimizerConfig,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProviderSelectionMode {
+    Standard,
+    HealthNeutral,
+    PaidImage,
+}
+
 impl RequestContext {
     /// 创建请求上下文
     ///
@@ -99,8 +106,16 @@ impl RequestContext {
         tag: &'static str,
         app_type_str: &'static str,
     ) -> Result<Self, ProxyError> {
-        Self::new_with_provider_selection(state, body, headers, app_type, tag, app_type_str, false)
-            .await
+        Self::new_with_provider_selection(
+            state,
+            body,
+            headers,
+            app_type,
+            tag,
+            app_type_str,
+            ProviderSelectionMode::Standard,
+        )
+        .await
     }
 
     pub async fn new_for_codex_auxiliary(
@@ -109,6 +124,12 @@ impl RequestContext {
         headers: &HeaderMap,
         endpoint: CodexAuxiliaryEndpoint,
     ) -> Result<Self, ProxyError> {
+        let selection_mode = match endpoint {
+            CodexAuxiliaryEndpoint::AlphaSearch => ProviderSelectionMode::HealthNeutral,
+            CodexAuxiliaryEndpoint::ImageGeneration | CodexAuxiliaryEndpoint::ImageEdit => {
+                ProviderSelectionMode::PaidImage
+            }
+        };
         Self::new_with_provider_selection(
             state,
             body,
@@ -116,7 +137,7 @@ impl RequestContext {
             AppType::Codex,
             "Codex",
             "codex",
-            endpoint.is_paid_image_operation(),
+            selection_mode,
         )
         .await
     }
@@ -181,7 +202,7 @@ impl RequestContext {
         app_type: AppType,
         tag: &'static str,
         app_type_str: &'static str,
-        paid_image_operation: bool,
+        selection_mode: ProviderSelectionMode,
     ) -> Result<Self, ProxyError> {
         let start_time = Instant::now();
 
@@ -221,8 +242,8 @@ impl RequestContext {
 
         // 使用共享的 ProviderRouter 选择 Provider（熔断器状态跨请求保持）
         // 注意：只在这里调用一次，结果传递给 forwarder，避免重复消耗 HalfOpen 名额
-        let providers = if paid_image_operation {
-            state
+        let providers = match selection_mode {
+            ProviderSelectionMode::PaidImage => state
                 .provider_router
                 .select_paid_image_providers(app_type_str)
                 .await
@@ -234,9 +255,18 @@ impl RequestContext {
                         ProxyError::NoProvidersConfigured
                     }
                     _ => ProxyError::DatabaseError(error.to_string()),
-                })?
-        } else {
-            state
+                })?,
+            ProviderSelectionMode::HealthNeutral => state
+                .provider_router
+                .select_health_neutral_providers(app_type_str)
+                .await
+                .map_err(|error| match error {
+                    crate::error::AppError::NoProvidersConfigured => {
+                        ProxyError::NoProvidersConfigured
+                    }
+                    _ => ProxyError::DatabaseError(error.to_string()),
+                })?,
+            ProviderSelectionMode::Standard => state
                 .provider_router
                 .select_providers(app_type_str)
                 .await
@@ -248,7 +278,7 @@ impl RequestContext {
                         ProxyError::NoProvidersConfigured
                     }
                     _ => ProxyError::DatabaseError(error.to_string()),
-                })?
+                })?,
         };
 
         let provider = providers

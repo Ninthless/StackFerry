@@ -1788,6 +1788,147 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn alpha_search_retryable_failures_do_not_circuit_break_main_responses() {
+        let mut p1_replies = vec![MockReply::json(
+            http::StatusCode::BAD_GATEWAY,
+            json!({"error": "search unavailable"}),
+        )];
+        p1_replies.extend((0..3).map(|_| {
+            MockReply::json(
+                http::StatusCode::SERVICE_UNAVAILABLE,
+                json!({"error": "search unavailable"}),
+            )
+        }));
+        p1_replies.push(MockReply::json(
+            http::StatusCode::OK,
+            json!({
+                "id": "resp_main_healthy",
+                "object": "response",
+                "status": "completed",
+                "model": "gpt-5.6-sol",
+                "output": [],
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            }),
+        ));
+        let p2_replies = (0..4)
+            .map(|_| {
+                MockReply::json(
+                    http::StatusCode::SERVICE_UNAVAILABLE,
+                    json!({"error": "search unavailable"}),
+                )
+            })
+            .collect();
+        let (p1_origin, p1_requests, p1_handle) = spawn_upstream(p1_replies).await;
+        let (p2_origin, p2_requests, p2_handle) = spawn_upstream(p2_replies).await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_codex_failover(db.as_ref(), 1, 5).await;
+        let mut config = db
+            .get_proxy_config_for_app("codex")
+            .await
+            .expect("read Codex proxy config");
+        config.circuit_failure_threshold = 4;
+        db.update_proxy_config_for_app(config)
+            .await
+            .expect("configure circuit threshold");
+        let p1 = queued_provider("search-p1", "Search P1", &p1_origin, 0);
+        let p2 = queued_provider("search-p2", "Search P2", &p2_origin, 1);
+        db.save_provider("codex", &p1).expect("save p1");
+        db.save_provider("codex", &p2).expect("save p2");
+        let (proxy, proxy_origin) = start_proxy(db.clone()).await;
+        let client = reqwest::Client::new();
+
+        for _ in 0..4 {
+            let response = client
+                .post(format!("{proxy_origin}/alpha/search"))
+                .json(&json!({"model": "gpt-5.6-sol", "query": "bounded"}))
+                .send()
+                .await
+                .expect("send search request");
+            assert_eq!(response.status(), http::StatusCode::SERVICE_UNAVAILABLE);
+        }
+
+        for provider in [&p1, &p2] {
+            let health = db
+                .get_provider_health(&provider.id, "codex")
+                .await
+                .expect("read provider health");
+            assert_eq!(health.consecutive_failures, 0);
+            assert!(health.is_healthy);
+        }
+
+        let response = client
+            .post(format!("{proxy_origin}/responses"))
+            .json(&json!({
+                "model": "gpt-5.6-sol",
+                "input": "main channel remains available",
+                "stream": false
+            }))
+            .send()
+            .await
+            .expect("send main response request");
+        assert_eq!(response.status(), http::StatusCode::OK);
+
+        proxy.stop().await.expect("stop proxy");
+        p1_handle.abort();
+        p2_handle.abort();
+        let p1_requests = p1_requests.lock().await;
+        assert_eq!(p1_requests.len(), 5);
+        assert_eq!(p1_requests.last().unwrap().uri.path(), "/v1/responses");
+        assert_eq!(p2_requests.lock().await.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn alpha_search_ignores_and_does_not_heal_main_provider_health() {
+        let (upstream_origin, requests, upstream_handle) = spawn_upstream(vec![MockReply::json(
+            http::StatusCode::OK,
+            json!({"results": []}),
+        )])
+        .await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_codex_failover(db.as_ref(), 0, 5).await;
+        let provider = queued_provider("search-neutral", "Search Neutral", &upstream_origin, 0);
+        db.save_provider("codex", &provider).expect("save provider");
+        db.update_provider_health_with_threshold(
+            &provider.id,
+            "codex",
+            false,
+            Some("main responses unavailable".to_string()),
+            1,
+        )
+        .await
+        .expect("mark main provider unhealthy");
+        let (proxy, proxy_origin) = start_proxy(db.clone()).await;
+        assert!(matches!(
+            proxy.state.provider_router.select_providers("codex").await,
+            Err(crate::error::AppError::AllProvidersCircuitOpen)
+        ));
+
+        let response = reqwest::Client::new()
+            .post(format!("{proxy_origin}/alpha/search"))
+            .json(&json!({"model": "gpt-5.6-sol", "query": "bounded"}))
+            .send()
+            .await
+            .expect("send search request");
+        assert_eq!(response.status(), http::StatusCode::OK);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let health = db
+            .get_provider_health(&provider.id, "codex")
+            .await
+            .expect("read provider health");
+        assert_eq!(health.consecutive_failures, 1);
+        assert!(!health.is_healthy);
+        assert!(matches!(
+            proxy.state.provider_router.select_providers("codex").await,
+            Err(crate::error::AppError::AllProvidersCircuitOpen)
+        ));
+
+        proxy.stop().await.expect("stop proxy");
+        upstream_handle.abort();
+        assert_eq!(requests.lock().await.len(), 1);
+    }
+
+    #[tokio::test]
     async fn ambiguous_paid_image_timeout_is_not_replayed() {
         let (p1_origin, p1_requests, p1_handle) = spawn_upstream(vec![MockReply::delayed(
             http::StatusCode::OK,
