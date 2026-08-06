@@ -1,6 +1,6 @@
 {
   "name": "stackferry",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Provider and configuration manager for AI coding tools",
   "type": "module",
   "scripts": {
@@ -19,7 +19,10 @@
     "test:unit:watch": "vitest watch"
   },
   "keywords": [],
-  "author": ["Ninthless", "QiXia881"],
+  "author": [
+    "Ninthless",
+    "QiXia881"
+  ],
   "license": "MIT",
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4",

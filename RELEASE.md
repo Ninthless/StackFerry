@@ -1,6 +1,10 @@
-# StackFerry v0.1.5
+# StackFerry v0.1.6
 
 ## 简体中文
+
+### 本次发布
+
+- 对齐设置页高级选项底部保存栏，并优化构建流程与 CI 检查，提升发布构建的一致性与可靠性。
 
 ### 故障转移与恢复
 
@@ -56,6 +60,10 @@
 - CI 在 Ubuntu、Windows 和 macOS 上执行格式、Clippy 与测试检查，提前发现平台条件编译问题。
 
 ## English
+
+### This Release
+
+- Aligned the bottom save bar in the Settings advanced section and optimized the build pipeline and CI checks for more consistent, reliable releases.
 
 ### Failover Recovery
 
