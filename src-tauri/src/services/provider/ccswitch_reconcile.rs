@@ -90,7 +90,7 @@ fn config_document(provider: &Provider) -> Option<DocumentMut> {
         .and_then(|config| config.parse::<DocumentMut>().ok())
 }
 
-fn active_provider_table<'a>(document: &'a DocumentMut) -> Option<&'a toml_edit::Table> {
+fn active_provider_table(document: &DocumentMut) -> Option<&toml_edit::Table> {
     let id = document.get("model_provider")?.as_str()?.trim();
     document
         .get("model_providers")?

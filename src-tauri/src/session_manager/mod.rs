@@ -271,6 +271,7 @@ fn sort_sessions(sessions: &mut [SessionMeta]) {
     });
 }
 
+#[cfg(test)]
 fn scan_sessions_with<F>(provider_id: &str, scan: F) -> Result<Vec<SessionMeta>, String>
 where
     F: FnOnce(SessionProvider) -> Vec<SessionMeta>,
