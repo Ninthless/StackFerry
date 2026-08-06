@@ -1,6 +1,6 @@
 [package]
 name = "stackferry"
-version = "0.1.7"
+version = "0.1.8"
 description = "All-in-One Assistant for Claude Code, Codex & Gemini CLI"
 authors = ["Ninthless", "CC Switch contributors"]
 license = "MIT"
