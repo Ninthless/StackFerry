@@ -371,6 +371,20 @@ describe("SettingsPage Component", () => {
     expect(scrollContainer!.scrollTop).toBe(0);
   });
 
+  it("should render an aligned footer on the advanced tab", () => {
+    renderSettingsPage();
+
+    fireEvent.click(screen.getByText("settings.tabAdvanced"));
+
+    const saveButton = screen.getByRole("button", { name: /common\.save/ });
+    const footer = saveButton.parentElement?.parentElement;
+
+    const footerContainer = footer?.parentElement;
+
+    expect(footer).toHaveClass("h-[61px]", "py-3");
+    expect(footerContainer).toHaveClass("pt-4");
+    expect(footerContainer).not.toHaveClass("py-4");
+  });
   it("should pass onImportSuccess callback to useImportExport hook", async () => {
     const onImportSuccess = vi.fn();
 

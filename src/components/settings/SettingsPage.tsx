@@ -278,7 +278,7 @@ export function SettingsPage({
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col py-4">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col pt-4">
             <div
               ref={tabScrollContainerRef}
               className="mx-auto w-full max-w-[960px] flex-1 overflow-y-auto overflow-x-hidden pr-2"
@@ -561,10 +561,10 @@ export function SettingsPage({
 
             {activeTab === "advanced" && settings && (
               <div
-                className="flex-shrink-0 border-t border-border-default pt-4"
+                className="flex h-[61px] shrink-0 items-center border-t border-border-default px-6 py-3 max-[1100px]:px-3"
                 style={{ backgroundColor: "hsl(var(--background))" }}
               >
-                <div className="mx-auto flex w-full max-w-[960px] items-center justify-end gap-3 pr-2">
+                <div className="mx-auto flex h-9 w-full max-w-[960px] items-center justify-end gap-3 pr-2">
                   <Button onClick={handleSave} disabled={isSaving}>
                     {isSaving ? (
                       <span className="inline-flex items-center gap-2">
