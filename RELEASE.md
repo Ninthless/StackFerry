@@ -1,35 +1,35 @@
-# StackFerry v0.1.8
+# StackFerry v0.1.9
 
 ## 简体中文
 
-### Codex 联网搜索与熔断隔离
+### Responses 容量错误恢复
 
-- 修复 Codex 独立联网搜索端点 `/v1/alpha/search` 返回 `502/503` 时，错误累计到普通 `/v1/responses` 主通道熔断器的问题。
-- 联网搜索继续按照供应商故障转移队列的加入顺序逐个尝试，但不再读取主通道的健康状态，也不会占用主通道的 HalfOpen 探测名额。
-- 搜索失败只影响当前搜索请求，不会把仍可正常对话的 Codex 供应商标记为不可用；所有搜索供应商失败后仍保留最具体的上游错误。
-- 搜索成功不会清除主通道已有的失败次数或提前关闭主熔断器，保证 `/responses` 的恢复仍由真实主请求决定。
+- Codex 和 Grok Build 的 Responses 请求遇到明确的上游容量不足错误时，会在提交输出前对同一供应商执行两次有限退避重试。
+- 重试策略基于 `server_is_overloaded`、`overloaded_error` 等错误语义，与具体模型和供应商无关，因此也适用于后续新增模型。
+- 同一供应商重试耗尽后继续使用现有故障转移队列，避免单次上游容量抖动直接中断请求。
+- 模型或路由级容量不足不再累计到整个供应商的熔断健康度，防止单个模型过载影响同一供应商下的其他健康模型。
 
 ### 兼容性与回归保护
 
-- 保持普通 `/responses` 请求真实 `5xx` 的原有熔断规则不变。
-- 保持图片生成和图片编辑的付费请求安全检查、能力缺失处理及禁止不安全重放规则不变。
-- 增加端到端回归测试，覆盖连续搜索 `502/503`、主通道已熔断时执行搜索，以及搜索成功不得恢复主通道等场景。
+- 普通未知 `502/503` 仍按真实供应商故障处理，不会被误判为容量错误。
+- 同时覆盖 HTTP 错误响应和输出开始前的 `response.failed` 流式事件；搜索、图片等辅助端点保持原有重放安全策略。
+- 增加协议识别、同供应商恢复、重试耗尽后故障转移和健康状态隔离的回归测试。
 
-> 上游供应商自身仍可能不支持 `/v1/alpha/search` 或暂时返回 `5xx`。本次修复确保此类搜索端点故障不会扩大为整个 Codex 对话通道不可用。
+> 持续的上游容量不足仍可能导致最终请求失败。本次发布降低短暂容量抖动的影响，并避免模型级故障扩大为整个供应商不可用。
 
 ## English
 
-### Codex Search and Circuit Isolation
+### Responses Capacity Recovery
 
-- Fixed Codex standalone `/v1/alpha/search` responses with `502/503` being counted against the main `/v1/responses` circuit breaker.
-- Search requests still follow configured failover queue order, but no longer read main-channel health or consume its HalfOpen probe permits.
-- Search failures now affect only the active search request and cannot mark an otherwise working Codex conversation provider unavailable; the most specific upstream error is retained when all search providers fail.
-- Successful searches no longer clear main-channel failure counts or close its circuit early, leaving `/responses` recovery to real main-channel requests.
+- Codex and Grok Build Responses requests now retry the same provider twice with bounded backoff when the upstream explicitly reports capacity exhaustion before output is committed.
+- Detection uses error semantics such as `server_is_overloaded` and `overloaded_error`, independent of any specific model or provider, so future models receive the same behavior.
+- Exhausted same-provider retries continue through the existing failover queue instead of failing immediately on a transient capacity event.
+- Model- or route-level capacity exhaustion no longer increments the entire provider's circuit health, preventing one overloaded model from disabling otherwise healthy models on that provider.
 
 ### Compatibility and Regression Coverage
 
-- Preserved existing circuit-breaker behavior for real `/responses` `5xx` failures.
-- Preserved paid image generation and editing safety checks, capability-miss handling, and ambiguous replay protection.
-- Added end-to-end regression coverage for repeated search `502/503` responses, searches while the main circuit is open, and successful searches that must not heal main-channel health.
+- Generic unknown `502/503` responses still follow the existing provider-failure path and are not misclassified as capacity errors.
+- Both HTTP error responses and pre-output `response.failed` stream events are covered, while search and image auxiliary endpoints retain their existing replay-safety behavior.
+- Added regression coverage for protocol detection, same-provider recovery, failover after retry exhaustion, and provider-health isolation.
 
-> An upstream provider may still lack `/v1/alpha/search` support or temporarily return `5xx`. This release prevents that search-specific failure from taking down the entire Codex conversation channel.
+> Sustained upstream capacity exhaustion can still produce a final failure. This release reduces the impact of short capacity fluctuations and prevents model-level overload from disabling an entire provider.

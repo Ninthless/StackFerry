@@ -1788,6 +1788,137 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn codex_capacity_errors_retry_same_provider_without_polluting_health() {
+        let (upstream_origin, requests, upstream_handle) = spawn_upstream(vec![
+            MockReply::json(
+                http::StatusCode::BAD_GATEWAY,
+                json!({
+                    "error": {
+                        "code": "server_is_overloaded",
+                        "message": "Our servers are currently overloaded"
+                    }
+                }),
+            ),
+            MockReply::json(
+                http::StatusCode::SERVICE_UNAVAILABLE,
+                json!({
+                    "error": {
+                        "type": "overloaded_error",
+                        "message": "temporarily at capacity"
+                    }
+                }),
+            ),
+            MockReply::json(
+                http::StatusCode::OK,
+                json!({
+                    "id": "resp_recovered",
+                    "object": "response",
+                    "status": "completed",
+                    "model": "vendor-next-model",
+                    "output": [],
+                    "usage": {"input_tokens": 1, "output_tokens": 1}
+                }),
+            ),
+        ])
+        .await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_codex_failover(db.as_ref(), 0, 5).await;
+        let provider = queued_provider("capacity-p1", "Capacity P1", &upstream_origin, 0);
+        db.save_provider("codex", &provider).expect("save provider");
+        let (proxy, proxy_origin) = start_proxy(db.clone()).await;
+
+        let response = reqwest::Client::new()
+            .post(format!("{proxy_origin}/responses"))
+            .json(&json!({
+                "model": "vendor-next-model",
+                "input": "retry capacity",
+                "stream": false
+            }))
+            .send()
+            .await
+            .expect("send capacity request");
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(
+            response.json::<Value>().await.unwrap()["id"],
+            "resp_recovered"
+        );
+
+        proxy.stop().await.expect("stop proxy");
+        upstream_handle.abort();
+        assert_eq!(requests.lock().await.len(), 3);
+        let health = db
+            .get_provider_health(&provider.id, "codex")
+            .await
+            .expect("read provider health");
+        assert_eq!(health.consecutive_failures, 0);
+        assert!(health.is_healthy);
+    }
+
+    #[tokio::test]
+    async fn codex_capacity_retry_exhaustion_fails_over_without_polluting_first_provider() {
+        let overload = || {
+            MockReply::json(
+                http::StatusCode::BAD_GATEWAY,
+                json!({
+                    "error": {
+                        "code": "server_is_overloaded",
+                        "message": "Our servers are currently overloaded"
+                    }
+                }),
+            )
+        };
+        let (p1_origin, p1_requests, p1_handle) =
+            spawn_upstream(vec![overload(), overload(), overload()]).await;
+        let (p2_origin, p2_requests, p2_handle) = spawn_upstream(vec![MockReply::json(
+            http::StatusCode::OK,
+            json!({
+                "id": "resp_fallback",
+                "object": "response",
+                "status": "completed",
+                "model": "gpt-future",
+                "output": [],
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            }),
+        )])
+        .await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_codex_failover(db.as_ref(), 1, 5).await;
+        let p1 = queued_provider("capacity-failover-p1", "Capacity P1", &p1_origin, 0);
+        let p2 = queued_provider("capacity-failover-p2", "Capacity P2", &p2_origin, 1);
+        db.save_provider("codex", &p1).expect("save p1");
+        db.save_provider("codex", &p2).expect("save p2");
+        let (proxy, proxy_origin) = start_proxy(db.clone()).await;
+
+        let response = reqwest::Client::new()
+            .post(format!("{proxy_origin}/v1/responses"))
+            .json(&json!({
+                "model": "gpt-future",
+                "input": "fallback capacity",
+                "stream": false
+            }))
+            .send()
+            .await
+            .expect("send capacity failover request");
+        assert_eq!(response.status(), http::StatusCode::OK);
+        assert_eq!(
+            response.json::<Value>().await.unwrap()["id"],
+            "resp_fallback"
+        );
+
+        proxy.stop().await.expect("stop proxy");
+        p1_handle.abort();
+        p2_handle.abort();
+        assert_eq!(p1_requests.lock().await.len(), 3);
+        assert_eq!(p2_requests.lock().await.len(), 1);
+        let health = db
+            .get_provider_health(&p1.id, "codex")
+            .await
+            .expect("read p1 health");
+        assert_eq!(health.consecutive_failures, 0);
+        assert!(health.is_healthy);
+    }
+
+    #[tokio::test]
     async fn alpha_search_retryable_failures_do_not_circuit_break_main_responses() {
         let mut p1_replies = vec![MockReply::json(
             http::StatusCode::BAD_GATEWAY,

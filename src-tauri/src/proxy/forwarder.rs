@@ -40,6 +40,10 @@ use tauri::Manager;
 use tokio::sync::RwLock;
 
 const PROXY_AUTH_PLACEHOLDER: &str = "PROXY_MANAGED";
+const CODEX_CAPACITY_RETRY_DELAYS: [std::time::Duration; 2] = [
+    std::time::Duration::from_millis(250),
+    std::time::Duration::from_millis(750),
+];
 
 fn validate_codex_official_authorization(headers: &http::HeaderMap) -> Result<(), ProxyError> {
     let authorization = headers
@@ -639,9 +643,9 @@ impl RequestForwarder {
                 status.current_provider_id = Some(provider.id.clone());
             }
 
-            // 转发请求（每个 Provider 只尝试一次，重试由客户端控制）
+            // 转发请求（明确的 Responses 容量错误会在提交输出前有限重试）
             match self
-                .forward(
+                .forward_with_capacity_retry(
                     app_type,
                     &method,
                     provider,
@@ -750,7 +754,7 @@ impl RequestForwarder {
                             );
 
                             match self
-                                .forward(
+                                .forward_with_capacity_retry(
                                     app_type,
                                     &method,
                                     provider,
@@ -897,7 +901,7 @@ impl RequestForwarder {
 
                                 // 使用同一供应商重试（不计入熔断器）
                                 match self
-                                    .forward(
+                                    .forward_with_capacity_retry(
                                         app_type,
                                         &method,
                                         provider,
@@ -1064,7 +1068,7 @@ impl RequestForwarder {
 
                             // 使用同一供应商重试（不计入熔断器）
                             match self
-                                .forward(
+                                .forward_with_capacity_retry(
                                     app_type,
                                     &method,
                                     provider,
@@ -1198,6 +1202,32 @@ impl RequestForwarder {
                     // 先分类错误，决定是否计入 provider 健康度
                     // —— NonRetryable / ClientAbort 是客户端层错误，无论换哪家 provider 都会被拒绝，
                     //    不应污染熔断器和数据库健康度（与 release_permit_neutral 同语义）。
+                    if is_codex_capacity_error(app_type, endpoint, request_kind, &e) {
+                        self.router
+                            .release_permit_neutral(
+                                &provider.id,
+                                app_type_str,
+                                used_half_open_permit,
+                            )
+                            .await;
+                        let observable_error = error_message_for_observability(&e, false);
+                        {
+                            let mut status = self.status.write().await;
+                            status.last_error = Some(format!(
+                                "Provider {} capacity unavailable: {}",
+                                provider.name, observable_error
+                            ));
+                        }
+                        log::warn!(
+                            "[{app_type_str}] Provider {} capacity retries exhausted; trying next provider: {}",
+                            provider.name,
+                            observable_error
+                        );
+                        last_error = Some(e);
+                        last_provider = Some(provider.clone());
+                        continue;
+                    }
+
                     let category = self.categorize_proxy_error(&e, provider);
 
                     match category {
@@ -1359,6 +1389,58 @@ impl RequestForwarder {
             error: last_error.unwrap_or(ProxyError::MaxRetriesExceeded),
             provider: last_provider,
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn forward_with_capacity_retry(
+        &self,
+        app_type: &AppType,
+        method: &http::Method,
+        provider: &Provider,
+        endpoint: &str,
+        body: &Value,
+        headers: &axum::http::HeaderMap,
+        extensions: &Extensions,
+        adapter: &dyn ProviderAdapter,
+        request_kind: ForwardRequestKind,
+    ) -> Result<(ProxyResponse, Option<String>, Option<String>), ProxyError> {
+        let mut retry_index = 0usize;
+        loop {
+            let result = self
+                .forward(
+                    app_type,
+                    method,
+                    provider,
+                    endpoint,
+                    body,
+                    headers,
+                    extensions,
+                    adapter,
+                    request_kind,
+                )
+                .await;
+
+            let Err(error) = &result else {
+                return result;
+            };
+            if !is_codex_capacity_error(app_type, endpoint, request_kind, error)
+                || retry_index >= CODEX_CAPACITY_RETRY_DELAYS.len()
+            {
+                return result;
+            }
+
+            let delay = CODEX_CAPACITY_RETRY_DELAYS[retry_index];
+            retry_index += 1;
+            log::warn!(
+                "[{}] Provider {} reported temporary capacity exhaustion; retrying same provider in {}ms ({}/{})",
+                app_type.as_str(),
+                provider.name,
+                delay.as_millis(),
+                retry_index,
+                CODEX_CAPACITY_RETRY_DELAYS.len()
+            );
+            tokio::time::sleep(delay).await;
+        }
     }
 
     /// 转发单个请求（使用适配器）
@@ -2622,7 +2704,10 @@ impl RequestForwarder {
             } else if matches!(
                 resolved_claude_api_format.as_deref(),
                 Some("openai_responses")
-            ) {
+            ) || (matches!(app_type, AppType::Codex | AppType::GrokBuild)
+                && is_responses_endpoint(&effective_endpoint)
+                && !codex_responses_to_chat)
+            {
                 if !request_is_streaming || response.is_json() {
                     // Claude→Responses gateways can also return a semantic failure in an
                     // HTTP 2xx Response object. Validate buffered/JSON bodies inside the
@@ -3032,6 +3117,49 @@ fn extract_error_message(error: &ProxyError) -> Option<String> {
         ProxyError::UpstreamError { body, .. } => body.clone(),
         _ => Some(error.to_string()),
     }
+}
+
+fn is_codex_capacity_error(
+    app_type: &AppType,
+    endpoint: &str,
+    request_kind: ForwardRequestKind,
+    error: &ProxyError,
+) -> bool {
+    if !request_kind.allows_request_mutation()
+        || !matches!(app_type, AppType::Codex | AppType::GrokBuild)
+        || !is_responses_endpoint(endpoint)
+    {
+        return false;
+    }
+
+    let text = match error {
+        ProxyError::UpstreamError {
+            body: Some(body), ..
+        } => body.as_str(),
+        ProxyError::TransformError(message) => message.as_str(),
+        _ => return false,
+    };
+    contains_capacity_error_signal(text)
+}
+
+fn is_responses_endpoint(endpoint: &str) -> bool {
+    let path = endpoint.split_once('?').map_or(endpoint, |(path, _)| path);
+    path.trim_end_matches('/').ends_with("/responses")
+}
+
+fn contains_capacity_error_signal(text: &str) -> bool {
+    let normalized = text.to_ascii_lowercase();
+    [
+        "server_is_overloaded",
+        "server overloaded",
+        "servers are currently overloaded",
+        "overloaded_error",
+        "service_unavailable_error",
+        "capacity temporarily unavailable",
+        "temporarily at capacity",
+    ]
+    .iter()
+    .any(|signal| normalized.contains(signal))
 }
 
 fn is_auxiliary_capability_miss(error: &ProxyError) -> bool {
@@ -4842,6 +4970,76 @@ mod tests {
             ),
             ErrorCategory::NonRetryable
         );
+    }
+
+    #[test]
+    fn codex_capacity_errors_are_protocol_scoped_and_model_agnostic() {
+        let error = ProxyError::UpstreamError {
+            status: 502,
+            body: Some(
+                r#"{"error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded"}}"#
+                    .to_string(),
+            ),
+        };
+
+        for app_type in [AppType::Codex, AppType::GrokBuild] {
+            assert!(is_codex_capacity_error(
+                &app_type,
+                "/v1/responses",
+                ForwardRequestKind::Standard,
+                &error
+            ));
+        }
+        assert!(!is_codex_capacity_error(
+            &AppType::Claude,
+            "/v1/responses",
+            ForwardRequestKind::Standard,
+            &error
+        ));
+        assert!(!is_codex_capacity_error(
+            &AppType::Codex,
+            "/v1/alpha/search",
+            ForwardRequestKind::CodexAuxiliary(CodexAuxiliaryEndpoint::AlphaSearch),
+            &error
+        ));
+    }
+
+    #[test]
+    fn generic_gateway_failures_are_not_treated_as_capacity_errors() {
+        for error in [
+            ProxyError::UpstreamError {
+                status: 502,
+                body: Some(r#"{"error":"bad gateway"}"#.to_string()),
+            },
+            ProxyError::UpstreamError {
+                status: 503,
+                body: Some(r#"{"error":"maintenance"}"#.to_string()),
+            },
+        ] {
+            assert!(!is_codex_capacity_error(
+                &AppType::Codex,
+                "/responses",
+                ForwardRequestKind::Standard,
+                &error
+            ));
+        }
+    }
+
+    #[test]
+    fn early_responses_capacity_events_are_retryable() {
+        let failed = concat!(
+            "event: response.failed\n",
+            "data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"type\":\"overloaded_error\",\"message\":\"temporarily at capacity\"}}}"
+        );
+        let Some(Err(error)) = inspect_responses_start_event(failed) else {
+            panic!("capacity event should fail before the stream is committed");
+        };
+        assert!(is_codex_capacity_error(
+            &AppType::Codex,
+            "/responses",
+            ForwardRequestKind::Standard,
+            &error
+        ));
     }
 
     #[test]
