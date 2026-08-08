@@ -1,6 +1,11 @@
-# StackFerry v0.1.16
+# StackFerry v0.1.17
 
 ## 简体中文
+
+### MCP 与发布稳定性
+
+- 修复 Pi MCP 投影失败后数据库启用状态未恢复的问题。
+- 发布工作流现在要求完整 CI 全部成功后才开始构建和发布。
 
 ### MCP 与 Skills 管理
 
@@ -26,6 +31,11 @@
 - 测试专用的单条插入 helper 不再进入生产构建，避免无用代码警告。
 
 ## English
+
+### MCP and Release Stability
+
+- Fixed the database enabled state not being restored after a failed Pi MCP projection.
+- Release builds now start only after the complete CI workflow succeeds.
 
 ### MCP and Skills Management
 
