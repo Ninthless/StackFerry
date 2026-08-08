@@ -439,7 +439,14 @@
           "info": "General operation info (default)",
           "debug": "Detailed info including SSE stream and request/response",
           "trace": "All logs, most verbose"
-        }
+        },
+        "files": "Log Files",
+        "openFolder": "Open Folder",
+        "export": "Export Diagnostics",
+        "exportSuccess": "Diagnostics exported to: {{path}}",
+        "fileCount": "{{count}} files",
+        "noLogFiles": "No log directory",
+        "emptyPreview": "No application log content"
       }
     },
     "language": "Language",
@@ -1609,6 +1616,37 @@
     "displayNamePlaceholder": "e.g., Claude 3.5 Sonnet",
     "appType": "App Type",
     "statusCode": "Status Code",
+    "exportLogs": "Export Logs",
+    "exportLogsSuccess": "Request logs exported to: {{path}}",
+    "allFailureKinds": "All failure types",
+    "diagnosticOrigin": "Diagnostic Origin",
+    "diagnosticOriginHint": "Inferred from status, proxy error classification, and route trace. Confirm with the upstream response and application logs.",
+    "diagnosticOrigins": {
+      "upstream": "Upstream service",
+      "client_or_configuration": "Client or configuration",
+      "stackferry": "StackFerry processing",
+      "routing_or_provider_availability": "Routing or provider availability",
+      "undetermined": "Undetermined",
+      "none": "No failure"
+    },
+    "failureKinds": {
+      "upstream_capacity": "Upstream capacity unavailable",
+      "upstream_rate_limit": "Upstream rate limited",
+      "upstream_server_error": "Upstream server error",
+      "upstream_rejected": "Upstream rejected request",
+      "response_header_timeout": "Upstream response header timeout",
+      "first_chunk_timeout": "Upstream first chunk timeout",
+      "semantic_output_timeout": "Semantic output timeout",
+      "upstream_timeout": "Upstream request timeout",
+      "stream_idle_timeout": "Upstream stream idle timeout",
+      "connection_failure": "Upstream connection failure",
+      "authentication": "Authentication failure",
+      "configuration": "Configuration error",
+      "invalid_request": "Invalid request",
+      "response_transform": "Response transformation failure",
+      "no_available_provider": "No provider available",
+      "proxy_error": "Internal proxy error"
+    },
     "allSources": "All Sources",
     "allModels": "All Models",
     "filterBySource": "Filter by source",

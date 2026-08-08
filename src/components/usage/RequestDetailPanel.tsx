@@ -6,7 +6,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useRequestDetail } from "@/lib/query/usage";
-import { getFreshInputTokens, isUnpricedUsage } from "@/types/usage";
+import {
+  getFreshInputTokens,
+  getDiagnosticOrigin,
+  isUnpricedUsage,
+  type RouteAttempt,
+} from "@/types/usage";
 
 interface RequestDetailPanelProps {
   requestId: string;
@@ -56,6 +61,11 @@ export function RequestDetailPanel({
   const freshInput = getFreshInputTokens(request);
   const isCacheInclusive = request.inputTokens !== freshInput;
   const unpriced = isUnpricedUsage(request);
+  const routeAttempts = parseRouteTrace(request.routeTrace);
+  const diagnosticOrigin = getDiagnosticOrigin(
+    request.failureKind,
+    request.statusCode,
+  );
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -65,6 +75,37 @@ export function RequestDetailPanel({
         </DialogHeader>
 
         <div className="space-y-4">
+          {(request.failureKind || request.statusCode >= 400) && (
+            <div className="rounded-md border border-border bg-muted/40 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs text-muted-foreground">
+                    {t("usage.diagnosticOrigin", "诊断归属")}
+                  </div>
+                  <div className="font-medium">
+                    {t(
+                      `usage.diagnosticOrigins.${diagnosticOrigin}`,
+                      diagnosticOrigin,
+                    )}
+                  </div>
+                </div>
+                {request.failureKind && (
+                  <div className="font-mono text-xs">
+                    {t(`usage.failureKinds.${request.failureKind}`, {
+                      defaultValue: request.failureKind,
+                    })}
+                  </div>
+                )}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {t(
+                  "usage.diagnosticOriginHint",
+                  "根据状态码、代理错误分类和路由轨迹判断；请结合上游响应与应用日志确认。",
+                )}
+              </p>
+            </div>
+          )}
+
           {/* 基本信息 */}
           <div className="rounded-lg border p-4">
             <h3 className="mb-3 font-semibold">
@@ -177,6 +218,51 @@ export function RequestDetailPanel({
             </dl>
           </div>
 
+          {routeAttempts.length > 0 && (
+            <div className="rounded-lg border p-4">
+              <h3 className="mb-3 font-semibold">
+                {t("usage.routeTrace", "路由诊断")}
+              </h3>
+              <div className="space-y-2">
+                {routeAttempts.map((attempt) => (
+                  <div
+                    key={`${attempt.attempt}-${attempt.providerId}`}
+                    className="grid gap-2 rounded-md border px-3 py-2 text-sm sm:grid-cols-[48px_minmax(0,1fr)_90px_80px]"
+                  >
+                    <span className="font-mono text-muted-foreground">
+                      #{attempt.attempt}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">
+                        {attempt.providerName}
+                      </div>
+                      <div className="truncate font-mono text-xs text-muted-foreground">
+                        {(attempt.failureKind &&
+                          t(`usage.failureKinds.${attempt.failureKind}`, {
+                            defaultValue: attempt.failureKind,
+                          })) ||
+                          (attempt.outcome === "response_received"
+                            ? t("usage.responseReceived", "已收到上游响应")
+                            : t("usage.requestFailed", "请求失败"))}
+                      </div>
+                      {attempt.message && (
+                        <div className="mt-1 break-words text-xs text-muted-foreground">
+                          {attempt.message}
+                        </div>
+                      )}
+                    </div>
+                    <span className="font-mono text-xs">
+                      +{(attempt.startedMs / 1000).toFixed(1)}s
+                    </span>
+                    <span className="font-mono text-xs">
+                      {(attempt.durationMs / 1000).toFixed(1)}s
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Token 使用量 */}
           <div className="rounded-lg border p-4">
             <h3 className="mb-3 font-semibold">
@@ -245,6 +331,22 @@ export function RequestDetailPanel({
                   {(freshInput + request.outputTokens).toLocaleString()}
                 </dd>
               </div>
+              {request.firstTokenMs != null && (
+                <div>
+                  <dt className="text-muted-foreground">
+                    {t("usage.firstToken", "首个有效输出")}
+                  </dt>
+                  <dd className="font-mono">{request.firstTokenMs}ms</dd>
+                </div>
+              )}
+              {request.failureKind && (
+                <div className="col-span-2">
+                  <dt className="text-muted-foreground">
+                    {t("usage.failureKind", "失败类型")}
+                  </dt>
+                  <dd className="font-mono text-xs">{request.failureKind}</dd>
+                </div>
+              )}
             </dl>
           </div>
 
@@ -361,4 +463,14 @@ export function RequestDetailPanel({
       </DialogContent>
     </Dialog>
   );
+}
+
+function parseRouteTrace(value?: string): RouteAttempt[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? (parsed as RouteAttempt[]) : [];
+  } catch {
+    return [];
+  }
 }

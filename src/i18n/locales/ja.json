@@ -439,7 +439,14 @@
           "info": "一般的な操作情報（デフォルト）",
           "debug": "SSE ストリームとリクエスト/レスポンスを含む詳細情報",
           "trace": "すべてのログ、最も詳細"
-        }
+        },
+        "files": "ログファイル",
+        "openFolder": "フォルダーを開く",
+        "export": "診断パッケージをエクスポート",
+        "exportSuccess": "診断パッケージをエクスポートしました：{{path}}",
+        "fileCount": "{{count}} ファイル",
+        "noLogFiles": "ログディレクトリがありません",
+        "emptyPreview": "アプリログはありません"
       }
     },
     "language": "言語",
@@ -1609,6 +1616,37 @@
     "displayNamePlaceholder": "例: Claude 3.5 Sonnet",
     "appType": "アプリ種別",
     "statusCode": "ステータスコード",
+    "exportLogs": "ログをエクスポート",
+    "exportLogsSuccess": "リクエストログをエクスポートしました：{{path}}",
+    "allFailureKinds": "すべての障害タイプ",
+    "diagnosticOrigin": "診断元",
+    "diagnosticOriginHint": "ステータス、プロキシエラー分類、ルート履歴から推定しています。上流レスポンスとアプリログも確認してください。",
+    "diagnosticOrigins": {
+      "upstream": "上流サービス",
+      "client_or_configuration": "クライアントまたは設定",
+      "stackferry": "StackFerry の処理",
+      "routing_or_provider_availability": "ルーティングまたはプロバイダー可用性",
+      "undetermined": "判定不能",
+      "none": "障害なし"
+    },
+    "failureKinds": {
+      "upstream_capacity": "上流の容量不足",
+      "upstream_rate_limit": "上流のレート制限",
+      "upstream_server_error": "上流サーバーエラー",
+      "upstream_rejected": "上流がリクエストを拒否",
+      "response_header_timeout": "上流レスポンスヘッダーのタイムアウト",
+      "first_chunk_timeout": "上流の最初のデータ待機タイムアウト",
+      "semantic_output_timeout": "有効な出力の待機タイムアウト",
+      "upstream_timeout": "上流リクエストのタイムアウト",
+      "stream_idle_timeout": "上流ストリームのアイドルタイムアウト",
+      "connection_failure": "上流への接続失敗",
+      "authentication": "認証失敗",
+      "configuration": "設定エラー",
+      "invalid_request": "不正なリクエスト",
+      "response_transform": "レスポンス変換失敗",
+      "no_available_provider": "利用可能なプロバイダーなし",
+      "proxy_error": "プロキシ内部エラー"
+    },
     "allSources": "すべてのソース",
     "allModels": "すべてのモデル",
     "filterBySource": "ソースで絞り込む",

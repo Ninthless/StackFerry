@@ -439,7 +439,14 @@
           "info": "一般操作資訊（預設）",
           "debug": "詳細資訊，包含 SSE 串流與請求/回應詳情",
           "trace": "全部日誌，最詳細"
-        }
+        },
+        "files": "日誌檔案",
+        "openFolder": "開啟目錄",
+        "export": "匯出診斷包",
+        "exportSuccess": "診斷包已匯出至：{{path}}",
+        "fileCount": "{{count}} 個檔案",
+        "noLogFiles": "暫無日誌目錄",
+        "emptyPreview": "暫無應用程式日誌內容"
       }
     },
     "language": "介面語言",
@@ -1580,6 +1587,37 @@
     "displayNamePlaceholder": "例如: Claude 3.5 Sonnet",
     "appType": "應用程式類型",
     "statusCode": "狀態碼",
+    "exportLogs": "匯出日誌",
+    "exportLogsSuccess": "請求日誌已匯出至：{{path}}",
+    "allFailureKinds": "全部失敗類型",
+    "diagnosticOrigin": "診斷歸屬",
+    "diagnosticOriginHint": "根據狀態碼、代理錯誤分類和路由軌跡判斷；請結合上游回應與應用程式日誌確認。",
+    "diagnosticOrigins": {
+      "upstream": "上游服務",
+      "client_or_configuration": "客戶端或設定",
+      "stackferry": "StackFerry 處理",
+      "routing_or_provider_availability": "路由或供應商可用性",
+      "undetermined": "暫時無法確定",
+      "none": "無故障"
+    },
+    "failureKinds": {
+      "upstream_capacity": "上游容量不足",
+      "upstream_rate_limit": "上游限流",
+      "upstream_server_error": "上游服務錯誤",
+      "upstream_rejected": "上游拒絕請求",
+      "response_header_timeout": "等待上游回應標頭逾時",
+      "first_chunk_timeout": "等待上游首個資料塊逾時",
+      "semantic_output_timeout": "等待有效輸出逾時",
+      "upstream_timeout": "上游請求逾時",
+      "stream_idle_timeout": "上游串流閒置逾時",
+      "connection_failure": "上游連線失敗",
+      "authentication": "驗證失敗",
+      "configuration": "設定錯誤",
+      "invalid_request": "請求參數錯誤",
+      "response_transform": "回應轉換失敗",
+      "no_available_provider": "無可用供應商",
+      "proxy_error": "代理內部錯誤"
+    },
     "allSources": "全部來源",
     "allModels": "全部模型",
     "filterBySource": "依來源篩選",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
@@ -11,6 +11,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { settingsApi, type LogConfig } from "@/lib/api/settings";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Download,
+  FolderOpen,
+  RefreshCw,
+  FileText,
+  Loader2,
+} from "lucide-react";
+import type { ApplicationLogInfo } from "@/lib/api/settings";
 
 const LOG_LEVELS = ["error", "warn", "info", "debug", "trace"] as const;
 
@@ -21,6 +31,20 @@ export function LogConfigPanel() {
     level: "info",
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [logInfo, setLogInfo] = useState<ApplicationLogInfo | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const loadLogInfo = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      setLogInfo(await settingsApi.getApplicationLogInfo());
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     settingsApi
@@ -28,7 +52,8 @@ export function LogConfigPanel() {
       .then(setConfig)
       .catch((e) => console.error("Failed to load log config:", e))
       .finally(() => setIsLoading(false));
-  }, []);
+    void loadLogInfo();
+  }, [loadLogInfo]);
 
   const handleChange = async (updates: Partial<LogConfig>) => {
     const newConfig = { ...config, ...updates };
@@ -43,6 +68,26 @@ export function LogConfigPanel() {
   };
 
   if (isLoading) return null;
+
+  const formatBytes = (value: number) => {
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  };
+
+  const exportLogs = async () => {
+    setIsExporting(true);
+    try {
+      const path = await settingsApi.exportApplicationLogs();
+      if (path) {
+        toast.success(t("settings.advanced.logConfig.exportSuccess", { path }));
+      }
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -112,6 +157,74 @@ export function LogConfigPanel() {
             {t("settings.advanced.logConfig.levelDesc.trace")}
           </p>
         </div>
+      </div>
+
+      <div className="space-y-3 border-t border-border pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <Label>{t("settings.advanced.logConfig.files")}</Label>
+            <p
+              className="truncate text-xs text-muted-foreground"
+              title={logInfo?.directory}
+            >
+              {logInfo?.directory ||
+                t("settings.advanced.logConfig.noLogFiles")}
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void loadLogInfo()}
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {t("common.refresh")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void settingsApi.openApplicationLogFolder()}
+            >
+              <FolderOpen className="h-4 w-4" />
+              {t("settings.advanced.logConfig.openFolder")}
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void exportLogs()}
+              disabled={isExporting || !logInfo?.files.length}
+            >
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {t("settings.advanced.logConfig.export")}
+            </Button>
+          </div>
+        </div>
+
+        {logInfo && (
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <FileText className="h-3.5 w-3.5" />
+              {t("settings.advanced.logConfig.fileCount", {
+                count: logInfo.files.length,
+              })}
+            </span>
+            <span>{formatBytes(logInfo.totalSize)}</span>
+          </div>
+        )}
+
+        <ScrollArea className="h-56 rounded-md border border-border bg-background">
+          <pre className="min-w-full whitespace-pre-wrap break-words p-3 font-mono text-[11px] leading-5 text-muted-foreground">
+            {logInfo?.preview || t("settings.advanced.logConfig.emptyPreview")}
+          </pre>
+        </ScrollArea>
       </div>
     </div>
   );

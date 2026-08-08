@@ -38,8 +38,70 @@ export interface RequestLog {
   errorMessage?: string;
   upstreamResponseId?: string;
   stopReason?: string;
+  failureKind?: string;
+  routeTrace?: string;
   createdAt: number;
   dataSource?: string;
+}
+
+export interface RouteAttempt {
+  providerId: string;
+  providerName: string;
+  attempt: number;
+  startedMs: number;
+  durationMs: number;
+  outcome: "response_received" | "failed";
+  statusCode?: number;
+  failureKind?: string;
+  message?: string;
+}
+
+export type DiagnosticOrigin =
+  | "upstream"
+  | "client_or_configuration"
+  | "stackferry"
+  | "routing_or_provider_availability"
+  | "undetermined"
+  | "none";
+
+export function getDiagnosticOrigin(
+  failureKind: string | undefined,
+  statusCode: number,
+): DiagnosticOrigin {
+  if (
+    [
+      "upstream_capacity",
+      "upstream_rate_limit",
+      "upstream_server_error",
+      "response_header_timeout",
+      "first_chunk_timeout",
+      "semantic_output_timeout",
+      "upstream_timeout",
+      "stream_idle_timeout",
+      "connection_failure",
+    ].includes(failureKind ?? "")
+  ) {
+    return "upstream";
+  }
+  if (
+    ["authentication", "configuration", "invalid_request"].includes(
+      failureKind ?? "",
+    )
+  ) {
+    return "client_or_configuration";
+  }
+  if (["response_transform", "proxy_error"].includes(failureKind ?? "")) {
+    return "stackferry";
+  }
+  if (failureKind === "no_available_provider") {
+    return "routing_or_provider_availability";
+  }
+  if (failureKind) return "undetermined";
+  if (statusCode >= 400 && statusCode < 500) {
+    return "client_or_configuration";
+  }
+  if (statusCode >= 500) return "undetermined";
+  return "none";
 }
 
 export interface SessionSyncResult {
@@ -140,8 +202,19 @@ export interface LogFilters {
   providerName?: string;
   model?: string;
   statusCode?: number;
+  failureKind?: string;
   startDate?: number;
   endDate?: number;
+}
+
+export interface RequestLogFacet {
+  value: string;
+  count: number;
+}
+
+export interface RequestLogFacets {
+  statusCodes: RequestLogFacet[];
+  failureKinds: RequestLogFacet[];
 }
 
 /**

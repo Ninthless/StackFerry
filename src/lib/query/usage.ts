@@ -33,6 +33,7 @@ type RequestLogsKey = {
   providerName?: string;
   model?: string;
   statusCode?: number;
+  failureKind?: string;
 };
 
 // Query keys
@@ -139,8 +140,24 @@ export const usageKeys = {
       key.providerName ?? "",
       key.model ?? "",
       key.statusCode ?? -1,
+      key.failureKind ?? "",
       page,
       pageSize,
+    ] as const,
+  logFacets: (
+    range: UsageRangeSelection,
+    filters: Pick<LogFilters, "appType" | "providerName" | "model">,
+  ) =>
+    [
+      ...usageKeys.all,
+      "log-facets",
+      range.preset,
+      range.customStartDate ?? 0,
+      range.customEndDate ?? 0,
+      range.liveEndTime ?? false,
+      filters.appType ?? "",
+      filters.providerName ?? "",
+      filters.model ?? "",
     ] as const,
   detail: (requestId: string) =>
     [...usageKeys.all, "detail", requestId] as const,
@@ -324,6 +341,7 @@ export function useRequestLogs({
     providerName: filters.providerName,
     model: filters.model,
     statusCode: filters.statusCode,
+    failureKind: filters.failureKind,
   };
 
   return useQuery({
@@ -333,6 +351,23 @@ export function useRequestLogs({
       return usageApi.getRequestLogs(effectiveFilters, page, pageSize);
     },
     refetchInterval: options?.refetchInterval ?? DEFAULT_REFETCH_INTERVAL_MS, // 每30秒自动刷新
+    refetchIntervalInBackground: options?.refetchIntervalInBackground ?? false,
+  });
+}
+
+export function useRequestLogFacets(
+  range: UsageRangeSelection,
+  filters: Pick<LogFilters, "appType" | "providerName" | "model">,
+  options?: UsageQueryOptions,
+) {
+  return useQuery({
+    queryKey: usageKeys.logFacets(range, filters),
+    queryFn: () =>
+      usageApi.getRequestLogFacets({
+        ...filters,
+        ...resolveUsageRange(range),
+      }),
+    refetchInterval: options?.refetchInterval ?? DEFAULT_REFETCH_INTERVAL_MS,
     refetchIntervalInBackground: options?.refetchIntervalInBackground ?? false,
   });
 }

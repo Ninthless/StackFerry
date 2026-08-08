@@ -439,7 +439,14 @@
           "info": "一般操作信息（默认）",
           "debug": "详细信息，包含 SSE 流和请求/响应详情",
           "trace": "全部日志，最详细"
-        }
+        },
+        "files": "日志文件",
+        "openFolder": "打开目录",
+        "export": "导出诊断包",
+        "exportSuccess": "诊断包已导出到：{{path}}",
+        "fileCount": "{{count}} 个文件",
+        "noLogFiles": "暂无日志目录",
+        "emptyPreview": "暂无应用日志内容"
       }
     },
     "language": "界面语言",
@@ -1609,6 +1616,37 @@
     "displayNamePlaceholder": "例如: Claude 3.5 Sonnet",
     "appType": "应用类型",
     "statusCode": "状态码",
+    "exportLogs": "导出日志",
+    "exportLogsSuccess": "请求日志已导出到：{{path}}",
+    "allFailureKinds": "全部失败类型",
+    "diagnosticOrigin": "诊断归属",
+    "diagnosticOriginHint": "根据状态码、代理错误分类和路由轨迹判断；请结合上游响应与应用日志确认。",
+    "diagnosticOrigins": {
+      "upstream": "上游服务",
+      "client_or_configuration": "客户端或配置",
+      "stackferry": "StackFerry 处理",
+      "routing_or_provider_availability": "路由或供应商可用性",
+      "undetermined": "暂时无法确定",
+      "none": "无故障"
+    },
+    "failureKinds": {
+      "upstream_capacity": "上游容量不足",
+      "upstream_rate_limit": "上游限流",
+      "upstream_server_error": "上游服务错误",
+      "upstream_rejected": "上游拒绝请求",
+      "response_header_timeout": "等待上游响应头超时",
+      "first_chunk_timeout": "等待上游首个数据块超时",
+      "semantic_output_timeout": "等待有效输出超时",
+      "upstream_timeout": "上游请求超时",
+      "stream_idle_timeout": "上游流空闲超时",
+      "connection_failure": "上游连接失败",
+      "authentication": "鉴权失败",
+      "configuration": "配置错误",
+      "invalid_request": "请求参数错误",
+      "response_transform": "响应转换失败",
+      "no_available_provider": "无可用供应商",
+      "proxy_error": "代理内部错误"
+    },
     "allSources": "全部来源",
     "allModels": "全部模型",
     "filterBySource": "按来源筛选",

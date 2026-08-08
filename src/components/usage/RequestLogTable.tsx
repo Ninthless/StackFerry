@@ -17,15 +17,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useRequestLogs } from "@/lib/query/usage";
+import { useRequestLogFacets, useRequestLogs } from "@/lib/query/usage";
+import { usageApi } from "@/lib/api/usage";
 import {
   getFreshInputTokens,
   isUnpricedUsage,
   type LogFilters,
   type UsageRangeSelection,
 } from "@/types/usage";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { resolveUsageRange } from "@/lib/usageRange";
 import { UsageDateRangePicker } from "./UsageDateRangePicker";
+import { RequestDetailPanel } from "./RequestDetailPanel";
 import {
   fmtInt,
   fmtUsd,
@@ -57,8 +61,13 @@ export function RequestLogTable({
   // 应用/Provider/模型筛选已上移到 Dashboard 顶栏（全局生效）；
   // 这里只保留日志特有的状态码筛选。
   const [statusCode, setStatusCode] = useState<number | undefined>(undefined);
+  const [failureKind, setFailureKind] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(0);
   const [pageInput, setPageInput] = useState("");
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(
+    null,
+  );
+  const [isExporting, setIsExporting] = useState(false);
   const pageSize = 20;
 
   const effectiveFilters: LogFilters = {
@@ -69,7 +78,17 @@ export function RequestLogTable({
     providerName,
     model,
     statusCode,
+    failureKind,
   };
+
+  const facetFilters = {
+    appType: effectiveFilters.appType,
+    providerName,
+    model,
+  };
+  const { data: facets } = useRequestLogFacets(range, facetFilters, {
+    refetchInterval: refreshIntervalMs > 0 ? refreshIntervalMs : false,
+  });
 
   const { data: result, isLoading } = useRequestLogs({
     filters: effectiveFilters,
@@ -108,6 +127,25 @@ export function RequestLogTable({
   const language = i18n.resolvedLanguage || i18n.language || "en";
   const locale = getLocaleFromLanguage(language);
 
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const resolvedRange = resolveUsageRange(range);
+      const path = await usageApi.exportRequestLogs({
+        ...effectiveFilters,
+        startDate: resolvedRange.startDate,
+        endDate: resolvedRange.endDate,
+      });
+      if (path) {
+        toast.success(t("usage.exportLogsSuccess", { path }));
+      }
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-border bg-card p-2">
@@ -128,11 +166,35 @@ export function RequestLogTable({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t("common.all")}</SelectItem>
-              <SelectItem value="200">200 OK</SelectItem>
-              <SelectItem value="400">400</SelectItem>
-              <SelectItem value="401">401</SelectItem>
-              <SelectItem value="429">429</SelectItem>
-              <SelectItem value="500">500</SelectItem>
+              {(facets?.statusCodes ?? []).map((facet) => (
+                <SelectItem key={facet.value} value={facet.value}>
+                  {facet.value}
+                  {facet.value === "200" ? " OK" : ""} ({facet.count})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={failureKind || "all"}
+            onValueChange={(value) => {
+              setFailureKind(value === "all" ? undefined : value);
+              setPage(0);
+            }}
+          >
+            <SelectTrigger className="h-8 w-[190px] bg-background text-xs">
+              <SelectValue placeholder={t("usage.failureKind")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("usage.allFailureKinds")}</SelectItem>
+              {(facets?.failureKinds ?? []).map((facet) => (
+                <SelectItem key={facet.value} value={facet.value}>
+                  {t(`usage.failureKinds.${facet.value}`, {
+                    defaultValue: facet.value,
+                  })}{" "}
+                  ({facet.count})
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
@@ -143,6 +205,20 @@ export function RequestLogTable({
               onApply={onRangeChange}
             />
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto h-8"
+            onClick={() => void handleExport()}
+            disabled={isExporting || total === 0}
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            {t("usage.exportLogs")}
+          </Button>
         </div>
       </div>
 
@@ -197,7 +273,11 @@ export function RequestLogTable({
                   logs.map((log) => {
                     const unpriced = isUnpricedUsage(log);
                     return (
-                      <TableRow key={log.requestId}>
+                      <TableRow
+                        key={log.requestId}
+                        className="cursor-pointer"
+                        onClick={() => setSelectedRequestId(log.requestId)}
+                      >
                         <TableCell className="text-center whitespace-nowrap text-xs px-1.5">
                           {new Date(log.createdAt * 1000).toLocaleString(
                             locale,
@@ -308,6 +388,16 @@ export function RequestLogTable({
                           >
                             {log.statusCode}
                           </span>
+                          {log.failureKind && (
+                            <div
+                              className="mt-0.5 max-w-[150px] truncate font-mono text-[10px] text-muted-foreground"
+                              title={log.failureKind}
+                            >
+                              {t(`usage.failureKinds.${log.failureKind}`, {
+                                defaultValue: log.failureKind,
+                              })}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-center text-xs text-muted-foreground">
                           {log.dataSource || "proxy"}
@@ -398,6 +488,12 @@ export function RequestLogTable({
             </div>
           </div>
         </>
+      )}
+      {selectedRequestId && (
+        <RequestDetailPanel
+          requestId={selectedRequestId}
+          onClose={() => setSelectedRequestId(null)}
+        />
       )}
     </div>
   );

@@ -26,6 +26,17 @@ export interface CodexUnifyHistoryRestoreResult {
   skippedReason?: string;
 }
 
+export interface ApplicationLogInfo {
+  directory: string;
+  files: Array<{
+    name: string;
+    size: number;
+    modifiedAt?: number;
+  }>;
+  totalSize: number;
+  preview: string;
+}
+
 export interface WebDavSyncResult {
   status: string;
 }
@@ -122,6 +133,18 @@ export const settingsApi = {
 
   async openFileDialog(): Promise<string | null> {
     return await invoke("open_file_dialog");
+  },
+
+  async getApplicationLogInfo(): Promise<ApplicationLogInfo> {
+    return await invoke("get_application_log_info");
+  },
+
+  async openApplicationLogFolder(): Promise<void> {
+    await invoke("open_application_log_folder");
+  },
+
+  async exportApplicationLogs(): Promise<string | null> {
+    return await invoke("export_application_logs");
   },
 
   async exportConfigToFile(filePath: string): Promise<ConfigTransferResult> {
