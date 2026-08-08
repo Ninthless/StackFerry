@@ -1,59 +1,29 @@
-# StackFerry v0.1.13
+# StackFerry v0.1.14
 
 ## 简体中文
 
-### 请求详情稳定性
+### Responses 错误处理
 
-- 请求列表打开详情时保留已加载的日志快照，后台同步或重建会话用量后仍能查看刚点击的记录。
-- 详情查询找不到实时记录时回退到列表快照，避免正常点击后显示“请求未找到”。
-- 加载、未找到和正常详情状态均提供可用的关闭按钮，Escape 也可以关闭详情。
+- Responses API 通过成功 HTTP 状态返回失败或取消结果时，StackFerry 现在按上游错误处理，不再错误映射为 422 请求格式错误。
+- 上游限流错误返回 429，其他上游生成失败返回 502，并保留原始错误信息，便于容量重试和故障诊断。
+- 真正的本地响应转换错误仍返回 422，避免隐藏 StackFerry 自身的格式处理问题。
 
-### 故障转移与请求诊断
+### 请求日志筛选
 
-### 托盘交互
-
-- 左键单击托盘图标不再弹出菜单。
-- 左键双击托盘图标直接打开并聚焦主界面。
-- 右键单击托盘图标打开托盘菜单。
-
-- Codex 和 Grok Build 遇到上游容量错误时，多供应商路由会立即切换到下一个供应商；仅配置单个供应商时才执行有限的同供应商重试。
-- 每个请求会记录供应商尝试顺序、开始时间、耗时、状态码、失败类型与错误信息，便于区分上游故障、客户端或配置问题、StackFerry 处理错误及路由可用性问题。
-- 请求详情新增路由诊断时间线、首个有效输出耗时和诊断归属。
-
-### 日志筛选与导出
-
-- 请求日志筛选项现在根据所选时间范围内的真实数据生成，并显示状态码与失败类型数量。
-- 失败类型筛选会检查完整路由轨迹，因此故障转移后成功的请求仍可按之前发生的上游错误检索。
-- 请求日志可按当前筛选条件导出详细 CSV，包括模型、延迟、Token、成本、诊断归属、错误信息和完整路由轨迹。
-- 高级设置中的应用诊断日志新增日志预览、目录快捷入口，以及包含轮转日志、崩溃日志和环境清单的 ZIP 诊断包导出。
-
-> 诊断归属基于结构化错误、状态码和路由轨迹推断。对于缺少结构化证据的旧日志，StackFerry 会保守地标记为暂时无法确定。
+- 失败类型筛选现在只匹配请求最终记录的失败类型。
+- 最终状态为 200 的故障转移成功请求不会再被计入失败类型筛选结果。
+- 路由轨迹仍保留在请求详情和导出日志中，用于查看请求过程中的历史供应商尝试。
 
 ## English
 
-### Request Detail Stability
+### Responses Error Handling
 
-- Request details retain the selected log snapshot, so records remain viewable while background session synchronization or rebuilding replaces database rows.
-- When the live detail query no longer finds the record, the panel falls back to the selected row instead of showing a false “request not found” result.
-- Loading, empty, and normal detail states all provide a working close button, and Escape closes the panel.
+- Responses failures or cancellations returned inside a successful HTTP response are now treated as upstream errors instead of being misreported as 422 request-format errors.
+- Upstream rate-limit errors return 429, while other upstream generation failures return 502 with the original error message preserved for retry and diagnosis.
+- Genuine local response transformation errors remain 422 so StackFerry processing problems are still distinguishable.
 
-### Tray Interaction
+### Request Log Filtering
 
-- A left click on the tray icon no longer opens the menu.
-- A left double-click opens and focuses the main window.
-- A right click opens the tray menu.
-
-### Failover and Request Diagnostics
-
-- Codex and Grok Build requests now fail over immediately to the next provider on upstream capacity errors when multiple providers are available. Limited same-provider retries are retained for single-provider routes.
-- Each request records provider attempt order, start time, duration, status, failure classification, and error details to distinguish upstream failures, client or configuration issues, StackFerry processing errors, and routing availability problems.
-- Request details now include a route timeline, first meaningful output latency, and diagnostic ownership.
-
-### Log Filtering and Export
-
-- Request log filters are generated from the records in the selected time range and include counts for observed status codes and failure types.
-- Failure filtering inspects the complete route trace, so requests recovered by failover remain searchable by earlier upstream failures.
-- Filtered request logs can be exported as detailed CSV files with model, latency, token, cost, diagnostic ownership, error, and route-trace fields.
-- Application diagnostic logs in Advanced Settings now provide a tail preview, a log-folder shortcut, and ZIP diagnostics containing rotated application logs, crash logs, and an environment manifest.
-
-> Diagnostic ownership is inferred from structured errors, status codes, and route traces. Older records without sufficient evidence are conservatively marked as undetermined.
+- Failure-type filters now match only the final failure classification stored for each request.
+- Requests that finish with HTTP 200 after failover no longer appear in failure-type results.
+- Route traces remain available in request details and exports for inspecting earlier provider attempts.

@@ -1652,16 +1652,8 @@ impl Database {
             params.push(Box::new(status as i64));
         }
         if let Some(ref failure_kind) = filters.failure_kind {
-            conditions.push("(l.failure_kind = ? OR l.route_trace LIKE ? ESCAPE '\\')".to_string());
+            conditions.push("l.failure_kind = ?".to_string());
             params.push(Box::new(failure_kind.clone()));
-            params.push(Box::new(format!(
-                "%\"failureKind\":\"{}\"%",
-                failure_kind
-                    .replace('\\', "\\\\")
-                    .replace('%', "\\%")
-                    .replace('_', "\\_")
-                    .replace('"', "\\\"")
-            )));
         }
         if let Some(start) = filters.start_date {
             conditions.push("l.created_at >= ?".to_string());
@@ -1782,27 +1774,15 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut failure_stmt = conn.prepare(&format!(
-            "SELECT failure_kind, COUNT(*) FROM (
-                SELECT l.request_id, l.failure_kind AS failure_kind
-                FROM proxy_request_logs l
-                LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type
-                {where_clause} AND NULLIF(l.failure_kind, '') IS NOT NULL
-                UNION
-                SELECT l.request_id, json_extract(attempt.value, '$.failureKind') AS failure_kind
-                FROM proxy_request_logs l
-                LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type,
-                     json_each(CASE WHEN json_valid(l.route_trace) THEN l.route_trace ELSE '[]' END) attempt
-                {where_clause}
-                  AND NULLIF(json_extract(attempt.value, '$.failureKind'), '') IS NOT NULL
-             )
+            "SELECT l.failure_kind, COUNT(*)
+             FROM proxy_request_logs l
+             LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type
+             {where_clause} AND NULLIF(l.failure_kind, '') IS NOT NULL
              GROUP BY failure_kind
              ORDER BY COUNT(*) DESC, failure_kind"
         ))?;
-        let mut duplicated_refs = Vec::with_capacity(refs.len() * 2);
-        duplicated_refs.extend(refs.iter().copied());
-        duplicated_refs.extend(refs.iter().copied());
         let failure_kinds = failure_stmt
-            .query_map(duplicated_refs.as_slice(), |row| {
+            .query_map(refs.as_slice(), |row| {
                 Ok(RequestLogFacet {
                     value: row.get(0)?,
                     count: row.get::<_, i64>(1)? as u32,

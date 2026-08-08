@@ -498,23 +498,35 @@ fn responses_error_message(body: &Value, fallback: &str) -> String {
         .to_string()
 }
 
+fn responses_upstream_error(body: &Value, fallback: &str) -> ProxyError {
+    let message = responses_error_message(body, fallback);
+    let status = if message.to_ascii_lowercase().contains("rate_limit")
+        || message.to_ascii_lowercase().contains("too many requests")
+    {
+        429
+    } else {
+        502
+    };
+    ProxyError::UpstreamError {
+        status,
+        body: Some(message),
+    }
+}
+
 fn validate_responses_terminal_status(body: &Value) -> Result<(), ProxyError> {
     let status = body.get("status").and_then(Value::as_str);
     let has_error = body.get("error").is_some_and(|error| !error.is_null());
 
     match status {
-        Some("failed") => Err(ProxyError::TransformError(format!(
-            "Responses upstream failed: {}",
-            responses_error_message(body, "response generation failed")
-        ))),
-        Some("cancelled") => Err(ProxyError::TransformError(format!(
-            "Responses upstream cancelled the response: {}",
-            responses_error_message(body, "response generation was cancelled")
-        ))),
-        _ if has_error => Err(ProxyError::TransformError(format!(
-            "Responses upstream returned an error envelope: {}",
-            responses_error_message(body, "unknown upstream error")
-        ))),
+        Some("failed") => Err(responses_upstream_error(body, "Responses upstream failed")),
+        Some("cancelled") => Err(responses_upstream_error(
+            body,
+            "Responses upstream cancelled the response",
+        )),
+        _ if has_error => Err(responses_upstream_error(
+            body,
+            "Responses upstream returned an error envelope",
+        )),
         _ => Ok(()),
     }
 }
@@ -1700,9 +1712,13 @@ mod tests {
         });
 
         let error = responses_to_anthropic(input).unwrap_err();
-        assert!(
-            matches!(error, ProxyError::TransformError(message) if message.contains("backend exploded"))
-        );
+        assert!(matches!(
+            error,
+            ProxyError::UpstreamError {
+                status: 502,
+                body: Some(message)
+            } if message.contains("backend exploded")
+        ));
     }
 
     #[test]
@@ -1712,9 +1728,13 @@ mod tests {
         });
 
         let error = responses_to_anthropic(input).unwrap_err();
-        assert!(
-            matches!(error, ProxyError::TransformError(message) if message.contains("too many requests"))
-        );
+        assert!(matches!(
+            error,
+            ProxyError::UpstreamError {
+                status: 429,
+                body: Some(message)
+            } if message.contains("too many requests")
+        ));
     }
 
     #[test]
@@ -1726,9 +1746,13 @@ mod tests {
         });
 
         let error = responses_to_anthropic(input).unwrap_err();
-        assert!(
-            matches!(error, ProxyError::TransformError(message) if message.contains("cancelled"))
-        );
+        assert!(matches!(
+            error,
+            ProxyError::UpstreamError {
+                status: 502,
+                body: Some(message)
+            } if message.contains("cancelled")
+        ));
     }
 
     #[test]
