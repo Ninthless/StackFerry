@@ -1050,6 +1050,12 @@ pub fn run() {
                     // 鼠标悬停/点击到托盘图标时，后台异步刷新用量缓存，
                     // 让用户下一次（或快速打开菜单的那一刻）看到较新的数字。
                     // refresh_all_usage_in_tray 内部有 10 秒防抖。
+                    TrayIconEvent::DoubleClick {
+                        button: tauri::tray::MouseButton::Left,
+                        ..
+                    } => {
+                        tray::handle_tray_menu_event(tray.app_handle(), "show_main");
+                    }
                     TrayIconEvent::Enter { .. } | TrayIconEvent::Click { .. } => {
                         let app = tray.app_handle().clone();
                         tauri::async_runtime::spawn(async move {

@@ -1,35 +1,31 @@
-# StackFerry v0.1.9
+# StackFerry v0.1.10
 
 ## 简体中文
 
-### Responses 容量错误恢复
+### 托盘快捷打开
 
-- Codex 和 Grok Build 的 Responses 请求遇到明确的上游容量不足错误时，会在提交输出前对同一供应商执行两次有限退避重试。
-- 重试策略基于 `server_is_overloaded`、`overloaded_error` 等错误语义，与具体模型和供应商无关，因此也适用于后续新增模型。
-- 同一供应商重试耗尽后继续使用现有故障转移队列，避免单次上游容量抖动直接中断请求。
-- 模型或路由级容量不足不再累计到整个供应商的熔断健康度，防止单个模型过载影响同一供应商下的其他健康模型。
+- Windows 用户现在可以左键双击系统托盘图标，直接打开并聚焦 StackFerry 主界面。
+- 如果主窗口已最小化或隐藏，双击会恢复并显示窗口。
+- 如果应用处于轻量模式，双击会退出轻量模式并重建主窗口。
 
 ### 兼容性与回归保护
 
-- 普通未知 `502/503` 仍按真实供应商故障处理，不会被误判为容量错误。
-- 同时覆盖 HTTP 错误响应和输出开始前的 `response.failed` 流式事件；搜索、图片等辅助端点保持原有重放安全策略。
-- 增加协议识别、同供应商恢复、重试耗尽后故障转移和健康状态隔离的回归测试。
+- 双击行为复用现有“打开主界面”托盘命令，窗口恢复、Linux 聚焦修复和 macOS 激活策略保持一致。
+- 原有右键菜单、左键菜单和托盘用量刷新行为保持不变。
 
-> 持续的上游容量不足仍可能导致最终请求失败。本次发布降低短暂容量抖动的影响，并避免模型级故障扩大为整个供应商不可用。
+> Tauri 当前仅在 Windows 上提供托盘双击事件，因此本次快捷操作仅适用于 Windows。
 
 ## English
 
-### Responses Capacity Recovery
+### Tray Double-Click
 
-- Codex and Grok Build Responses requests now retry the same provider twice with bounded backoff when the upstream explicitly reports capacity exhaustion before output is committed.
-- Detection uses error semantics such as `server_is_overloaded` and `overloaded_error`, independent of any specific model or provider, so future models receive the same behavior.
-- Exhausted same-provider retries continue through the existing failover queue instead of failing immediately on a transient capacity event.
-- Model- or route-level capacity exhaustion no longer increments the entire provider's circuit health, preventing one overloaded model from disabling otherwise healthy models on that provider.
+- Windows users can now left-double-click the system tray icon to open and focus the StackFerry main window.
+- A minimized or hidden main window is restored and shown.
+- When lightweight mode is active, double-clicking exits lightweight mode and recreates the main window.
 
 ### Compatibility and Regression Coverage
 
-- Generic unknown `502/503` responses still follow the existing provider-failure path and are not misclassified as capacity errors.
-- Both HTTP error responses and pre-output `response.failed` stream events are covered, while search and image auxiliary endpoints retain their existing replay-safety behavior.
-- Added regression coverage for protocol detection, same-provider recovery, failover after retry exhaustion, and provider-health isolation.
+- The double-click path reuses the existing tray command for opening the main window, preserving window restoration, Linux focus handling, and macOS activation behavior.
+- Existing context-menu, left-click menu, and tray usage-refresh behavior remains unchanged.
 
-> Sustained upstream capacity exhaustion can still produce a final failure. This release reduces the impact of short capacity fluctuations and prevents model-level overload from disabling an entire provider.
+> Tauri currently emits tray double-click events on Windows only, so this shortcut is Windows-specific.
