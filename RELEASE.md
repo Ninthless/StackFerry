@@ -1,29 +1,41 @@
-# StackFerry v0.1.14
+# StackFerry v0.1.15
 
 ## 简体中文
 
-### Responses 错误处理
+### MCP 与 Skills 管理
 
-- Responses API 通过成功 HTTP 状态返回失败或取消结果时，StackFerry 现在按上游错误处理，不再错误映射为 422 请求格式错误。
-- 上游限流错误返回 429，其他上游生成失败返回 502，并保留原始错误信息，便于容量重试和故障诊断。
-- 真正的本地响应转换错误仍返回 422，避免隐藏 StackFerry 自身的格式处理问题。
+- MCP 和 Skills 列表新增本地搜索。
+- 支持按应用批量启用和禁用 MCP、Skills，并正确处理部分启用状态。
 
-### 请求日志筛选
+### Codex 会话用量
 
-- 失败类型筛选现在只匹配请求最终记录的失败类型。
-- 最终状态为 200 的故障转移成功请求不会再被计入失败类型筛选结果。
-- 路由轨迹仍保留在请求详情和导出日志中，用于查看请求过程中的历史供应商尝试。
+- Codex 会话日志按最多 1000 条分批写入 SQLite，复用 prepared statement，提升大量会话导入速度。
+- 批量导入失败时回滚当前批次，文件 cursor 只在全部批次成功后推进，重试不会产生重复记录。
+- Codex 会话请求详情现在正确显示 `responses` API 协议。
+
+### 稳定性与兼容性
+
+- OAuth 配置写入改用 Windows 原子写入，降低配置文件损坏和并发覆盖风险。
+- 数据库备份和恢复改用批处理与事务，提升 Windows 环境下的处理效率和一致性。
+- Codex Responses 工具调用和会话 token 统计兼容性得到增强。
+- 修复应用集成测试在高负载下因默认超时过短导致的级联失败。
 
 ## English
 
-### Responses Error Handling
+### MCP and Skills Management
 
-- Responses failures or cancellations returned inside a successful HTTP response are now treated as upstream errors instead of being misreported as 422 request-format errors.
-- Upstream rate-limit errors return 429, while other upstream generation failures return 502 with the original error message preserved for retry and diagnosis.
-- Genuine local response transformation errors remain 422 so StackFerry processing problems are still distinguishable.
+- Added local search for installed MCP and Skills lists.
+- Added per-application batch enable and disable actions with partial-state handling.
 
-### Request Log Filtering
+### Codex Session Usage
 
-- Failure-type filters now match only the final failure classification stored for each request.
-- Requests that finish with HTTP 200 after failover no longer appear in failure-type results.
-- Route traces remain available in request details and exports for inspecting earlier provider attempts.
+- Codex session logs are imported in batches of up to 1,000 rows with prepared statement reuse for faster large-session imports.
+- Failed batches roll back, the file cursor advances only after all batches succeed, and retries avoid duplicate records.
+- Codex session request details now correctly display the `responses` API protocol.
+
+### Stability and Compatibility
+
+- OAuth configuration writes now use atomic replacement on Windows to reduce corruption and concurrent overwrite risks.
+- Database backup and restore now use batching and transactions for better Windows performance and consistency.
+- Improved Codex Responses tool-call and session token accounting compatibility.
+- Fixed cascading integration-test failures caused by an overly short default timeout under load.
