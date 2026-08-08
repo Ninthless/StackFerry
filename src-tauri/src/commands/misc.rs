@@ -1677,6 +1677,10 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
 
     let path_env = std::env::var_os("PATH");
     extend_from_cli_path_env(&mut search_paths, path_env);
+    #[cfg(not(target_os = "windows"))]
+    if let Some(login_path) = login_shell_path() {
+        extend_from_cli_path_env(&mut search_paths, Some(login_path.into()));
+    }
     search_paths
 }
 
@@ -1858,6 +1862,32 @@ fn infer_install_source(path: &Path) -> &'static str {
 #[cfg(not(target_os = "windows"))]
 fn first_abs_path_line(raw: &str) -> Option<&str> {
     raw.lines().map(str::trim).find(|l| l.starts_with('/'))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn login_shell_path() -> Option<String> {
+    use std::process::Command;
+
+    let shell = std::env::var("SHELL")
+        .ok()
+        .filter(|value| is_valid_shell(value))
+        .unwrap_or_else(|| "sh".to_string());
+    let flag = default_flag_for_shell(&shell);
+    let output = Command::new(shell)
+        .arg(flag)
+        .arg("printf '%s\\n' \"$PATH\"")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    decode_command_output(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .find(|line| line.contains('/'))
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
 }
 
 /// 用与 `try_get_version` 相同的登录 shell 解析 PATH 默认命中的可执行文件路径，
@@ -2365,7 +2395,12 @@ fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) ->
         return anchored_official_update_command(tool, bin_path);
     }
     if tool == "grok" && is_grok_native_install(bin_path, real_target) {
-        return anchored_official_update_command(tool, bin_path);
+        let update = anchored_official_update_command(tool, bin_path)?;
+        return Some(chain_update_commands(
+            update,
+            GROK_INSTALL_UNIX.to_string(),
+            LifecycleCommandShell::Posix,
+        ));
     }
     let package_command = package_manager_anchored_command_from_paths(tool, bin_path, real_target);
     if brew_formula_from_path(real_target).is_some() {
@@ -4532,7 +4567,12 @@ mod tests {
                 "/Users/me/.grok/bin/grok",
                 "/Users/me/.grok/downloads/grok-macos-aarch64",
             );
-            assert_eq!(cmd.as_deref(), Some("/Users/me/.grok/bin/grok update"));
+            assert_eq!(
+                cmd.as_deref(),
+                Some(
+                    "/Users/me/.grok/bin/grok update || bash -c 'tmp=$(mktemp) && curl -fsSL https://x.ai/cli/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'"
+                )
+            );
         }
 
         #[test]
@@ -4542,7 +4582,12 @@ mod tests {
                 "/Users/me/bin/grok",
                 "/Users/me/.grok/downloads/grok-macos-aarch64",
             );
-            assert_eq!(cmd.as_deref(), Some("/Users/me/bin/grok update"));
+            assert_eq!(
+                cmd.as_deref(),
+                Some(
+                    "/Users/me/bin/grok update || bash -c 'tmp=$(mktemp) && curl -fsSL https://x.ai/cli/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'"
+                )
+            );
         }
 
         #[test]

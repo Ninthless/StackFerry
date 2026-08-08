@@ -706,6 +706,7 @@ impl SkillService {
         let dest = ssot_dir.join(&install_name);
 
         let mut repo_branch = skill.repo_branch.clone();
+        let mut resolved_doc_path = None;
 
         // 如果已存在则跳过下载
         if !dest.exists() {
@@ -765,6 +766,8 @@ impl SkillService {
                 )));
             }
 
+            resolved_doc_path = Self::doc_path_for_source(&canonical_temp, &canonical_source);
+
             Self::copy_dir_recursive(&canonical_source, &dest)?;
 
             // 使用实际下载成功的分支，避免 readme_url / repo_branch 与真实分支不一致。
@@ -779,10 +782,13 @@ impl SkillService {
             }
         }
 
-        let doc_path = skill
-            .readme_url
-            .as_deref()
-            .and_then(Self::extract_doc_path_from_url)
+        let doc_path = resolved_doc_path
+            .or_else(|| {
+                skill
+                    .readme_url
+                    .as_deref()
+                    .and_then(Self::extract_doc_path_from_url)
+            })
             .map(|path| {
                 if path.ends_with("/SKILL.md") || path == "SKILL.md" {
                     path
@@ -1151,6 +1157,19 @@ impl SkillService {
                 ))
             })?;
 
+        let current_skill = db
+            .get_installed_skill(&skill.id)?
+            .ok_or_else(|| anyhow!("Skill no longer installed: {}", skill.id))?;
+        if current_skill.directory != skill.directory
+            || current_skill.repo_owner != skill.repo_owner
+            || current_skill.repo_name != skill.repo_name
+            || current_skill.repo_branch != skill.repo_branch
+            || current_skill.installed_at != skill.installed_at
+        {
+            return Err(anyhow!("Skill changed during update: {}", skill.id));
+        }
+        let skill = current_skill;
+
         // 备份旧文件
         let _ = Self::create_uninstall_backup(&skill);
 
@@ -1189,7 +1208,12 @@ impl SkillService {
             updated_at: chrono::Utc::now().timestamp(),
         };
 
-        db.save_skill(&updated_skill)?;
+        if !db.update_skill_metadata(&updated_skill)? {
+            return Err(anyhow!("Skill changed during update: {}", skill.id));
+        }
+        let updated_skill = db
+            .get_installed_skill(&skill.id)?
+            .ok_or_else(|| anyhow!("Skill no longer installed: {}", skill.id))?;
 
         // 同步到所有已启用的应用目录
         for app in updated_skill.apps.enabled_apps() {
@@ -1463,12 +1487,9 @@ impl SkillService {
     /// 禁用：从应用目录删除
     pub fn toggle_app(db: &Arc<Database>, id: &str, app: &AppType, enabled: bool) -> Result<()> {
         // 获取当前 skill
-        let mut skill = db
+        let skill = db
             .get_installed_skill(id)?
             .ok_or_else(|| anyhow!("Skill not found: {id}"))?;
-
-        // 更新状态
-        skill.apps.set_enabled_for(app, enabled);
 
         // 同步文件
         if enabled {
@@ -1477,8 +1498,7 @@ impl SkillService {
             Self::remove_from_app(&skill.directory, app)?;
         }
 
-        // 更新数据库
-        db.update_skill_apps(id, &skill.apps)?;
+        db.update_skill_app_enabled(id, app, enabled)?;
 
         log::info!("Skill {} 的 {:?} 状态已更新为 {}", skill.name, app, enabled);
 
@@ -2472,7 +2492,7 @@ impl SkillService {
     fn resolve_skill_source_dir(root: &Path, raw_directory: &str) -> Option<PathBuf> {
         let source_rel = Self::sanitize_skill_source_path(raw_directory)?;
         let direct = root.join(&source_rel);
-        if direct.is_dir() {
+        if direct.is_dir() && direct.join("SKILL.md").is_file() {
             return Some(direct);
         }
 
@@ -2495,6 +2515,19 @@ impl SkillService {
         }
 
         None
+    }
+
+    fn doc_path_for_source(root: &Path, source: &Path) -> Option<String> {
+        let path = source
+            .strip_prefix(root)
+            .ok()?
+            .to_string_lossy()
+            .replace('\\', "/");
+        Some(if path.is_empty() {
+            "SKILL.md".to_string()
+        } else {
+            format!("{path}/SKILL.md")
+        })
     }
 
     /// 去重技能列表（基于完整 key，不同仓库的同名 skill 分开显示）
@@ -4520,6 +4553,28 @@ mod tests {
             .expect("nested skill should resolve from its relative source path");
 
         assert_eq!(resolved, nested);
+    }
+
+    #[test]
+    fn resolve_skill_source_dir_rejects_direct_directory_without_skill_md() {
+        let temp = tempdir().expect("tempdir");
+        fs::create_dir_all(temp.path().join("skills").join("not-a-skill"))
+            .expect("create direct directory");
+
+        assert!(
+            SkillService::resolve_skill_source_dir(temp.path(), "skills/not-a-skill").is_none()
+        );
+    }
+
+    #[test]
+    fn doc_path_for_source_uses_resolved_nested_path() {
+        let root = Path::new("repo");
+        let source = root.join("skills").join("nested-skill");
+
+        assert_eq!(
+            SkillService::doc_path_for_source(root, &source).as_deref(),
+            Some("skills/nested-skill/SKILL.md")
+        );
     }
 
     #[test]

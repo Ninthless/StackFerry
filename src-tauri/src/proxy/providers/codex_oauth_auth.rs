@@ -20,6 +20,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+#[cfg(unix)]
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -785,26 +786,24 @@ impl CodexOAuthManager {
             fs::create_dir_all(parent)?;
         }
 
-        let parent = self
-            .storage_path
-            .parent()
-            .ok_or_else(|| CodexOAuthError::IoError("无效的存储路径".to_string()))?;
-        let file_name = self
-            .storage_path
-            .file_name()
-            .ok_or_else(|| CodexOAuthError::IoError("无效的存储文件名".to_string()))?
-            .to_string_lossy()
-            .to_string();
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let tmp_path = parent.join(format!("{file_name}.tmp.{ts}"));
-
         #[cfg(unix)]
         {
             use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
+            let parent = self
+                .storage_path
+                .parent()
+                .ok_or_else(|| CodexOAuthError::IoError("无效的存储路径".to_string()))?;
+            let file_name = self
+                .storage_path
+                .file_name()
+                .ok_or_else(|| CodexOAuthError::IoError("无效的存储文件名".to_string()))?
+                .to_string_lossy();
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            let tmp_path = parent.join(format!("{file_name}.tmp.{ts}"));
             let mut file = fs::OpenOptions::new()
                 .create_new(true)
                 .write(true)
@@ -819,17 +818,8 @@ impl CodexOAuthManager {
 
         #[cfg(windows)]
         {
-            let mut file = fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&tmp_path)?;
-            file.write_all(content.as_bytes())?;
-            file.flush()?;
-
-            if self.storage_path.exists() {
-                let _ = fs::remove_file(&self.storage_path);
-            }
-            fs::rename(&tmp_path, &self.storage_path)?;
+            crate::config::atomic_write(&self.storage_path, content.as_bytes())
+                .map_err(|error| CodexOAuthError::IoError(error.to_string()))?;
         }
 
         Ok(())

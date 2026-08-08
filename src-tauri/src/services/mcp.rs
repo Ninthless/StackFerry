@@ -75,17 +75,14 @@ impl McpService {
         app: AppType,
         enabled: bool,
     ) -> Result<(), AppError> {
-        let mut servers = state.db.get_all_mcp_servers()?;
-
-        if let Some(server) = servers.get_mut(server_id) {
-            let previous = server.clone();
-            server.apps.set_enabled_for(&app, enabled);
-            state.db.save_mcp_server(server)?;
-            Self::project_pi_or_restore_database(state, server_id, Some(&previous))?;
-
-            // 同步到对应应用
-            if enabled {
-                Self::sync_server_to_app(state, server, &app)?;
+        if let Some(server) = state
+            .db
+            .update_mcp_server_app_enabled(server_id, &app, enabled)?
+        {
+            if matches!(app, AppType::Pi) {
+                mcp::project_servers_to_pi(&state.db.get_all_mcp_servers()?)?;
+            } else if enabled {
+                Self::sync_server_to_app(state, &server, &app)?;
             } else {
                 Self::remove_server_from_app(state, server_id, &app)?;
             }

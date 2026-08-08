@@ -6,7 +6,7 @@
 //! - Skills 使用统一的 id 主键，支持四应用启用标志
 //! - 实际文件存储在 ~/.stackferry/skills/，同步到各应用目录
 
-use crate::app_config::{InstalledSkill, SkillApps};
+use crate::app_config::{AppType, InstalledSkill, SkillApps};
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
 use crate::services::skill::SkillRepo;
@@ -141,6 +141,39 @@ impl Database {
         Ok(())
     }
 
+    pub fn update_skill_metadata(&self, skill: &InstalledSkill) -> Result<bool, AppError> {
+        let conn = lock_conn!(self.conn);
+        let affected = conn
+            .execute(
+                "UPDATE skills
+                 SET name = ?1,
+                     description = ?2,
+                     directory = ?3,
+                     repo_owner = ?4,
+                     repo_name = ?5,
+                     repo_branch = ?6,
+                     readme_url = ?7,
+                     content_hash = ?8,
+                     updated_at = ?9
+                 WHERE id = ?10 AND installed_at = ?11",
+                params![
+                    skill.name,
+                    skill.description,
+                    skill.directory,
+                    skill.repo_owner,
+                    skill.repo_name,
+                    skill.repo_branch,
+                    skill.readme_url,
+                    skill.content_hash,
+                    skill.updated_at,
+                    skill.id,
+                    skill.installed_at,
+                ],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(affected > 0)
+    }
+
     /// 删除 Skill
     pub fn delete_skill(&self, id: &str) -> Result<bool, AppError> {
         let conn = lock_conn!(self.conn);
@@ -159,13 +192,26 @@ impl Database {
     }
 
     /// 更新 Skill 的应用启用状态
-    pub fn update_skill_apps(&self, id: &str, apps: &SkillApps) -> Result<bool, AppError> {
+    pub fn update_skill_app_enabled(
+        &self,
+        id: &str,
+        app: &AppType,
+        enabled: bool,
+    ) -> Result<bool, AppError> {
         let conn = lock_conn!(self.conn);
+        let column = match app {
+            AppType::Claude => "enabled_claude",
+            AppType::Codex => "enabled_codex",
+            AppType::Gemini => "enabled_gemini",
+            AppType::GrokBuild => "enabled_grokbuild",
+            AppType::OpenCode => "enabled_opencode",
+            AppType::Hermes => "enabled_hermes",
+            AppType::Pi => "enabled_pi",
+            AppType::ClaudeDesktop | AppType::OpenClaw => return Ok(false),
+        };
+        let sql = format!("UPDATE skills SET {column} = ?1 WHERE id = ?2");
         let affected = conn
-            .execute(
-                "UPDATE skills SET enabled_claude = ?1, enabled_codex = ?2, enabled_gemini = ?3, enabled_grokbuild = ?4, enabled_opencode = ?5, enabled_hermes = ?6, enabled_pi = ?7 WHERE id = ?8",
-                params![apps.claude, apps.codex, apps.gemini, apps.grokbuild, apps.opencode, apps.hermes, apps.pi, id],
-            )
+            .execute(&sql, params![enabled, id])
             .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(affected > 0)
     }
@@ -263,5 +309,88 @@ impl Database {
 
         self.set_setting(INITIALIZED_KEY, "true")?;
         Ok(count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn skill(id: &str, name: &str, apps: SkillApps) -> InstalledSkill {
+        InstalledSkill {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: Some(format!("{name} description")),
+            directory: format!("{name}-directory"),
+            repo_owner: Some("owner".to_string()),
+            repo_name: Some("repo".to_string()),
+            repo_branch: Some("main".to_string()),
+            readme_url: Some(format!("https://example.com/{name}")),
+            apps,
+            installed_at: 1,
+            content_hash: Some(format!("{name}-hash")),
+            updated_at: 2,
+        }
+    }
+
+    #[test]
+    fn app_flag_updates_preserve_other_apps() {
+        let db = Database::memory().expect("memory db");
+        let original = skill(
+            "owner/repo:skill",
+            "original",
+            SkillApps::only(&AppType::Gemini),
+        );
+        db.save_skill(&original).expect("seed skill");
+
+        assert!(db
+            .update_skill_app_enabled(&original.id, &AppType::Claude, true)
+            .expect("enable Claude"));
+        assert!(db
+            .update_skill_app_enabled(&original.id, &AppType::Codex, true)
+            .expect("enable Codex"));
+
+        let stored = db
+            .get_installed_skill(&original.id)
+            .expect("query skill")
+            .expect("skill exists");
+        assert!(stored.apps.claude);
+        assert!(stored.apps.codex);
+        assert!(stored.apps.gemini);
+    }
+
+    #[test]
+    fn update_skill_metadata_preserves_apps_and_rejects_stale_generation() {
+        let db = Database::memory().expect("memory db");
+        let apps = SkillApps::only(&AppType::Codex);
+        let original = skill("owner/repo:skill", "original", apps.clone());
+        db.save_skill(&original).expect("seed skill");
+
+        let mut updated = skill(&original.id, "updated", SkillApps::only(&AppType::Claude));
+        updated.updated_at = 42;
+        assert!(db.update_skill_metadata(&updated).expect("update metadata"));
+
+        let stored = db
+            .get_installed_skill(&original.id)
+            .expect("query skill")
+            .expect("skill exists");
+        assert_eq!(stored.name, "updated");
+        assert_eq!(stored.apps, apps);
+
+        let mut reinstalled = stored.clone();
+        reinstalled.name = "reinstalled".to_string();
+        reinstalled.installed_at += 1;
+        db.save_skill(&reinstalled).expect("replace generation");
+
+        assert!(!db
+            .update_skill_metadata(&updated)
+            .expect("reject stale generation"));
+        assert_eq!(
+            db.get_installed_skill(&original.id)
+                .expect("query skill")
+                .expect("skill exists")
+                .name,
+            "reinstalled"
+        );
     }
 }

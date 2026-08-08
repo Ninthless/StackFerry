@@ -555,6 +555,20 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(entries, vec![path.file_name().unwrap().to_os_string()]);
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn replace_temp_file_failure_preserves_existing_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let missing_tmp = dir.path().join("missing.tmp");
+        fs::write(&path, b"old").unwrap();
+
+        let result = replace_temp_file(&missing_tmp, &path);
+
+        assert!(result.is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"old");
+    }
 }
 
 /// 复制文件

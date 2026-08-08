@@ -15,6 +15,8 @@ use tempfile::NamedTempFile;
 
 const STACKFERRY_SQL_EXPORT_HEADER: &str = "-- StackFerry SQLite 导出";
 const LEGACY_CC_SWITCH_SQL_EXPORT_HEADER: &str = "-- CC Switch SQLite 导出";
+const SQL_INSERT_BATCH_MAX_ROWS: usize = 200;
+const SQL_INSERT_BATCH_MAX_BYTES: usize = 1024 * 1024;
 
 /// `dump_sql` 会写出的 PRAGMA。其余 PRAGMA 一律拒绝——`temp_store_directory`
 /// 能把临时文件重定向到任意目录，`writable_schema` 能绕过 schema 完整性检查。
@@ -240,8 +242,12 @@ impl Database {
         target_conn: &Connection,
         tables: &[&str],
     ) -> Result<(), AppError> {
+        let transaction = target_conn
+            .unchecked_transaction()
+            .map_err(|e| AppError::Database(format!("开始恢复事务失败: {e}")))?;
+
         for table in tables {
-            if !Self::table_exists(source_conn, table)? || !Self::table_exists(target_conn, table)?
+            if !Self::table_exists(source_conn, table)? || !Self::table_exists(&transaction, table)?
             {
                 continue;
             }
@@ -251,7 +257,7 @@ impl Database {
                 continue;
             }
 
-            target_conn
+            transaction
                 .execute(&format!("DELETE FROM \"{table}\""), [])
                 .map_err(|e| AppError::Database(format!("清空表 {table} 失败: {e}")))?;
 
@@ -265,6 +271,9 @@ impl Database {
                 .collect::<Vec<_>>()
                 .join(", ");
             let insert_sql = format!("INSERT INTO \"{table}\" ({cols}) VALUES ({placeholders})");
+            let mut insert_stmt = transaction
+                .prepare(&insert_sql)
+                .map_err(|e| AppError::Database(format!("准备恢复表 {table} 失败: {e}")))?;
 
             let mut stmt = source_conn
                 .prepare(&format!("SELECT * FROM \"{table}\""))
@@ -282,13 +291,15 @@ impl Database {
                     );
                 }
 
-                target_conn
-                    .execute(&insert_sql, rusqlite::params_from_iter(values.iter()))
+                insert_stmt
+                    .execute(rusqlite::params_from_iter(values.iter()))
                     .map_err(|e| AppError::Database(format!("恢复表 {table} 数据失败: {e}")))?;
             }
         }
 
-        Ok(())
+        transaction
+            .commit()
+            .map_err(|e| AppError::Database(format!("提交恢复事务失败: {e}")))
     }
 
     /// Periodic backup: create a new backup if the latest one is older than the configured interval
@@ -508,6 +519,14 @@ impl Database {
             let mut rows = stmt
                 .query([])
                 .map_err(|e| AppError::Database(e.to_string()))?;
+            let cols = columns
+                .iter()
+                .map(|c| format!("\"{c}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let insert_prefix = format!("INSERT INTO \"{table}\" ({cols}) VALUES ");
+            let mut batch = Vec::new();
+            let mut batch_bytes = insert_prefix.len() + 2;
 
             while let Some(row) = rows.next().map_err(|e| AppError::Database(e.to_string()))? {
                 let mut values = Vec::with_capacity(columns.len());
@@ -518,15 +537,27 @@ impl Database {
                     values.push(Self::format_sql_value(value)?);
                 }
 
-                let cols = columns
-                    .iter()
-                    .map(|c| format!("\"{c}\""))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                output.push_str(&format!(
-                    "INSERT INTO \"{table}\" ({cols}) VALUES ({});\n",
-                    values.join(", ")
-                ));
+                let values = format!("({})", values.join(", "));
+                let separator_bytes = usize::from(!batch.is_empty()) * 2;
+                if !batch.is_empty()
+                    && (batch.len() >= SQL_INSERT_BATCH_MAX_ROWS
+                        || batch_bytes + separator_bytes + values.len()
+                            > SQL_INSERT_BATCH_MAX_BYTES)
+                {
+                    output.push_str(&insert_prefix);
+                    output.push_str(&batch.join(",\n"));
+                    output.push_str(";\n");
+                    batch.clear();
+                    batch_bytes = insert_prefix.len() + 2;
+                }
+                batch_bytes += usize::from(!batch.is_empty()) * 2 + values.len();
+                batch.push(values);
+            }
+
+            if !batch.is_empty() {
+                output.push_str(&insert_prefix);
+                output.push_str(&batch.join(",\n"));
+                output.push_str(";\n");
             }
         }
 
@@ -754,6 +785,7 @@ mod tests {
     use super::Database;
     use crate::error::AppError;
     use crate::settings::{update_settings, AppSettings};
+    use rusqlite::Connection;
     use serial_test::serial;
 
     #[test]
@@ -819,6 +851,94 @@ mod tests {
             |row| row.get(0),
         )?;
         assert_eq!(name, "Provider One");
+        Ok(())
+    }
+
+    #[test]
+    fn sql_export_batches_multi_row_inserts_and_round_trips() -> Result<(), AppError> {
+        let source = Database::memory()?;
+        {
+            let conn = crate::database::lock_conn!(source.conn);
+            let transaction = conn.unchecked_transaction()?;
+            {
+                let mut stmt = transaction.prepare(
+                    "INSERT INTO providers (id, app_type, name, settings_config, meta)
+                     VALUES (?1, 'claude', ?2, '{}', '{}')",
+                )?;
+                for index in 0..401 {
+                    stmt.execute((format!("provider-{index}"), format!("Provider {index}")))?;
+                }
+            }
+            transaction.commit()?;
+        }
+
+        let exported = source.export_sql_string()?;
+        let provider_inserts = exported
+            .lines()
+            .filter(|line| line.starts_with("INSERT INTO \"providers\""))
+            .count();
+        assert_eq!(provider_inserts, 3);
+        assert!(exported.contains("VALUES ("));
+        assert!(exported.contains(",\n("));
+
+        let target = Database::memory()?;
+        target.import_sql_string(&exported)?;
+
+        let conn = crate::database::lock_conn!(target.conn);
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM providers", [], |row| row.get(0))?;
+        let name: String = conn.query_row(
+            "SELECT name FROM providers WHERE id = 'provider-400'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(count, 401);
+        assert_eq!(name, "Provider 400");
+        Ok(())
+    }
+
+    #[test]
+    fn sql_export_splits_insert_batches_near_one_mebibyte() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute("CREATE TABLE payloads (id INTEGER, body TEXT)", [])?;
+        let body = "x".repeat(600 * 1024);
+        conn.execute("INSERT INTO payloads VALUES (1, ?1)", [&body])?;
+        conn.execute("INSERT INTO payloads VALUES (2, ?1)", [&body])?;
+
+        let exported = Database::dump_sql(&conn, &[])?;
+        let payload_inserts = exported
+            .lines()
+            .filter(|line| line.starts_with("INSERT INTO \"payloads\""))
+            .count();
+        assert_eq!(payload_inserts, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn restore_tables_rolls_back_all_tables_on_failure() -> Result<(), AppError> {
+        let source = Connection::open_in_memory()?;
+        source.execute("CREATE TABLE first_table (value TEXT)", [])?;
+        source.execute("CREATE TABLE second_table (value TEXT)", [])?;
+        source.execute("INSERT INTO first_table VALUES ('source-first')", [])?;
+        source.execute("INSERT INTO second_table VALUES ('source-second')", [])?;
+
+        let target = Connection::open_in_memory()?;
+        target.execute("CREATE TABLE first_table (value TEXT)", [])?;
+        target.execute(
+            "CREATE TABLE second_table (value TEXT CHECK (value = 'target-second'))",
+            [],
+        )?;
+        target.execute("INSERT INTO first_table VALUES ('target-first')", [])?;
+        target.execute("INSERT INTO second_table VALUES ('target-second')", [])?;
+
+        let result = Database::restore_tables(&source, &target, &["first_table", "second_table"]);
+        assert!(result.is_err());
+
+        let first: String =
+            target.query_row("SELECT value FROM first_table", [], |row| row.get(0))?;
+        let second: String =
+            target.query_row("SELECT value FROM second_table", [], |row| row.get(0))?;
+        assert_eq!(first, "target-first");
+        assert_eq!(second, "target-second");
         Ok(())
     }
 

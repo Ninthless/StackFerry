@@ -2,7 +2,7 @@
 //!
 //! 提供 MCP 服务器的 CRUD 操作。
 
-use crate::app_config::{McpApps, McpServer};
+use crate::app_config::{AppType, McpApps, McpServer};
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
 use indexmap::IndexMap;
@@ -70,6 +70,36 @@ impl Database {
         Ok(servers)
     }
 
+    pub fn update_mcp_server_app_enabled(
+        &self,
+        id: &str,
+        app: &AppType,
+        enabled: bool,
+    ) -> Result<Option<McpServer>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let column = match app {
+            AppType::Claude => "enabled_claude",
+            AppType::Codex => "enabled_codex",
+            AppType::Gemini => "enabled_gemini",
+            AppType::GrokBuild => "enabled_grokbuild",
+            AppType::OpenCode => "enabled_opencode",
+            AppType::Hermes => "enabled_hermes",
+            AppType::Pi => "enabled_pi",
+            AppType::ClaudeDesktop | AppType::OpenClaw => return Ok(None),
+        };
+        let sql = format!("UPDATE mcp_servers SET {column} = ?1 WHERE id = ?2");
+        let affected = conn
+            .execute(&sql, params![enabled, id])
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        drop(conn);
+
+        if affected == 0 {
+            return Ok(None);
+        }
+
+        Ok(self.get_all_mcp_servers()?.shift_remove(id))
+    }
+
     /// 保存 MCP 服务器
     pub fn save_mcp_server(&self, server: &McpServer) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
@@ -108,5 +138,61 @@ impl Database {
         conn.execute("DELETE FROM mcp_servers WHERE id = ?1", params![id])
             .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+
+    fn test_server() -> McpServer {
+        McpServer {
+            id: "shared-server".to_string(),
+            name: "Shared Server".to_string(),
+            server: json!({ "command": "echo" }),
+            apps: McpApps {
+                gemini: true,
+                ..McpApps::default()
+            },
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn concurrent_app_flag_updates_do_not_lose_each_other() {
+        let db = Arc::new(Database::memory().expect("create memory db"));
+        db.save_mcp_server(&test_server()).expect("seed server");
+        let barrier = Arc::new(Barrier::new(3));
+
+        let handles = [AppType::Claude, AppType::Codex].map(|app| {
+            let db = Arc::clone(&db);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                db.update_mcp_server_app_enabled("shared-server", &app, true)
+                    .expect("update app flag")
+                    .expect("server exists");
+            })
+        });
+
+        barrier.wait();
+        for handle in handles {
+            handle.join().expect("join app toggle");
+        }
+
+        let stored = db
+            .get_all_mcp_servers()
+            .expect("read servers")
+            .shift_remove("shared-server")
+            .expect("stored server");
+        assert!(stored.apps.claude);
+        assert!(stored.apps.codex);
+        assert!(stored.apps.gemini);
     }
 }
