@@ -1,8 +1,14 @@
-# StackFerry v0.1.11
+# StackFerry v0.1.12
 
 ## 简体中文
 
 ### 故障转移与请求诊断
+
+### 托盘交互
+
+- 左键单击托盘图标不再弹出菜单。
+- 左键双击托盘图标直接打开并聚焦主界面。
+- 右键单击托盘图标打开托盘菜单。
 
 - Codex 和 Grok Build 遇到上游容量错误时，多供应商路由会立即切换到下一个供应商；仅配置单个供应商时才执行有限的同供应商重试。
 - 每个请求会记录供应商尝试顺序、开始时间、耗时、状态码、失败类型与错误信息，便于区分上游故障、客户端或配置问题、StackFerry 处理错误及路由可用性问题。
@@ -18,6 +24,12 @@
 > 诊断归属基于结构化错误、状态码和路由轨迹推断。对于缺少结构化证据的旧日志，StackFerry 会保守地标记为暂时无法确定。
 
 ## English
+
+### Tray Interaction
+
+- A left click on the tray icon no longer opens the menu.
+- A left double-click opens and focuses the main window.
+- A right click opens the tray menu.
 
 ### Failover and Request Diagnostics
 
