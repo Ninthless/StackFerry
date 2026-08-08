@@ -23,6 +23,7 @@ import {
   getFreshInputTokens,
   isUnpricedUsage,
   type LogFilters,
+  type RequestLog,
   type UsageRangeSelection,
 } from "@/types/usage";
 import { ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
@@ -64,7 +65,7 @@ export function RequestLogTable({
   const [failureKind, setFailureKind] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(0);
   const [pageInput, setPageInput] = useState("");
-  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(
+  const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(
     null,
   );
   const [isExporting, setIsExporting] = useState(false);
@@ -276,7 +277,7 @@ export function RequestLogTable({
                       <TableRow
                         key={log.requestId}
                         className="cursor-pointer"
-                        onClick={() => setSelectedRequestId(log.requestId)}
+                        onClick={() => setSelectedRequest(log)}
                       >
                         <TableCell className="text-center whitespace-nowrap text-xs px-1.5">
                           {new Date(log.createdAt * 1000).toLocaleString(
@@ -489,10 +490,11 @@ export function RequestLogTable({
           </div>
         </>
       )}
-      {selectedRequestId && (
+      {selectedRequest && (
         <RequestDetailPanel
-          requestId={selectedRequestId}
-          onClose={() => setSelectedRequestId(null)}
+          requestId={selectedRequest.requestId}
+          fallbackRequest={selectedRequest}
+          onClose={() => setSelectedRequest(null)}
         />
       )}
     </div>
