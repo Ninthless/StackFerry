@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { McpServer, PiMcpAdapterStatus } from "@/types";
 
 const toggleMcpAppMock = vi.hoisted(() => vi.fn());
+const bulkToggleMcpAppMock = vi.hoisted(() => vi.fn());
 
 const hookState = vi.hoisted(() => ({
   status: undefined as PiMcpAdapterStatus | undefined,
@@ -22,6 +23,11 @@ vi.mock("@/hooks/useMcp", () => ({
     error: hookState.queryError,
   }),
   useToggleMcpApp: () => ({ mutateAsync: toggleMcpAppMock }),
+  useBulkToggleMcpApp: () => ({
+    mutateAsync: bulkToggleMcpAppMock,
+    isPending: false,
+    variables: undefined,
+  }),
   useDeleteMcpServer: () => ({ mutateAsync: vi.fn() }),
   useImportMcpFromApps: () => ({ mutateAsync: vi.fn() }),
 }));
@@ -35,6 +41,8 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
     hookState.servers = {};
     toggleMcpAppMock.mockReset();
     toggleMcpAppMock.mockResolvedValue(true);
+    bulkToggleMcpAppMock.mockReset();
+    bulkToggleMcpAppMock.mockResolvedValue({ succeeded: [], failed: [] });
   });
 
   it("shows the installed version and project override", () => {
@@ -120,5 +128,65 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       });
     });
     expect(toggleMcpAppMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("searches locally and bulk toggles the complete list", async () => {
+    hookState.servers = {
+      visible: {
+        id: "visible",
+        name: "Visible Needle",
+        server: { type: "stdio", command: "visible-command" },
+        apps: {
+          claude: false,
+          codex: false,
+          pi: false,
+          gemini: false,
+          grokbuild: false,
+          opencode: false,
+          openclaw: false,
+          hermes: false,
+        },
+      },
+      hidden: {
+        id: "hidden",
+        name: "Hidden Server",
+        server: { type: "stdio", command: "hidden-command" },
+        apps: {
+          claude: false,
+          codex: false,
+          pi: false,
+          gemini: false,
+          grokbuild: false,
+          opencode: false,
+          openclaw: false,
+          hermes: false,
+        },
+      },
+    };
+
+    render(<UnifiedMcpPanel />);
+    fireEvent.change(
+      screen.getByRole("textbox", {
+        name: "mcp.unifiedPanel.searchAriaLabel",
+      }),
+      { target: { value: "visible needle" } },
+    );
+
+    expect(screen.getByText("Visible Needle")).toBeInTheDocument();
+    expect(screen.queryByText("Hidden Server")).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getAllByRole("checkbox", {
+        name: "common.enableAllForApp",
+      })[0],
+    );
+
+    await waitFor(() => {
+      expect(bulkToggleMcpAppMock).toHaveBeenCalledWith({
+        serverIds: ["visible", "hidden"],
+        app: "claude",
+        enabled: true,
+      });
+    });
   });
 });

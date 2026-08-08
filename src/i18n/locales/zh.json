@@ -40,7 +40,11 @@
     "deleting": "删除中...",
     "auto": "自动",
     "enabled": "已开启",
-    "notSet": "未设置"
+    "notSet": "未设置",
+    "clearSearch": "清除搜索",
+    "enableAllForApp": "为 {{app}} 全部启用",
+    "disableAllForApp": "为 {{app}} 全部禁用",
+    "bulkToggleFailed": "{{count}} 项更新失败"
   },
   "firstRunNotice": {
     "title": "欢迎使用 StackFerry",
@@ -1881,6 +1885,9 @@
       "deleteServer": "删除服务器",
       "deleteConfirm": "确定要删除服务器 \"{{id}}\" 吗？此操作无法撤销。",
       "noServers": "暂无服务器",
+      "searchPlaceholder": "搜索已安装的 MCP 服务器...",
+      "searchAriaLabel": "搜索已安装的 MCP 服务器",
+      "noSearchResults": "未找到匹配的 MCP 服务器",
       "enabledApps": "启用的应用",
       "noImportFound": "未发现需要导入的 MCP 服务器。所有服务器已在 StackFerry 统一管理中。",
       "importSuccess": "成功导入 {{count}} 个 MCP 服务器",
@@ -2477,6 +2484,9 @@
     },
     "noResults": "未找到匹配的技能",
     "noInstalled": "暂无已安装的技能",
+    "installedSearchPlaceholder": "搜索已安装的技能...",
+    "installedSearchAriaLabel": "搜索已安装的技能",
+    "noInstalledSearchResults": "未找到匹配的已安装技能",
     "noInstalledDescription": "从仓库发现并安装技能，或导入已有的技能",
     "discover": "发现技能",
     "import": "导入已有",

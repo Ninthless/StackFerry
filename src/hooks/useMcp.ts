@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { mcpApi } from "@/lib/api/mcp";
 import type { McpServer } from "@/types";
 import type { AppId } from "@/lib/api/types";
+import { runSequentialBulkAction } from "@/lib/utils/sequentialBulkAction";
 
 /**
  * 查询所有 MCP 服务器（统一管理）
@@ -52,6 +53,30 @@ export function useToggleMcpApp() {
       enabled: boolean;
     }) => mcpApi.toggleApp(serverId, app, enabled),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["mcp", "all"] });
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "pi-adapter-status"],
+      });
+    },
+  });
+}
+
+export function useBulkToggleMcpApp() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      serverIds,
+      app,
+      enabled,
+    }: {
+      serverIds: string[];
+      app: AppId;
+      enabled: boolean;
+    }) =>
+      runSequentialBulkAction(serverIds, (serverId) =>
+        mcpApi.toggleApp(serverId, app, enabled),
+      ),
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["mcp", "all"] });
       queryClient.invalidateQueries({
         queryKey: ["mcp", "pi-adapter-status"],

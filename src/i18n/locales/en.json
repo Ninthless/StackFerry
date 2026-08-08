@@ -40,7 +40,11 @@
     "deleting": "Deleting...",
     "auto": "Auto",
     "enabled": "Enabled",
-    "notSet": "Not Set"
+    "notSet": "Not Set",
+    "clearSearch": "Clear search",
+    "enableAllForApp": "Enable all for {{app}}",
+    "disableAllForApp": "Disable all for {{app}}",
+    "bulkToggleFailed": "{{count}} item(s) could not be updated"
   },
   "firstRunNotice": {
     "title": "Welcome to StackFerry",
@@ -1881,6 +1885,9 @@
       "deleteServer": "Delete Server",
       "deleteConfirm": "Are you sure you want to delete server \"{{id}}\"? This action cannot be undone.",
       "noServers": "No servers yet",
+      "searchPlaceholder": "Search installed MCP servers...",
+      "searchAriaLabel": "Search installed MCP servers",
+      "noSearchResults": "No matching MCP servers found",
       "enabledApps": "Enabled Apps",
       "noImportFound": "No MCP servers to import found. All servers are already managed by StackFerry.",
       "importSuccess": "Successfully imported {{count}} MCP servers",
@@ -2477,6 +2484,9 @@
     },
     "noResults": "No matching skills found",
     "noInstalled": "No skills installed",
+    "installedSearchPlaceholder": "Search installed Skills...",
+    "installedSearchAriaLabel": "Search installed Skills",
+    "noInstalledSearchResults": "No matching installed Skills found",
     "noInstalledDescription": "Discover and install skills from repositories, or import existing skills",
     "discover": "Discover Skills",
     "import": "Import Existing",

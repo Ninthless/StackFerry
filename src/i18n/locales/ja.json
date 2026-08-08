@@ -40,7 +40,11 @@
     "deleting": "削除中...",
     "auto": "自動",
     "enabled": "有効",
-    "notSet": "未設定"
+    "notSet": "未設定",
+    "clearSearch": "検索をクリア",
+    "enableAllForApp": "{{app}} ですべて有効化",
+    "disableAllForApp": "{{app}} ですべて無効化",
+    "bulkToggleFailed": "{{count}} 件を更新できませんでした"
   },
   "firstRunNotice": {
     "title": "StackFerry へようこそ",
@@ -1881,6 +1885,9 @@
       "deleteServer": "サーバーを削除",
       "deleteConfirm": "サーバー「{{id}}」を削除しますか？この操作は元に戻せません。",
       "noServers": "まだサーバーがありません",
+      "searchPlaceholder": "インストール済み MCP サーバーを検索...",
+      "searchAriaLabel": "インストール済み MCP サーバーを検索",
+      "noSearchResults": "一致する MCP サーバーが見つかりません",
       "enabledApps": "有効なアプリ",
       "noImportFound": "インポートする MCP サーバーが見つかりませんでした。すべてのサーバーは StackFerry で管理されています。",
       "importSuccess": "{{count}} 個の MCP サーバーをインポートしました",
@@ -2477,6 +2484,9 @@
     },
     "noResults": "一致するスキルが見つかりませんでした",
     "noInstalled": "インストールされたスキルがありません",
+    "installedSearchPlaceholder": "インストール済みスキルを検索...",
+    "installedSearchAriaLabel": "インストール済みスキルを検索",
+    "noInstalledSearchResults": "一致するインストール済みスキルが見つかりません",
     "noInstalledDescription": "リポジトリからスキルを発見してインストールするか、既存のスキルをインポートしてください",
     "discover": "スキルを発見",
     "import": "既存をインポート",

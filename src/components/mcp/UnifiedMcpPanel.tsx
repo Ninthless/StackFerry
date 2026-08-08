@@ -7,13 +7,17 @@ import {
   Edit3,
   ExternalLink,
   Package,
+  Search,
   Server,
   Trash2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   useAllMcpServers,
+  useBulkToggleMcpApp,
   useToggleMcpApp,
   useDeleteMcpServer,
   useImportMcpFromApps,
@@ -44,6 +48,7 @@ const UnifiedMcpPanel = React.forwardRef<
   const { t } = useTranslation();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -58,6 +63,7 @@ const UnifiedMcpPanel = React.forwardRef<
     error: piAdapterStatusError,
   } = usePiMcpAdapterStatus();
   const toggleAppMutation = useToggleMcpApp();
+  const bulkToggleAppMutation = useBulkToggleMcpApp();
   const deleteServerMutation = useDeleteMcpServer();
   const importMutation = useImportMcpFromApps();
 
@@ -86,6 +92,40 @@ const UnifiedMcpPanel = React.forwardRef<
     return counts;
   }, [serverEntries]);
 
+  const filteredServerEntries = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    if (!query) return serverEntries;
+
+    return serverEntries.filter(([id, server]) => {
+      const spec = server.server ?? {};
+      const values = [
+        id,
+        server.id,
+        server.name,
+        server.description,
+        ...(Array.isArray(server.tags) ? server.tags : []),
+        spec.type,
+        spec.command,
+        ...(Array.isArray(spec.args) ? spec.args : []),
+        spec.cwd,
+        spec.url,
+        server.homepage,
+        server.docs,
+      ];
+      return values.some(
+        (value) =>
+          typeof value === "string" &&
+          value.toLocaleLowerCase().includes(query),
+      );
+    });
+  }, [searchQuery, serverEntries]);
+
+  const pendingApp = bulkToggleAppMutation.isPending
+    ? bulkToggleAppMutation.variables?.app
+    : toggleAppMutation.isPending
+      ? toggleAppMutation.variables?.app
+      : null;
+
   const handleToggleApp = async (
     serverId: string,
     app: AppId,
@@ -95,6 +135,25 @@ const UnifiedMcpPanel = React.forwardRef<
       await toggleAppMutation.mutateAsync({ serverId, app, enabled });
     } catch (error) {
       toast.error(t("common.error"), { description: String(error) });
+    }
+  };
+
+  const handleToggleAll = async (app: AppId, enabled: boolean) => {
+    const serverIds = serverEntries
+      .filter(([_, server]) => Boolean(server.apps[app]) !== enabled)
+      .map(([id]) => id);
+    if (serverIds.length === 0) return;
+
+    const result = await bulkToggleAppMutation.mutateAsync({
+      serverIds,
+      app,
+      enabled,
+    });
+    if (result.failed.length > 0) {
+      toast.error(
+        t("common.bulkToggleFailed", { count: result.failed.length }),
+        { description: String(result.failed[0].error) },
+      );
     }
   };
 
@@ -158,6 +217,9 @@ const UnifiedMcpPanel = React.forwardRef<
         totalLabel={t("mcp.serverCount", { count: serverEntries.length })}
         counts={enabledCounts}
         appIds={MCP_APP_IDS}
+        totalCount={serverEntries.length}
+        onToggleAll={handleToggleAll}
+        pendingApp={pendingApp}
       />
 
       <PiMcpAdapterStatusRow
@@ -165,6 +227,28 @@ const UnifiedMcpPanel = React.forwardRef<
         isLoading={isPiAdapterStatusLoading}
         queryError={piAdapterStatusError}
       />
+
+      <div className="relative mb-3 flex-shrink-0">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder={t("mcp.unifiedPanel.searchPlaceholder")}
+          aria-label={t("mcp.unifiedPanel.searchAriaLabel")}
+          className="pl-9 pr-9"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            aria-label={t("common.clearSearch")}
+            title={t("common.clearSearch")}
+            className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
         {isLoading ? (
@@ -182,10 +266,14 @@ const UnifiedMcpPanel = React.forwardRef<
               </Button>
             }
           />
+        ) : filteredServerEntries.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">
+            {t("mcp.unifiedPanel.noSearchResults")}
+          </div>
         ) : (
           <TooltipProvider delayDuration={300}>
             <div className="overflow-hidden rounded-md border border-border bg-card">
-              {serverEntries.map(([id, server], index) => (
+              {filteredServerEntries.map(([id, server], index) => (
                 <UnifiedMcpListItem
                   key={id}
                   id={id}
@@ -193,7 +281,7 @@ const UnifiedMcpPanel = React.forwardRef<
                   onToggleApp={handleToggleApp}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
-                  isLast={index === serverEntries.length - 1}
+                  isLast={index === filteredServerEntries.length - 1}
                 />
               ))}
             </div>

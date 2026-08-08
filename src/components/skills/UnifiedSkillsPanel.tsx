@@ -6,9 +6,12 @@ import {
   ExternalLink,
   RefreshCw,
   Loader2,
+  Search,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   type ImportSkillSelection,
@@ -18,6 +21,7 @@ import {
   useSkillBackups,
   useRestoreSkillBackup,
   useToggleSkillApp,
+  useBulkToggleSkillApp,
   useUninstallSkill,
   useScanUnmanagedSkills,
   useImportSkillsFromApps,
@@ -83,6 +87,7 @@ const UnifiedSkillsPanel = React.forwardRef<
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [zipTargetDialogOpen, setZipTargetDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [actionTargetApp, setActionTargetApp] = useState<AppId>(
     () => availableApps[0] ?? "claude",
   );
@@ -101,6 +106,7 @@ const UnifiedSkillsPanel = React.forwardRef<
   } = useSkillBackups();
   const deleteBackupMutation = useDeleteSkillBackup();
   const toggleAppMutation = useToggleSkillApp();
+  const bulkToggleAppMutation = useBulkToggleSkillApp();
   const uninstallMutation = useUninstallSkill();
   const restoreBackupMutation = useRestoreSkillBackup();
   // enabled: true —— 进入 Skill 页面时自动静默扫描一次（绿点提示来源）
@@ -147,11 +153,57 @@ const UnifiedSkillsPanel = React.forwardRef<
     return counts;
   }, [skills]);
 
+  const filteredSkills = useMemo(() => {
+    if (!skills) return [];
+    const query = searchQuery.trim().toLocaleLowerCase();
+    if (!query) return skills;
+
+    return skills.filter((skill) =>
+      [
+        skill.name,
+        skill.id,
+        skill.description,
+        skill.directory,
+        skill.repoOwner,
+        skill.repoName,
+        skill.repoOwner && skill.repoName
+          ? `${skill.repoOwner}/${skill.repoName}`
+          : undefined,
+      ].some((value) => value?.toLocaleLowerCase().includes(query)),
+    );
+  }, [searchQuery, skills]);
+
+  const pendingApp = bulkToggleAppMutation.isPending
+    ? bulkToggleAppMutation.variables?.app
+    : toggleAppMutation.isPending
+      ? toggleAppMutation.variables?.app
+      : null;
+
   const handleToggleApp = async (id: string, app: AppId, enabled: boolean) => {
     try {
       await toggleAppMutation.mutateAsync({ id, app, enabled });
     } catch (error) {
       toast.error(t("common.error"), { description: String(error) });
+    }
+  };
+
+  const handleToggleAll = async (app: AppId, enabled: boolean) => {
+    if (!skills) return;
+    const ids = skills
+      .filter((skill) => Boolean(skill.apps[app]) !== enabled)
+      .map((skill) => skill.id);
+    if (ids.length === 0) return;
+
+    const result = await bulkToggleAppMutation.mutateAsync({
+      ids,
+      app,
+      enabled,
+    });
+    if (result.failed.length > 0) {
+      toast.error(
+        t("common.bulkToggleFailed", { count: result.failed.length }),
+        { description: String(result.failed[0].error) },
+      );
     }
   };
 
@@ -368,6 +420,9 @@ const UnifiedSkillsPanel = React.forwardRef<
           totalLabel={t("skills.installed", { count: skills?.length || 0 })}
           counts={enabledCounts}
           appIds={SKILLS_APP_IDS}
+          totalCount={skills?.length ?? 0}
+          onToggleAll={handleToggleAll}
+          pendingApp={pendingApp}
         />
         <div className="flex items-center gap-1.5">
           <div
@@ -416,6 +471,28 @@ const UnifiedSkillsPanel = React.forwardRef<
         </div>
       </div>
 
+      <div className="relative mb-3 flex-shrink-0">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder={t("skills.installedSearchPlaceholder")}
+          aria-label={t("skills.installedSearchAriaLabel")}
+          className="pl-9 pr-9"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            aria-label={t("common.clearSearch")}
+            title={t("common.clearSearch")}
+            className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
         {isLoading ? (
           <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -434,10 +511,14 @@ const UnifiedSkillsPanel = React.forwardRef<
               }
             />
           </div>
+        ) : filteredSkills.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">
+            {t("skills.noInstalledSearchResults")}
+          </div>
         ) : (
           <TooltipProvider delayDuration={300}>
             <div className="overflow-hidden rounded-md border border-border bg-card">
-              {skills.map((skill, index) => (
+              {filteredSkills.map((skill, index) => (
                 <InstalledSkillListItem
                   key={skill.id}
                   skill={skill}
@@ -449,7 +530,7 @@ const UnifiedSkillsPanel = React.forwardRef<
                   onToggleApp={handleToggleApp}
                   onUninstall={() => handleUninstall(skill)}
                   onUpdate={() => handleUpdateSkill(skill)}
-                  isLast={index === skills.length - 1}
+                  isLast={index === filteredSkills.length - 1}
                 />
               ))}
             </div>
@@ -588,6 +669,7 @@ const InstalledSkillListItem: React.FC<InstalledSkillListItemProps> = ({
         apps={skill.apps}
         onToggle={(app, enabled) => onToggleApp(skill.id, app, enabled)}
         appIds={SKILLS_APP_IDS}
+        disabled={isUpdating}
       />
 
       <div

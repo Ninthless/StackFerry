@@ -1,5 +1,12 @@
 import { createRef } from "react";
-import { render, screen, waitFor, act, within } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  act,
+  within,
+  fireEvent,
+} from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import UnifiedSkillsPanel, {
@@ -10,6 +17,7 @@ import type { InstalledSkill, SkillBackupEntry } from "@/lib/api/skills";
 
 const scanUnmanagedMock = vi.fn();
 const toggleSkillAppMock = vi.fn();
+const bulkToggleSkillAppMock = vi.fn();
 const uninstallSkillMock = vi.fn();
 const importSkillsMock = vi.fn();
 const installFromZipMock = vi.fn();
@@ -62,6 +70,13 @@ vi.mock("@/hooks/useSkills", () => ({
   }),
   useToggleSkillApp: () => ({
     mutateAsync: toggleSkillAppMock,
+    isPending: false,
+    variables: undefined,
+  }),
+  useBulkToggleSkillApp: () => ({
+    mutateAsync: bulkToggleSkillAppMock,
+    isPending: false,
+    variables: undefined,
   }),
   useRestoreSkillBackup: () => ({
     mutateAsync: restoreSkillBackupMock,
@@ -115,6 +130,8 @@ describe("UnifiedSkillsPanel", () => {
       ],
     });
     toggleSkillAppMock.mockReset();
+    bulkToggleSkillAppMock.mockReset();
+    bulkToggleSkillAppMock.mockResolvedValue({ succeeded: [], failed: [] });
     uninstallSkillMock.mockReset();
     importSkillsMock.mockReset();
     installFromZipMock.mockReset();
@@ -234,10 +251,7 @@ describe("UnifiedSkillsPanel", () => {
     toggleSkillAppMock.mockResolvedValue(true);
 
     render(
-      <UnifiedSkillsPanel
-        onOpenDiscovery={() => {}}
-        availableApps={["pi"]}
-      />,
+      <UnifiedSkillsPanel onOpenDiscovery={() => {}} availableApps={["pi"]} />,
     );
 
     screen.getByRole("button", { name: "Codex" }).click();
@@ -250,5 +264,55 @@ describe("UnifiedSkillsPanel", () => {
       });
     });
     expect(toggleSkillAppMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("filters locally while bulk toggling the complete mixed list", async () => {
+    installedSkillsMock = [
+      {
+        ...makeInstalledSkill(),
+        id: "enabled-id",
+        name: "Visible Skill",
+        apps: { ...makeInstalledSkill().apps, claude: true },
+      },
+      {
+        ...makeInstalledSkill(),
+        id: "disabled-id",
+        name: "Hidden Skill",
+        apps: { ...makeInstalledSkill().apps, claude: false },
+      },
+    ];
+    bulkToggleSkillAppMock.mockResolvedValue({
+      succeeded: ["disabled-id"],
+      failed: [],
+    });
+
+    render(
+      <UnifiedSkillsPanel
+        onOpenDiscovery={() => {}}
+        availableApps={["claude"]}
+      />,
+    );
+
+    fireEvent.change(
+      screen.getByRole("textbox", {
+        name: "skills.installedSearchAriaLabel",
+      }),
+      { target: { value: "Visible Skill" } },
+    );
+
+    expect(screen.getByText("Visible Skill")).toBeInTheDocument();
+    expect(screen.queryByText("Hidden Skill")).not.toBeInTheDocument();
+
+    screen
+      .getAllByRole("checkbox", { name: "common.enableAllForApp" })[0]
+      .click();
+
+    await waitFor(() => {
+      expect(bulkToggleSkillAppMock).toHaveBeenCalledWith({
+        ids: ["disabled-id"],
+        app: "claude",
+        enabled: true,
+      });
+    });
   });
 });

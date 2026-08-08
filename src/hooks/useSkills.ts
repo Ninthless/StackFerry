@@ -17,6 +17,7 @@ import {
 } from "@/lib/api/skills";
 import type { AppId } from "@/lib/api/types";
 import { mergeImportedSkills } from "@/hooks/useSkills.helpers";
+import { runSequentialBulkAction } from "@/lib/utils/sequentialBulkAction";
 
 /**
  * 查询所有已安装的 Skills
@@ -182,6 +183,27 @@ export function useToggleSkillApp() {
       enabled: boolean;
     }) => skillsApi.toggleApp(id, app, enabled),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["skills", "installed"] });
+    },
+  });
+}
+
+export function useBulkToggleSkillApp() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      ids,
+      app,
+      enabled,
+    }: {
+      ids: string[];
+      app: AppId;
+      enabled: boolean;
+    }) =>
+      runSequentialBulkAction(ids, (id) =>
+        skillsApi.toggleApp(id, app, enabled),
+      ),
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["skills", "installed"] });
     },
   });
