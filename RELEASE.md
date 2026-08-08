@@ -1,4 +1,4 @@
-# StackFerry v0.1.15
+# StackFerry v0.1.16
 
 ## 简体中文
 
@@ -20,6 +20,11 @@
 - Codex Responses 工具调用和会话 token 统计兼容性得到增强。
 - 修复应用集成测试在高负载下因默认超时过短导致的级联失败。
 
+### CI 稳定性
+
+- 修复 Codex 会话用量批处理代码触发严格 Clippy 检查失败的问题。
+- 测试专用的单条插入 helper 不再进入生产构建，避免无用代码警告。
+
 ## English
 
 ### MCP and Skills Management
@@ -39,3 +44,8 @@
 - Database backup and restore now use batching and transactions for better Windows performance and consistency.
 - Improved Codex Responses tool-call and session token accounting compatibility.
 - Fixed cascading integration-test failures caused by an overly short default timeout under load.
+
+### CI Stability
+
+- Fixed strict Clippy failures in the Codex session-usage batching implementation.
+- Test-only single-record insert helpers no longer compile into production builds, avoiding dead-code warnings.
