@@ -233,6 +233,7 @@ impl PiWebSocketUsageObserver {
             Some("pi".to_string()),
             true,
             error_message,
+            None,
         ) {
             log::warn!("[USG-001] Failed to record Pi WebSocket usage: {error}");
         }
@@ -818,6 +819,8 @@ fn log_websocket_error(
         true,
         None,
         Some("pi".to_string()),
+        Some("connection_failure".to_string()),
+        None,
     ) {
         log::warn!("[USG-001] Failed to record Pi WebSocket error: {error}");
     }

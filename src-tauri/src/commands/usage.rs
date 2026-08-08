@@ -5,6 +5,7 @@ use crate::services::model_pricing::{ModelPricingInfo, ModelsDevSyncConfig, Mode
 use crate::services::usage_stats::*;
 use crate::store::AppState;
 use tauri::State;
+use tauri_plugin_dialog::DialogExt;
 
 async fn run_usage_query<T, F>(name: &'static str, query: F) -> Result<T, AppError>
 where
@@ -144,6 +145,18 @@ pub async fn get_request_logs(
     .await
 }
 
+#[tauri::command]
+pub async fn get_request_log_facets(
+    state: State<'_, AppState>,
+    filters: LogFilters,
+) -> Result<RequestLogFacets, AppError> {
+    let db = state.db.clone();
+    run_usage_query("get_request_log_facets", move || {
+        db.get_request_log_facets(&filters)
+    })
+    .await
+}
+
 /// 获取单个请求详情
 #[tauri::command]
 pub async fn get_request_detail(
@@ -155,6 +168,117 @@ pub async fn get_request_detail(
         db.get_request_detail(&request_id)
     })
     .await
+}
+
+fn csv_field(value: impl AsRef<str>) -> String {
+    let value = value.as_ref();
+    if value.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+fn diagnostic_origin(failure_kind: Option<&str>, status_code: u16) -> &'static str {
+    match failure_kind {
+        Some(
+            "upstream_capacity"
+            | "upstream_rate_limit"
+            | "upstream_server_error"
+            | "response_header_timeout"
+            | "first_chunk_timeout"
+            | "semantic_output_timeout"
+            | "upstream_timeout"
+            | "stream_idle_timeout"
+            | "connection_failure",
+        ) => "upstream",
+        Some("authentication" | "configuration" | "invalid_request") => "client_or_configuration",
+        Some("response_transform" | "proxy_error") => "stackferry",
+        Some("no_available_provider") => "routing_or_provider_availability",
+        Some(_) => "undetermined",
+        None if (400..500).contains(&status_code) => "client_or_configuration",
+        None if status_code >= 500 => "undetermined",
+        None => "none",
+    }
+}
+
+#[tauri::command]
+pub async fn export_request_logs(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    filters: LogFilters,
+) -> Result<Option<String>, AppError> {
+    let db = state.db.clone();
+    let logs = run_usage_query("export_request_logs", move || {
+        db.get_request_logs(&filters, 0, u32::MAX)
+    })
+    .await?;
+    let default_name = format!(
+        "stackferry-request-logs-{}.csv",
+        chrono::Local::now().format("%Y%m%d-%H%M%S")
+    );
+    let destination = app
+        .dialog()
+        .file()
+        .add_filter("CSV", &["csv"])
+        .set_file_name(&default_name)
+        .blocking_save_file();
+    let Some(destination) = destination else {
+        return Ok(None);
+    };
+    let destination_path = destination
+        .into_path()
+        .map_err(|_| AppError::Message("导出路径无效".to_string()))?;
+    let mut csv = String::from(
+        "created_at,request_id,app_type,api_type,provider_name,provider_id,request_model,model,status_code,diagnostic_origin,failure_kind,latency_ms,first_token_ms,duration_ms,is_streaming,input_tokens,output_tokens,reasoning_tokens,cache_read_tokens,cache_creation_tokens,cache_creation_1h_tokens,input_cost_usd,output_cost_usd,cache_read_cost_usd,cache_creation_cost_usd,total_cost_usd,cost_multiplier,data_source,pricing_model,upstream_response_id,stop_reason,error_message,route_trace\n",
+    );
+    for log in logs.data {
+        let origin = diagnostic_origin(log.failure_kind.as_deref(), log.status_code).to_string();
+        let fields = [
+            log.created_at.to_string(),
+            log.request_id,
+            log.app_type,
+            log.api_type,
+            log.provider_name.unwrap_or_default(),
+            log.provider_id,
+            log.request_model.unwrap_or_default(),
+            log.model,
+            log.status_code.to_string(),
+            origin,
+            log.failure_kind.unwrap_or_default(),
+            log.latency_ms.to_string(),
+            log.first_token_ms
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            log.duration_ms
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            log.is_streaming.to_string(),
+            log.input_tokens.to_string(),
+            log.output_tokens.to_string(),
+            log.reasoning_tokens.to_string(),
+            log.cache_read_tokens.to_string(),
+            log.cache_creation_tokens.to_string(),
+            log.cache_creation_1h_tokens.to_string(),
+            log.input_cost_usd,
+            log.output_cost_usd,
+            log.cache_read_cost_usd,
+            log.cache_creation_cost_usd,
+            log.total_cost_usd,
+            log.cost_multiplier,
+            log.data_source.unwrap_or_default(),
+            log.pricing_model.unwrap_or_default(),
+            log.upstream_response_id.unwrap_or_default(),
+            log.stop_reason.unwrap_or_default(),
+            log.error_message.unwrap_or_default(),
+            log.route_trace.unwrap_or_default(),
+        ];
+        csv.push_str(&fields.iter().map(csv_field).collect::<Vec<_>>().join(","));
+        csv.push('\n');
+    }
+    std::fs::write(&destination_path, csv)
+        .map_err(|e| AppError::Message(format!("写入请求日志失败: {e}")))?;
+    Ok(Some(destination_path.to_string_lossy().into_owned()))
 }
 
 /// 获取模型定价列表

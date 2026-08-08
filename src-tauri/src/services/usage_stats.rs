@@ -106,8 +106,23 @@ pub struct LogFilters {
     pub provider_name: Option<String>,
     pub model: Option<String>,
     pub status_code: Option<u16>,
+    pub failure_kind: Option<String>,
     pub start_date: Option<i64>,
     pub end_date: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestLogFacet {
+    pub value: String,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestLogFacets {
+    pub status_codes: Vec<RequestLogFacet>,
+    pub failure_kinds: Vec<RequestLogFacet>,
 }
 
 /// 分页请求日志响应
@@ -162,6 +177,10 @@ pub struct RequestLogDetail {
     pub upstream_response_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route_trace: Option<String>,
 }
 
 /// 把 31 列的查询结果映射为 `RequestLogDetail`。
@@ -174,7 +193,7 @@ pub struct RequestLogDetail {
 ///  cache_creation_cost_usd, total_cost_usd, is_streaming, latency_ms,
 ///  first_token_ms, duration_ms, status_code, error_message, created_at,
 ///  data_source, pricing_model, input_token_semantics, upstream_response_id,
-///  stop_reason`
+///  stop_reason, failure_kind, route_trace`
 ///
 /// 不需要 provider_name 时（如 backfill）SELECT `NULL AS provider_name` 占位即可。
 fn row_to_request_log_detail(row: &rusqlite::Row<'_>) -> rusqlite::Result<RequestLogDetail> {
@@ -212,6 +231,8 @@ fn row_to_request_log_detail(row: &rusqlite::Row<'_>) -> rusqlite::Result<Reques
         input_token_semantics: row.get::<_, i64>(28)?,
         upstream_response_id: row.get(29)?,
         stop_reason: row.get(30)?,
+        failure_kind: row.get(31)?,
+        route_trace: row.get(32)?,
     })
 }
 
@@ -1630,6 +1651,18 @@ impl Database {
             conditions.push("l.status_code = ?".to_string());
             params.push(Box::new(status as i64));
         }
+        if let Some(ref failure_kind) = filters.failure_kind {
+            conditions.push("(l.failure_kind = ? OR l.route_trace LIKE ? ESCAPE '\\')".to_string());
+            params.push(Box::new(failure_kind.clone()));
+            params.push(Box::new(format!(
+                "%\"failureKind\":\"{}\"%",
+                failure_kind
+                    .replace('\\', "\\\\")
+                    .replace('%', "\\%")
+                    .replace('_', "\\_")
+                    .replace('"', "\\\"")
+            )));
+        }
         if let Some(start) = filters.start_date {
             conditions.push("l.created_at >= ?".to_string());
             params.push(Box::new(start));
@@ -1670,7 +1703,8 @@ impl Database {
                     l.input_cost_usd, l.output_cost_usd, l.cache_read_cost_usd, l.cache_creation_cost_usd, l.total_cost_usd,
                     l.is_streaming, l.latency_ms, l.first_token_ms, l.duration_ms,
                     l.status_code, l.error_message, l.created_at, l.data_source, l.pricing_model,
-                    l.input_token_semantics, l.upstream_response_id, l.stop_reason
+                    l.input_token_semantics, l.upstream_response_id, l.stop_reason,
+                    l.failure_kind, l.route_trace
              FROM proxy_request_logs l
              LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type
              {where_clause}
@@ -1699,6 +1733,89 @@ impl Database {
         })
     }
 
+    pub fn get_request_log_facets(
+        &self,
+        filters: &LogFilters,
+    ) -> Result<RequestLogFacets, AppError> {
+        let conn = lock_conn!(self.conn);
+        let mut conditions = vec![effective_usage_log_filter("l")];
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if let Some(ref app_type) = filters.app_type {
+            conditions.push(format!("{} = ?", folded_app_type_sql("l.app_type")));
+            params.push(Box::new(app_type.clone()));
+        }
+        push_provider_model_filters(
+            &mut conditions,
+            &mut params,
+            "l",
+            "p",
+            filters.provider_name.as_deref(),
+            filters.model.as_deref(),
+        );
+        if let Some(start) = filters.start_date {
+            conditions.push("l.created_at >= ?".to_string());
+            params.push(Box::new(start));
+        }
+        if let Some(end) = filters.end_date {
+            conditions.push("l.created_at <= ?".to_string());
+            params.push(Box::new(end));
+        }
+
+        let where_clause = format!("WHERE {}", conditions.join(" AND "));
+        let refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|value| value.as_ref()).collect();
+        let mut status_stmt = conn.prepare(&format!(
+            "SELECT CAST(l.status_code AS TEXT), COUNT(*)
+             FROM proxy_request_logs l
+             LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type
+             {where_clause}
+             GROUP BY l.status_code
+             ORDER BY l.status_code"
+        ))?;
+        let status_codes = status_stmt
+            .query_map(refs.as_slice(), |row| {
+                Ok(RequestLogFacet {
+                    value: row.get(0)?,
+                    count: row.get::<_, i64>(1)? as u32,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut failure_stmt = conn.prepare(&format!(
+            "SELECT failure_kind, COUNT(*) FROM (
+                SELECT l.request_id, l.failure_kind AS failure_kind
+                FROM proxy_request_logs l
+                LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type
+                {where_clause} AND NULLIF(l.failure_kind, '') IS NOT NULL
+                UNION
+                SELECT l.request_id, json_extract(attempt.value, '$.failureKind') AS failure_kind
+                FROM proxy_request_logs l
+                LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type,
+                     json_each(CASE WHEN json_valid(l.route_trace) THEN l.route_trace ELSE '[]' END) attempt
+                {where_clause}
+                  AND NULLIF(json_extract(attempt.value, '$.failureKind'), '') IS NOT NULL
+             )
+             GROUP BY failure_kind
+             ORDER BY COUNT(*) DESC, failure_kind"
+        ))?;
+        let mut duplicated_refs = Vec::with_capacity(refs.len() * 2);
+        duplicated_refs.extend(refs.iter().copied());
+        duplicated_refs.extend(refs.iter().copied());
+        let failure_kinds = failure_stmt
+            .query_map(duplicated_refs.as_slice(), |row| {
+                Ok(RequestLogFacet {
+                    value: row.get(0)?,
+                    count: row.get::<_, i64>(1)? as u32,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(RequestLogFacets {
+            status_codes,
+            failure_kinds,
+        })
+    }
+
     /// 获取单个请求详情
     pub fn get_request_detail(
         &self,
@@ -1715,7 +1832,8 @@ impl Database {
                     input_cost_usd, output_cost_usd, cache_read_cost_usd, cache_creation_cost_usd, total_cost_usd,
                     is_streaming, latency_ms, first_token_ms, duration_ms,
                     status_code, error_message, created_at, l.data_source, l.pricing_model,
-                    l.input_token_semantics, l.upstream_response_id, l.stop_reason
+                    l.input_token_semantics, l.upstream_response_id, l.stop_reason,
+                    l.failure_kind, l.route_trace
              FROM proxy_request_logs l
              LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type
              WHERE l.request_id = ?"
@@ -1873,7 +1991,7 @@ impl Database {
                         cache_creation_cost_usd, total_cost_usd, is_streaming, latency_ms,
                         first_token_ms, duration_ms, status_code, error_message, created_at,
                         data_source, pricing_model, input_token_semantics,
-                        upstream_response_id, stop_reason
+                        upstream_response_id, stop_reason, failure_kind, route_trace
              FROM proxy_request_logs
              WHERE CAST(total_cost_usd AS REAL) <= 0
                AND (input_tokens > 0 OR output_tokens > 0

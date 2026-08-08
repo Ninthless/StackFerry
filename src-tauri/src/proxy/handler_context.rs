@@ -6,7 +6,7 @@ use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::{
     extract_session_id,
-    forwarder::{CodexAuxiliaryEndpoint, RequestForwarder},
+    forwarder::{CodexAuxiliaryEndpoint, RequestForwarder, RouteTrace},
     providers::PiApi,
     server::ProxyState,
     types::{AppProxyConfig, CopilotOptimizerConfig, OptimizerConfig, RectifierConfig},
@@ -76,6 +76,7 @@ pub struct RequestContext {
     pub optimizer_config: OptimizerConfig,
     /// Copilot 优化器配置
     pub copilot_optimizer_config: CopilotOptimizerConfig,
+    pub route_trace: RouteTrace,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,6 +192,7 @@ impl RequestContext {
             rectifier_config,
             optimizer_config,
             copilot_optimizer_config,
+            route_trace: Default::default(),
         };
         Ok((context, selection.api, selection.source_header_names))
     }
@@ -315,6 +317,7 @@ impl RequestContext {
             rectifier_config,
             optimizer_config,
             copilot_optimizer_config,
+            route_trace: Default::default(),
         })
     }
 
@@ -383,6 +386,8 @@ impl RequestContext {
             self.optimizer_config.clone(),
             self.copilot_optimizer_config.clone(),
             max_retries,
+            self.start_time,
+            self.route_trace.clone(),
         )
     }
 

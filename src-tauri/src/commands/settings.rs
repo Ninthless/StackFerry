@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 
 /// 应用更新下载进度（通过 `update-download-progress` 事件发给前端）。
@@ -8,6 +10,23 @@ use tauri_plugin_updater::UpdaterExt;
 struct UpdateDownloadProgress {
     downloaded: u64,
     total: Option<u64>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationLogInfo {
+    directory: String,
+    files: Vec<ApplicationLogFile>,
+    total_size: u64,
+    preview: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApplicationLogFile {
+    name: String,
+    size: u64,
+    modified_at: Option<i64>,
 }
 
 fn merge_settings_for_save(
@@ -694,4 +713,174 @@ pub async fn set_log_config(
         config.level
     );
     Ok(true)
+}
+
+fn collect_application_log_paths() -> Result<Vec<std::path::PathBuf>, String> {
+    let config_dir = crate::config::get_app_config_dir();
+    let log_dir = crate::panic_hook::get_log_dir();
+    let mut paths = Vec::new();
+
+    if log_dir.exists() {
+        for entry in std::fs::read_dir(&log_dir).map_err(|e| format!("读取日志目录失败: {e}"))?
+        {
+            let path = entry.map_err(|e| format!("读取日志文件失败: {e}"))?.path();
+            if path.is_file() {
+                paths.push(path);
+            }
+        }
+    }
+
+    for name in ["crash.log", "crash.log.1", "crash.log.2"] {
+        let path = config_dir.join(name);
+        if path.is_file() {
+            paths.push(path);
+        }
+    }
+
+    paths.sort_by(|left, right| {
+        right
+            .file_name()
+            .unwrap_or_default()
+            .cmp(left.file_name().unwrap_or_default())
+    });
+    Ok(paths)
+}
+
+fn read_log_tail(path: &std::path::Path, max_bytes: usize) -> Result<String, String> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path).map_err(|e| format!("读取日志失败: {e}"))?;
+    let len = file
+        .metadata()
+        .map_err(|e| format!("读取日志元数据失败: {e}"))?
+        .len();
+    let start = len.saturating_sub(max_bytes as u64);
+    file.seek(SeekFrom::Start(start))
+        .map_err(|e| format!("定位日志失败: {e}"))?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|e| format!("读取日志失败: {e}"))?;
+    let text = String::from_utf8_lossy(&bytes);
+    Ok(if start > 0 {
+        text.lines().skip(1).collect::<Vec<_>>().join("\n")
+    } else {
+        text.into_owned()
+    })
+}
+
+#[tauri::command]
+pub async fn get_application_log_info() -> Result<ApplicationLogInfo, String> {
+    let log_dir = crate::panic_hook::get_log_dir();
+    let paths = collect_application_log_paths()?;
+    let mut files = Vec::new();
+    let mut total_size = 0u64;
+
+    for path in &paths {
+        let metadata = std::fs::metadata(path).map_err(|e| format!("读取日志元数据失败: {e}"))?;
+        total_size = total_size.saturating_add(metadata.len());
+        files.push(ApplicationLogFile {
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            size: metadata.len(),
+            modified_at: metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|duration| duration.as_secs() as i64),
+        });
+    }
+
+    let preview_path = paths.iter().find(|path| {
+        path.file_name()
+            .is_some_and(|name| name.to_string_lossy() == "stackferry.log")
+    });
+    let preview = match preview_path {
+        Some(path) => read_log_tail(path, 64 * 1024)?,
+        None => String::new(),
+    };
+
+    Ok(ApplicationLogInfo {
+        directory: log_dir.to_string_lossy().into_owned(),
+        files,
+        total_size,
+        preview,
+    })
+}
+
+#[tauri::command]
+pub async fn open_application_log_folder(app: AppHandle) -> Result<(), String> {
+    let log_dir = crate::panic_hook::get_log_dir();
+    std::fs::create_dir_all(&log_dir).map_err(|e| format!("创建日志目录失败: {e}"))?;
+    app.opener()
+        .open_path(log_dir.to_string_lossy().to_string(), None::<String>)
+        .map_err(|e| format!("打开日志目录失败: {e}"))
+}
+
+#[tauri::command]
+pub async fn export_application_logs(app: AppHandle) -> Result<Option<String>, String> {
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+
+    let paths = collect_application_log_paths()?;
+    if paths.is_empty() {
+        return Err("没有可导出的应用日志".to_string());
+    }
+    let default_name = format!(
+        "stackferry-diagnostics-{}.zip",
+        chrono::Local::now().format("%Y%m%d-%H%M%S")
+    );
+    let destination = app
+        .dialog()
+        .file()
+        .add_filter("ZIP", &["zip"])
+        .set_file_name(&default_name)
+        .blocking_save_file();
+    let Some(destination) = destination else {
+        return Ok(None);
+    };
+    let destination_path = destination.into_path().map_err(|_| "导出路径无效")?;
+    let file =
+        std::fs::File::create(&destination_path).map_err(|e| format!("创建诊断包失败: {e}"))?;
+    let mut writer = zip::ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
+    let manifest = serde_json::json!({
+        "appVersion": env!("CARGO_PKG_VERSION"),
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "exportedAt": chrono::Utc::now().to_rfc3339(),
+        "files": paths.iter().filter_map(|path| path.file_name()).map(|name| name.to_string_lossy()).collect::<Vec<_>>(),
+    });
+    writer
+        .start_file("diagnostics.json", options)
+        .map_err(|e| format!("写入诊断清单失败: {e}"))?;
+    writer
+        .write_all(
+            serde_json::to_string_pretty(&manifest)
+                .map_err(|e| format!("生成诊断清单失败: {e}"))?
+                .as_bytes(),
+        )
+        .map_err(|e| format!("写入诊断清单失败: {e}"))?;
+
+    for path in paths {
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        writer
+            .start_file(format!("logs/{name}"), options)
+            .map_err(|e| format!("写入日志条目失败: {e}"))?;
+        let bytes = std::fs::read(&path).map_err(|e| format!("读取日志失败: {e}"))?;
+        writer
+            .write_all(&bytes)
+            .map_err(|e| format!("写入日志失败: {e}"))?;
+    }
+    writer
+        .finish()
+        .map_err(|e| format!("完成诊断包失败: {e}"))?;
+    Ok(Some(destination_path.to_string_lossy().into_owned()))
 }

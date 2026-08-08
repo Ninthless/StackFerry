@@ -240,7 +240,9 @@ impl Database {
             duration_ms INTEGER, status_code INTEGER NOT NULL, error_message TEXT, session_id TEXT,
             provider_type TEXT, is_streaming INTEGER NOT NULL DEFAULT 0,
             cost_multiplier TEXT NOT NULL DEFAULT '1.0', created_at INTEGER NOT NULL,
-            data_source TEXT NOT NULL DEFAULT 'proxy'
+            data_source TEXT NOT NULL DEFAULT 'proxy',
+            failure_kind TEXT,
+            route_trace TEXT
         )", []).map_err(|e| AppError::Database(e.to_string()))?;
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_request_logs_provider ON proxy_request_logs(provider_id, app_type)", [])
@@ -600,6 +602,11 @@ impl Database {
                         log::info!("迁移数据库从 v22 到 v23（添加供应商导入来源）");
                         Self::migrate_v22_to_v23(conn)?;
                         Self::set_user_version(conn, 23)?;
+                    }
+                    23 => {
+                        log::info!("迁移数据库从 v23 到 v24（添加请求故障诊断）");
+                        Self::migrate_v23_to_v24(conn)?;
+                        Self::set_user_version(conn, 24)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1867,6 +1874,15 @@ impl Database {
             [],
         )
         .map_err(|e| AppError::Database(format!("创建供应商来源索引失败: {e}")))?;
+        Ok(())
+    }
+
+    fn migrate_v23_to_v24(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "proxy_request_logs")? {
+            return Ok(());
+        }
+        Self::add_column_if_missing(conn, "proxy_request_logs", "failure_kind", "TEXT")?;
+        Self::add_column_if_missing(conn, "proxy_request_logs", "route_trace", "TEXT")?;
         Ok(())
     }
 

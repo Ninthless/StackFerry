@@ -1381,6 +1381,9 @@ pub fn run() {
             commands::set_copilot_optimizer_config,
             commands::get_log_config,
             commands::set_log_config,
+            commands::get_application_log_info,
+            commands::open_application_log_folder,
+            commands::export_application_logs,
             commands::restart_app,
             commands::install_update_and_restart,
             commands::check_for_updates,
@@ -1401,6 +1404,7 @@ pub fn run() {
             // usage query
             commands::queryProviderUsage,
             commands::testUsageScript,
+            commands::export_request_logs,
             // subscription quota
             commands::get_subscription_quota,
             commands::get_codex_oauth_quota,
@@ -1550,6 +1554,7 @@ pub fn run() {
             commands::get_provider_stats,
             commands::get_model_stats,
             commands::get_request_logs,
+            commands::get_request_log_facets,
             commands::get_request_detail,
             commands::get_model_pricing,
             commands::update_model_pricing,

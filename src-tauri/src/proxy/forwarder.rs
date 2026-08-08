@@ -34,8 +34,9 @@ use crate::{
 use bytes::Bytes;
 use futures::StreamExt;
 use http::Extensions;
+use serde::Serialize;
 use serde_json::Value;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tokio::sync::RwLock;
 
@@ -79,6 +80,22 @@ pub struct ForwardError {
     pub error: ProxyError,
     pub provider: Option<Provider>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteAttempt {
+    pub provider_id: String,
+    pub provider_name: String,
+    pub attempt: usize,
+    pub started_ms: u64,
+    pub duration_ms: u64,
+    pub outcome: String,
+    pub status_code: Option<u16>,
+    pub failure_kind: Option<String>,
+    pub message: Option<String>,
+}
+
+pub type RouteTrace = Arc<Mutex<Vec<RouteAttempt>>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CodexAuxiliaryEndpoint {
@@ -208,6 +225,8 @@ pub struct RequestForwarder {
     non_streaming_timeout: std::time::Duration,
     /// 流式请求响应头等待超时（秒）
     streaming_first_byte_timeout: std::time::Duration,
+    request_started_at: std::time::Instant,
+    route_trace: RouteTrace,
     /// 单个客户端请求最多尝试的 provider 数。
     ///
     /// 由 `AppProxyConfig.max_retries` (UI: "请求失败时的重试次数, 0-10") 派生：
@@ -217,6 +236,45 @@ pub struct RequestForwarder {
 }
 
 impl RequestForwarder {
+    fn record_route_attempt(
+        &self,
+        provider: &Provider,
+        started_at: std::time::Instant,
+        result: &Result<(ProxyResponse, Option<String>, Option<String>), ProxyError>,
+    ) {
+        let Ok(mut trace) = self.route_trace.lock() else {
+            return;
+        };
+        let attempt = trace.len() + 1;
+        let (outcome, status_code, failure_kind, message) = match result {
+            Ok((response, _, _)) => (
+                "response_received".to_string(),
+                Some(response.status().as_u16()),
+                None,
+                None,
+            ),
+            Err(error) => (
+                "failed".to_string(),
+                Some(crate::proxy::error_mapper::map_proxy_error_to_status(error)),
+                Some(failure_kind(error).to_string()),
+                Some(error_message_for_observability(error, true)),
+            ),
+        };
+        trace.push(RouteAttempt {
+            provider_id: provider.id.clone(),
+            provider_name: provider.name.clone(),
+            attempt,
+            started_ms: started_at
+                .saturating_duration_since(self.request_started_at)
+                .as_millis() as u64,
+            duration_ms: started_at.elapsed().as_millis() as u64,
+            outcome,
+            status_code,
+            failure_kind,
+            message,
+        });
+    }
+
     /// 预防式 media 降级：发送前对 text-only 模型把图片块替换为标记。
     ///
     /// 受 `enabled && request_media_fallback` 管辖；其中"启发式模型名单预测"
@@ -281,6 +339,8 @@ impl RequestForwarder {
         optimizer_config: OptimizerConfig,
         copilot_optimizer_config: CopilotOptimizerConfig,
         max_retries: u32,
+        request_started_at: std::time::Instant,
+        route_trace: RouteTrace,
     ) -> Self {
         // max_retries 是「失败后重试次数」语义，attempt 上限 = retries + 1。
         // saturating_add 防止 u32::MAX + 1 溢出。
@@ -303,6 +363,8 @@ impl RequestForwarder {
             streaming_first_byte_timeout: std::time::Duration::from_secs(
                 streaming_first_byte_timeout,
             ),
+            request_started_at,
+            route_trace,
             max_attempts,
         }
     }
@@ -557,6 +619,7 @@ impl RequestForwarder {
         let mut last_provider = None;
         let mut attempted_providers = 0usize;
         let paid_image_endpoint = request_kind.paid_image_endpoint();
+        let retry_capacity_on_same_provider = providers.len() == 1;
 
         // 单 Provider 场景下跳过熔断器检查（故障转移关闭时）
         let bypass_circuit_breaker = providers.len() == 1;
@@ -655,6 +718,7 @@ impl RequestForwarder {
                     &extensions,
                     adapter.as_ref(),
                     request_kind,
+                    retry_capacity_on_same_provider,
                 )
                 .await
             {
@@ -764,6 +828,7 @@ impl RequestForwarder {
                                     &extensions,
                                     adapter.as_ref(),
                                     request_kind,
+                                    retry_capacity_on_same_provider,
                                 )
                                 .await
                             {
@@ -911,6 +976,7 @@ impl RequestForwarder {
                                         &extensions,
                                         adapter.as_ref(),
                                         request_kind,
+                                        retry_capacity_on_same_provider,
                                     )
                                     .await
                                 {
@@ -1078,6 +1144,7 @@ impl RequestForwarder {
                                     &extensions,
                                     adapter.as_ref(),
                                     request_kind,
+                                    retry_capacity_on_same_provider,
                                 )
                                 .await
                             {
@@ -1403,9 +1470,11 @@ impl RequestForwarder {
         extensions: &Extensions,
         adapter: &dyn ProviderAdapter,
         request_kind: ForwardRequestKind,
+        retry_capacity_on_same_provider: bool,
     ) -> Result<(ProxyResponse, Option<String>, Option<String>), ProxyError> {
         let mut retry_index = 0usize;
         loop {
+            let started_at = std::time::Instant::now();
             let result = self
                 .forward(
                     app_type,
@@ -1419,11 +1488,13 @@ impl RequestForwarder {
                     request_kind,
                 )
                 .await;
+            self.record_route_attempt(provider, started_at, &result);
 
             let Err(error) = &result else {
                 return result;
             };
             if !is_codex_capacity_error(app_type, endpoint, request_kind, error)
+                || !retry_capacity_on_same_provider
                 || retry_index >= CODEX_CAPACITY_RETRY_DELAYS.len()
             {
                 return result;
@@ -3303,6 +3374,79 @@ fn error_message_for_observability(error: &ProxyError, redact_upstream_body: boo
     }
 }
 
+pub fn failure_kind(error: &ProxyError) -> &'static str {
+    match error {
+        ProxyError::Timeout(message) => {
+            let normalized = message.to_ascii_lowercase();
+            if normalized.contains("未返回响应头") {
+                "response_header_timeout"
+            } else if normalized.contains("未返回数据")
+                || normalized.contains("body 未到达")
+                || normalized.contains("response body")
+            {
+                "first_chunk_timeout"
+            } else if normalized.contains("semantic output") {
+                "semantic_output_timeout"
+            } else {
+                "upstream_timeout"
+            }
+        }
+        ProxyError::StreamIdleTimeout(_) => "stream_idle_timeout",
+        ProxyError::ForwardFailed(_) => "connection_failure",
+        ProxyError::UpstreamError { status, body } => {
+            if body.as_deref().is_some_and(contains_capacity_error_signal) {
+                "upstream_capacity"
+            } else if *status == 429 {
+                "upstream_rate_limit"
+            } else if *status >= 500 {
+                "upstream_server_error"
+            } else {
+                "upstream_rejected"
+            }
+        }
+        ProxyError::AuthError(_) => "authentication",
+        ProxyError::ConfigError(_) => "configuration",
+        ProxyError::InvalidRequest(_) => "invalid_request",
+        ProxyError::TransformError(message) => {
+            if contains_capacity_error_signal(message) {
+                "upstream_capacity"
+            } else {
+                "response_transform"
+            }
+        }
+        ProxyError::NoAvailableProvider
+        | ProxyError::NoProvidersConfigured
+        | ProxyError::AllProvidersCircuitOpen
+        | ProxyError::MaxRetriesExceeded => "no_available_provider",
+        _ => "proxy_error",
+    }
+}
+
+pub fn failure_kind_from_message(status_code: u16, message: &str) -> String {
+    let normalized = message.to_ascii_lowercase();
+    let kind = if contains_capacity_error_signal(&normalized) {
+        "upstream_capacity"
+    } else if normalized.contains("未返回响应头") {
+        "response_header_timeout"
+    } else if normalized.contains("未返回数据")
+        || normalized.contains("body 未到达")
+        || normalized.contains("response body")
+    {
+        "first_chunk_timeout"
+    } else if normalized.contains("semantic output") {
+        "semantic_output_timeout"
+    } else if status_code == 504 {
+        "upstream_timeout"
+    } else if status_code == 429 {
+        "upstream_rate_limit"
+    } else if status_code >= 500 {
+        "upstream_server_error"
+    } else {
+        "proxy_error"
+    };
+    kind.to_string()
+}
+
 fn summarize_proxy_error(error: &ProxyError) -> String {
     match error {
         ProxyError::UpstreamError { status, body } => {
@@ -4174,6 +4318,8 @@ mod tests {
             copilot_optimizer_config: CopilotOptimizerConfig::default(),
             non_streaming_timeout,
             streaming_first_byte_timeout,
+            request_started_at: std::time::Instant::now(),
+            route_trace: Default::default(),
             max_attempts: 1,
         }
     }

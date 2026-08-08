@@ -1855,7 +1855,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn codex_capacity_retry_exhaustion_fails_over_without_polluting_first_provider() {
+    async fn codex_capacity_error_fails_over_immediately_without_polluting_first_provider() {
         let overload = || {
             MockReply::json(
                 http::StatusCode::BAD_GATEWAY,
@@ -1867,8 +1867,7 @@ mod tests {
                 }),
             )
         };
-        let (p1_origin, p1_requests, p1_handle) =
-            spawn_upstream(vec![overload(), overload(), overload()]).await;
+        let (p1_origin, p1_requests, p1_handle) = spawn_upstream(vec![overload()]).await;
         let (p2_origin, p2_requests, p2_handle) = spawn_upstream(vec![MockReply::json(
             http::StatusCode::OK,
             json!({
@@ -1908,7 +1907,7 @@ mod tests {
         proxy.stop().await.expect("stop proxy");
         p1_handle.abort();
         p2_handle.abort();
-        assert_eq!(p1_requests.lock().await.len(), 3);
+        assert_eq!(p1_requests.lock().await.len(), 1);
         assert_eq!(p2_requests.lock().await.len(), 1);
         let health = db
             .get_provider_health(&p1.id, "codex")
