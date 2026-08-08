@@ -11,6 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
   validate:
     name: Validate release version
     runs-on: ubuntu-22.04
@@ -53,7 +57,7 @@ jobs:
           fi
 
   release:
-    needs: validate
+    needs: [ci, validate]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

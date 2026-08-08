@@ -75,16 +75,38 @@ impl McpService {
         app: AppType,
         enabled: bool,
     ) -> Result<(), AppError> {
+        let previous_enabled = state
+            .db
+            .get_all_mcp_servers()?
+            .get(server_id)
+            .map(|server| server.apps.is_enabled_for(&app));
         if let Some(server) = state
             .db
             .update_mcp_server_app_enabled(server_id, &app, enabled)?
         {
-            if matches!(app, AppType::Pi) {
-                mcp::project_servers_to_pi(&state.db.get_all_mcp_servers()?)?;
+            let projection = if matches!(app, AppType::Pi) {
+                state
+                    .db
+                    .get_all_mcp_servers()
+                    .and_then(|servers| mcp::project_servers_to_pi(&servers))
             } else if enabled {
-                Self::sync_server_to_app(state, &server, &app)?;
+                Self::sync_server_to_app(state, &server, &app)
             } else {
-                Self::remove_server_from_app(state, server_id, &app)?;
+                Self::remove_server_from_app(state, server_id, &app)
+            };
+            if let Err(projection_error) = projection {
+                if let Some(previous_enabled) = previous_enabled {
+                    if let Err(rollback_error) =
+                        state
+                            .db
+                            .update_mcp_server_app_enabled(server_id, &app, previous_enabled)
+                    {
+                        return Err(AppError::Message(format!(
+                            "MCP projection failed ({projection_error}); database rollback also failed ({rollback_error})"
+                        )));
+                    }
+                }
+                return Err(projection_error);
             }
         }
 
