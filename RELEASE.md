@@ -1,6 +1,12 @@
-# StackFerry v0.1.12
+# StackFerry v0.1.13
 
 ## 简体中文
+
+### 请求详情稳定性
+
+- 请求列表打开详情时保留已加载的日志快照，后台同步或重建会话用量后仍能查看刚点击的记录。
+- 详情查询找不到实时记录时回退到列表快照，避免正常点击后显示“请求未找到”。
+- 加载、未找到和正常详情状态均提供可用的关闭按钮，Escape 也可以关闭详情。
 
 ### 故障转移与请求诊断
 
@@ -24,6 +30,12 @@
 > 诊断归属基于结构化错误、状态码和路由轨迹推断。对于缺少结构化证据的旧日志，StackFerry 会保守地标记为暂时无法确定。
 
 ## English
+
+### Request Detail Stability
+
+- Request details retain the selected log snapshot, so records remain viewable while background session synchronization or rebuilding replaces database rows.
+- When the live detail query no longer finds the record, the panel falls back to the selected row instead of showing a false “request not found” result.
+- Loading, empty, and normal detail states all provide a working close button, and Escape closes the panel.
 
 ### Tray Interaction
 
