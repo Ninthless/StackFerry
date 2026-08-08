@@ -5,7 +5,18 @@ import { RequestDetailPanel } from "@/components/usage/RequestDetailPanel";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, fallback?: string | { defaultValue?: string }) => {
+      const translations: Record<string, string> = {
+        "usage.diagnosticOrigins.upstream": "上游服务",
+        "usage.failureKinds.upstream_capacity": "上游容量不足",
+      };
+      return (
+        translations[key] ??
+        (typeof fallback === "string"
+          ? fallback
+          : (fallback?.defaultValue ?? key))
+      );
+    },
     i18n: { language: "en" },
   }),
 }));
@@ -48,7 +59,31 @@ vi.mock("@/lib/query/usage", () => ({
       totalCostUsd: "0.00037",
       isStreaming: true,
       latencyMs: 123,
+      firstTokenMs: 87,
       statusCode: 200,
+      failureKind: "upstream_capacity",
+      routeTrace: JSON.stringify([
+        {
+          providerId: "provider-0",
+          providerName: "Slow Provider",
+          attempt: 1,
+          startedMs: 0,
+          durationMs: 60_000,
+          outcome: "failed",
+          statusCode: 503,
+          failureKind: "upstream_capacity",
+          message: "Upstream capacity unavailable",
+        },
+        {
+          providerId: "provider-1",
+          providerName: "Pi Provider",
+          attempt: 2,
+          startedMs: 60_001,
+          durationMs: 123,
+          outcome: "response_received",
+          statusCode: 200,
+        },
+      ]),
       upstreamResponseId: "resp-pi-1",
       stopReason: "stop",
       createdAt: 1_700_000_000,
@@ -68,6 +103,13 @@ describe("RequestDetailPanel", () => {
     expect(screen.getByText("100")).toBeInTheDocument();
     expect(screen.getByText("resp-pi-1")).toBeInTheDocument();
     expect(screen.getByText("stop")).toBeInTheDocument();
+    expect(screen.getByText("路由诊断")).toBeInTheDocument();
+    expect(screen.getByText("诊断归属")).toBeInTheDocument();
+    expect(screen.getByText("上游服务")).toBeInTheDocument();
+    expect(screen.getByText("Slow Provider")).toBeInTheDocument();
+    expect(screen.getAllByText("上游容量不足")).toHaveLength(2);
+    expect(screen.getByText("首个有效输出")).toBeInTheDocument();
+    expect(screen.getByText("87ms")).toBeInTheDocument();
     expect(screen.queryByText(/原始/)).not.toBeInTheDocument();
   });
 });
