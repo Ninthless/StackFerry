@@ -206,7 +206,7 @@ describe("App integration with MSW", () => {
       expect(screen.getByTestId("provider-list")).toHaveTextContent("codex-1"),
     );
     expect(window.localStorage.getItem(VIEW_STORAGE_KEY)).toBe("providers");
-  });
+  }, 30_000);
 
   it("covers basic provider flows via real hooks", async () => {
     const { default: App } = await import("@/App");

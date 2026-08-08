@@ -438,6 +438,10 @@ pub fn codex_auth_has_oauth_login_material(auth: &Value) -> bool {
     })
 }
 
+fn codex_auth_is_api_key_only(auth: &Value) -> bool {
+    extract_codex_auth_api_key(auth).is_some() && !codex_auth_has_oauth_login_material(auth)
+}
+
 pub fn should_restore_codex_provider_token_for_backfill(
     category: Option<&str>,
     template_settings: &Value,
@@ -2121,7 +2125,19 @@ pub fn write_codex_live_for_provider(
         write_codex_live_atomic(auth, config_text)
     } else {
         let live_config = prepare_codex_provider_live_config(auth, config_text.unwrap_or(""))?;
-        write_codex_live_config_atomic(Some(&live_config))
+        write_codex_live_config_atomic(Some(&live_config))?;
+
+        if category == Some("official") {
+            let auth_path = get_codex_auth_path();
+            if auth_path.exists() {
+                let live_auth: Value = read_json_file(&auth_path)?;
+                if codex_auth_is_api_key_only(&live_auth) {
+                    delete_file(&auth_path)?;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -2344,6 +2360,8 @@ pub fn remove_codex_toml_base_url_if(toml_str: &str, predicate: impl Fn(&str) ->
 mod tests {
     use super::*;
     use serde_json::json;
+    use serial_test::serial;
+    use tempfile::TempDir;
 
     #[test]
     fn catalog_tool_profile_from_api_format() {
@@ -2363,6 +2381,52 @@ mod tests {
             CodexCatalogToolProfile::from_api_format(None),
             CodexCatalogToolProfile::ProxyChat
         );
+    }
+
+    #[test]
+    #[serial]
+    fn official_switch_removes_api_key_only_live_auth() {
+        let home = TempDir::new().expect("temp home");
+        let previous_home = std::env::var_os("STACKFERRY_TEST_HOME");
+        std::env::set_var("STACKFERRY_TEST_HOME", home.path());
+        let auth_path = get_codex_auth_path();
+        write_json_file(&auth_path, &json!({"OPENAI_API_KEY": "sk-provider"}))
+            .expect("write api key auth");
+
+        let result = write_codex_live_for_provider(Some("official"), &json!({}), Some(""));
+
+        match previous_home {
+            Some(value) => std::env::set_var("STACKFERRY_TEST_HOME", value),
+            None => std::env::remove_var("STACKFERRY_TEST_HOME"),
+        }
+        result.expect("switch official");
+        assert!(!auth_path.exists());
+    }
+
+    #[test]
+    #[serial]
+    fn official_switch_preserves_oauth_and_pat_live_auth() {
+        let home = TempDir::new().expect("temp home");
+        let previous_home = std::env::var_os("STACKFERRY_TEST_HOME");
+        std::env::set_var("STACKFERRY_TEST_HOME", home.path());
+        let auth_path = get_codex_auth_path();
+        let live_auth = json!({
+            "OPENAI_API_KEY": "pat-token",
+            "tokens": {
+                "access_token": "oauth-access"
+            }
+        });
+        write_json_file(&auth_path, &live_auth).expect("write oauth auth");
+
+        let result = write_codex_live_for_provider(Some("official"), &json!({}), Some(""));
+        let persisted: Value = read_json_file(&auth_path).expect("read preserved auth");
+
+        match previous_home {
+            Some(value) => std::env::set_var("STACKFERRY_TEST_HOME", value),
+            None => std::env::remove_var("STACKFERRY_TEST_HOME"),
+        }
+        result.expect("switch official");
+        assert_eq!(persisted, live_auth);
     }
 
     #[test]

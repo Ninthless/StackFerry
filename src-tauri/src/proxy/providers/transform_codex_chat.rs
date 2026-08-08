@@ -1409,11 +1409,18 @@ pub(crate) fn chat_completion_to_response_with_context(
     if let Some(message_item) = chat_message_to_response_output_item(message, &response_id) {
         output.push(message_item);
     }
-    output.extend(chat_tool_calls_to_response_output_items(
-        message,
-        reasoning.as_deref(),
-        tool_context,
-    ));
+    let tool_calls =
+        chat_tool_calls_to_response_output_items(message, reasoning.as_deref(), tool_context);
+    if response_status_from_finish_reason(finish_reason) == "completed"
+        && tool_calls.dropped > 0
+        && tool_calls.items.is_empty()
+    {
+        return Err(ProxyError::TransformError(format!(
+            "Upstream returned {} tool call(s) without a function name, leaving no usable tool call in this turn",
+            tool_calls.dropped
+        )));
+    }
+    output.extend(tool_calls.items);
 
     let mut response = json!({
         "id": response_id,
@@ -1533,21 +1540,38 @@ fn chat_message_to_response_output_item(message: &Value, response_id: &str) -> O
     }))
 }
 
+struct ChatToolCallItems {
+    items: Vec<Value>,
+    dropped: usize,
+}
+
 fn chat_tool_calls_to_response_output_items(
     message: &Value,
     reasoning: Option<&str>,
     tool_context: &CodexToolContext,
-) -> Vec<Value> {
+) -> ChatToolCallItems {
     let mut output = Vec::new();
+    let mut dropped = 0usize;
 
     if let Some(tool_calls) = message.get("tool_calls").and_then(|v| v.as_array()) {
         for (index, tool_call) in tool_calls.iter().enumerate() {
-            // Skip tool calls with missing function names (defensive: some models
-            // may generate tool calls without providing a valid name)
             let function = tool_call.get("function").unwrap_or(&Value::Null);
             let name = function.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            if name.is_empty() {
-                log::warn!("[Codex] Skipping tool call with missing name");
+            if name.trim().is_empty() {
+                dropped += 1;
+                let call_id_empty = tool_call
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .is_none_or(str::is_empty);
+                let args_bytes = function
+                    .get("arguments")
+                    .and_then(|v| v.as_str())
+                    .map(str::len)
+                    .unwrap_or(0);
+                log::warn!(
+                    "[Codex] dropped tool call: index={index} call_id_empty={call_id_empty} args_bytes={args_bytes} tools_total={}",
+                    tool_calls.len()
+                );
                 continue;
             }
             output.push(chat_tool_call_to_response_item(
@@ -1558,14 +1582,16 @@ fn chat_tool_calls_to_response_output_items(
             ));
         }
     } else if let Some(function_call) = message.get("function_call") {
-        if let Some(item) =
-            chat_legacy_function_call_to_response_item(function_call, reasoning, tool_context)
-        {
-            output.push(item);
+        match chat_legacy_function_call_to_response_item(function_call, reasoning, tool_context) {
+            Some(item) => output.push(item),
+            None => dropped += 1,
         }
     }
 
-    output
+    ChatToolCallItems {
+        items: output,
+        dropped,
+    }
 }
 
 fn chat_tool_call_to_response_item(
@@ -1611,10 +1637,15 @@ fn chat_legacy_function_call_to_response_item(
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    // Skip legacy function calls with missing names (defensive: some models
-    // may generate function_call without providing a valid name)
-    if name.is_empty() {
-        log::warn!("[Codex] Skipping legacy function_call with missing name");
+    if name.trim().is_empty() {
+        let args_bytes = function_call
+            .get("arguments")
+            .and_then(|v| v.as_str())
+            .map(str::len)
+            .unwrap_or(0);
+        log::warn!(
+            "[Codex] dropped legacy function_call: call_id={call_id} args_bytes={args_bytes}"
+        );
         return None;
     }
 
@@ -3949,6 +3980,117 @@ mod tests {
         assert_eq!(
             result["output"][0]["input"],
             "*** Begin Patch\n*** End Patch"
+        );
+    }
+
+    #[test]
+    fn chat_response_with_only_unnamed_tool_call_is_an_error() {
+        let chat = json!({
+            "id": "chatcmpl_drop",
+            "object": "chat.completion",
+            "created": 123,
+            "model": "kimi-k3",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "continue",
+                    "tool_calls": [{
+                        "id": "call_bad",
+                        "type": "function",
+                        "function": {"arguments": "{}"}
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }]
+        });
+
+        let error = chat_completion_to_response_with_context(chat, &CodexToolContext::default())
+            .unwrap_err();
+        assert!(matches!(error, ProxyError::TransformError(_)));
+        assert!(error.to_string().contains("without a function name"));
+    }
+
+    #[test]
+    fn chat_response_keeps_valid_tool_call_beside_unnamed_one() {
+        let chat = json!({
+            "id": "chatcmpl_mixed",
+            "object": "chat.completion",
+            "created": 123,
+            "model": "kimi-k3",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {"id": "call_bad", "type": "function", "function": {"arguments": "{}"}},
+                        {
+                            "id": "call_good",
+                            "type": "function",
+                            "function": {"name": "exec_command", "arguments": "{\"cmd\":\"ls\"}"}
+                        }
+                    ]
+                },
+                "finish_reason": "tool_calls"
+            }]
+        });
+
+        let result =
+            chat_completion_to_response_with_context(chat, &CodexToolContext::default()).unwrap();
+        let output = result["output"].as_array().unwrap();
+
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0]["name"], "exec_command");
+        assert_eq!(output[0]["call_id"], "call_good");
+        assert_eq!(result["status"], "completed");
+    }
+
+    #[test]
+    fn chat_response_truncated_unnamed_tool_stays_incomplete() {
+        let chat = json!({
+            "id": "chatcmpl_trunc",
+            "object": "chat.completion",
+            "created": 123,
+            "model": "kimi-k3",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [{
+                        "id": "call_cut",
+                        "type": "function",
+                        "function": {"arguments": "{\"pa"}
+                    }]
+                },
+                "finish_reason": "length"
+            }]
+        });
+
+        let result =
+            chat_completion_to_response_with_context(chat, &CodexToolContext::default()).unwrap();
+        assert_eq!(result["status"], "incomplete");
+        assert_eq!(result["incomplete_details"]["reason"], "max_output_tokens");
+    }
+
+    #[test]
+    fn chat_response_whitespace_only_tool_name_is_an_error() {
+        let chat = json!({
+            "id": "chatcmpl_ws",
+            "object": "chat.completion",
+            "created": 123,
+            "model": "kimi-k3",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [{
+                        "id": "call_ws",
+                        "type": "function",
+                        "function": {"name": " ", "arguments": "{}"}
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }]
+        });
+
+        assert!(
+            chat_completion_to_response_with_context(chat, &CodexToolContext::default()).is_err()
         );
     }
 

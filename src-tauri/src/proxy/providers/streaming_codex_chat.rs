@@ -80,6 +80,7 @@ struct ChatToResponsesState {
     latest_usage: Option<Value>,
     finish_reason: Option<String>,
     tool_context: CodexToolContext,
+    dropped_tool_calls: usize,
 }
 
 impl Default for ChatToResponsesState {
@@ -100,6 +101,7 @@ impl Default for ChatToResponsesState {
             latest_usage: None,
             finish_reason: None,
             tool_context: CodexToolContext::default(),
+            dropped_tool_calls: 0,
         }
     }
 }
@@ -332,8 +334,31 @@ impl ChatToResponsesState {
         (!self.reasoning.text.trim().is_empty()).then(|| self.reasoning.text.trim().to_string())
     }
 
+    fn resolve_tool_key_without_index(&self, tool_call: &Value) -> usize {
+        let last_key = self.tools.keys().next_back().copied();
+        let Some(id) = tool_call
+            .get("id")
+            .and_then(|v| v.as_str())
+            .filter(|id| !id.is_empty())
+        else {
+            return last_key.unwrap_or(0);
+        };
+
+        if let Some((key, _)) = self.tools.iter().find(|(_, state)| state.call_id == id) {
+            return *key;
+        }
+
+        match last_key {
+            Some(key) => key.checked_add(1).unwrap_or(key),
+            None => 0,
+        }
+    }
+
     fn push_tool_call_delta(&mut self, tool_call: &Value, reasoning: Option<&str>) -> Vec<Bytes> {
-        let chat_index = tool_call.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        let chat_index = match tool_call.get("index").and_then(|v| v.as_u64()) {
+            Some(index) => index as usize,
+            None => self.resolve_tool_key_without_index(tool_call),
+        };
         let id_delta = tool_call
             .get("id")
             .and_then(|v| v.as_str())
@@ -483,6 +508,15 @@ impl ChatToResponsesState {
             })
     }
 
+    fn has_emitted_tool_call(&self) -> bool {
+        self.output_items.iter().any(|(_, item)| {
+            matches!(
+                item.get("type").and_then(|v| v.as_str()),
+                Some("function_call" | "custom_tool_call" | "tool_search_call")
+            )
+        })
+    }
+
     fn finalize(&mut self) -> Vec<Bytes> {
         if self.completed {
             return Vec::new();
@@ -495,6 +529,14 @@ impl ChatToResponsesState {
         events.extend(self.finalize_tools());
 
         let status = response_status_from_finish_reason(self.finish_reason.as_deref());
+        if status == "completed" && self.dropped_tool_calls > 0 && !self.has_emitted_tool_call() {
+            let dropped = self.dropped_tool_calls;
+            let message = format!(
+                "Upstream returned {dropped} tool call(s) without a function name, leaving no usable tool call in this turn"
+            );
+            events.push(self.failed_event(message, Some("upstream_tool_call_dropped".to_string())));
+            return events;
+        }
         let mut response = self.base_response(status, self.completed_output_items());
         if status == "incomplete" {
             response["incomplete_details"] = json!({ "reason": "max_output_tokens" });
@@ -543,18 +585,30 @@ impl ChatToResponsesState {
                 continue;
             }
 
-            // Skip tool calls with missing names (defensive: some models generate
-            // tool call deltas without providing a valid function name)
             let has_bad_name = self
                 .tools
                 .get(&key)
-                .map(|state| state.name.is_empty())
+                .map(|state| state.name.trim().is_empty())
                 .unwrap_or(true);
             if has_bad_name {
+                let (call_id_empty, args_bytes) = self
+                    .tools
+                    .get(&key)
+                    .map(|state| (state.call_id.is_empty(), state.arguments.len()))
+                    .unwrap_or((true, 0));
                 if let Some(state) = self.tools.get_mut(&key) {
                     state.done = true;
                 }
-                log::warn!("[Codex] Skipping streaming tool call with missing name");
+                self.dropped_tool_calls += 1;
+                log::warn!(
+                    "[Codex] dropped streaming tool call: model={} chat_index={} call_id_empty={} args_bytes={} finish_reason={} tools_total={}",
+                    self.model,
+                    key,
+                    call_id_empty,
+                    args_bytes,
+                    self.finish_reason.as_deref().unwrap_or(" "),
+                    self.tools.len()
+                );
                 continue;
             }
 
@@ -1031,6 +1085,89 @@ mod tests {
         assert_eq!(items[0]["call_id"], "call_valid");
         assert_eq!(items[0]["arguments"], r#"{"cmd":"date"}"#);
         assert!(!output.contains("call_missing"));
+    }
+
+    #[tokio::test]
+    async fn dropped_only_tool_call_emits_failed_without_completed() {
+        let output = collect(vec![
+            "data: {\"id\":\"chatcmpl_drop\",\"model\":\"kimi-k3\",\"choices\":[{\"delta\":{\"content\":\"continue\"}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_drop\",\"model\":\"kimi-k3\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_bad\",\"type\":\"function\",\"function\":{\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: [DONE]\n\n",
+        ])
+        .await;
+
+        assert!(output.contains("event: response.failed"));
+        assert!(output.contains("upstream_tool_call_dropped"));
+        assert!(!output.contains("event: response.completed"));
+        assert!(output.contains("continue"));
+    }
+
+    #[tokio::test]
+    async fn truncated_unnamed_tool_call_stays_incomplete() {
+        let output = collect(vec![
+            "data: {\"id\":\"chatcmpl_trunc\",\"model\":\"kimi-k3\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_cut\",\"type\":\"function\",\"function\":{\"arguments\":\"{\\\"pa\"}}]},\"finish_reason\":\"length\"}]}\n\n",
+            "data: [DONE]\n\n",
+        ])
+        .await;
+
+        assert!(output.contains("event: response.completed"));
+        assert!(output.contains("\"status\":\"incomplete\""));
+        assert!(!output.contains("event: response.failed"));
+    }
+
+    #[tokio::test]
+    async fn whitespace_only_tool_name_is_dropped() {
+        let output = collect(vec![
+            "data: {\"id\":\"chatcmpl_ws\",\"model\":\"kimi-k3\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_ws\",\"type\":\"function\",\"function\":{\"name\":\" \",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: [DONE]\n\n",
+        ])
+        .await;
+
+        assert!(output.contains("event: response.failed"));
+        assert!(output.contains("upstream_tool_call_dropped"));
+        assert!(!output.contains("event: response.completed"));
+    }
+
+    #[tokio::test]
+    async fn missing_index_keeps_distinct_ids_separate() {
+        let output = collect(vec![
+            "data: {\"id\":\"chatcmpl_noidx\",\"model\":\"deepseek-v4-pro\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"call_a\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_noidx\",\"model\":\"deepseek-v4-pro\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"call_b\",\"type\":\"function\",\"function\":{\"name\":\"exec_command\",\"arguments\":\"{\\\"cmd\\\":\\\"ls\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: [DONE]\n\n",
+        ])
+        .await;
+        let events = parse_sse_events(&output);
+        let completed = events
+            .iter()
+            .find(|event| event["type"] == "response.completed")
+            .unwrap();
+        let items = completed["response"]["output"].as_array().unwrap();
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["call_id"], "call_a");
+        assert_eq!(items[0]["arguments"], r#"{"path":"a.txt"}"#);
+        assert_eq!(items[1]["call_id"], "call_b");
+        assert_eq!(items[1]["arguments"], r#"{"cmd":"ls"}"#);
+    }
+
+    #[tokio::test]
+    async fn missing_index_argument_fragments_stay_in_one_call() {
+        let output = collect(vec![
+            "data: {\"id\":\"chatcmpl_frag\",\"model\":\"deepseek-v4-pro\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"call_a\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\"}}]}}]}\n\n",
+            "data: {\"id\":\"chatcmpl_frag\",\"model\":\"deepseek-v4-pro\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"type\":\"function\",\"function\":{\"arguments\":\"\\\"a.txt\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+            "data: [DONE]\n\n",
+        ])
+        .await;
+        let events = parse_sse_events(&output);
+        let completed = events
+            .iter()
+            .find(|event| event["type"] == "response.completed")
+            .unwrap();
+        let items = completed["response"]["output"].as_array().unwrap();
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["call_id"], "call_a");
+        assert_eq!(items[0]["arguments"], r#"{"path":"a.txt"}"#);
     }
 
     #[tokio::test]

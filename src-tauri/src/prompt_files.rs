@@ -34,11 +34,8 @@ pub fn prompt_file_path(app: &AppType) -> Result<PathBuf, AppError> {
         AppType::Claude => "CLAUDE.md",
         AppType::Codex => "AGENTS.md",
         AppType::Gemini => "GEMINI.md",
-        AppType::GrokBuild
-        | AppType::OpenCode
-        | AppType::OpenClaw
-        | AppType::Hermes
-        | AppType::Pi => "AGENTS.md",
+        AppType::Hermes => "SOUL.md",
+        AppType::GrokBuild | AppType::OpenCode | AppType::OpenClaw | AppType::Pi => "AGENTS.md",
         AppType::ClaudeDesktop => unreachable!("handled above"),
     };
 
@@ -53,4 +50,30 @@ fn get_base_dir_with_fallback(
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| crate::config::get_home_dir().join(fallback_dir)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use tempfile::TempDir;
+
+    #[test]
+    #[serial]
+    fn hermes_prompt_file_is_soul_md() {
+        let home = TempDir::new().expect("temp home");
+        let previous_home = std::env::var_os("STACKFERRY_TEST_HOME");
+        std::env::set_var("STACKFERRY_TEST_HOME", home.path());
+
+        let path = prompt_file_path(&AppType::Hermes).expect("Hermes prompt path");
+
+        match previous_home {
+            Some(value) => std::env::set_var("STACKFERRY_TEST_HOME", value),
+            None => std::env::remove_var("STACKFERRY_TEST_HOME"),
+        }
+        assert_eq!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("SOUL.md")
+        );
+    }
 }

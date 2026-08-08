@@ -51,7 +51,7 @@ const CLAUDE_ONE_M_MARKER_FOR_CLIENT: &str = "[1M]";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClaudeTakeoverAuthPolicy {
     PreserveExistingOrAuthToken,
-    ManagedAccount { keep_auth_token: bool },
+    ManagedAccount { use_api_key: bool },
 }
 
 #[derive(Clone)]
@@ -103,11 +103,12 @@ impl ProxyService {
         provider: &Provider,
     ) {
         let auth_policy = if provider.uses_managed_account_auth() {
-            // Codex 系（含仅凭 base_url 识别、无 provider_type meta 的）必须保留
-            // ANTHROPIC_AUTH_TOKEN 占位符：Claude Code 缺该键会弹登录提示（#3784）。
-            // Copilot 维持仅 API_KEY 占位，避免与 /login 管理的 key 冲突（#1049）。
             ClaudeTakeoverAuthPolicy::ManagedAccount {
-                keep_auth_token: !provider.is_github_copilot(),
+                use_api_key: provider
+                    .meta
+                    .as_ref()
+                    .and_then(|meta| meta.api_key_field.as_deref())
+                    == Some("ANTHROPIC_API_KEY"),
             }
         } else {
             ClaudeTakeoverAuthPolicy::PreserveExistingOrAuthToken
@@ -198,27 +199,16 @@ impl ProxyService {
                     );
                 }
             }
-            ClaudeTakeoverAuthPolicy::ManagedAccount { keep_auth_token } => {
+            ClaudeTakeoverAuthPolicy::ManagedAccount { use_api_key } => {
                 for key in token_keys {
                     env.remove(key);
                 }
-                // 只注入一个认证键：两者同时存在会触发 Claude Code 的
-                // "Both ANTHROPIC_AUTH_TOKEN and ANTHROPIC_API_KEY set" 警告（#4919）。
-                // - Codex 系保留 AUTH_TOKEN：缺该键 Claude Code 会弹登录提示（#3784）。
-                //   无条件注入而非"已存在才保留"：热切换路径传入的是 provider
-                //   settings（预设不含该键），且旧版接管已把存量用户 live 中的键删光。
-                // - Copilot 仅 API_KEY：避免与 /login 管理的 key 冲突（#1049）。
-                if keep_auth_token {
-                    env.insert(
-                        "ANTHROPIC_AUTH_TOKEN".to_string(),
-                        json!(PROXY_TOKEN_PLACEHOLDER),
-                    );
+                let field = if use_api_key {
+                    "ANTHROPIC_API_KEY"
                 } else {
-                    env.insert(
-                        "ANTHROPIC_API_KEY".to_string(),
-                        json!(PROXY_TOKEN_PLACEHOLDER),
-                    );
-                }
+                    "ANTHROPIC_AUTH_TOKEN"
+                };
+                env.insert(field.to_string(), json!(PROXY_TOKEN_PLACEHOLDER));
             }
         }
     }
@@ -3703,7 +3693,7 @@ mod tests {
     }
 
     #[test]
-    fn managed_account_claude_takeover_uses_api_key_placeholder() {
+    fn managed_account_claude_takeover_defaults_to_auth_token_placeholder() {
         let mut provider = Provider::with_id(
             "copilot".to_string(),
             "GitHub Copilot".to_string(),
@@ -3732,14 +3722,47 @@ mod tests {
             .and_then(|value| value.as_object())
             .expect("env should exist");
         assert_eq!(
-            env.get("ANTHROPIC_API_KEY")
+            env.get("ANTHROPIC_AUTH_TOKEN")
                 .and_then(|value| value.as_str()),
             Some(PROXY_TOKEN_PLACEHOLDER)
         );
         assert!(
-            env.get("ANTHROPIC_AUTH_TOKEN").is_none(),
-            "managed OAuth providers should avoid Claude Auth Token login semantics"
+            env.get("ANTHROPIC_API_KEY").is_none(),
+            "managed OAuth providers should default to Claude Auth Token semantics"
         );
+    }
+
+    #[test]
+    fn managed_account_claude_takeover_respects_explicit_api_key_field() {
+        let mut provider = Provider::with_id(
+            "copilot".to_string(),
+            "GitHub Copilot".to_string(),
+            json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "https://api.githubcopilot.com"
+                }
+            }),
+            None,
+        );
+        provider.meta = Some(ProviderMeta {
+            provider_type: Some("github_copilot".to_string()),
+            api_key_field: Some("ANTHROPIC_API_KEY".to_string()),
+            ..Default::default()
+        });
+
+        let mut live_config = provider.settings_config.clone();
+        ProxyService::apply_claude_takeover_fields_for_provider(
+            &mut live_config,
+            "http://127.0.0.1:15721",
+            &provider,
+        );
+
+        let env = live_config
+            .get("env")
+            .and_then(|value| value.as_object())
+            .expect("env should exist");
+        assert_env_str(env, "ANTHROPIC_API_KEY", Some(PROXY_TOKEN_PLACEHOLDER));
+        assert_env_str(env, "ANTHROPIC_AUTH_TOKEN", None);
     }
 
     #[test]
@@ -3820,8 +3843,8 @@ mod tests {
             "CLAUDE_CODE_SUBAGENT_MODEL",
             Some("claude-sonnet-4.6[1M]"),
         );
-        assert_env_str(env, "ANTHROPIC_API_KEY", Some(PROXY_TOKEN_PLACEHOLDER));
-        assert_env_str(env, "ANTHROPIC_AUTH_TOKEN", None);
+        assert_env_str(env, "ANTHROPIC_AUTH_TOKEN", Some(PROXY_TOKEN_PLACEHOLDER));
+        assert_env_str(env, "ANTHROPIC_API_KEY", None);
     }
 
     #[test]
@@ -4074,7 +4097,7 @@ mod tests {
     }
 
     #[test]
-    fn managed_account_claude_takeover_copilot_removes_stale_auth_token() {
+    fn managed_account_claude_takeover_copilot_replaces_stale_auth_token() {
         let mut provider = Provider::with_id(
             "copilot".to_string(),
             "GitHub Copilot".to_string(),
@@ -4106,8 +4129,8 @@ mod tests {
             .get("env")
             .and_then(|value| value.as_object())
             .expect("env should exist");
-        assert_env_str(env, "ANTHROPIC_API_KEY", Some(PROXY_TOKEN_PLACEHOLDER));
-        assert_env_str(env, "ANTHROPIC_AUTH_TOKEN", None);
+        assert_env_str(env, "ANTHROPIC_AUTH_TOKEN", Some(PROXY_TOKEN_PLACEHOLDER));
+        assert_env_str(env, "ANTHROPIC_API_KEY", None);
     }
 
     #[test]
