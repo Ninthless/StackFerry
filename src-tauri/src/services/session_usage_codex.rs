@@ -1310,7 +1310,7 @@ fn sync_single_codex_file(
     Ok(result)
 }
 
-/// 插入单条 Codex 会话记录到 proxy_request_logs
+#[cfg(test)]
 fn insert_codex_session_entry(
     db: &Database,
     request_id: &str,
@@ -1345,6 +1345,7 @@ fn insert_codex_session_entry(
     Ok(inserted)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn insert_codex_session_entry_on_conn(
     conn: &rusqlite::Connection,
     statement: &mut rusqlite::Statement<'_>,
@@ -1377,10 +1378,10 @@ fn insert_codex_session_entry_on_conn(
         cache_creation_tokens: 0,
         created_at,
     };
-    if should_skip_session_insert(&conn, request_id, &dedup_key)? {
+    if should_skip_session_insert(conn, request_id, &dedup_key)? {
         return Ok(false);
     }
-    if has_suspected_codex_session_duplicate(&conn, request_id, &dedup_key)? {
+    if has_suspected_codex_session_duplicate(conn, request_id, &dedup_key)? {
         *suspected_duplicates = suspected_duplicates.saturating_add(1);
         log::warn!(
             "[CODEX-SYNC] 疑似重复会话用量: request_id={request_id}, model={model}, input={}, output={}, cache_read={}",
@@ -1402,7 +1403,7 @@ fn insert_codex_session_entry_on_conn(
         message_id: None,
     };
 
-    let pricing = find_codex_pricing(&conn, model);
+    let pricing = find_codex_pricing(conn, model);
     let multiplier = Decimal::from(1);
     let (input_cost, output_cost, cache_read_cost, cache_creation_cost, total_cost) = match pricing
     {
