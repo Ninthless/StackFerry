@@ -1905,11 +1905,27 @@
     "piAdapter": {
       "label": "Pi MCP adapter",
       "loading": "Checking",
-      "inactive": "Inactive",
-      "pending": "Pending Pi install",
+      "uninstalled": "Not installed",
+      "declaredMissing": "Declared in settings, but installed files are missing",
+      "declaredMissingHint": "Remove the stale Adapter package declaration from Pi settings, then check again.",
+      "repairableMissingHint": "This stale declaration was created by an older StackFerry version and can be safely removed before reinstalling.",
       "installed": "Installed",
+      "incompatible": "Incompatible version",
       "error": "Error",
-      "projectOverride": "Project config overrides global config"
+      "effective": "Active",
+      "notEffective": "Pi MCP is not active yet",
+      "projectionPending": "Waiting or blocked by a conflict ({{projected}}/{{desired}})",
+      "counts": "Desired {{desired}}, active {{projected}}",
+      "projectOverride": "Project config overrides global config",
+      "install": "Install Adapter",
+      "repairInstall": "Clean Up and Install",
+      "recheck": "Check again",
+      "installTitle": "Install Pi MCP Adapter",
+      "installMessage": "This installs the latest version of npm:pi-mcp-adapter from npm.\n\nThe extension will be allowed to execute code on this machine. MCP servers already selected for Pi remain desired settings only and will not become active until installation completes.",
+      "installConfirm": "Install",
+      "installSuccess": "Pi MCP Adapter installed and server projection is active",
+      "projectionFailed": "The Adapter was installed, but MCP server projection failed",
+      "installFailed": "Pi MCP Adapter installation failed"
     },
     "userLevelPath": "User-level MCP path",
     "serverList": "Servers",
@@ -2538,6 +2554,158 @@
     "discoveryFailures": {
       "title": "{{count}} repository could not be refreshed. Other skills remain available.",
       "item": "{{repo}} ({{branch}}): {{error}}"
+    }
+  },
+  "piExtensions": {
+    "title": "Pi Extensions",
+    "add": "Add",
+    "adapterBadge": "MCP managed",
+    "loadFailed": "Failed to load Pi extensions",
+    "searchPlaceholder": "Search name, package, path, or version...",
+    "tabs": {
+      "extensions": "Extensions",
+      "packages": "Packages",
+      "discover": "Discover"
+    },
+    "summary": {
+      "extensions": "Extensions",
+      "enabled": "Enabled",
+      "packages": "Packages",
+      "issues": "Issues",
+      "cliAvailable": "Pi CLI {{version}}",
+      "cliUnavailable": "Pi CLI unavailable"
+    },
+    "filters": {
+      "status": "Filter by status",
+      "source": "Filter by source",
+      "allStatuses": "All statuses",
+      "allSources": "All sources"
+    },
+    "status": {
+      "active": "Active",
+      "disabled": "Disabled",
+      "installed": "Installed",
+      "missing": "Missing",
+      "invalid": "Invalid",
+      "conflict": "Conflict"
+    },
+    "source": {
+      "auto": "Auto",
+      "local": "Local",
+      "npm": "npm",
+      "git": "Git"
+    },
+    "actions": {
+      "details": "View details",
+      "toggle": "Toggle {{name}}",
+      "toggleUnavailable": "This extension cannot be toggled until its status is resolved",
+      "unregisterLocal": "Unregister {{name}}",
+      "refresh": "Refresh inventory",
+      "cliRequired": "A working Pi CLI is required to modify extension settings",
+      "configUnavailable": "Pi settings are invalid and cannot be modified",
+      "adapterManaged": "This extension is maintained by StackFerry MCP management",
+      "adapterManagedPackage": "Manage this Adapter package from the MCP page",
+      "remove": "Remove {{name}}",
+      "removePackage": "Remove package"
+    },
+    "empty": {
+      "noExtensions": "No Pi extensions found",
+      "noExtensionResults": "No matching extensions",
+      "noPackages": "No Pi packages installed",
+      "noPackageResults": "No matching packages"
+    },
+    "resources": {
+      "extensionsShort": "Ext {{count}}",
+      "skillsShort": "Skills {{count}}",
+      "promptsShort": "Prompts {{count}}",
+      "themesShort": "Themes {{count}}"
+    },
+    "discover": {
+      "placeholder": "Search the npm package directory...",
+      "initial": "Search npm for Pi packages",
+      "failed": "Package search failed",
+      "noResults": "No packages found for \"{{query}}\"",
+      "noDescription": "No description",
+      "downloads": "{{value}} downloads",
+      "openExternal": "Open package page",
+      "manifestUnavailable": "Manifest unavailable",
+      "installed": "Installed",
+      "install": "Install",
+      "resultCount": "{{total}} results",
+      "previous": "Previous page",
+      "next": "Next page"
+    },
+    "installDialog": {
+      "title": "Add Pi extension or package",
+      "description": "Choose a source and review it before adding.",
+      "modes": {
+        "extensionFile": "Extension file",
+        "extensionDirectory": "Extension folder",
+        "packageDirectory": "Package folder",
+        "npm": "npm",
+        "git": "Git"
+      },
+      "labels": {
+        "extensionFile": "Extension file path",
+        "extensionDirectory": "Extension directory path",
+        "packageDirectory": "Package directory path",
+        "npm": "npm package source",
+        "git": "Git repository source"
+      },
+      "placeholders": {
+        "extensionFile": "Select or enter an extension file path",
+        "extensionDirectory": "Select or enter an extension directory",
+        "packageDirectory": "Select or enter a package directory",
+        "npm": "package-name or package-name@version",
+        "git": "https://github.com/owner/repository.git"
+      },
+      "browse": "Browse",
+      "risk": "I understand that Pi extensions and packages run with full system permissions and should only be installed from sources I trust.",
+      "confirm": "Add"
+    },
+    "details": {
+      "title": "Details",
+      "extension": "Resolved extension information",
+      "package": "Installed package information",
+      "resourceCounts": "{{extensions}} extensions, {{skills}} skills, {{prompts}} prompts, {{themes}} themes",
+      "fields": {
+        "name": "Name",
+        "source": "Source",
+        "path": "Resolved path",
+        "version": "Version",
+        "status": "Status",
+        "resources": "Resources",
+        "error": "Error"
+      }
+    },
+    "removeConfirm": {
+      "title": "Remove Pi package",
+      "message": "Remove \"{{name}}\" and all resources installed by this package? Individual extensions are not removed from this view.",
+      "confirm": "Remove package"
+    },
+    "unregisterConfirm": {
+      "title": "Unregister local extension",
+      "message": "Unregister \"{{name}}\" from Pi settings? Its source files will not be deleted.",
+      "confirm": "Unregister"
+    },
+    "installConfirm": {
+      "title": "Install Pi package",
+      "message": "Install \"{{name}}\"? {{manifest}} Pi packages can execute code with full system permissions. Continue only if you trust the source.",
+      "manifestAvailable": "The package manifest was loaded.",
+      "manifestUnavailable": "The package manifest could not be loaded before installation. Resources will be confirmed after installation.",
+      "confirm": "Install"
+    },
+    "messages": {
+      "toggleFailed": "Failed to update extension",
+      "removeSuccess": "Removed {{name}}",
+      "removeFailed": "Failed to remove package",
+      "installSuccess": "Pi package installed",
+      "installNamedSuccess": "Installed {{name}}",
+      "installFailed": "Failed to install package",
+      "registerSuccess": "Local extension registered",
+      "registerFailed": "Failed to register local extension",
+      "unregisterSuccess": "Unregistered {{name}}",
+      "unregisterFailed": "Failed to unregister local extension"
     }
   },
   "deeplink": {

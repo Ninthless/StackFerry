@@ -21,6 +21,31 @@ export function usePiMcpAdapterStatus(projectDir?: string) {
   });
 }
 
+export function useInstallPiMcpAdapter(projectDir?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => mcpApi.installPiAdapter(projectDir),
+    onSuccess: (result) => {
+      queryClient.setQueryData(
+        ["mcp", "pi-adapter-status", projectDir ?? null],
+        result.status,
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["mcp", "pi-adapter-status"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["mcp", "all"] });
+      queryClient.invalidateQueries({
+        queryKey: ["piExtensions", "inventory"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["piExtensions", "search"],
+      });
+    },
+  });
+}
+
 /**
  * 添加或更新 MCP 服务器
  */

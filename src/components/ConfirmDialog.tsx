@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, Info, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 interface ConfirmDialogProps {
@@ -20,6 +20,8 @@ interface ConfirmDialogProps {
   cancelText?: string;
   variant?: "destructive" | "info";
   zIndex?: "base" | "nested" | "alert" | "top";
+  pending?: boolean;
+  confirmDisabled?: boolean;
   /** 可选勾选项：提供 label 即显示，勾选状态经 onConfirm 参数回传 */
   checkboxLabel?: string;
   checkboxDefaultChecked?: boolean;
@@ -35,6 +37,8 @@ export function ConfirmDialog({
   cancelText,
   variant = "destructive",
   zIndex = "alert",
+  pending = false,
+  confirmDisabled = false,
   checkboxLabel,
   checkboxDefaultChecked = false,
   onConfirm,
@@ -59,7 +63,7 @@ export function ConfirmDialog({
     <Dialog
       open={isOpen}
       onOpenChange={(open) => {
-        if (!open) {
+        if (!open && !pending) {
           onCancel();
         }
       }}
@@ -78,6 +82,7 @@ export function ConfirmDialog({
           <label className="flex cursor-pointer select-none items-start gap-2 px-6 pt-3">
             <Checkbox
               checked={checkboxChecked}
+              disabled={pending}
               onCheckedChange={(value) => setCheckboxChecked(value === true)}
               className="mt-0.5"
             />
@@ -85,16 +90,18 @@ export function ConfirmDialog({
           </label>
         ) : null}
         <DialogFooter className="flex gap-2 border-t-0 bg-transparent pt-2 sm:justify-end">
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" disabled={pending} onClick={onCancel}>
             {cancelText || t("common.cancel")}
           </Button>
           <Button
             variant={variant === "info" ? "default" : "destructive"}
+            disabled={pending || confirmDisabled}
             onClick={() =>
               // 未渲染勾选框时不得回传 defaultChecked 残留值
               onConfirm(checkboxLabel ? checkboxChecked : false)
             }
           >
+            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
             {confirmText || t("common.confirm")}
           </Button>
         </DialogFooter>

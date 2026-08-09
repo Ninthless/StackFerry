@@ -7,6 +7,7 @@ import {
   Edit3,
   ExternalLink,
   Package,
+  RefreshCw,
   Search,
   Server,
   Trash2,
@@ -21,6 +22,7 @@ import {
   useToggleMcpApp,
   useDeleteMcpServer,
   useImportMcpFromApps,
+  useInstallPiMcpAdapter,
   usePiMcpAdapterStatus,
 } from "@/hooks/useMcp";
 import type { McpServer, PiMcpAdapterStatus } from "@/types";
@@ -49,6 +51,7 @@ const UnifiedMcpPanel = React.forwardRef<
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isInstallAdapterOpen, setIsInstallAdapterOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -61,11 +64,13 @@ const UnifiedMcpPanel = React.forwardRef<
     data: piAdapterStatus,
     isLoading: isPiAdapterStatusLoading,
     error: piAdapterStatusError,
+    refetch: refetchPiAdapterStatus,
   } = usePiMcpAdapterStatus();
   const toggleAppMutation = useToggleMcpApp();
   const bulkToggleAppMutation = useBulkToggleMcpApp();
   const deleteServerMutation = useDeleteMcpServer();
   const importMutation = useImportMcpFromApps();
+  const installPiAdapterMutation = useInstallPiMcpAdapter();
 
   const serverEntries = useMemo((): Array<[string, McpServer]> => {
     if (!serversMap) return [];
@@ -184,6 +189,33 @@ const UnifiedMcpPanel = React.forwardRef<
     }
   };
 
+  const handleInstallPiAdapter = async () => {
+    try {
+      const result = await installPiAdapterMutation.mutateAsync();
+      setIsInstallAdapterOpen(false);
+      if (result.installed && result.projected) {
+        toast.success(t("mcp.piAdapter.installSuccess"), {
+          closeButton: true,
+        });
+      } else if (result.installed) {
+        toast.warning(t("mcp.piAdapter.projectionFailed"), {
+          description: result.error || undefined,
+          closeButton: true,
+        });
+      } else {
+        toast.error(t("mcp.piAdapter.installFailed"), {
+          description: result.error || undefined,
+          closeButton: true,
+        });
+      }
+    } catch (error) {
+      toast.error(t("mcp.piAdapter.installFailed"), {
+        description: String(error),
+        closeButton: true,
+      });
+    }
+  };
+
   React.useImperativeHandle(ref, () => ({
     openAdd: handleAdd,
     openImport: handleImport,
@@ -226,6 +258,9 @@ const UnifiedMcpPanel = React.forwardRef<
         status={piAdapterStatus}
         isLoading={isPiAdapterStatusLoading}
         queryError={piAdapterStatusError}
+        isInstalling={installPiAdapterMutation.isPending}
+        onInstall={() => setIsInstallAdapterOpen(true)}
+        onRecheck={() => void refetchPiAdapterStatus()}
       />
 
       <div className="relative mb-3 flex-shrink-0">
@@ -314,6 +349,17 @@ const UnifiedMcpPanel = React.forwardRef<
           onCancel={() => setConfirmDialog(null)}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={isInstallAdapterOpen}
+        title={t("mcp.piAdapter.installTitle")}
+        message={t("mcp.piAdapter.installMessage")}
+        confirmText={t("mcp.piAdapter.installConfirm")}
+        variant="info"
+        pending={installPiAdapterMutation.isPending}
+        onConfirm={() => void handleInstallPiAdapter()}
+        onCancel={() => setIsInstallAdapterOpen(false)}
+      />
     </div>
   );
 });
@@ -324,28 +370,65 @@ const PiMcpAdapterStatusRow: React.FC<{
   status?: PiMcpAdapterStatus;
   isLoading: boolean;
   queryError: Error | null;
-}> = ({ status, isLoading, queryError }) => {
+  isInstalling: boolean;
+  onInstall: () => void;
+  onRecheck: () => void;
+}> = ({
+  status,
+  isLoading,
+  queryError,
+  isInstalling,
+  onInstall,
+  onRecheck,
+}) => {
   const { t } = useTranslation();
   const state = queryError ? "error" : status?.state;
 
   if (!state && !isLoading) return null;
 
   const stateStyles = {
-    inactive: "text-muted-foreground",
-    pending: "text-amber-600 dark:text-amber-400",
+    uninstalled: "text-muted-foreground",
+    declaredMissing: "text-destructive",
     installed: "text-emerald-600 dark:text-emerald-400",
+    incompatible: "text-destructive",
     error: "text-destructive",
   } as const;
+  const countsMatch =
+    status?.desiredServerCount === status?.projectedServerCount;
   const StateIcon =
-    state === "installed"
+    state === "installed" && countsMatch
       ? CheckCircle2
-      : state === "pending"
+      : state === "installed"
         ? Clock3
-        : state === "error"
+        : state === "declaredMissing" ||
+            state === "incompatible" ||
+            state === "error"
           ? AlertTriangle
           : Package;
-  const version = status?.installedVersion ?? status?.configuredVersion;
   const error = queryError ? String(queryError) : status?.error;
+  const guidance =
+    state === "declaredMissing"
+      ? status?.canRepair
+        ? t("mcp.piAdapter.repairableMissingHint")
+        : t("mcp.piAdapter.declaredMissingHint")
+      : null;
+  const canInstall = status?.canInstall === true || status?.canRepair === true;
+  const canRecheck =
+    Boolean(queryError) ||
+    state === "declaredMissing" ||
+    state === "incompatible" ||
+    state === "error";
+  const stateLabel =
+    state === "installed"
+      ? countsMatch
+        ? t("mcp.piAdapter.effective")
+        : t("mcp.piAdapter.projectionPending", {
+            desired: status?.desiredServerCount ?? 0,
+            projected: status?.projectedServerCount ?? 0,
+          })
+      : state === "uninstalled" && (status?.desiredServerCount ?? 0) > 0
+        ? t("mcp.piAdapter.notEffective")
+        : t(`mcp.piAdapter.${state}`);
 
   return (
     <div
@@ -365,8 +448,18 @@ const PiMcpAdapterStatusRow: React.FC<{
           className={`inline-flex items-center gap-1 ${stateStyles[state!]}`}
         >
           <StateIcon className="h-3.5 w-3.5" />
-          {t(`mcp.piAdapter.${state}`)}
-          {version ? ` v${version}` : ""}
+          {stateLabel}
+          {state === "installed" && status?.installedVersion
+            ? ` v${status.installedVersion}`
+            : ""}
+        </span>
+      )}
+      {status && (
+        <span className="text-muted-foreground">
+          {t("mcp.piAdapter.counts", {
+            desired: status.desiredServerCount,
+            projected: status.projectedServerCount,
+          })}
         </span>
       )}
       {status?.projectOverridePath && (
@@ -384,6 +477,40 @@ const PiMcpAdapterStatusRow: React.FC<{
         >
           {error}
         </span>
+      )}
+      {guidance && (
+        <span className="min-w-0 flex-1 truncate text-destructive">
+          {guidance}
+        </span>
+      )}
+      {canRecheck && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="ml-auto h-7 px-2"
+          disabled={isLoading || isInstalling}
+          onClick={onRecheck}
+        >
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`}
+          />
+          {t("mcp.piAdapter.recheck")}
+        </Button>
+      )}
+      {canInstall && (
+        <Button
+          type="button"
+          size="sm"
+          className={canRecheck ? "h-7 px-2" : "ml-auto h-7 px-2"}
+          disabled={isInstalling}
+          onClick={onInstall}
+        >
+          <Package className="h-3.5 w-3.5" />
+          {status?.canRepair
+            ? t("mcp.piAdapter.repairInstall")
+            : t("mcp.piAdapter.install")}
+        </Button>
       )}
     </div>
   );

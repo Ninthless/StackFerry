@@ -1905,11 +1905,27 @@
     "piAdapter": {
       "label": "Pi MCP 适配器",
       "loading": "正在检查",
-      "inactive": "未启用",
-      "pending": "等待 Pi 安装",
+      "uninstalled": "未安装",
+      "declaredMissing": "配置已声明，但安装文件缺失",
+      "declaredMissingHint": "请先手动清理 Pi settings 中失效的 Adapter Package 声明，再重新检查。",
+      "repairableMissingHint": "检测到由旧版 StackFerry 创建的失效声明，可以安全清理后重新安装。",
       "installed": "已安装",
+      "incompatible": "版本不兼容",
       "error": "异常",
-      "projectOverride": "项目配置已覆盖全局配置"
+      "effective": "已生效",
+      "notEffective": "Pi MCP 尚未生效",
+      "projectionPending": "等待投影或存在冲突（{{projected}}/{{desired}}）",
+      "counts": "期望 {{desired}}，生效 {{projected}}",
+      "projectOverride": "项目配置已覆盖全局配置",
+      "install": "安装 Adapter",
+      "repairInstall": "清理并安装",
+      "recheck": "重新检查",
+      "installTitle": "安装 Pi MCP Adapter",
+      "installMessage": "将从 npm 安装 npm:pi-mcp-adapter 的 latest 版本。\n\n该扩展将在本机获得代码执行权限。安装完成前，已为 Pi 选择的 MCP server 只会保存为期望状态，不会实际生效。",
+      "installConfirm": "确认安装",
+      "installSuccess": "Pi MCP Adapter 已安装，服务器投影已生效",
+      "projectionFailed": "Adapter 安装成功，但 MCP 服务器投影失败",
+      "installFailed": "Pi MCP Adapter 安装失败"
     },
     "userLevelPath": "用户级 MCP 配置路径",
     "serverList": "服务器列表",
@@ -2538,6 +2554,158 @@
     "discoveryFailures": {
       "title": "有 {{count}} 个仓库刷新失败，其他技能仍可正常使用。",
       "item": "{{repo}}（{{branch}}）：{{error}}"
+    }
+  },
+  "piExtensions": {
+    "title": "Pi 扩展",
+    "add": "添加",
+    "adapterBadge": "MCP 管理",
+    "loadFailed": "加载 Pi 扩展失败",
+    "searchPlaceholder": "搜索名称、Package、路径或版本...",
+    "tabs": {
+      "extensions": "扩展",
+      "packages": "Packages",
+      "discover": "发现"
+    },
+    "summary": {
+      "extensions": "扩展",
+      "enabled": "已启用",
+      "packages": "Packages",
+      "issues": "异常",
+      "cliAvailable": "Pi CLI {{version}}",
+      "cliUnavailable": "Pi CLI 不可用"
+    },
+    "filters": {
+      "status": "按状态筛选",
+      "source": "按来源筛选",
+      "allStatuses": "全部状态",
+      "allSources": "全部来源"
+    },
+    "status": {
+      "active": "正常",
+      "disabled": "已禁用",
+      "installed": "已安装",
+      "missing": "缺失",
+      "invalid": "无效",
+      "conflict": "冲突"
+    },
+    "source": {
+      "auto": "自动",
+      "local": "本地",
+      "npm": "npm",
+      "git": "Git"
+    },
+    "actions": {
+      "details": "查看详情",
+      "toggle": "切换 {{name}}",
+      "toggleUnavailable": "解决当前异常状态后才能切换此扩展",
+      "unregisterLocal": "取消注册 {{name}}",
+      "refresh": "刷新库存",
+      "cliRequired": "需要可用的 Pi CLI 才能修改扩展配置",
+      "configUnavailable": "Pi 配置无效，无法执行修改",
+      "adapterManaged": "此扩展由 StackFerry 的 MCP 管理功能维护",
+      "adapterManagedPackage": "此 Adapter Package 由 MCP 页面管理",
+      "remove": "删除 {{name}}",
+      "removePackage": "卸载 Package"
+    },
+    "empty": {
+      "noExtensions": "未发现 Pi 扩展",
+      "noExtensionResults": "没有匹配的扩展",
+      "noPackages": "尚未安装 Pi Package",
+      "noPackageResults": "没有匹配的 Package"
+    },
+    "resources": {
+      "extensionsShort": "扩展 {{count}}",
+      "skillsShort": "Skills {{count}}",
+      "promptsShort": "Prompts {{count}}",
+      "themesShort": "主题 {{count}}"
+    },
+    "discover": {
+      "placeholder": "搜索 npm Package 目录...",
+      "initial": "搜索 npm 中的 Pi Package",
+      "failed": "Package 搜索失败",
+      "noResults": "未找到与“{{query}}”匹配的 Package",
+      "noDescription": "暂无描述",
+      "downloads": "{{value}} 次下载",
+      "openExternal": "打开 Package 页面",
+      "manifestUnavailable": "Manifest 不可用",
+      "installed": "已安装",
+      "install": "安装",
+      "resultCount": "共 {{total}} 条结果",
+      "previous": "上一页",
+      "next": "下一页"
+    },
+    "installDialog": {
+      "title": "添加 Pi 扩展或 Package",
+      "description": "选择来源并在添加前检查内容。",
+      "modes": {
+        "extensionFile": "扩展文件",
+        "extensionDirectory": "扩展目录",
+        "packageDirectory": "Package 目录",
+        "npm": "npm",
+        "git": "Git"
+      },
+      "labels": {
+        "extensionFile": "扩展文件路径",
+        "extensionDirectory": "扩展目录路径",
+        "packageDirectory": "Package 目录路径",
+        "npm": "npm Package 来源",
+        "git": "Git 仓库来源"
+      },
+      "placeholders": {
+        "extensionFile": "选择或输入扩展文件路径",
+        "extensionDirectory": "选择或输入扩展目录",
+        "packageDirectory": "选择或输入 Package 目录",
+        "npm": "package-name 或 package-name@version",
+        "git": "https://github.com/owner/repository.git"
+      },
+      "browse": "浏览",
+      "risk": "我已了解 Pi 扩展和 Package 拥有完整系统权限，并且只会安装来自可信来源的内容。",
+      "confirm": "添加"
+    },
+    "details": {
+      "title": "详情",
+      "extension": "扩展解析信息",
+      "package": "已安装 Package 信息",
+      "resourceCounts": "{{extensions}} 个扩展、{{skills}} 个 Skills、{{prompts}} 个 Prompts、{{themes}} 个主题",
+      "fields": {
+        "name": "名称",
+        "source": "来源",
+        "path": "解析路径",
+        "version": "版本",
+        "status": "状态",
+        "resources": "资源",
+        "error": "错误"
+      }
+    },
+    "removeConfirm": {
+      "title": "卸载 Pi Package",
+      "message": "确定卸载“{{name}}”及该 Package 安装的全部资源吗？此处不会把单个扩展删除等同于 Package 卸载。",
+      "confirm": "卸载 Package"
+    },
+    "unregisterConfirm": {
+      "title": "取消注册本地扩展",
+      "message": "确定从 Pi 配置中取消注册“{{name}}”吗？源文件不会被删除。",
+      "confirm": "取消注册"
+    },
+    "installConfirm": {
+      "title": "安装 Pi Package",
+      "message": "确定安装“{{name}}”吗？{{manifest}} Pi Package 可使用完整系统权限执行代码，请仅在信任来源时继续。",
+      "manifestAvailable": "已读取 Package manifest。",
+      "manifestUnavailable": "安装前无法读取 Package manifest，资源将在安装后确认。",
+      "confirm": "安装"
+    },
+    "messages": {
+      "toggleFailed": "更新扩展失败",
+      "removeSuccess": "已卸载 {{name}}",
+      "removeFailed": "卸载 Package 失败",
+      "installSuccess": "Pi Package 安装成功",
+      "installNamedSuccess": "已安装 {{name}}",
+      "installFailed": "安装 Package 失败",
+      "registerSuccess": "本地扩展注册成功",
+      "registerFailed": "注册本地扩展失败",
+      "unregisterSuccess": "已取消注册 {{name}}",
+      "unregisterFailed": "取消注册本地扩展失败"
     }
   },
   "deeplink": {

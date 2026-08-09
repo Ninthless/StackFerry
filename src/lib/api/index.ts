@@ -18,6 +18,15 @@ export {
 } from "./sessions";
 export type { SessionProviderId } from "./sessions";
 export { workspaceApi } from "./workspace";
+export { piExtensionsApi } from "./piExtensions";
+export type {
+  PiExtension,
+  PiExtensionInventory,
+  PiPackage,
+  PiPackageSearchItem,
+  PiPackageSearchResult,
+  PiRuntimeInfo,
+} from "./piExtensions";
 export * as configApi from "./config";
 export * as authApi from "./auth";
 export * as copilotApi from "./copilot";

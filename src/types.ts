@@ -544,7 +544,12 @@ export interface McpStatus {
   serverCount: number;
 }
 
-export type PiMcpAdapterState = "inactive" | "pending" | "installed" | "error";
+export type PiMcpAdapterState =
+  | "uninstalled"
+  | "declaredMissing"
+  | "installed"
+  | "incompatible"
+  | "error";
 
 export interface PiMcpAdapterStatus {
   state: PiMcpAdapterState;
@@ -552,6 +557,17 @@ export interface PiMcpAdapterStatus {
   installedVersion?: string | null;
   configPath: string;
   projectOverridePath?: string | null;
+  error?: string | null;
+  canInstall: boolean;
+  canRepair: boolean;
+  desiredServerCount: number;
+  projectedServerCount: number;
+}
+
+export interface PiMcpInstallResult {
+  installed: boolean;
+  projected: boolean;
+  status: PiMcpAdapterStatus;
   error?: string | null;
 }
 

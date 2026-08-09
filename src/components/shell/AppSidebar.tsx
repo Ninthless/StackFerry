@@ -8,6 +8,7 @@ import {
   FolderTree,
   KeyRound,
   LayoutGrid,
+  Puzzle,
   Route,
   Settings,
   ShieldCheck,
@@ -129,12 +130,23 @@ export function AppSidebar({
     },
   ];
 
+  const piItems: NavItem[] = [
+    {
+      key: "piExtensions",
+      label: t("piExtensions.title"),
+      icon: Puzzle,
+      view: "piExtensions",
+    },
+  ];
+
   const routeSpecificItems =
     activeApp === "openclaw"
       ? openClawItems
       : activeApp === "hermes"
         ? hermesItems
-        : [];
+        : activeApp === "pi"
+          ? piItems
+          : [];
   const featureItems = [...globalFeatureItems, ...routeSpecificItems];
 
   const renderNavItem = (item: NavItem) => {
@@ -147,6 +159,7 @@ export function AppSidebar({
         key={item.key}
         type="button"
         onClick={() => (item.view ? onViewChange(item.view) : item.onClick?.())}
+        title={item.label}
         className={cn(
           "group flex h-9 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm transition-colors",
           isActive

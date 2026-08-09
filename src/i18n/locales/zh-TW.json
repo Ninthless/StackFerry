@@ -1876,11 +1876,27 @@
     "piAdapter": {
       "label": "Pi MCP 介面卡",
       "loading": "正在檢查",
-      "inactive": "未啟用",
-      "pending": "等待 Pi 安裝",
+      "uninstalled": "尚未安裝",
+      "declaredMissing": "設定已宣告，但安裝檔案遺失",
+      "declaredMissingHint": "請先手動清除 Pi settings 中失效的 Adapter Package 宣告，再重新檢查。",
+      "repairableMissingHint": "偵測到由舊版 StackFerry 建立的失效宣告，可以安全清除後重新安裝。",
       "installed": "已安裝",
+      "incompatible": "版本不相容",
       "error": "異常",
-      "projectOverride": "專案設定已覆蓋全域設定"
+      "effective": "已生效",
+      "notEffective": "Pi MCP 尚未生效",
+      "projectionPending": "等待投影或存在衝突（{{projected}}/{{desired}}）",
+      "counts": "期望 {{desired}}，生效 {{projected}}",
+      "projectOverride": "專案設定已覆蓋全域設定",
+      "install": "安裝 Adapter",
+      "repairInstall": "清除並安裝",
+      "recheck": "重新檢查",
+      "installTitle": "安裝 Pi MCP Adapter",
+      "installMessage": "將從 npm 安裝 npm:pi-mcp-adapter 的 latest 版本。\n\n此擴充功能將取得在本機執行程式碼的權限。安裝完成前，已為 Pi 選取的 MCP server 只會儲存為期望狀態，不會實際生效。",
+      "installConfirm": "確認安裝",
+      "installSuccess": "Pi MCP Adapter 已安裝，伺服器投影已生效",
+      "projectionFailed": "Adapter 安裝成功，但 MCP 伺服器投影失敗",
+      "installFailed": "Pi MCP Adapter 安裝失敗"
     },
     "userLevelPath": "使用者級 MCP 設定路徑",
     "serverList": "伺服器清單",
@@ -2509,6 +2525,158 @@
     "discoveryFailures": {
       "title": "有 {{count}} 個儲存庫重新整理失敗，其他技能仍可正常使用。",
       "item": "{{repo}}（{{branch}}）：{{error}}"
+    }
+  },
+  "piExtensions": {
+    "title": "Pi 擴充功能",
+    "add": "新增",
+    "adapterBadge": "MCP 管理",
+    "loadFailed": "載入 Pi 擴充功能失敗",
+    "searchPlaceholder": "搜尋名稱、Package、路徑或版本...",
+    "tabs": {
+      "extensions": "擴充功能",
+      "packages": "Packages",
+      "discover": "探索"
+    },
+    "summary": {
+      "extensions": "擴充功能",
+      "enabled": "已啟用",
+      "packages": "Packages",
+      "issues": "異常",
+      "cliAvailable": "Pi CLI {{version}}",
+      "cliUnavailable": "Pi CLI 無法使用"
+    },
+    "filters": {
+      "status": "依狀態篩選",
+      "source": "依來源篩選",
+      "allStatuses": "全部狀態",
+      "allSources": "全部來源"
+    },
+    "status": {
+      "active": "正常",
+      "disabled": "已停用",
+      "installed": "已安裝",
+      "missing": "遺失",
+      "invalid": "無效",
+      "conflict": "衝突"
+    },
+    "source": {
+      "auto": "自動",
+      "local": "本機",
+      "npm": "npm",
+      "git": "Git"
+    },
+    "actions": {
+      "details": "檢視詳細資料",
+      "toggle": "切換 {{name}}",
+      "toggleUnavailable": "解決目前異常狀態後才能切換此擴充功能",
+      "unregisterLocal": "取消註冊 {{name}}",
+      "refresh": "重新整理庫存",
+      "cliRequired": "需要可用的 Pi CLI 才能修改擴充功能設定",
+      "configUnavailable": "Pi 設定無效，無法執行修改",
+      "adapterManaged": "此擴充功能由 StackFerry 的 MCP 管理功能維護",
+      "adapterManagedPackage": "請從 MCP 頁面管理此 Adapter Package",
+      "remove": "移除 {{name}}",
+      "removePackage": "解除安裝 Package"
+    },
+    "empty": {
+      "noExtensions": "未找到 Pi 擴充功能",
+      "noExtensionResults": "沒有符合的擴充功能",
+      "noPackages": "尚未安裝 Pi Package",
+      "noPackageResults": "沒有符合的 Package"
+    },
+    "resources": {
+      "extensionsShort": "擴充 {{count}}",
+      "skillsShort": "Skills {{count}}",
+      "promptsShort": "Prompts {{count}}",
+      "themesShort": "主題 {{count}}"
+    },
+    "discover": {
+      "placeholder": "搜尋 npm Package 目錄...",
+      "initial": "搜尋 npm 中的 Pi Package",
+      "failed": "Package 搜尋失敗",
+      "noResults": "找不到與「{{query}}」相符的 Package",
+      "noDescription": "沒有描述",
+      "downloads": "{{value}} 次下載",
+      "openExternal": "開啟 Package 頁面",
+      "manifestUnavailable": "Manifest 無法使用",
+      "installed": "已安裝",
+      "install": "安裝",
+      "resultCount": "共 {{total}} 筆結果",
+      "previous": "上一頁",
+      "next": "下一頁"
+    },
+    "installDialog": {
+      "title": "新增 Pi 擴充功能或 Package",
+      "description": "選擇來源並在新增前檢查內容。",
+      "modes": {
+        "extensionFile": "擴充檔案",
+        "extensionDirectory": "擴充目錄",
+        "packageDirectory": "Package 目錄",
+        "npm": "npm",
+        "git": "Git"
+      },
+      "labels": {
+        "extensionFile": "擴充檔案路徑",
+        "extensionDirectory": "擴充目錄路徑",
+        "packageDirectory": "Package 目錄路徑",
+        "npm": "npm Package 來源",
+        "git": "Git 儲存庫來源"
+      },
+      "placeholders": {
+        "extensionFile": "選擇或輸入擴充檔案路徑",
+        "extensionDirectory": "選擇或輸入擴充目錄",
+        "packageDirectory": "選擇或輸入 Package 目錄",
+        "npm": "package-name 或 package-name@version",
+        "git": "https://github.com/owner/repository.git"
+      },
+      "browse": "瀏覽",
+      "risk": "我了解 Pi 擴充功能與 Package 擁有完整系統權限，且只會安裝來自可信來源的內容。",
+      "confirm": "新增"
+    },
+    "details": {
+      "title": "詳細資料",
+      "extension": "擴充功能解析資訊",
+      "package": "已安裝 Package 資訊",
+      "resourceCounts": "{{extensions}} 個擴充功能、{{skills}} 個 Skills、{{prompts}} 個 Prompts、{{themes}} 個主題",
+      "fields": {
+        "name": "名稱",
+        "source": "來源",
+        "path": "解析路徑",
+        "version": "版本",
+        "status": "狀態",
+        "resources": "資源",
+        "error": "錯誤"
+      }
+    },
+    "removeConfirm": {
+      "title": "解除安裝 Pi Package",
+      "message": "確定要解除安裝「{{name}}」以及此 Package 安裝的所有資源嗎？此處不會將移除單一擴充功能視為解除安裝 Package。",
+      "confirm": "解除安裝 Package"
+    },
+    "unregisterConfirm": {
+      "title": "取消註冊本機擴充功能",
+      "message": "確定要從 Pi 設定中取消註冊「{{name}}」嗎？來源檔案不會被刪除。",
+      "confirm": "取消註冊"
+    },
+    "installConfirm": {
+      "title": "安裝 Pi Package",
+      "message": "確定要安裝「{{name}}」嗎？{{manifest}} Pi Package 可使用完整系統權限執行程式碼，請只在信任來源時繼續。",
+      "manifestAvailable": "已讀取 Package manifest。",
+      "manifestUnavailable": "安裝前無法讀取 Package manifest，資源將在安裝後確認。",
+      "confirm": "安裝"
+    },
+    "messages": {
+      "toggleFailed": "更新擴充功能失敗",
+      "removeSuccess": "已解除安裝 {{name}}",
+      "removeFailed": "解除安裝 Package 失敗",
+      "installSuccess": "Pi Package 安裝成功",
+      "installNamedSuccess": "已安裝 {{name}}",
+      "installFailed": "安裝 Package 失敗",
+      "registerSuccess": "本機擴充功能註冊成功",
+      "registerFailed": "註冊本機擴充功能失敗",
+      "unregisterSuccess": "已取消註冊 {{name}}",
+      "unregisterFailed": "取消註冊本機擴充功能失敗"
     }
   },
   "deeplink": {

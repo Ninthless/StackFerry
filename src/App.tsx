@@ -70,6 +70,7 @@ import ToolsPanel from "@/components/openclaw/ToolsPanel";
 import AgentsDefaultsPanel from "@/components/openclaw/AgentsDefaultsPanel";
 import OpenClawHealthBanner from "@/components/openclaw/OpenClawHealthBanner";
 import HermesMemoryPanel from "@/components/hermes/HermesMemoryPanel";
+import PiExtensionsPanel from "@/components/pi/PiExtensionsPanel";
 import { AppSwitcher } from "@/components/AppSwitcher";
 import { AppSelect } from "@/components/common/AppSelect";
 import { AppSidebar } from "@/components/shell/AppSidebar";
@@ -124,6 +125,7 @@ const VALID_VIEWS: AppView[] = [
   "openclawTools",
   "openclawAgents",
   "hermesMemory",
+  "piExtensions",
 ];
 
 const isViewCompatibleWithApp = (view: AppView, appId: AppId): boolean => {
@@ -138,6 +140,10 @@ const isViewCompatibleWithApp = (view: AppView, appId: AppId): boolean => {
 
   if (view === "hermesMemory") {
     return appId === "hermes";
+  }
+
+  if (view === "piExtensions") {
+    return appId === "pi";
   }
 
   return true;
@@ -818,6 +824,8 @@ function App() {
         return t("openclaw.agents.title");
       case "hermesMemory":
         return t("hermes.memory.title");
+      case "piExtensions":
+        return t("piExtensions.title");
     }
   };
 
@@ -996,6 +1004,8 @@ function App() {
           );
         case "hermesMemory":
           return <HermesMemoryPanel />;
+        case "piExtensions":
+          return <PiExtensionsPanel />;
         case "skills":
           return (
             <UnifiedSkillsPanel

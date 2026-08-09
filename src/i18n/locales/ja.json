@@ -1905,11 +1905,27 @@
     "piAdapter": {
       "label": "Pi MCP アダプター",
       "loading": "確認中",
-      "inactive": "無効",
-      "pending": "Pi のインストール待ち",
+      "uninstalled": "未インストール",
+      "declaredMissing": "設定には登録されていますが、インストール済みファイルがありません",
+      "declaredMissingHint": "Pi settings に残っている無効な Adapter Package の登録を手動で削除してから、再確認してください。",
+      "repairableMissingHint": "旧バージョンの StackFerry が作成した無効な登録を検出しました。安全に削除してから再インストールできます。",
       "installed": "インストール済み",
+      "incompatible": "互換性のないバージョン",
       "error": "エラー",
-      "projectOverride": "プロジェクト設定がグローバル設定を上書きしています"
+      "effective": "反映済み",
+      "notEffective": "Pi MCP はまだ有効になっていません",
+      "projectionPending": "反映待ち、または競合があります（{{projected}}/{{desired}}）",
+      "counts": "設定 {{desired}}、反映済み {{projected}}",
+      "projectOverride": "プロジェクト設定がグローバル設定を上書きしています",
+      "install": "Adapter をインストール",
+      "repairInstall": "クリーンアップしてインストール",
+      "recheck": "再確認",
+      "installTitle": "Pi MCP Adapter をインストール",
+      "installMessage": "npm から npm:pi-mcp-adapter の latest バージョンをインストールします。\n\nこの拡張機能には、このマシン上でコードを実行する権限が付与されます。インストールが完了するまで、Pi 用に選択済みの MCP server は希望設定として保存されるだけで、実際には有効になりません。",
+      "installConfirm": "インストール",
+      "installSuccess": "Pi MCP Adapter をインストールし、サーバー設定を反映しました",
+      "projectionFailed": "Adapter のインストールは成功しましたが、MCP サーバー設定の反映に失敗しました",
+      "installFailed": "Pi MCP Adapter のインストールに失敗しました"
     },
     "userLevelPath": "ユーザーレベルの MCP パス",
     "serverList": "サーバー一覧",
@@ -2538,6 +2554,158 @@
     "discoveryFailures": {
       "title": "{{count}} 件のリポジトリを更新できませんでした。他のスキルは引き続き利用できます。",
       "item": "{{repo}}（{{branch}}）：{{error}}"
+    }
+  },
+  "piExtensions": {
+    "title": "Pi 拡張機能",
+    "add": "追加",
+    "adapterBadge": "MCP 管理",
+    "loadFailed": "Pi 拡張機能の読み込みに失敗しました",
+    "searchPlaceholder": "名前、Package、パス、バージョンを検索...",
+    "tabs": {
+      "extensions": "拡張機能",
+      "packages": "Packages",
+      "discover": "検索"
+    },
+    "summary": {
+      "extensions": "拡張機能",
+      "enabled": "有効",
+      "packages": "Packages",
+      "issues": "問題",
+      "cliAvailable": "Pi CLI {{version}}",
+      "cliUnavailable": "Pi CLI は利用できません"
+    },
+    "filters": {
+      "status": "状態で絞り込む",
+      "source": "ソースで絞り込む",
+      "allStatuses": "すべての状態",
+      "allSources": "すべてのソース"
+    },
+    "status": {
+      "active": "有効",
+      "disabled": "無効",
+      "installed": "インストール済み",
+      "missing": "見つかりません",
+      "invalid": "無効",
+      "conflict": "競合"
+    },
+    "source": {
+      "auto": "自動",
+      "local": "ローカル",
+      "npm": "npm",
+      "git": "Git"
+    },
+    "actions": {
+      "details": "詳細を表示",
+      "toggle": "{{name}} を切り替える",
+      "toggleUnavailable": "現在の問題を解決するまでこの拡張機能は切り替えられません",
+      "unregisterLocal": "{{name}} の登録を解除",
+      "refresh": "インベントリを更新",
+      "cliRequired": "拡張機能の設定を変更するには動作する Pi CLI が必要です",
+      "configUnavailable": "Pi 設定が無効なため変更できません",
+      "adapterManaged": "この拡張機能は StackFerry の MCP 管理機能によって管理されています",
+      "adapterManagedPackage": "この Adapter Package は MCP ページで管理してください",
+      "remove": "{{name}} を削除",
+      "removePackage": "Package をアンインストール"
+    },
+    "empty": {
+      "noExtensions": "Pi 拡張機能がありません",
+      "noExtensionResults": "一致する拡張機能がありません",
+      "noPackages": "Pi Package はインストールされていません",
+      "noPackageResults": "一致する Package がありません"
+    },
+    "resources": {
+      "extensionsShort": "拡張 {{count}}",
+      "skillsShort": "Skills {{count}}",
+      "promptsShort": "Prompts {{count}}",
+      "themesShort": "テーマ {{count}}"
+    },
+    "discover": {
+      "placeholder": "npm Package ディレクトリを検索...",
+      "initial": "npm で Pi Package を検索",
+      "failed": "Package の検索に失敗しました",
+      "noResults": "「{{query}}」に一致する Package はありません",
+      "noDescription": "説明はありません",
+      "downloads": "{{value}} ダウンロード",
+      "openExternal": "Package ページを開く",
+      "manifestUnavailable": "Manifest を利用できません",
+      "installed": "インストール済み",
+      "install": "インストール",
+      "resultCount": "{{total}} 件",
+      "previous": "前のページ",
+      "next": "次のページ"
+    },
+    "installDialog": {
+      "title": "Pi 拡張機能または Package を追加",
+      "description": "ソースを選択し、追加前に内容を確認してください。",
+      "modes": {
+        "extensionFile": "拡張ファイル",
+        "extensionDirectory": "拡張フォルダー",
+        "packageDirectory": "Package フォルダー",
+        "npm": "npm",
+        "git": "Git"
+      },
+      "labels": {
+        "extensionFile": "拡張ファイルのパス",
+        "extensionDirectory": "拡張ディレクトリのパス",
+        "packageDirectory": "Package ディレクトリのパス",
+        "npm": "npm Package ソース",
+        "git": "Git リポジトリソース"
+      },
+      "placeholders": {
+        "extensionFile": "拡張ファイルを選択またはパスを入力",
+        "extensionDirectory": "拡張ディレクトリを選択または入力",
+        "packageDirectory": "Package ディレクトリを選択または入力",
+        "npm": "package-name または package-name@version",
+        "git": "https://github.com/owner/repository.git"
+      },
+      "browse": "参照",
+      "risk": "Pi 拡張機能と Package が完全なシステム権限で動作することを理解し、信頼できるソースからのみインストールします。",
+      "confirm": "追加"
+    },
+    "details": {
+      "title": "詳細",
+      "extension": "解決済み拡張機能情報",
+      "package": "インストール済み Package 情報",
+      "resourceCounts": "拡張機能 {{extensions}}、Skills {{skills}}、Prompts {{prompts}}、テーマ {{themes}}",
+      "fields": {
+        "name": "名前",
+        "source": "ソース",
+        "path": "解決済みパス",
+        "version": "バージョン",
+        "status": "状態",
+        "resources": "リソース",
+        "error": "エラー"
+      }
+    },
+    "removeConfirm": {
+      "title": "Pi Package をアンインストール",
+      "message": "「{{name}}」と、この Package がインストールしたすべてのリソースを削除しますか？個別の拡張機能の削除を Package のアンインストールとして扱いません。",
+      "confirm": "Package を削除"
+    },
+    "unregisterConfirm": {
+      "title": "ローカル拡張機能の登録を解除",
+      "message": "Pi 設定から「{{name}}」の登録を解除しますか？ソースファイルは削除されません。",
+      "confirm": "登録を解除"
+    },
+    "installConfirm": {
+      "title": "Pi Package をインストール",
+      "message": "「{{name}}」をインストールしますか？{{manifest}} Pi Package は完全なシステム権限でコードを実行できます。信頼できるソースの場合のみ続行してください。",
+      "manifestAvailable": "Package manifest を読み込みました。",
+      "manifestUnavailable": "インストール前に Package manifest を読み込めませんでした。リソースはインストール後に確認されます。",
+      "confirm": "インストール"
+    },
+    "messages": {
+      "toggleFailed": "拡張機能の更新に失敗しました",
+      "removeSuccess": "{{name}} を削除しました",
+      "removeFailed": "Package の削除に失敗しました",
+      "installSuccess": "Pi Package をインストールしました",
+      "installNamedSuccess": "{{name}} をインストールしました",
+      "installFailed": "Package のインストールに失敗しました",
+      "registerSuccess": "ローカル拡張機能を登録しました",
+      "registerFailed": "ローカル拡張機能の登録に失敗しました",
+      "unregisterSuccess": "{{name}} の登録を解除しました",
+      "unregisterFailed": "ローカル拡張機能の登録解除に失敗しました"
     }
   },
   "deeplink": {

@@ -10,4 +10,5 @@ export type AppView =
   | "openclawEnv"
   | "openclawTools"
   | "openclawAgents"
-  | "hermesMemory";
+  | "hermesMemory"
+  | "piExtensions";
