@@ -39,4 +39,6 @@ pub use hermes::{import_from_hermes, remove_server_from_hermes, sync_single_serv
 pub use opencode::{
     import_from_opencode, remove_server_from_opencode, sync_single_server_to_opencode,
 };
-pub use pi::{get_pi_mcp_status, project_servers_to_pi, read_pi_servers, PiMcpStatus};
+pub use pi::{
+    get_pi_mcp_status, project_servers_to_pi, read_pi_servers, PiMcpStatus, PI_MCP_ADAPTER_PACKAGE,
+};

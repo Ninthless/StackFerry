@@ -159,6 +159,35 @@ pub async fn set_mcp_enabled(
 
 use crate::app_config::McpServer;
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PiMcpInstallResult {
+    pub installed: bool,
+    pub projected: bool,
+    pub status: crate::mcp::PiMcpStatus,
+    pub error: Option<String>,
+}
+
+fn pi_mcp_install_result(
+    projection: Result<(), crate::AppError>,
+    status: crate::mcp::PiMcpStatus,
+) -> PiMcpInstallResult {
+    match projection {
+        Ok(()) => PiMcpInstallResult {
+            installed: true,
+            projected: true,
+            status,
+            error: None,
+        },
+        Err(error) => PiMcpInstallResult {
+            installed: true,
+            projected: false,
+            status,
+            error: Some(error.to_string()),
+        },
+    }
+}
+
 /// 获取所有 MCP 服务器（统一结构）
 #[tauri::command]
 pub async fn get_mcp_servers(
@@ -184,6 +213,45 @@ pub async fn get_pi_mcp_adapter_status(
         .filter(|path| !path.is_empty())
         .map(std::path::Path::new);
     Ok(crate::mcp::get_pi_mcp_status(project_dir, &enabled_ids))
+}
+
+#[tauri::command]
+pub async fn install_pi_mcp_adapter(
+    state: State<'_, AppState>,
+    project_dir: Option<String>,
+) -> Result<PiMcpInstallResult, String> {
+    let servers = McpService::get_all_servers(&state).map_err(|error| error.to_string())?;
+    let enabled_ids = servers
+        .values()
+        .filter(|server| server.apps.pi)
+        .map(|server| server.id.clone())
+        .collect();
+    let project_dir = project_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(std::path::Path::new);
+    crate::mcp::project_servers_to_pi(&servers).map_err(|error| error.to_string())?;
+    let installable_status = crate::mcp::get_pi_mcp_status(project_dir, &enabled_ids);
+    if !installable_status.can_install {
+        return Err(installable_status.error.clone().unwrap_or_else(|| {
+            format!(
+                "Pi MCP adapter cannot be installed while its state is {}",
+                installable_status.state
+            )
+        }));
+    }
+    crate::services::pi_extension::install_mcp_adapter().await?;
+    let installed_status = crate::mcp::get_pi_mcp_status(project_dir, &enabled_ids);
+    if installed_status.state != "installed" {
+        return Err(installed_status
+            .error
+            .clone()
+            .unwrap_or_else(|| "Pi MCP adapter installation verification failed".to_string()));
+    }
+    let projection = crate::mcp::project_servers_to_pi(&servers);
+    let status = crate::mcp::get_pi_mcp_status(project_dir, &enabled_ids);
+    Ok(pi_mcp_install_result(projection, status))
 }
 
 /// 添加或更新 MCP 服务器
@@ -217,4 +285,35 @@ pub async fn toggle_mcp_app(
 #[tauri::command]
 pub async fn import_mcp_from_apps(state: State<'_, AppState>) -> Result<usize, String> {
     McpService::import_from_all_apps(&state).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn installed_adapter_projection_conflict_returns_partial_success() {
+        let result = pi_mcp_install_result(
+            Err(crate::AppError::McpValidation(
+                "Pi MCP server 'same' conflicts".to_string(),
+            )),
+            crate::mcp::PiMcpStatus {
+                state: "installed".to_string(),
+                configured_version: Some("latest".to_string()),
+                installed_version: Some("2.20.0".to_string()),
+                config_path: "mcp.json".to_string(),
+                project_override_path: None,
+                error: None,
+                can_install: false,
+                can_repair: false,
+                desired_server_count: 1,
+                projected_server_count: 0,
+            },
+        );
+
+        assert!(result.installed);
+        assert!(!result.projected);
+        assert_eq!(result.status.state, "installed");
+        assert!(result.error.is_some_and(|error| error.contains("same")));
+    }
 }

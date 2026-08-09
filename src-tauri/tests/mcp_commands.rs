@@ -548,20 +548,13 @@ fn enabling_and_disabling_pi_mcp_projects_and_restores_files() {
     .expect("enable Pi MCP");
 
     let pi_dir = home.join(".pi/agent");
-    let mcp: serde_json::Value = serde_json::from_slice(
-        &fs::read(pi_dir.join("mcp.json")).expect("read projected Pi MCP config"),
-    )
-    .expect("parse Pi MCP config");
-    let settings: serde_json::Value = serde_json::from_slice(
-        &fs::read(pi_dir.join("settings.json")).expect("read projected Pi settings"),
-    )
-    .expect("parse Pi settings");
-    assert_eq!(mcp["mcpServers"]["pi-stdio"]["env"]["TOKEN"], "!read-token");
-    assert!(settings["packages"]
-        .as_array()
-        .expect("packages array")
-        .iter()
-        .any(|entry| entry == "npm:pi-mcp-adapter@2.19.0"));
+    assert!(!pi_dir.join("mcp.json").exists());
+    assert!(!pi_dir.join("settings.json").exists());
+    assert!(
+        state.db.get_all_mcp_servers().expect("read MCP database")["pi-stdio"]
+            .apps
+            .pi
+    );
 
     McpService::toggle_app(&state, "pi-stdio", AppType::Pi, false).expect("disable Pi MCP");
 
@@ -602,9 +595,14 @@ fn pi_mcp_projection_honors_custom_agent_directory() {
     )
     .expect("project Pi MCP to custom dir");
 
-    assert!(custom_dir.join("mcp.json").exists());
-    assert!(custom_dir.join("settings.json").exists());
+    assert!(!custom_dir.join("mcp.json").exists());
+    assert!(!custom_dir.join("settings.json").exists());
     assert!(!home.join(".pi/agent/mcp.json").exists());
+    assert!(
+        state.db.get_all_mcp_servers().expect("read MCP database")["custom-dir"]
+            .apps
+            .pi
+    );
 }
 
 #[test]
@@ -620,6 +618,20 @@ fn pi_projection_collision_rolls_back_database_upsert() {
         serde_json::to_vec_pretty(&original).expect("serialize Pi config"),
     )
     .expect("seed Pi config");
+    fs::write(
+        pi_dir.join("settings.json"),
+        serde_json::to_vec_pretty(&json!({"packages": ["npm:pi-mcp-adapter"]}))
+            .expect("serialize Pi settings"),
+    )
+    .expect("seed Pi settings");
+    let package_dir = pi_dir.join("npm/node_modules/pi-mcp-adapter");
+    fs::create_dir_all(&package_dir).expect("create adapter package dir");
+    fs::write(
+        package_dir.join("package.json"),
+        serde_json::to_vec_pretty(&json!({"name": "pi-mcp-adapter", "version": "2.19.0"}))
+            .expect("serialize adapter package"),
+    )
+    .expect("seed adapter package");
     let state = create_test_state().expect("create test state");
 
     let error = McpService::upsert_server(
@@ -651,7 +663,7 @@ fn pi_projection_collision_rolls_back_database_upsert() {
     )
     .expect("parse Pi config after failure");
     assert_eq!(after, original);
-    assert!(!pi_dir.join("settings.json").exists());
+    assert!(pi_dir.join("settings.json").exists());
 }
 
 #[test]
@@ -660,6 +672,21 @@ fn pi_toggle_and_delete_projection_failures_restore_database_state() {
     reset_test_fs();
     let home = ensure_test_home();
     let state = create_test_state().expect("create test state");
+    let pi_dir = home.join(".pi/agent");
+    fs::create_dir_all(pi_dir.join("npm/node_modules/pi-mcp-adapter"))
+        .expect("create adapter package dir");
+    fs::write(
+        pi_dir.join("settings.json"),
+        serde_json::to_vec_pretty(&json!({"packages": ["npm:pi-mcp-adapter"]}))
+            .expect("serialize Pi settings"),
+    )
+    .expect("seed Pi settings");
+    fs::write(
+        pi_dir.join("npm/node_modules/pi-mcp-adapter/package.json"),
+        serde_json::to_vec_pretty(&json!({"name": "pi-mcp-adapter", "version": "2.19.0"}))
+            .expect("serialize adapter package"),
+    )
+    .expect("seed adapter package");
     let server = McpServer {
         id: "externally-changed".to_string(),
         name: "Externally Changed".to_string(),
@@ -675,7 +702,7 @@ fn pi_toggle_and_delete_projection_failures_restore_database_state() {
     };
     McpService::upsert_server(&state, server).expect("enable Pi MCP");
 
-    let mcp_path = home.join(".pi/agent/mcp.json");
+    let mcp_path = pi_dir.join("mcp.json");
     fs::write(
         &mcp_path,
         serde_json::to_vec_pretty(&json!({

@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-pub const PI_MCP_ADAPTER_PACKAGE: &str = "npm:pi-mcp-adapter@2.19.0";
+pub const PI_MCP_ADAPTER_PACKAGE: &str = "npm:pi-mcp-adapter";
 pub const PI_MCP_ADAPTER_VERSION: &str = "2.19.0";
 const MANAGED_STATE_VERSION: u32 = 1;
 const MANAGED_STATE_FILE: &str = ".stackferry-mcp-state.json";
@@ -26,6 +26,10 @@ pub struct PiMcpStatus {
     pub config_path: String,
     pub project_override_path: Option<String>,
     pub error: Option<String>,
+    pub can_install: bool,
+    pub can_repair: bool,
+    pub desired_server_count: usize,
+    pub projected_server_count: usize,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -157,39 +161,31 @@ fn project_servers_in_dir(dir: &Path, desired: BTreeMap<String, Value>) -> Resul
     let mut state = parse_state_snapshot(&state_path, &state_snapshot)?;
     let original_state = state.clone();
     let had_mcp_servers_field = mcp_root.contains_key("mcpServers");
-    let had_packages_field = settings_root.contains_key("packages");
+    let adapter_migration =
+        migrate_legacy_adapter_ownership(dir, &mut settings_root, &mut mcp_root, &mut state)?;
+    let adapter_ready = adapter_migration.ready;
+    let projected_desired = if adapter_ready {
+        desired.clone()
+    } else {
+        BTreeMap::new()
+    };
+    plan_server_projection(&mut mcp_root, &mut state, &projected_desired)?;
 
-    plan_server_projection(&mut mcp_root, &mut state, &desired)?;
-    plan_adapter_package(&mut settings_root, &mut state, !desired.is_empty())?;
-
-    if !desired.is_empty() {
+    if adapter_ready && !desired.is_empty() {
         if mcp_snapshot.bytes.is_none() && mcp_root != original_mcp_root {
             state.mcp_file_created = true;
-        }
-        if settings_snapshot.bytes.is_none() && settings_root != original_settings_root {
-            state.settings_file_created = true;
         }
         if !had_mcp_servers_field && mcp_root.contains_key("mcpServers") {
             state.mcp_servers_field_created = true;
         }
-        if !had_packages_field && settings_root.contains_key("packages") {
-            state.packages_field_created = true;
-        }
     }
 
-    let remove_mcp_file = desired.is_empty()
+    let remove_mcp_file = projected_desired.is_empty()
         && release_created_root_field(
             &mut mcp_root,
             "mcpServers",
             &mut state.mcp_servers_field_created,
             &mut state.mcp_file_created,
-        );
-    let remove_settings_file = desired.is_empty()
-        && release_created_root_field(
-            &mut settings_root,
-            "packages",
-            &mut state.packages_field_created,
-            &mut state.settings_file_created,
         );
 
     let mut written: Vec<(PathBuf, FileSnapshot)> = Vec::new();
@@ -204,7 +200,7 @@ fn project_servers_in_dir(dir: &Path, desired: BTreeMap<String, Value>) -> Resul
                 &mut written,
             )?;
         }
-        if remove_settings_file {
+        if adapter_migration.remove_settings_file {
             remove_checked(&settings_path, &settings_snapshot, &mut written)?;
         } else if settings_root != original_settings_root {
             write_checked_json(
@@ -314,74 +310,225 @@ fn plan_server_projection(
     Ok(())
 }
 
-fn plan_adapter_package(
-    settings: &mut Map<String, Value>,
-    state: &mut ManagedState,
-    enabled: bool,
-) -> Result<(), AppError> {
-    if !enabled && state.adapter_package_entry.is_none() {
-        return Ok(());
-    }
-    if !enabled && !settings.contains_key("packages") {
-        state.adapter_package_entry = None;
-        return Ok(());
-    }
+struct AdapterMigration {
+    ready: bool,
+    remove_settings_file: bool,
+}
 
+fn migrate_legacy_adapter_ownership(
+    dir: &Path,
+    settings: &mut Map<String, Value>,
+    mcp: &mut Map<String, Value>,
+    state: &mut ManagedState,
+) -> Result<AdapterMigration, AppError> {
+    let owned = state.adapter_package_entry.take();
+    let settings_file_created = state.settings_file_created;
+    let packages_field_created = state.packages_field_created;
+    state.settings_file_created = false;
+    state.packages_field_created = false;
+    let Some(owned) = owned else {
+        return Ok(AdapterMigration {
+            ready: probe_adapter(dir, settings)?.ready,
+            remove_settings_file: false,
+        });
+    };
     let packages = settings
-        .entry("packages".to_string())
-        .or_insert_with(|| Value::Array(Vec::new()))
-        .as_array_mut()
-        .ok_or_else(|| AppError::Config("Pi settings packages must be an array".to_string()))?;
-    let matching: Vec<usize> = packages
-        .iter()
-        .enumerate()
-        .filter_map(|(index, entry)| is_adapter_entry(entry).then_some(index))
-        .collect();
+        .get_mut("packages")
+        .map(|value| {
+            value.as_array_mut().ok_or_else(|| {
+                AppError::Config("Pi settings packages must be an array".to_string())
+            })
+        })
+        .transpose()?;
+    let current_index = packages
+        .as_ref()
+        .and_then(|packages| packages.iter().position(is_adapter_entry));
+    let current_matches_owned = current_index
+        .and_then(|index| packages.as_ref().map(|packages| packages[index] == owned))
+        .unwrap_or(false);
+    if current_matches_owned && installed_adapter_version(dir)?.is_none() {
+        if let (Some(packages), Some(index)) = (packages, current_index) {
+            packages.remove(index);
+        }
+        if packages_field_created
+            && settings
+                .get("packages")
+                .and_then(Value::as_array)
+                .is_some_and(Vec::is_empty)
+        {
+            settings.remove("packages");
+        }
+        plan_server_projection(mcp, state, &BTreeMap::new())?;
+    }
+    Ok(AdapterMigration {
+        ready: probe_adapter(dir, settings)?.ready,
+        remove_settings_file: settings_file_created && settings.is_empty(),
+    })
+}
+
+struct AdapterProbe {
+    state: &'static str,
+    configured_version: Option<String>,
+    installed_version: Option<String>,
+    error: Option<String>,
+    can_install: bool,
+    can_repair: bool,
+    ready: bool,
+}
+
+fn probe_adapter(dir: &Path, settings: &Map<String, Value>) -> Result<AdapterProbe, AppError> {
+    let packages = settings
+        .get("packages")
+        .map(|value| {
+            value.as_array().ok_or_else(|| {
+                AppError::Config("Pi settings packages must be an array".to_string())
+            })
+        })
+        .transpose()?;
+    let matching = packages
+        .into_iter()
+        .flatten()
+        .filter(|entry| is_adapter_entry(entry))
+        .collect::<Vec<_>>();
     if matching.len() > 1 {
         return Err(AppError::Config(
             "Pi settings contains multiple pi-mcp-adapter package entries".to_string(),
         ));
     }
-
-    if enabled {
-        if let Some(index) = matching.first().copied() {
-            let source = package_source(&packages[index]).unwrap_or_default();
-            if source != PI_MCP_ADAPTER_PACKAGE {
-                return Err(AppError::Config(format!(
-                    "Pi MCP adapter package must be pinned to {PI_MCP_ADAPTER_VERSION}"
-                )));
-            }
-            if !adapter_entry_loads_extensions(&packages[index]) {
-                return Err(AppError::Config(
-                    "Pi MCP adapter package entry disables its extension".to_string(),
-                ));
-            }
-            if let Some(owned) = &state.adapter_package_entry {
-                if &packages[index] != owned {
-                    return Err(AppError::Config(
-                        "Pi MCP adapter package entry changed outside StackFerry".to_string(),
-                    ));
-                }
-            }
-        } else {
-            let entry = Value::String(PI_MCP_ADAPTER_PACKAGE.to_string());
-            packages.push(entry.clone());
-            state.adapter_package_entry = Some(entry);
+    let configured_entry = matching.first().copied();
+    let configured_version = configured_entry
+        .and_then(|entry| package_source(entry))
+        .and_then(adapter_source_version);
+    let installed_version = installed_adapter_version(dir)?;
+    let installed_compatible = installed_version
+        .as_deref()
+        .is_some_and(adapter_version_is_compatible);
+    let configured_compatible = configured_version
+        .as_deref()
+        .is_none_or(|version| version == "latest" || adapter_version_is_compatible(version));
+    if let Some(entry) = configured_entry {
+        if !adapter_entry_loads_extensions(entry) {
+            return Ok(AdapterProbe {
+                state: "error",
+                configured_version,
+                installed_version,
+                error: Some(
+                    "Pi MCP adapter package entry disables its extension; clean it up manually"
+                        .to_string(),
+                ),
+                can_install: false,
+                can_repair: false,
+                ready: false,
+            });
         }
-        return Ok(());
-    }
-
-    if let Some(owned) = state.adapter_package_entry.take() {
-        if let Some(index) = matching.first().copied() {
-            if packages[index] != owned {
-                return Err(AppError::Config(
-                    "Pi MCP adapter package entry changed outside StackFerry".to_string(),
-                ));
-            }
-            packages.remove(index);
+        if installed_version.is_none() {
+            return Ok(AdapterProbe {
+                state: "declaredMissing",
+                configured_version,
+                installed_version,
+                error: Some(
+                    "Pi settings declares pi-mcp-adapter but its installed files are missing; clean up the package entry manually"
+                        .to_string(),
+                ),
+                can_install: false,
+                can_repair: false,
+                ready: false,
+            });
         }
     }
-    Ok(())
+    if installed_version.is_some() && (!installed_compatible || !configured_compatible) {
+        return Ok(AdapterProbe {
+            state: "incompatible",
+            configured_version,
+            installed_version,
+            error: Some(format!(
+                "Installed Pi MCP adapter must be a stable version >= {PI_MCP_ADAPTER_VERSION}"
+            )),
+            can_install: false,
+            can_repair: false,
+            ready: false,
+        });
+    }
+    if configured_entry.is_some() && installed_compatible {
+        return Ok(AdapterProbe {
+            state: "installed",
+            configured_version,
+            installed_version,
+            error: None,
+            can_install: false,
+            can_repair: false,
+            ready: true,
+        });
+    }
+    Ok(AdapterProbe {
+        state: "uninstalled",
+        configured_version,
+        installed_version,
+        error: None,
+        can_install: true,
+        can_repair: false,
+        ready: false,
+    })
+}
+
+fn installed_adapter_version(dir: &Path) -> Result<Option<String>, AppError> {
+    let path = dir
+        .join("npm")
+        .join("node_modules")
+        .join("pi-mcp-adapter")
+        .join("package.json");
+    let snapshot = snapshot(&path)?;
+    let Some(bytes) = snapshot.bytes else {
+        return Ok(None);
+    };
+    let package: Value = serde_json::from_slice(&bytes).map_err(|error| {
+        AppError::Config(format!(
+            "Invalid installed Pi MCP adapter package metadata at {}: {error}",
+            path.display()
+        ))
+    })?;
+    package
+        .get("version")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            AppError::Config(format!(
+                "Installed Pi MCP adapter package metadata at {} has no version",
+                path.display()
+            ))
+        })
+        .map(Some)
+}
+
+fn adapter_source_version(source: &str) -> Option<String> {
+    source
+        .strip_prefix("npm:pi-mcp-adapter@")
+        .map(str::to_string)
+        .or_else(|| {
+            (normalize_adapter_source(source) == PI_MCP_ADAPTER_PACKAGE)
+                .then(|| "latest".to_string())
+        })
+}
+
+fn normalize_adapter_source(source: &str) -> String {
+    source.trim().trim_end_matches('/').to_ascii_lowercase()
+}
+
+fn adapter_version_is_compatible(version: &str) -> bool {
+    fn stable_triplet(version: &str) -> Option<(u64, u64, u64)> {
+        if version.contains('-') || version.contains('+') {
+            return None;
+        }
+        let mut parts = version.split('.');
+        let major = parts.next()?.parse().ok()?;
+        let minor = parts.next()?.parse().ok()?;
+        let patch = parts.next()?.parse().ok()?;
+        if parts.next().is_some() {
+            return None;
+        }
+        Some((major, minor, patch))
+    }
+    stable_triplet(version).is_some_and(|version| version >= (2, 19, 0))
 }
 
 fn collision_error(id: &str) -> AppError {
@@ -464,101 +611,52 @@ fn get_pi_mcp_status_in_dir(
     enabled_ids: &HashSet<String>,
 ) -> PiMcpStatus {
     let config_path = dir.join("mcp.json").to_string_lossy().to_string();
-    let status_result = (|| {
+    let status_result: Result<(AdapterProbe, Option<String>, usize), AppError> = (|| {
         let settings_path = dir.join("settings.json");
         let settings =
             parse_object_snapshot(&settings_path, &snapshot(&settings_path)?, "Pi settings")?;
-        let packages = settings
-            .get("packages")
-            .map(|value| {
-                value.as_array().ok_or_else(|| {
-                    AppError::Config("Pi settings packages must be an array".to_string())
-                })
-            })
-            .transpose()?
-            .cloned()
-            .unwrap_or_default();
-        let matching: Vec<&Value> = packages
-            .iter()
-            .filter(|entry| is_adapter_entry(entry))
-            .collect();
-        if matching.len() > 1 {
-            return Err(AppError::Config(
-                "Pi settings contains multiple pi-mcp-adapter package entries".to_string(),
-            ));
+        let mut probe = probe_adapter(dir, &settings)?;
+        if probe.state == "declaredMissing" {
+            let state_path = dir.join(MANAGED_STATE_FILE);
+            let state = parse_state_snapshot(&state_path, &snapshot(&state_path)?)?;
+            let current_entry = settings
+                .get("packages")
+                .and_then(Value::as_array)
+                .and_then(|packages| packages.iter().find(|entry| is_adapter_entry(entry)));
+            let can_repair = state
+                .adapter_package_entry
+                .as_ref()
+                .zip(current_entry)
+                .is_some_and(|(owned, current)| owned == current);
+            if can_repair {
+                probe.error = None;
+                probe.can_repair = true;
+            }
         }
-        let configured = matching.first().and_then(|entry| package_source(entry));
-        if configured.is_some_and(|source| source != PI_MCP_ADAPTER_PACKAGE) {
-            return Err(AppError::Config(format!(
-                "Pi MCP adapter package must be pinned to {PI_MCP_ADAPTER_VERSION}"
-            )));
-        }
-        if matching
-            .first()
-            .is_some_and(|entry| !adapter_entry_loads_extensions(entry))
-        {
-            return Err(AppError::Config(
-                "Pi MCP adapter package entry disables its extension".to_string(),
-            ));
-        }
-
-        let installed_path = dir
-            .join("npm")
-            .join("node_modules")
-            .join("pi-mcp-adapter")
-            .join("package.json");
-        let installed_version = if installed_path.exists() {
-            let content = fs::read_to_string(&installed_path)
-                .map_err(|error| AppError::io(&installed_path, error))?;
-            let package: Value = serde_json::from_str(&content).map_err(|error| {
-                AppError::Config(format!(
-                    "Invalid installed Pi MCP adapter package metadata: {error}"
-                ))
-            })?;
-            package
-                .get("version")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        } else {
-            None
-        };
-        if installed_version
-            .as_deref()
-            .is_some_and(|version| version != PI_MCP_ADAPTER_VERSION)
-        {
-            return Err(AppError::Config(format!(
-                "Installed Pi MCP adapter version does not match {PI_MCP_ADAPTER_VERSION}"
-            )));
-        }
-
-        let state = if configured.is_none() {
-            "inactive"
-        } else if installed_version.is_some() {
-            "installed"
-        } else {
-            "pending"
-        };
         let project_override_path = match project_dir {
             Some(path) => detect_project_override(path, enabled_ids)?,
             None => None,
         };
+        let projected_server_count = read_pi_servers_in_dir(dir)?
+            .keys()
+            .filter(|id| enabled_ids.contains(*id))
+            .count();
 
-        Ok((
-            state.to_string(),
-            configured.map(|_| PI_MCP_ADAPTER_VERSION.to_string()),
-            installed_version,
-            project_override_path,
-        ))
+        Ok((probe, project_override_path, projected_server_count))
     })();
 
     match status_result {
-        Ok((state, configured_version, installed_version, project_override_path)) => PiMcpStatus {
-            state,
-            configured_version,
-            installed_version,
+        Ok((probe, project_override_path, projected_server_count)) => PiMcpStatus {
+            state: probe.state.to_string(),
+            configured_version: probe.configured_version,
+            installed_version: probe.installed_version,
             config_path,
             project_override_path,
-            error: None,
+            error: probe.error,
+            can_install: probe.can_install,
+            can_repair: probe.can_repair,
+            desired_server_count: enabled_ids.len(),
+            projected_server_count,
         },
         Err(error) => PiMcpStatus {
             state: "error".to_string(),
@@ -567,6 +665,10 @@ fn get_pi_mcp_status_in_dir(
             config_path,
             project_override_path: None,
             error: Some(error.to_string()),
+            can_install: false,
+            can_repair: false,
+            desired_server_count: enabled_ids.len(),
+            projected_server_count: 0,
         },
     }
 }
@@ -754,6 +856,21 @@ mod tests {
             .collect()
     }
 
+    fn install_adapter(dir: &Path, version: &str) {
+        write_json_file(
+            &dir.join("settings.json"),
+            &json!({"packages": [PI_MCP_ADAPTER_PACKAGE]}),
+        )
+        .unwrap();
+        let package_dir = dir.join("npm/node_modules/pi-mcp-adapter");
+        fs::create_dir_all(&package_dir).unwrap();
+        write_json_file(
+            &package_dir.join("package.json"),
+            &json!({"name": "pi-mcp-adapter", "version": version}),
+        )
+        .unwrap();
+    }
+
     #[test]
     fn projection_preserves_unmanaged_fields_and_restores_owned_state() {
         let temp = tempdir().unwrap();
@@ -761,8 +878,19 @@ mod tests {
             &temp.path().join("settings.json"),
             &json!({
                 "theme": "dark",
-                "packages": ["npm:user-package", {"source": "npm:filtered", "skills": []}]
+                "packages": [
+                    "npm:user-package",
+                    {"source": "npm:filtered", "skills": []},
+                    PI_MCP_ADAPTER_PACKAGE
+                ]
             }),
+        )
+        .unwrap();
+        let package_dir = temp.path().join("npm/node_modules/pi-mcp-adapter");
+        fs::create_dir_all(&package_dir).unwrap();
+        write_json_file(
+            &package_dir.join("package.json"),
+            &json!({"name": "pi-mcp-adapter", "version": "2.20.0"}),
         )
         .unwrap();
         write_json_file(
@@ -828,7 +956,7 @@ mod tests {
 
         let settings: Value =
             serde_json::from_slice(&fs::read(temp.path().join("settings.json")).unwrap()).unwrap();
-        assert!(!settings["packages"]
+        assert!(settings["packages"]
             .as_array()
             .unwrap()
             .contains(&json!(PI_MCP_ADAPTER_PACKAGE)));
@@ -862,6 +990,7 @@ mod tests {
     #[test]
     fn fresh_projection_removes_stackferry_created_files_on_deselect() {
         let temp = tempdir().unwrap();
+        install_adapter(temp.path(), PI_MCP_ADAPTER_VERSION);
 
         project_servers_in_dir(
             temp.path(),
@@ -874,7 +1003,7 @@ mod tests {
         project_servers_in_dir(temp.path(), BTreeMap::new()).unwrap();
 
         assert!(!temp.path().join("mcp.json").exists());
-        assert!(!temp.path().join("settings.json").exists());
+        assert!(temp.path().join("settings.json").exists());
         assert!(!temp.path().join(MANAGED_STATE_FILE).exists());
     }
 
@@ -910,6 +1039,7 @@ mod tests {
     #[test]
     fn identical_existing_server_remains_user_owned() {
         let temp = tempdir().unwrap();
+        install_adapter(temp.path(), PI_MCP_ADAPTER_VERSION);
         let original = json!({"command": "echo", "env": {"TOKEN": "$TOKEN"}});
         write_json_file(
             &temp.path().join("mcp.json"),
@@ -943,6 +1073,7 @@ mod tests {
     #[test]
     fn differing_unmanaged_server_is_a_non_destructive_collision() {
         let temp = tempdir().unwrap();
+        install_adapter(temp.path(), PI_MCP_ADAPTER_VERSION);
         write_json_file(
             &temp.path().join("mcp.json"),
             &json!({"mcpServers": {"same": {"command": "user"}}}),
@@ -958,11 +1089,11 @@ mod tests {
 
         assert!(error.to_string().contains("same"));
         assert_eq!(fs::read(temp.path().join("mcp.json")).unwrap(), before);
-        assert!(!temp.path().join("settings.json").exists());
+        assert!(temp.path().join("settings.json").exists());
     }
 
     #[test]
-    fn package_status_reports_pending_installed_and_project_override() {
+    fn package_status_reports_declared_missing_installed_and_project_override() {
         let temp = tempdir().unwrap();
         write_json_file(
             &temp.path().join("settings.json"),
@@ -972,7 +1103,8 @@ mod tests {
         let enabled = HashSet::from(["managed".to_string()]);
 
         let pending = get_pi_mcp_status_in_dir(temp.path(), None, &enabled);
-        assert_eq!(pending.state, "pending");
+        assert_eq!(pending.state, "declaredMissing");
+        assert!(!pending.can_install);
 
         let package_dir = temp.path().join("npm/node_modules/pi-mcp-adapter");
         fs::create_dir_all(&package_dir).unwrap();
@@ -1016,13 +1148,11 @@ mod tests {
         )
         .unwrap();
 
-        let error = project_servers_in_dir(
+        project_servers_in_dir(
             temp.path(),
             desired(&[("server", json!({"command": "echo"}))]),
         )
-        .unwrap_err();
-
-        assert!(error.to_string().contains("disables its extension"));
+        .unwrap();
         let settings: Value =
             serde_json::from_slice(&fs::read(temp.path().join("settings.json")).unwrap()).unwrap();
         assert_eq!(settings["packages"][0], disabled_entry);
@@ -1072,8 +1202,179 @@ mod tests {
     }
 
     #[test]
+    fn unavailable_adapter_defers_projection_and_cleans_managed_servers() {
+        let temp = tempdir().unwrap();
+        install_adapter(temp.path(), PI_MCP_ADAPTER_VERSION);
+        project_servers_in_dir(temp.path(), desired(&[("old", json!({"command": "old"}))]))
+            .unwrap();
+        fs::remove_dir_all(temp.path().join("npm/node_modules/pi-mcp-adapter")).unwrap();
+        let settings: Value =
+            serde_json::from_slice(&fs::read(temp.path().join("settings.json")).unwrap()).unwrap();
+        assert!(settings["packages"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(PI_MCP_ADAPTER_PACKAGE)));
+
+        project_servers_in_dir(temp.path(), desired(&[("new", json!({"command": "new"}))]))
+            .unwrap();
+
+        assert!(!temp.path().join("mcp.json").exists());
+        let state =
+            get_pi_mcp_status_in_dir(temp.path(), None, &HashSet::from(["new".to_string()]));
+        assert_eq!(state.state, "declaredMissing");
+        assert_eq!(state.desired_server_count, 1);
+        assert_eq!(state.projected_server_count, 0);
+    }
+
+    #[test]
+    fn probe_accepts_newer_stable_and_rejects_prerelease_versions() {
+        let temp = tempdir().unwrap();
+        install_adapter(temp.path(), "2.20.1");
+        assert_eq!(
+            get_pi_mcp_status_in_dir(temp.path(), None, &HashSet::new()).state,
+            "installed"
+        );
+        write_json_file(
+            &temp
+                .path()
+                .join("npm/node_modules/pi-mcp-adapter/package.json"),
+            &json!({"name": "pi-mcp-adapter", "version": "2.20.1-beta.1"}),
+        )
+        .unwrap();
+        assert_eq!(
+            get_pi_mcp_status_in_dir(temp.path(), None, &HashSet::new()).state,
+            "incompatible"
+        );
+    }
+
+    #[test]
+    fn legacy_owned_installed_entry_is_released_without_removing_package() {
+        let temp = tempdir().unwrap();
+        install_adapter(temp.path(), PI_MCP_ADAPTER_VERSION);
+        write_json_file(
+            &temp.path().join(MANAGED_STATE_FILE),
+            &serde_json::to_value(ManagedState {
+                version: MANAGED_STATE_VERSION,
+                adapter_package_entry: Some(json!(PI_MCP_ADAPTER_PACKAGE)),
+                settings_file_created: true,
+                packages_field_created: true,
+                ..ManagedState::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        project_servers_in_dir(temp.path(), BTreeMap::new()).unwrap();
+
+        let settings: Value =
+            serde_json::from_slice(&fs::read(temp.path().join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings["packages"], json!([PI_MCP_ADAPTER_PACKAGE]));
+        assert!(!temp.path().join(MANAGED_STATE_FILE).exists());
+    }
+
+    #[test]
+    fn legacy_owned_missing_entry_is_removed_and_desired_state_is_deferred() {
+        let temp = tempdir().unwrap();
+        write_json_file(
+            &temp.path().join("settings.json"),
+            &json!({"packages": [PI_MCP_ADAPTER_PACKAGE]}),
+        )
+        .unwrap();
+        write_json_file(
+            &temp.path().join("mcp.json"),
+            &json!({"mcpServers": {"old": {"command": "old"}}}),
+        )
+        .unwrap();
+        write_json_file(
+            &temp.path().join(MANAGED_STATE_FILE),
+            &serde_json::to_value(ManagedState {
+                version: MANAGED_STATE_VERSION,
+                adapter_package_entry: Some(json!(PI_MCP_ADAPTER_PACKAGE)),
+                managed_servers: BTreeMap::from([(
+                    "old".to_string(),
+                    ManagedServer {
+                        last_projected_hash: value_fingerprint(&json!({"command": "old"})),
+                    },
+                )]),
+                mcp_file_created: true,
+                settings_file_created: true,
+                mcp_servers_field_created: true,
+                packages_field_created: true,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        project_servers_in_dir(temp.path(), desired(&[("new", json!({"command": "new"}))]))
+            .unwrap();
+
+        assert!(!temp.path().join("settings.json").exists());
+        assert!(!temp.path().join("mcp.json").exists());
+        assert!(!temp.path().join(MANAGED_STATE_FILE).exists());
+    }
+
+    #[test]
+    fn legacy_owned_missing_entry_is_reported_as_repairable() {
+        let temp = tempdir().unwrap();
+        write_json_file(
+            &temp.path().join("settings.json"),
+            &json!({"packages": [PI_MCP_ADAPTER_PACKAGE]}),
+        )
+        .unwrap();
+        write_json_file(
+            &temp.path().join(MANAGED_STATE_FILE),
+            &serde_json::to_value(ManagedState {
+                version: MANAGED_STATE_VERSION,
+                adapter_package_entry: Some(json!(PI_MCP_ADAPTER_PACKAGE)),
+                packages_field_created: true,
+                ..ManagedState::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        let status = get_pi_mcp_status_in_dir(temp.path(), None, &HashSet::new());
+
+        assert_eq!(status.state, "declaredMissing");
+        assert!(status.can_repair);
+        assert!(!status.can_install);
+        assert!(status.error.is_none());
+    }
+
+    #[test]
+    fn legacy_changed_entry_is_not_modified_and_old_ownership_is_abandoned() {
+        let temp = tempdir().unwrap();
+        let current = json!({"source": PI_MCP_ADAPTER_PACKAGE, "external": true});
+        write_json_file(
+            &temp.path().join("settings.json"),
+            &json!({"packages": [current.clone()]}),
+        )
+        .unwrap();
+        write_json_file(
+            &temp.path().join(MANAGED_STATE_FILE),
+            &serde_json::to_value(ManagedState {
+                version: MANAGED_STATE_VERSION,
+                adapter_package_entry: Some(json!(PI_MCP_ADAPTER_PACKAGE)),
+                settings_file_created: true,
+                packages_field_created: true,
+                ..ManagedState::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        project_servers_in_dir(temp.path(), BTreeMap::new()).unwrap();
+
+        let settings: Value =
+            serde_json::from_slice(&fs::read(temp.path().join("settings.json")).unwrap()).unwrap();
+        assert_eq!(settings["packages"][0], current);
+        assert!(!temp.path().join(MANAGED_STATE_FILE).exists());
+    }
+
+    #[test]
     fn concurrent_stackferry_writes_leave_projection_and_state_consistent() {
         let temp = tempdir().unwrap();
+        install_adapter(temp.path(), PI_MCP_ADAPTER_VERSION);
         let dir_a = temp.path().to_path_buf();
         let dir_b = dir_a.clone();
         let first = std::thread::spawn(move || {
