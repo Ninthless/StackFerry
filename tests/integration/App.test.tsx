@@ -156,6 +156,12 @@ vi.mock("@/components/UpdateBadge", () => ({
   ),
 }));
 
+vi.mock("@/components/pi/PiExtensionsPanel", () => ({
+  default: () => (
+    <div data-testid="pi-extensions-panel">pi-extensions-panel</div>
+  ),
+}));
+
 vi.mock("@/components/settings/ThemeSettings", () => ({
   ThemeSettings: () => null,
 }));
@@ -632,6 +638,25 @@ describe("App integration with MSW", () => {
     await waitFor(() => {
       expect(toastErrorMock).toHaveBeenCalled();
     });
+  });
+
+  it("routes Pi extension navigation into the Pi workbench", async () => {
+    const { default: App } = await import("@/App");
+    renderApp(App);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "firstRunNotice.confirm" }),
+    );
+    fireEvent.click(await screen.findByText("switch-pi"));
+    const sidebar = within(screen.getByRole("complementary"));
+    fireEvent.click(
+      await sidebar.findByRole("button", { name: "piExtensions.title" }),
+    );
+
+    expect(
+      await screen.findByTestId("pi-extensions-panel"),
+    ).toBeInTheDocument();
+    expect(window.localStorage.getItem(VIEW_STORAGE_KEY)).toBe("piExtensions");
   });
 
   it("duplicates openclaw providers with a generated key that avoids live-only ids", async () => {

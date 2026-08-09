@@ -42,19 +42,22 @@ describe("AppSidebar", () => {
     "opencode",
     "openclaw",
     "hermes",
-  ])("keeps global navigation and usage visible for %s routing", (activeApp) => {
-    const { unmount } = renderSidebar(activeApp);
+  ])(
+    "keeps global navigation and usage visible for %s routing",
+    (activeApp) => {
+      const { unmount } = renderSidebar(activeApp);
 
-    expect(screen.getByText("Skills")).toBeInTheDocument();
-    expect(screen.getByText("Prompts")).toBeInTheDocument();
-    expect(screen.getByText("Sessions")).toBeInTheDocument();
-    expect(screen.getByText("MCP servers")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Routing activity" }),
-    ).toBeInTheDocument();
+      expect(screen.getByText("Skills")).toBeInTheDocument();
+      expect(screen.getByText("Prompts")).toBeInTheDocument();
+      expect(screen.getByText("Sessions")).toBeInTheDocument();
+      expect(screen.getByText("MCP servers")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Routing activity" }),
+      ).toBeInTheDocument();
 
-    unmount();
-  });
+      unmount();
+    },
+  );
 
   it("adds route-specific tools without duplicating global navigation", () => {
     const { rerender } = renderSidebar("openclaw");
@@ -80,6 +83,26 @@ describe("AppSidebar", () => {
     expect(screen.getByText("Open dashboard")).toBeInTheDocument();
     expect(screen.getAllByText("Skills")).toHaveLength(1);
     expect(screen.getAllByText("MCP servers")).toHaveLength(1);
+  });
+
+  it("shows Pi extensions only for Pi", () => {
+    const { rerender } = renderSidebar("claude");
+    expect(screen.queryByText("piExtensions.title")).not.toBeInTheDocument();
+
+    rerender(
+      <AppSidebar
+        activeApp="pi"
+        currentView="providers"
+        isRouteActive={false}
+        onViewChange={vi.fn()}
+        onOpenHermesWebUI={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onOpenUsage={vi.fn()}
+        onOpenUpdate={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("piExtensions.title")).toBeInTheDocument();
   });
 
   it("keeps footer actions in order without rendering version content", () => {

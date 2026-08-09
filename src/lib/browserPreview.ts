@@ -276,11 +276,33 @@ export const createBrowserPreviewCommandHandler = () => {
         return {};
       case "get_pi_mcp_adapter_status":
         return {
-          state: "inactive",
+          state: "uninstalled",
           configuredVersion: null,
           installedVersion: null,
           configPath: "~/.pi/agent/mcp.json",
           projectOverridePath: null,
+          error: null,
+          canInstall: true,
+          canRepair: false,
+          desiredServerCount: 0,
+          projectedServerCount: 0,
+        };
+      case "install_pi_mcp_adapter":
+        return {
+          installed: true,
+          projected: true,
+          status: {
+            state: "installed",
+            configuredVersion: "latest",
+            installedVersion: "2.19.0",
+            configPath: "~/.pi/agent/mcp.json",
+            projectOverridePath: null,
+            error: null,
+            canInstall: false,
+            canRepair: false,
+            desiredServerCount: 0,
+            projectedServerCount: 0,
+          },
           error: null,
         };
       case "get_current_provider":
@@ -338,6 +360,27 @@ export const createBrowserPreviewCommandHandler = () => {
         return [...liveProviderIds.pi];
       case "get_pi_default_provider":
         return currentProviders.pi || null;
+      case "get_pi_extension_inventory":
+        return {
+          runtime: {
+            piDir: "C:\\Preview\\.pi",
+            settingsPath: "C:\\Preview\\.pi\\settings.json",
+            cliAvailable: true,
+            cliPath: "C:\\Preview\\pi.exe",
+            cliVersion: "0.31.0",
+            mutable: true,
+          },
+          extensions: [],
+          packages: [],
+        };
+      case "search_pi_packages":
+        return {
+          items: [],
+          total: 0,
+          query: String(args.query ?? ""),
+          offset: Number(args.offset ?? 0),
+          limit: Number(args.limit ?? 12),
+        };
       case "get_tool_versions":
         return ((args.tools as string[] | undefined) ?? []).map((name) => ({
           name,

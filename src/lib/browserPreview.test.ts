@@ -24,9 +24,20 @@ describe("browser preview IPC", () => {
     expect(invoke("get_prompts", { app: "claude" })).toEqual({});
     expect(invoke("get_mcp_servers")).toEqual({});
     expect(invoke("get_pi_mcp_adapter_status")).toMatchObject({
-      state: "inactive",
+      state: "uninstalled",
       configuredVersion: null,
       installedVersion: null,
+      canInstall: true,
+      desiredServerCount: 0,
+      projectedServerCount: 0,
+    });
+    expect(invoke("install_pi_mcp_adapter")).toMatchObject({
+      installed: true,
+      projected: true,
+      status: {
+        state: "installed",
+        installedVersion: "2.19.0",
+      },
     });
     expect(invoke("list_sessions")).toEqual([]);
     expect(invoke("scan_openclaw_config_health")).toEqual([]);
