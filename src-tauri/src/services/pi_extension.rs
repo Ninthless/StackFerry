@@ -1891,6 +1891,11 @@ fn cli_search_dirs() -> Vec<PathBuf> {
             home.join(".bun/bin"),
         ]);
     }
+    #[cfg(target_os = "macos")]
+    search_dirs.extend([
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+    ]);
     #[cfg(target_os = "windows")]
     {
         if let Some(appdata) = dirs::data_dir() {
@@ -1906,9 +1911,9 @@ fn cli_search_dirs() -> Vec<PathBuf> {
 fn locate_pi_cli_in_dirs(search_dirs: Vec<PathBuf>) -> Option<PiCli> {
     for dir in search_dirs {
         #[cfg(target_os = "windows")]
-        let candidates = [dir.join("pi.cmd"), dir.join("pi.exe")];
+        let candidates = vec![dir.join("pi.cmd"), dir.join("pi.exe")];
         #[cfg(not(target_os = "windows"))]
-        let candidates = [dir.join("pi"), dir.join("pi")];
+        let candidates = vec![dir.join("pi")];
         for path in candidates {
             if !path.is_file() {
                 continue;
@@ -2757,6 +2762,54 @@ exit /b %errorlevel%
 "#,
         )
         .unwrap();
+        let cli = PiCli {
+            path: cli_path,
+            kind: PiCliKind::Direct,
+            version: "1.0.0".to_string(),
+        };
+
+        let inventory = install_mcp_adapter_with(temp.path(), &cli, Duration::from_secs(10))
+            .await
+            .unwrap();
+
+        let package = inventory
+            .packages
+            .iter()
+            .find(|package| is_mcp_adapter_source(&package.source))
+            .unwrap();
+        assert_eq!(package.source, "npm:pi-mcp-adapter@2.20.0");
+        assert_eq!(package.version.as_deref(), Some("2.20.0"));
+        assert_eq!(package.status, "installed");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn dedicated_adapter_install_uses_latest_source_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempdir().unwrap();
+        let cli_path = temp.path().join("fake-pi");
+        fs::write(
+            &cli_path,
+            r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '1.0.0'
+  exit 0
+fi
+if [ "$1" != "install" ]; then
+  exit 2
+fi
+if [ "$2" != "npm:pi-mcp-adapter" ]; then
+  exit 3
+fi
+package_dir="$PI_CODING_AGENT_DIR/npm/node_modules/pi-mcp-adapter"
+mkdir -p "$package_dir"
+printf '{"packages":["npm:pi-mcp-adapter@2.20.0"]}' > "$PI_CODING_AGENT_DIR/settings.json"
+printf '{"name":"pi-mcp-adapter","version":"2.20.0"}' > "$package_dir/package.json"
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&cli_path, fs::Permissions::from_mode(0o755)).unwrap();
         let cli = PiCli {
             path: cli_path,
             kind: PiCliKind::Direct,
