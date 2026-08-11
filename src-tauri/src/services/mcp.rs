@@ -352,7 +352,7 @@ impl McpService {
         // 调用原有的导入逻辑（从 mcp.rs）
         let count = crate::mcp::import_from_claude(&mut temp_config)?;
 
-        let mut new_count = 0;
+        let mut changed_count = 0;
 
         // 如果有导入的服务器，保存到数据库
         if count > 0 {
@@ -362,11 +362,13 @@ impl McpService {
                     // 已存在：仅启用 Claude，不覆盖其他字段（与导入模块语义保持一致）
                     let to_save = if let Some(existing_server) = existing.get(&server.id) {
                         let mut merged = existing_server.clone();
+                        if !merged.apps.claude {
+                            changed_count += 1;
+                        }
                         merged.apps.claude = true;
                         merged
                     } else {
-                        // 真正的新服务器
-                        new_count += 1;
+                        changed_count += 1;
                         server.clone()
                     };
 
@@ -379,7 +381,7 @@ impl McpService {
             }
         }
 
-        Ok(new_count)
+        Ok(changed_count)
     }
 
     /// 从 Codex 导入 MCP（v3.7.0 已更新为统一结构）
@@ -390,7 +392,7 @@ impl McpService {
         // 调用原有的导入逻辑（从 mcp.rs）
         let count = crate::mcp::import_from_codex(&mut temp_config)?;
 
-        let mut new_count = 0;
+        let mut changed_count = 0;
 
         // 如果有导入的服务器，保存到数据库
         if count > 0 {
@@ -400,11 +402,13 @@ impl McpService {
                     // 已存在：仅启用 Codex，不覆盖其他字段（与导入模块语义保持一致）
                     let to_save = if let Some(existing_server) = existing.get(&server.id) {
                         let mut merged = existing_server.clone();
+                        if !merged.apps.codex {
+                            changed_count += 1;
+                        }
                         merged.apps.codex = true;
                         merged
                     } else {
-                        // 真正的新服务器
-                        new_count += 1;
+                        changed_count += 1;
                         server.clone()
                     };
 
@@ -417,7 +421,7 @@ impl McpService {
             }
         }
 
-        Ok(new_count)
+        Ok(changed_count)
     }
 
     /// 从 Gemini 导入 MCP（v3.7.0 已更新为统一结构）
@@ -428,7 +432,7 @@ impl McpService {
         // 调用原有的导入逻辑（从 mcp.rs）
         let count = crate::mcp::import_from_gemini(&mut temp_config)?;
 
-        let mut new_count = 0;
+        let mut changed_count = 0;
 
         // 如果有导入的服务器，保存到数据库
         if count > 0 {
@@ -438,11 +442,13 @@ impl McpService {
                     // 已存在：仅启用 Gemini，不覆盖其他字段（与导入模块语义保持一致）
                     let to_save = if let Some(existing_server) = existing.get(&server.id) {
                         let mut merged = existing_server.clone();
+                        if !merged.apps.gemini {
+                            changed_count += 1;
+                        }
                         merged.apps.gemini = true;
                         merged
                     } else {
-                        // 真正的新服务器
-                        new_count += 1;
+                        changed_count += 1;
                         server.clone()
                     };
 
@@ -455,14 +461,14 @@ impl McpService {
             }
         }
 
-        Ok(new_count)
+        Ok(changed_count)
     }
 
     /// 从 Grok Build 的 `[mcp_servers]` 导入 MCP。
     pub fn import_from_grokbuild(state: &AppState) -> Result<usize, AppError> {
         let mut temp_config = crate::app_config::MultiAppConfig::default();
         let count = crate::mcp::import_from_grokbuild(&mut temp_config)?;
-        let mut new_count = 0;
+        let mut changed_count = 0;
 
         if count > 0 {
             if let Some(servers) = &temp_config.mcp.servers {
@@ -470,10 +476,13 @@ impl McpService {
                 for server in servers.values() {
                     let to_save = if let Some(existing_server) = existing.get(&server.id) {
                         let mut merged = existing_server.clone();
+                        if !merged.apps.grokbuild {
+                            changed_count += 1;
+                        }
                         merged.apps.grokbuild = true;
                         merged
                     } else {
-                        new_count += 1;
+                        changed_count += 1;
                         server.clone()
                     };
                     state.db.save_mcp_server(&to_save)?;
@@ -481,7 +490,7 @@ impl McpService {
                 }
             }
         }
-        Ok(new_count)
+        Ok(changed_count)
     }
 
     /// 从 OpenCode 导入 MCP（v3.9.2+ 新增）
@@ -492,7 +501,7 @@ impl McpService {
         // 调用原有的导入逻辑（从 mcp/opencode.rs）
         let count = crate::mcp::import_from_opencode(&mut temp_config)?;
 
-        let mut new_count = 0;
+        let mut changed_count = 0;
 
         // 如果有导入的服务器，保存到数据库
         if count > 0 {
@@ -502,11 +511,13 @@ impl McpService {
                     // 已存在：仅启用 OpenCode，不覆盖其他字段（与导入模块语义保持一致）
                     let to_save = if let Some(existing_server) = existing.get(&server.id) {
                         let mut merged = existing_server.clone();
+                        if !merged.apps.opencode {
+                            changed_count += 1;
+                        }
                         merged.apps.opencode = true;
                         merged
                     } else {
-                        // 真正的新服务器
-                        new_count += 1;
+                        changed_count += 1;
                         server.clone()
                     };
 
@@ -519,7 +530,7 @@ impl McpService {
             }
         }
 
-        Ok(new_count)
+        Ok(changed_count)
     }
 
     /// 从 Hermes 导入 MCP
@@ -530,7 +541,7 @@ impl McpService {
         // 调用导入逻辑（从 mcp/hermes.rs）
         let count = crate::mcp::import_from_hermes(&mut temp_config)?;
 
-        let mut new_count = 0;
+        let mut changed_count = 0;
 
         // 如果有导入的服务器，保存到数据库
         if count > 0 {
@@ -540,11 +551,13 @@ impl McpService {
                     // 已存在：仅启用 Hermes，不覆盖其他字段（与导入模块语义保持一致）
                     let to_save = if let Some(existing_server) = existing.get(&server.id) {
                         let mut merged = existing_server.clone();
+                        if !merged.apps.hermes {
+                            changed_count += 1;
+                        }
                         merged.apps.hermes = true;
                         merged
                     } else {
-                        // 真正的新服务器
-                        new_count += 1;
+                        changed_count += 1;
                         server.clone()
                     };
 
@@ -557,7 +570,7 @@ impl McpService {
             }
         }
 
-        Ok(new_count)
+        Ok(changed_count)
     }
 
     pub fn import_from_pi(state: &AppState) -> Result<usize, AppError> {
@@ -568,7 +581,7 @@ impl McpService {
 
         let existing = state.db.get_all_mcp_servers()?;
         let mut pending = Vec::with_capacity(imported.len());
-        let mut new_count = 0;
+        let mut changed_count = 0;
         for (id, spec) in imported {
             let server = if let Some(existing_server) = existing.get(&id) {
                 if existing_server.server != spec {
@@ -577,10 +590,13 @@ impl McpService {
                     )));
                 }
                 let mut merged = existing_server.clone();
+                if !merged.apps.pi {
+                    changed_count += 1;
+                }
                 merged.apps.pi = true;
                 merged
             } else {
-                new_count += 1;
+                changed_count += 1;
                 McpServer {
                     id: id.clone(),
                     name: spec
@@ -605,7 +621,28 @@ impl McpService {
         for server in pending {
             state.db.save_mcp_server(&server)?;
         }
-        Ok(new_count)
+        Ok(changed_count)
+    }
+
+    pub fn import_from_cursor(state: &AppState) -> Result<usize, AppError> {
+        let mut temp_config = crate::app_config::MultiAppConfig::default();
+        let count = mcp::import_from_cursor(&mut temp_config)?;
+        if count == 0 {
+            return Ok(0);
+        }
+        let mut changed_count = 0;
+        let mut existing = state.db.get_all_mcp_servers()?;
+        if let Some(servers) = temp_config.mcp.servers {
+            for server in servers.into_values() {
+                if existing.contains_key(&server.id) {
+                    continue;
+                }
+                state.db.save_mcp_server(&server)?;
+                existing.insert(server.id.clone(), server);
+                changed_count += 1;
+            }
+        }
+        Ok(changed_count)
     }
 
     /// 从所有支持 MCP 的应用导入服务器，返回新导入的数量。
@@ -618,9 +655,10 @@ impl McpService {
         let mut total = 0;
         let mut failures: Vec<String> = Vec::new();
 
-        let results: [(&str, Result<usize, AppError>); 7] = [
+        let results: [(&str, Result<usize, AppError>); 8] = [
             ("claude", Self::import_from_claude(state)),
             ("codex", Self::import_from_codex(state)),
+            ("cursor", Self::import_from_cursor(state)),
             ("gemini", Self::import_from_gemini(state)),
             ("grokbuild", Self::import_from_grokbuild(state)),
             ("opencode", Self::import_from_opencode(state)),

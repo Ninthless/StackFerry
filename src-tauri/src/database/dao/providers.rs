@@ -331,7 +331,10 @@ impl Database {
     ) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
         conn.execute(
-            "UPDATE providers SET settings_config = ?1 WHERE id = ?2 AND app_type = ?3",
+            "UPDATE providers
+             SET source_dirty = CASE WHEN source_id IS NOT NULL THEN 1 ELSE source_dirty END,
+                 settings_config = ?1
+             WHERE id = ?2 AND app_type = ?3",
             params![
                 serde_json::to_string(settings_config).map_err(|e| AppError::Database(format!(
                     "Failed to serialize settings_config: {e}"

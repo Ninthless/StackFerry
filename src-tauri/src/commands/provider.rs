@@ -47,6 +47,44 @@ pub async fn import_ccswitch_codex_providers(
     .await
 }
 
+#[tauri::command]
+pub async fn preview_ccswitch_provider_import(
+    app_handle: tauri::AppHandle,
+    #[allow(non_snake_case)] dbPath: Option<String>,
+) -> Result<crate::services::provider::ccswitch_transfer::CcSwitchImportPreview, String> {
+    run_ccswitch_import_task(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态不可用".to_string())?;
+        crate::services::provider::ccswitch_transfer::preview_ccswitch_provider_import(
+            &state.db,
+            dbPath.as_deref(),
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn apply_ccswitch_provider_import(
+    app_handle: tauri::AppHandle,
+    #[allow(non_snake_case)] dbPath: Option<String>,
+    selection: crate::services::provider::ccswitch_transfer::CcSwitchImportSelection,
+) -> Result<crate::services::provider::ccswitch_transfer::CcSwitchApplyResult, String> {
+    run_ccswitch_import_task(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "应用状态不可用".to_string())?;
+        crate::services::provider::ccswitch_transfer::apply_ccswitch_provider_import(
+            &state.db,
+            dbPath.as_deref(),
+            selection,
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await
+}
+
 #[cfg(test)]
 mod ccswitch_import_command_tests {
     use super::run_ccswitch_import_task;

@@ -4,6 +4,7 @@
 
 pub(crate) mod ccswitch_import;
 pub(crate) mod ccswitch_reconcile;
+pub mod ccswitch_transfer;
 mod endpoints;
 mod gemini_auth;
 mod live;
@@ -4707,7 +4708,10 @@ impl ProviderService {
         Ok(())
     }
 
-    fn validate_provider_settings(app_type: &AppType, provider: &Provider) -> Result<(), AppError> {
+    pub(crate) fn validate_provider_settings(
+        app_type: &AppType,
+        provider: &Provider,
+    ) -> Result<(), AppError> {
         match app_type {
             AppType::Claude => {
                 let settings = provider.settings_config.as_object().ok_or_else(|| {

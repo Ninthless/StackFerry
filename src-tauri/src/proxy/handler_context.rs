@@ -50,6 +50,7 @@ pub struct RequestContext {
     pub current_provider_id: String,
     /// 请求中的模型名称
     pub request_model: String,
+    pub thinking_effort: Option<crate::proxy::thinking_effort::ThinkingEffort>,
     /// 实际发往上游的模型名（路由接管/模型映射后的真值，forward 成功后回填）。
     ///
     /// usage 归因的兜底顺序：上游响应回显 → outbound_model → request_model。
@@ -172,6 +173,7 @@ impl RequestContext {
             .request_model
             .clone()
             .unwrap_or_else(|| "unknown".to_string());
+        let thinking_effort = crate::proxy::thinking_effort::extract_thinking_effort(body);
         let session_result = extract_session_id(headers, body, "pi");
 
         let context = Self {
@@ -181,6 +183,7 @@ impl RequestContext {
             providers: selection.providers,
             current_provider_id: source_provider_id.to_string(),
             request_model,
+            thinking_effort,
             outbound_model: None,
             tag: "Pi",
             app_type_str: "pi",
@@ -229,6 +232,7 @@ impl RequestContext {
             .and_then(|m| m.as_str())
             .unwrap_or("unknown")
             .to_string();
+        let thinking_effort = crate::proxy::thinking_effort::extract_thinking_effort(body);
 
         // 提取 Session ID
         let session_result = extract_session_id(headers, body, app_type_str);
@@ -304,6 +308,7 @@ impl RequestContext {
             providers,
             current_provider_id,
             request_model,
+            thinking_effort,
             outbound_model: None,
             tag,
             app_type_str,

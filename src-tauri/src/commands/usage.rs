@@ -230,7 +230,7 @@ pub async fn export_request_logs(
         .into_path()
         .map_err(|_| AppError::Message("导出路径无效".to_string()))?;
     let mut csv = String::from(
-        "created_at,request_id,app_type,api_type,provider_name,provider_id,request_model,model,status_code,diagnostic_origin,failure_kind,latency_ms,first_token_ms,duration_ms,is_streaming,input_tokens,output_tokens,reasoning_tokens,cache_read_tokens,cache_creation_tokens,cache_creation_1h_tokens,input_cost_usd,output_cost_usd,cache_read_cost_usd,cache_creation_cost_usd,total_cost_usd,cost_multiplier,data_source,pricing_model,upstream_response_id,stop_reason,error_message,route_trace\n",
+        "created_at,request_id,app_type,api_type,provider_name,provider_id,request_model,model,thinking_effort,thinking_effort_source,status_code,diagnostic_origin,failure_kind,latency_ms,first_token_ms,duration_ms,is_streaming,input_tokens,output_tokens,reasoning_tokens,cache_read_tokens,cache_creation_tokens,cache_creation_1h_tokens,input_cost_usd,output_cost_usd,cache_read_cost_usd,cache_creation_cost_usd,total_cost_usd,cost_multiplier,data_source,pricing_model,upstream_response_id,stop_reason,error_message,route_trace\n",
     );
     for log in logs.data {
         let origin = diagnostic_origin(log.failure_kind.as_deref(), log.status_code).to_string();
@@ -243,6 +243,8 @@ pub async fn export_request_logs(
             log.provider_id,
             log.request_model.unwrap_or_default(),
             log.model,
+            log.thinking_effort.unwrap_or_default(),
+            log.thinking_effort_source.unwrap_or_default(),
             log.status_code.to_string(),
             origin,
             log.failure_kind.unwrap_or_default(),

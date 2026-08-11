@@ -56,6 +56,26 @@ pub struct PiExtensionResource {
     pub version: Option<String>,
     pub status: String,
     pub error: Option<String>,
+    pub registrations: Vec<PiExtensionRegistration>,
+    pub analysis_complete: bool,
+    pub conflicts: Vec<PiExtensionConflict>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PiExtensionRegistration {
+    pub kind: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PiExtensionConflict {
+    pub kind: String,
+    pub name: String,
+    pub other_extension_id: String,
+    pub other_extension_name: String,
+    pub other_extension_path: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -82,6 +102,13 @@ pub struct PiInventory {
     pub runtime: PiRuntimeStatus,
     pub extensions: Vec<PiExtensionResource>,
     pub packages: Vec<PiInstalledPackage>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PiPackageInstallResult {
+    pub inventory: PiInventory,
+    pub isolated_extensions: Vec<PiExtensionResource>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -172,6 +199,12 @@ struct PackageResource {
     relative: String,
     path: Option<PathBuf>,
     error: Option<String>,
+}
+
+#[derive(Default)]
+struct ExtensionAnalysis {
+    registrations: Vec<PiExtensionRegistration>,
+    complete: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -287,11 +320,20 @@ fn get_inventory_in_dir(pi_dir: &Path) -> PiInventory {
         extensions.extend(package.extensions.clone());
     }
     mark_conflicts(&mut extensions);
+    let extensions_by_id: HashMap<&str, &PiExtensionResource> = extensions
+        .iter()
+        .map(|extension| (extension.id.as_str(), extension))
+        .collect();
     for package in &mut packages {
+        for extension in &mut package.extensions {
+            if let Some(current) = extensions_by_id.get(extension.id.as_str()) {
+                *extension = (*current).clone();
+            }
+        }
         if package
             .extensions
             .iter()
-            .any(|extension| extension.status == "conflict")
+            .any(|extension| extension.enabled && extension.status == "conflict")
         {
             package.status = "conflict".to_string();
         }
@@ -415,6 +457,7 @@ fn scan_standalone_extensions(
             let display_path = path_string(&path);
             let enabled = extension_enabled(explicit, pi_dir, &path, true);
             let exists = path.is_file();
+            let analysis = analyze_extension(&path);
             PiExtensionResource {
                 id: stable_id(&origin, &display_path, &display_path),
                 name: extension_name(&path),
@@ -434,6 +477,9 @@ fn scan_standalone_extensions(
                 }
                 .to_string(),
                 error: None,
+                registrations: analysis.registrations,
+                analysis_complete: analysis.complete,
+                conflicts: Vec::new(),
             }
         })
         .collect()
@@ -492,6 +538,11 @@ fn parse_package(pi_dir: &Path, index: usize, entry: &Value) -> PiInstalledPacka
                     .unwrap_or_else(|| resource.relative.clone())
             });
         let resource_error = resource.error.clone();
+        let analysis = resource
+            .path
+            .as_ref()
+            .map(|path| analyze_extension(path))
+            .unwrap_or_default();
         extensions.push(PiExtensionResource {
             id: stable_id("package", &source, &resource.relative),
             name: resource
@@ -519,6 +570,9 @@ fn parse_package(pi_dir: &Path, index: usize, entry: &Value) -> PiInstalledPacka
             }
             .to_string(),
             error: resource_error,
+            registrations: analysis.registrations,
+            analysis_complete: analysis.complete,
+            conflicts: Vec::new(),
         });
     }
     let resource_error = resources
@@ -836,21 +890,367 @@ fn repository_string(value: &Value) -> Option<&str> {
         .or_else(|| value.get("url").and_then(Value::as_str))
 }
 
-fn mark_conflicts(extensions: &mut [PiExtensionResource]) {
-    let mut paths: HashMap<String, usize> = HashMap::new();
-    for extension in extensions.iter() {
-        *paths.entry(normalized_path(&extension.path)).or_default() += 1;
-    }
-    for extension in extensions {
-        if paths
-            .get(&normalized_path(&extension.path))
-            .copied()
-            .unwrap_or(0)
-            > 1
-        {
-            extension.status = "conflict".to_string();
-            extension.error = Some("同一路径被多个扩展来源引用".to_string());
+fn analyze_extension(path: &Path) -> ExtensionAnalysis {
+    let source = match fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(_) => return ExtensionAnalysis::default(),
+    };
+    let source = strip_javascript_comments(&source);
+    let mut registrations = Vec::new();
+    let mut complete = true;
+    for (method, kind) in [
+        ("registerTool", "tool"),
+        ("registerCommand", "command"),
+        ("registerFlag", "flag"),
+    ] {
+        for arguments in extension_call_arguments(&source, method) {
+            let name = if method == "registerTool" {
+                registration_object_name(arguments)
+            } else {
+                leading_string_literal(arguments)
+            };
+            if let Some(name) = name {
+                registrations.push(PiExtensionRegistration {
+                    kind: kind.to_string(),
+                    name,
+                });
+            } else {
+                complete = false;
+            }
         }
+    }
+    registrations.sort_by(|left, right| {
+        left.kind
+            .cmp(&right.kind)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    registrations.dedup();
+    ExtensionAnalysis {
+        registrations,
+        complete,
+    }
+}
+
+fn strip_javascript_comments(source: &str) -> String {
+    let bytes = source.as_bytes();
+    let mut output = Vec::with_capacity(source.len());
+    let mut index = 0;
+    let mut quote = None;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if let Some(delimiter) = quote {
+            output.push(byte);
+            if byte == b'\\' && index + 1 < bytes.len() {
+                index += 1;
+                output.push(bytes[index]);
+            } else if byte == delimiter {
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        if matches!(byte, b'\'' | b'"' | b'`') {
+            quote = Some(byte);
+            output.push(byte);
+            index += 1;
+            continue;
+        }
+        if byte == b'/' && bytes.get(index + 1) == Some(&b'/') {
+            index += 2;
+            while index < bytes.len() && bytes[index] != b'\n' {
+                index += 1;
+            }
+            output.push(b'\n');
+            index += usize::from(index < bytes.len());
+            continue;
+        }
+        if byte == b'/' && bytes.get(index + 1) == Some(&b'*') {
+            index += 2;
+            while index + 1 < bytes.len() && !(bytes[index] == b'*' && bytes[index + 1] == b'/') {
+                output.push(if bytes[index] == b'\n' { b'\n' } else { b' ' });
+                index += 1;
+            }
+            index = (index + 2).min(bytes.len());
+            continue;
+        }
+        output.push(byte);
+        index += 1;
+    }
+    String::from_utf8(output).unwrap_or_default()
+}
+
+fn extension_call_arguments<'a>(source: &'a str, method: &str) -> Vec<&'a str> {
+    let mut arguments = Vec::new();
+    let bytes = source.as_bytes();
+    let mut start = 0;
+    while start + method.len() <= bytes.len() {
+        if matches!(bytes[start], b'\'' | b'"' | b'`') {
+            let quote = bytes[start];
+            start += 1;
+            while start < bytes.len() {
+                if bytes[start] == b'\\' {
+                    start += 2;
+                } else if bytes[start] == quote {
+                    start += 1;
+                    break;
+                } else {
+                    start += 1;
+                }
+            }
+            continue;
+        }
+        if &bytes[start..start + method.len()] != method.as_bytes() {
+            start += 1;
+            continue;
+        }
+        let before = source.as_bytes().get(start.wrapping_sub(1)).copied();
+        let after = source.as_bytes().get(start + method.len()).copied();
+        if before.is_some_and(is_identifier_byte) || after.is_some_and(is_identifier_byte) {
+            start += method.len();
+            continue;
+        }
+        let mut open = start + method.len();
+        while source
+            .as_bytes()
+            .get(open)
+            .is_some_and(|byte| byte.is_ascii_whitespace())
+        {
+            open += 1;
+        }
+        if source.as_bytes().get(open) != Some(&b'(') {
+            start += method.len();
+            continue;
+        }
+        if let Some(close) = matching_delimiter(source, open, b'(', b')') {
+            arguments.push(&source[open + 1..close]);
+            start = close + 1;
+        } else {
+            break;
+        }
+    }
+    arguments
+}
+
+fn matching_delimiter(source: &str, open: usize, left: u8, right: u8) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut depth = 0;
+    let mut quote = None;
+    let mut index = open;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if let Some(delimiter) = quote {
+            if byte == b'\\' {
+                index += 2;
+                continue;
+            }
+            if byte == delimiter {
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        if matches!(byte, b'\'' | b'"' | b'`') {
+            quote = Some(byte);
+        } else if byte == left {
+            depth += 1;
+        } else if byte == right {
+            depth -= 1;
+            if depth == 0 {
+                return Some(index);
+            }
+        }
+        index += 1;
+    }
+    None
+}
+
+fn registration_object_name(arguments: &str) -> Option<String> {
+    let object_start = arguments.find('{')?;
+    let object_end = matching_delimiter(arguments, object_start, b'{', b'}')?;
+    let object = &arguments[object_start + 1..object_end];
+    let bytes = object.as_bytes();
+    let mut index = 0;
+    let mut depth = 0;
+    while index + 4 <= bytes.len() {
+        if matches!(bytes[index], b'\'' | b'"' | b'`') {
+            let quote = bytes[index];
+            index += 1;
+            while index < bytes.len() {
+                if bytes[index] == b'\\' {
+                    index += 2;
+                } else if bytes[index] == quote {
+                    index += 1;
+                    break;
+                } else {
+                    index += 1;
+                }
+            }
+            continue;
+        }
+        match bytes[index] {
+            b'{' | b'[' | b'(' => depth += 1,
+            b'}' | b']' | b')' => depth -= 1,
+            _ => {}
+        }
+        if depth == 0
+            && &bytes[index..index + 4] == b"name"
+            && bytes
+                .get(index.wrapping_sub(1))
+                .is_none_or(|byte| !is_identifier_byte(*byte))
+            && bytes
+                .get(index + 4)
+                .is_none_or(|byte| !is_identifier_byte(*byte))
+        {
+            let after_name = &object[index + 4..];
+            let colon = after_name.find(':')?;
+            return leading_string_literal(&after_name[colon + 1..]);
+        }
+        index += 1;
+    }
+    None
+}
+
+fn leading_string_literal(value: &str) -> Option<String> {
+    let value = value.trim_start();
+    let quote = *value.as_bytes().first()?;
+    if !matches!(quote, b'\'' | b'"' | b'`') {
+        return None;
+    }
+    let bytes = value.as_bytes();
+    let mut output = String::new();
+    let mut index = 1;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte == b'\\' {
+            let escaped = *bytes.get(index + 1)?;
+            output.push(escaped as char);
+            index += 2;
+        } else if byte == quote {
+            return (!output.is_empty()).then_some(output);
+        } else if quote == b'`' && byte == b'$' && bytes.get(index + 1) == Some(&b'{') {
+            return None;
+        } else {
+            output.push(byte as char);
+            index += 1;
+        }
+    }
+    None
+}
+
+fn is_identifier_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$')
+}
+
+fn mark_conflicts(extensions: &mut [PiExtensionResource]) {
+    for extension in extensions.iter_mut() {
+        extension.conflicts.clear();
+        if extension.status == "conflict" {
+            extension.status = if extension.enabled {
+                "active".to_string()
+            } else {
+                "disabled".to_string()
+            };
+            extension.error = None;
+        }
+    }
+    let enabled_indices: Vec<usize> = extensions
+        .iter()
+        .enumerate()
+        .filter_map(|(index, extension)| extension.enabled.then_some(index))
+        .collect();
+    for left_position in 0..enabled_indices.len() {
+        for right_position in left_position + 1..enabled_indices.len() {
+            let left = enabled_indices[left_position];
+            let right = enabled_indices[right_position];
+            mark_pair_conflicts(extensions, left, right, true);
+        }
+    }
+    let disabled_indices: Vec<usize> = extensions
+        .iter()
+        .enumerate()
+        .filter_map(|(index, extension)| (!extension.enabled).then_some(index))
+        .collect();
+    for disabled in disabled_indices {
+        for enabled in &enabled_indices {
+            mark_pair_conflicts(extensions, disabled, *enabled, false);
+        }
+    }
+}
+
+fn mark_pair_conflicts(
+    extensions: &mut [PiExtensionResource],
+    left_index: usize,
+    right_index: usize,
+    active_conflict: bool,
+) {
+    let left_snapshot = extensions[left_index].clone();
+    let right_snapshot = extensions[right_index].clone();
+    let same_path = normalized_path(&left_snapshot.path) == normalized_path(&right_snapshot.path);
+    if same_path {
+        add_conflict(
+            &mut extensions[left_index],
+            &right_snapshot,
+            "path",
+            &left_snapshot.path,
+        );
+    }
+    for registration in &left_snapshot.registrations {
+        if right_snapshot.registrations.contains(registration) {
+            add_conflict(
+                &mut extensions[left_index],
+                &right_snapshot,
+                &registration.kind,
+                &registration.name,
+            );
+        }
+    }
+    if same_path {
+        add_conflict(
+            &mut extensions[right_index],
+            &left_snapshot,
+            "path",
+            &right_snapshot.path,
+        );
+    }
+    for registration in &right_snapshot.registrations {
+        if left_snapshot.registrations.contains(registration) {
+            add_conflict(
+                &mut extensions[right_index],
+                &left_snapshot,
+                &registration.kind,
+                &registration.name,
+            );
+        }
+    }
+    if active_conflict {
+        let left = &mut extensions[left_index];
+        if !left.conflicts.is_empty() {
+            left.status = "conflict".to_string();
+            left.error = Some("扩展注册项与其他已启用扩展冲突".to_string());
+        }
+        let right = &mut extensions[right_index];
+        if !right.conflicts.is_empty() {
+            right.status = "conflict".to_string();
+            right.error = Some("扩展注册项与其他已启用扩展冲突".to_string());
+        }
+    }
+}
+
+fn add_conflict(
+    extension: &mut PiExtensionResource,
+    other: &PiExtensionResource,
+    kind: &str,
+    name: &str,
+) {
+    let conflict = PiExtensionConflict {
+        kind: kind.to_string(),
+        name: name.to_string(),
+        other_extension_id: other.id.clone(),
+        other_extension_name: other.name.clone(),
+        other_extension_path: other.path.clone(),
+    };
+    if !extension.conflicts.contains(&conflict) {
+        extension.conflicts.push(conflict);
     }
 }
 
@@ -1233,7 +1633,16 @@ pub fn unregister_local_extension(path: String) -> Result<PiInventory, String> {
 }
 
 pub fn set_extension_enabled(id: String, enabled: bool) -> Result<PiInventory, String> {
-    let inventory = get_inventory();
+    let pi_dir = crate::pi_config::get_pi_dir();
+    set_extension_enabled_in_dir(&pi_dir, id, enabled)
+}
+
+fn set_extension_enabled_in_dir(
+    pi_dir: &Path,
+    id: String,
+    enabled: bool,
+) -> Result<PiInventory, String> {
+    let inventory = get_inventory_in_dir(pi_dir);
     if !inventory.runtime.mutable {
         return Err(inventory
             .runtime
@@ -1245,19 +1654,35 @@ pub fn set_extension_enabled(id: String, enabled: bool) -> Result<PiInventory, S
         .into_iter()
         .find(|extension| extension.id == id)
         .ok_or_else(|| "未找到 Pi extension".to_string())?;
-    if extension.origin == "package" {
-        toggle_package_extension(&extension, enabled)
-    } else {
-        toggle_standalone_extension(&extension, enabled)
+    if enabled && !extension.conflicts.is_empty() {
+        let conflicts = extension
+            .conflicts
+            .iter()
+            .map(|conflict| {
+                format!(
+                    "{} \"{}\" ({})",
+                    conflict.kind, conflict.name, conflict.other_extension_name
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!("启用会产生 Pi 扩展注册冲突: {conflicts}"));
     }
+    if extension.origin == "package" {
+        toggle_package_extension_in_dir(pi_dir, &extension, enabled)?;
+    } else {
+        toggle_standalone_extension_in_dir(pi_dir, &extension, enabled)?;
+    }
+    Ok(get_inventory_in_dir(pi_dir))
 }
 
-fn toggle_standalone_extension(
+fn toggle_standalone_extension_in_dir(
+    pi_dir: &Path,
     extension: &PiExtensionResource,
     enabled: bool,
-) -> Result<PiInventory, String> {
+) -> Result<(), String> {
     let target = extension.path.clone();
-    mutate_settings(|pi_dir, root, _state| {
+    mutate_settings_in_dir(pi_dir, |pi_dir, root, _state| {
         let target_path = PathBuf::from(&target);
         let entries = extensions_array_mut(root)?;
         entries.retain(|entry| {
@@ -1274,15 +1699,6 @@ fn toggle_standalone_extension(
         )));
         Ok(())
     })
-}
-
-fn toggle_package_extension(
-    extension: &PiExtensionResource,
-    enabled: bool,
-) -> Result<PiInventory, String> {
-    let pi_dir = crate::pi_config::get_pi_dir();
-    toggle_package_extension_in_dir(&pi_dir, extension, enabled)?;
-    Ok(get_inventory_in_dir(&pi_dir))
 }
 
 fn toggle_package_extension_in_dir(
@@ -1546,9 +1962,10 @@ fn ensure_bytes_unchanged(path: &Path, expected: Option<&[u8]>) -> Result<(), St
     Ok(())
 }
 
-pub async fn install_package(source: String) -> Result<PiInventory, String> {
+pub async fn install_package(source: String) -> Result<PiPackageInstallResult, String> {
     reject_mcp_adapter_source(&source)?;
-    run_package_cli("install", source).await
+    let inventory = run_package_cli("install", source.clone()).await?;
+    isolate_new_package_conflicts(&source, inventory)
 }
 
 pub async fn remove_package(source: String) -> Result<PiInventory, String> {
@@ -1560,6 +1977,58 @@ pub(crate) async fn install_mcp_adapter() -> Result<PiInventory, String> {
     let pi_dir = crate::pi_config::get_pi_dir();
     let cli = locate_pi_cli().ok_or_else(|| "未找到可用的 Pi CLI".to_string())?;
     install_mcp_adapter_with(&pi_dir, &cli, CLI_TIMEOUT).await
+}
+
+fn isolate_new_package_conflicts(
+    source: &str,
+    inventory: PiInventory,
+) -> Result<PiPackageInstallResult, String> {
+    let pi_dir = crate::pi_config::get_pi_dir();
+    isolate_new_package_conflicts_in_dir(&pi_dir, source, inventory)
+}
+
+fn isolate_new_package_conflicts_in_dir(
+    pi_dir: &Path,
+    source: &str,
+    inventory: PiInventory,
+) -> Result<PiPackageInstallResult, String> {
+    let conflicting = inventory
+        .packages
+        .iter()
+        .find(|package| package_sources_match(&package.source, source))
+        .map(|package| {
+            package
+                .extensions
+                .iter()
+                .filter(|extension| extension.enabled && extension.status == "conflict")
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if conflicting.is_empty() {
+        return Ok(PiPackageInstallResult {
+            inventory,
+            isolated_extensions: Vec::new(),
+        });
+    }
+    for extension in &conflicting {
+        toggle_package_extension_in_dir(pi_dir, extension, false)?;
+    }
+    let inventory = get_inventory_in_dir(pi_dir);
+    let isolated_extensions = conflicting
+        .iter()
+        .filter_map(|isolated| {
+            inventory
+                .extensions
+                .iter()
+                .find(|extension| extension.id == isolated.id)
+                .cloned()
+        })
+        .collect();
+    Ok(PiPackageInstallResult {
+        inventory,
+        isolated_extensions,
+    })
 }
 
 async fn install_mcp_adapter_with(
@@ -2527,6 +2996,166 @@ mod tests {
     }
 
     #[test]
+    fn scans_static_tool_command_and_flag_registrations() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("extension.ts");
+        fs::write(
+            &path,
+            r#"
+                const label = "中文扩展";
+                pi.registerTool({
+                    description: "search",
+                    name: "web_search",
+                });
+                pi.registerCommand("search", { handler() {} });
+                pi.registerFlag(`search-provider`, { type: "string" });
+                pi.registerTool({ name: makeToolName() });
+                // pi.registerCommand("ignored", {});
+            "#,
+        )
+        .unwrap();
+        let analysis = analyze_extension(&path);
+        assert_eq!(
+            analysis.registrations,
+            vec![
+                PiExtensionRegistration {
+                    kind: "command".to_string(),
+                    name: "search".to_string(),
+                },
+                PiExtensionRegistration {
+                    kind: "flag".to_string(),
+                    name: "search-provider".to_string(),
+                },
+                PiExtensionRegistration {
+                    kind: "tool".to_string(),
+                    name: "web_search".to_string(),
+                },
+            ]
+        );
+        assert!(!analysis.complete);
+    }
+
+    #[test]
+    fn inventory_reports_pi_registration_conflicts_and_disabled_candidates() {
+        let temp = tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("extensions")).unwrap();
+        fs::write(
+            temp.path().join("extensions/first.ts"),
+            r#"pi.registerTool({ name: "web_search" });"#,
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("extensions/second.ts"),
+            r#"pi.registerTool({ name: "web_search" });"#,
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("disabled.ts"),
+            r#"pi.registerTool({ name: "web_search" });"#,
+        )
+        .unwrap();
+        write(
+            &temp.path().join("settings.json"),
+            &json!({"extensions": ["-disabled.ts"]}),
+        );
+
+        let inventory = get_inventory_in_dir(temp.path());
+        let first = inventory
+            .extensions
+            .iter()
+            .find(|extension| extension.name == "first")
+            .unwrap();
+        let disabled = inventory
+            .extensions
+            .iter()
+            .find(|extension| extension.name == "disabled")
+            .unwrap();
+        assert_eq!(first.status, "conflict");
+        assert_eq!(first.conflicts[0].kind, "tool");
+        assert_eq!(first.conflicts[0].name, "web_search");
+        assert_eq!(disabled.status, "disabled");
+        assert!(!disabled.conflicts.is_empty());
+    }
+
+    #[test]
+    fn enabling_a_known_conflict_is_rejected() {
+        let temp = tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("extensions")).unwrap();
+        fs::write(
+            temp.path().join("extensions/active.ts"),
+            r#"pi.registerTool({ name: "web_search" });"#,
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("disabled.ts"),
+            r#"pi.registerTool({ name: "web_search" });"#,
+        )
+        .unwrap();
+        write(
+            &temp.path().join("settings.json"),
+            &json!({"extensions": ["-disabled.ts"]}),
+        );
+        let inventory = get_inventory_in_dir(temp.path());
+        let disabled = inventory
+            .extensions
+            .iter()
+            .find(|extension| extension.name == "disabled")
+            .unwrap();
+        assert!(!disabled.conflicts.is_empty());
+        let error =
+            set_extension_enabled_in_dir(temp.path(), disabled.id.clone(), true).unwrap_err();
+        assert!(error.contains("web_search"));
+    }
+
+    #[test]
+    fn newly_installed_package_conflicts_are_isolated_without_removing_other_resources() {
+        let temp = tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("extensions")).unwrap();
+        fs::write(
+            temp.path().join("extensions/existing.ts"),
+            r#"pi.registerTool({ name: "web_search" });"#,
+        )
+        .unwrap();
+        let package_dir = temp.path().join("npm/node_modules/new-package");
+        fs::create_dir_all(package_dir.join("extensions")).unwrap();
+        fs::create_dir_all(package_dir.join("skills/search")).unwrap();
+        fs::write(
+            package_dir.join("extensions/index.ts"),
+            r#"pi.registerTool({ name: "web_search" });"#,
+        )
+        .unwrap();
+        write(
+            &package_dir.join("package.json"),
+            &json!({
+                "name": "new-package",
+                "pi": {
+                    "extensions": ["extensions/index.ts"],
+                    "skills": ["skills/search"]
+                }
+            }),
+        );
+        write(
+            &temp.path().join("settings.json"),
+            &json!({"packages": ["npm:new-package"]}),
+        );
+        let inventory = get_inventory_in_dir(temp.path());
+        let result =
+            isolate_new_package_conflicts_in_dir(temp.path(), "npm:new-package", inventory)
+                .unwrap();
+        assert_eq!(result.isolated_extensions.len(), 1);
+        assert!(!result.isolated_extensions[0].enabled);
+        let settings = read_json_object(&temp.path().join("settings.json")).unwrap();
+        assert!(settings["packages"][0].is_object());
+        assert_eq!(settings["packages"][0]["source"], "npm:new-package");
+        assert!(settings["packages"][0]["extensions"][0]
+            .as_str()
+            .unwrap()
+            .starts_with('!'));
+        assert_eq!(result.inventory.packages[0].skill_count, 1);
+        assert_eq!(result.inventory.packages[0].status, "installed");
+    }
+
+    #[test]
     fn register_and_unregister_preserve_unknown_fields_and_order() {
         let temp = tempdir().unwrap();
         fs::write(temp.path().join("local.ts"), b"").unwrap();
@@ -2707,8 +3336,12 @@ mod tests {
             version: None,
             status: "active".to_string(),
             error: None,
+            registrations: Vec::new(),
+            analysis_complete: true,
+            conflicts: Vec::new(),
         };
-        let error = toggle_package_extension(&extension, false).unwrap_err();
+        let temp = tempdir().unwrap();
+        let error = toggle_package_extension_in_dir(temp.path(), &extension, false).unwrap_err();
         assert!(error.contains("MCP adapter"));
     }
 

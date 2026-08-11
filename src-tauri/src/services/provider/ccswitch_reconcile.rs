@@ -1,6 +1,8 @@
 use super::ccswitch_import::{
     read_ccswitch_codex_candidates, CcSwitchParseResult, CcSwitchProviderCandidate,
 };
+#[cfg(test)]
+use crate::app_config::AppType;
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
 use crate::provider::{Provider, ProviderMeta};
@@ -519,7 +521,7 @@ fn reconcile_parsed(
         added: 0,
         updated: 0,
         merged: 0,
-        skipped: parsed.skipped,
+        skipped: parsed.invalid.len(),
         warnings: parsed.warnings,
         providers: Vec::new(),
     };
@@ -583,14 +585,17 @@ mod tests {
 
     fn parsed(candidates: Vec<(&str, Provider)>) -> CcSwitchParseResult {
         CcSwitchParseResult {
+            source_path: std::path::PathBuf::from("cc-switch.db"),
+            source_version: 0,
             candidates: candidates
                 .into_iter()
                 .map(|(source_id, provider)| CcSwitchProviderCandidate {
                     source_id: source_id.into(),
+                    app_type: AppType::Codex,
                     provider,
                 })
                 .collect(),
-            skipped: 0,
+            invalid: Vec::new(),
             warnings: Vec::new(),
         }
     }

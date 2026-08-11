@@ -195,11 +195,17 @@ pub fn set_typed_provider(id: &str, config: &OpenCodeProviderConfig) -> Result<(
 
 pub fn get_mcp_servers() -> Result<Map<String, Value>, AppError> {
     let config = read_opencode_config()?;
-    Ok(config
-        .get("mcp")
-        .and_then(|v| v.as_object())
-        .cloned()
-        .unwrap_or_default())
+    let Some(mcp) = config.get("mcp").and_then(Value::as_object) else {
+        return Ok(Map::new());
+    };
+    if let Some(servers) = mcp.get("servers").and_then(Value::as_object) {
+        return Ok(servers.clone());
+    }
+    Ok(mcp
+        .iter()
+        .filter(|(key, value)| key.as_str() != "servers" && value.is_object())
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect())
 }
 
 pub fn set_mcp_server(id: &str, config: Value) -> Result<(), AppError> {
@@ -213,7 +219,16 @@ pub fn set_mcp_server(id: &str, config: Value) -> Result<(), AppError> {
     }
 
     if let Some(mcp) = full_config.get_mut("mcp").and_then(|v| v.as_object_mut()) {
-        mcp.insert(id.to_string(), config);
+        if mcp.get("servers").is_some() {
+            if !mcp.get("servers").is_some_and(Value::is_object) {
+                mcp.insert("servers".to_string(), json!({}));
+            }
+            if let Some(servers) = mcp.get_mut("servers").and_then(Value::as_object_mut) {
+                servers.insert(id.to_string(), config);
+            }
+        } else {
+            mcp.insert(id.to_string(), config);
+        }
     }
 
     write_opencode_config(&full_config)
@@ -224,6 +239,9 @@ pub fn remove_mcp_server(id: &str) -> Result<(), AppError> {
 
     if let Some(mcp) = config.get_mut("mcp").and_then(|v| v.as_object_mut()) {
         mcp.remove(id);
+        if let Some(servers) = mcp.get_mut("servers").and_then(Value::as_object_mut) {
+            servers.remove(id);
+        }
     } else if config.get("mcp").is_some() {
         log::warn!("opencode.json 的 mcp 不是对象，无法删除服务器 '{id}'");
     }
@@ -365,5 +383,40 @@ mod tests {
             config["model"], "keep-me",
             "unrelated user config must be preserved"
         );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn reads_and_updates_v2_mcp_servers_section() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = TestHomeGuard::set(temp.path());
+        write_config(
+            temp.path(),
+            r#"{
+                "mcp": {
+                    "servers": {
+                        "existing": {
+                            "type": "remote",
+                            "url": "https://example.com/mcp"
+                        }
+                    }
+                }
+            }"#,
+        );
+
+        let servers = get_mcp_servers().expect("read servers");
+        assert!(servers.contains_key("existing"));
+
+        set_mcp_server(
+            "added",
+            json!({"type": "local", "command": ["npx", "-y", "server"]}),
+        )
+        .expect("add server");
+        let config = read_opencode_config().expect("reload");
+        assert_eq!(config["mcp"]["servers"]["added"]["type"], "local");
+
+        remove_mcp_server("existing").expect("remove server");
+        let config = read_opencode_config().expect("reload");
+        assert!(config["mcp"]["servers"].get("existing").is_none());
     }
 }

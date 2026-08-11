@@ -76,8 +76,58 @@ use std::{fmt, sync::Arc};
 use tauri::image::Image;
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::RunEvent;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize};
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+
+fn clamp_window_position(
+    window_position: PhysicalPosition<i32>,
+    window_size: PhysicalSize<u32>,
+    monitor_position: PhysicalPosition<i32>,
+    monitor_size: PhysicalSize<u32>,
+) -> PhysicalPosition<i32> {
+    let monitor_right = monitor_position.x + monitor_size.width as i32;
+    let monitor_bottom = monitor_position.y + monitor_size.height as i32;
+    let max_x = (monitor_right - window_size.width as i32).max(monitor_position.x);
+    let max_y = (monitor_bottom - window_size.height as i32).max(monitor_position.y);
+
+    PhysicalPosition::new(
+        window_position.x.clamp(monitor_position.x, max_x),
+        window_position.y.clamp(monitor_position.y, max_y),
+    )
+}
+
+fn ensure_window_visible(window: &tauri::WebviewWindow) {
+    if window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false) {
+        return;
+    }
+
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten());
+    let Some(monitor) = monitor else {
+        return;
+    };
+    let (Ok(position), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+        return;
+    };
+    let next_position = clamp_window_position(position, size, *monitor.position(), *monitor.size());
+
+    if next_position != position {
+        if let Err(error) = window.set_position(next_position) {
+            log::warn!("修正主窗口可见位置失败: {error}");
+        } else {
+            log::info!(
+                "主窗口位置已修正: ({}, {}) -> ({}, {})",
+                position.x,
+                position.y,
+                next_position.x,
+                next_position.y
+            );
+        }
+    }
+}
 
 #[cfg(target_os = "windows")]
 fn set_windows_app_user_model_id(app: &tauri::AppHandle) {
@@ -538,6 +588,7 @@ pub fn run() {
                     });
                     // 主窗口默认 visible:false，恢复界面必须强制显示
                     if let Some(window) = app.get_webview_window("main") {
+                        ensure_window_visible(&window);
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
@@ -1318,6 +1369,7 @@ pub fn run() {
                     log::info!("静默启动模式：主窗口已隐藏");
                 } else {
                     // 正常启动模式：显示窗口
+                    ensure_window_visible(&window);
                     let _ = window.show();
                     log::info!("正常启动模式：主窗口已显示");
 
@@ -1344,6 +1396,8 @@ pub fn run() {
             commands::switch_provider,
             commands::import_default_config,
             commands::import_ccswitch_codex_providers,
+            commands::preview_ccswitch_provider_import,
+            commands::apply_ccswitch_provider_import,
             commands::get_claude_desktop_status,
             commands::get_claude_desktop_default_routes,
             commands::import_claude_desktop_providers_from_claude,
@@ -2269,11 +2323,47 @@ pub fn restart_process(app_handle: &tauri::AppHandle) -> ! {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_exit_request, enabled_proxy_apps_on_startup, proxy_server_enabled_on_startup,
-        redact_url_for_log, redact_url_for_log_with_secrets, redact_url_origin_for_log,
-        runtime_log_level_allows, ExitRequestAction,
+        clamp_window_position, classify_exit_request, enabled_proxy_apps_on_startup,
+        proxy_server_enabled_on_startup, redact_url_for_log, redact_url_for_log_with_secrets,
+        redact_url_origin_for_log, runtime_log_level_allows, ExitRequestAction,
     };
     use crate::database::Database;
+    use tauri::{PhysicalPosition, PhysicalSize};
+
+    #[test]
+    fn window_position_is_clamped_to_monitor_bounds() {
+        let monitor_position = PhysicalPosition::new(0, 0);
+        let monitor_size = PhysicalSize::new(1920, 1080);
+        let window_size = PhysicalSize::new(1200, 760);
+
+        assert_eq!(
+            clamp_window_position(
+                PhysicalPosition::new(-180, 40),
+                window_size,
+                monitor_position,
+                monitor_size,
+            ),
+            PhysicalPosition::new(0, 40)
+        );
+        assert_eq!(
+            clamp_window_position(
+                PhysicalPosition::new(900, 500),
+                window_size,
+                monitor_position,
+                monitor_size,
+            ),
+            PhysicalPosition::new(720, 320)
+        );
+        assert_eq!(
+            clamp_window_position(
+                PhysicalPosition::new(240, 160),
+                window_size,
+                monitor_position,
+                monitor_size,
+            ),
+            PhysicalPosition::new(240, 160)
+        );
+    }
 
     #[test]
     fn log_url_redaction_strips_credentials_and_query_keeps_path() {

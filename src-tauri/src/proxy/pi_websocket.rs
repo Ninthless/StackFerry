@@ -38,6 +38,7 @@ struct PiWebSocketUsageObserver {
     api_type: String,
     input_token_semantics: i64,
     request_model: String,
+    thinking_effort: Option<super::thinking_effort::ThinkingEffort>,
     started_at: std::time::Instant,
     first_event_ms: Option<u64>,
     events: Vec<Value>,
@@ -50,6 +51,7 @@ impl PiWebSocketUsageObserver {
             api_type: api.as_str().to_string(),
             input_token_semantics: api.input_token_semantics(),
             request_model: request_model.unwrap_or_else(|| "unknown".to_string()),
+            thinking_effort: None,
             started_at: std::time::Instant::now(),
             first_event_ms: None,
             events: Vec::new(),
@@ -67,6 +69,7 @@ impl PiWebSocketUsageObserver {
         if let Some(model) = value.get("model").and_then(Value::as_str) {
             self.request_model = model.to_string();
         }
+        self.thinking_effort = super::thinking_effort::extract_thinking_effort(&value);
         self.started_at = std::time::Instant::now();
         self.first_event_ms = None;
         self.events.clear();
@@ -177,6 +180,7 @@ impl PiWebSocketUsageObserver {
                 self.input_token_semantics,
                 &self.request_model,
                 self.started_at.elapsed().as_millis() as u64,
+                self.thinking_effort.as_ref(),
             );
         }
         self.terminal_logged = true;
@@ -234,6 +238,12 @@ impl PiWebSocketUsageObserver {
             true,
             error_message,
             None,
+            self.thinking_effort
+                .as_ref()
+                .map(|effort| effort.value.clone()),
+            self.thinking_effort
+                .as_ref()
+                .map(|effort| effort.source.clone()),
         ) {
             log::warn!("[USG-001] Failed to record Pi WebSocket usage: {error}");
         }
@@ -368,6 +378,7 @@ pub(crate) async fn proxy(
                         usage_observer.input_token_semantics,
                         &usage_observer.request_model,
                         usage_observer.started_at.elapsed().as_millis() as u64,
+                        usage_observer.thinking_effort.as_ref(),
                     );
                     record_terminal_failure(&state, &last_error).await;
                     return;
@@ -474,6 +485,7 @@ pub(crate) async fn proxy(
             usage_observer.input_token_semantics,
             &usage_observer.request_model,
             usage_observer.started_at.elapsed().as_millis() as u64,
+            usage_observer.thinking_effort.as_ref(),
         );
     }
     record_terminal_failure(&state, &last_error).await;
@@ -801,6 +813,7 @@ fn log_websocket_error(
     input_token_semantics: i64,
     request_model: &str,
     latency_ms: u64,
+    thinking_effort: Option<&super::thinking_effort::ThinkingEffort>,
 ) {
     if !super::response_processor::usage_logging_enabled(state) {
         return;
@@ -821,6 +834,8 @@ fn log_websocket_error(
         Some("pi".to_string()),
         Some("connection_failure".to_string()),
         None,
+        thinking_effort.map(|effort| effort.value.clone()),
+        thinking_effort.map(|effort| effort.source.clone()),
     ) {
         log::warn!("[USG-001] Failed to record Pi WebSocket error: {error}");
     }

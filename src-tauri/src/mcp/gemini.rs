@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use crate::app_config::{McpApps, McpConfig, McpServer, MultiAppConfig};
 use crate::error::AppError;
 
-use super::validation::{extract_server_spec, validate_server_spec};
+use super::validation::{extract_server_spec, normalize_server_spec};
 
 fn should_sync_gemini_mcp() -> bool {
     // Gemini 未安装/未初始化时：~/.gemini 目录不存在。
@@ -61,12 +61,14 @@ pub fn import_from_gemini(config: &mut MultiAppConfig) -> Result<usize, AppError
     let mut errors = Vec::new();
 
     for (id, spec) in map.iter() {
-        // 校验：单项失败不中止，收集错误继续处理
-        if let Err(e) = validate_server_spec(spec) {
-            log::warn!("跳过无效 MCP 服务器 '{id}': {e}");
-            errors.push(format!("{id}: {e}"));
-            continue;
-        }
+        let spec = match normalize_server_spec(spec) {
+            Ok(spec) => spec,
+            Err(e) => {
+                log::warn!("跳过无效 MCP 服务器 '{id}': {e}");
+                errors.push(format!("{id}: {e}"));
+                continue;
+            }
+        };
 
         if let Some(existing) = servers.get_mut(id) {
             // 已存在：仅启用 Gemini 应用
@@ -82,7 +84,7 @@ pub fn import_from_gemini(config: &mut MultiAppConfig) -> Result<usize, AppError
                 McpServer {
                     id: id.clone(),
                     name: id.clone(),
-                    server: spec.clone(),
+                    server: spec,
                     apps: McpApps {
                         claude: false,
                         codex: false,

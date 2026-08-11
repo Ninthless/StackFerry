@@ -242,7 +242,9 @@ impl Database {
             cost_multiplier TEXT NOT NULL DEFAULT '1.0', created_at INTEGER NOT NULL,
             data_source TEXT NOT NULL DEFAULT 'proxy',
             failure_kind TEXT,
-            route_trace TEXT
+            route_trace TEXT,
+            thinking_effort TEXT,
+            thinking_effort_source TEXT
         )", []).map_err(|e| AppError::Database(e.to_string()))?;
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_request_logs_provider ON proxy_request_logs(provider_id, app_type)", [])
@@ -607,6 +609,11 @@ impl Database {
                         log::info!("迁移数据库从 v23 到 v24（添加请求故障诊断）");
                         Self::migrate_v23_to_v24(conn)?;
                         Self::set_user_version(conn, 24)?;
+                    }
+                    24 => {
+                        log::info!("迁移数据库从 v24 到 v25（记录请求思考强度）");
+                        Self::migrate_v24_to_v25(conn)?;
+                        Self::set_user_version(conn, 25)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1883,6 +1890,15 @@ impl Database {
         }
         Self::add_column_if_missing(conn, "proxy_request_logs", "failure_kind", "TEXT")?;
         Self::add_column_if_missing(conn, "proxy_request_logs", "route_trace", "TEXT")?;
+        Ok(())
+    }
+
+    fn migrate_v24_to_v25(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "proxy_request_logs")? {
+            return Ok(());
+        }
+        Self::add_column_if_missing(conn, "proxy_request_logs", "thinking_effort", "TEXT")?;
+        Self::add_column_if_missing(conn, "proxy_request_logs", "thinking_effort_source", "TEXT")?;
         Ok(())
     }
 
@@ -3786,6 +3802,48 @@ mod tests {
             },
         )?;
         assert_eq!(state, ("manual".into(), None, false, true, true, 4));
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v24_to_v25_adds_thinking_effort_without_changing_existing_logs(
+    ) -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE proxy_request_logs (
+                request_id TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                model TEXT NOT NULL,
+                failure_kind TEXT,
+                route_trace TEXT
+             );
+             INSERT INTO proxy_request_logs (
+                request_id, provider_id, app_type, model, failure_kind, route_trace
+             ) VALUES ('existing', 'provider-1', 'codex', 'gpt-5.6', NULL, NULL);",
+        )?;
+        Database::set_user_version(&conn, 24)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        assert!(Database::has_column(
+            &conn,
+            "proxy_request_logs",
+            "thinking_effort"
+        )?);
+        assert!(Database::has_column(
+            &conn,
+            "proxy_request_logs",
+            "thinking_effort_source"
+        )?);
+        let values: (Option<String>, Option<String>) = conn.query_row(
+            "SELECT thinking_effort, thinking_effort_source
+             FROM proxy_request_logs WHERE request_id = 'existing'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(values, (None, None));
         Ok(())
     }
 }

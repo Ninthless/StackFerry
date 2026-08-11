@@ -4,6 +4,35 @@ use serde_json::Value;
 
 use crate::error::AppError;
 
+pub fn normalize_server_spec(spec: &Value) -> Result<Value, AppError> {
+    let mut normalized = spec
+        .as_object()
+        .cloned()
+        .ok_or_else(|| AppError::McpValidation("MCP 服务器连接定义必须为 JSON 对象".into()))?;
+
+    if normalized.get("type").is_none() {
+        let inferred = if normalized.contains_key("command") {
+            Some("stdio")
+        } else if normalized.contains_key("httpUrl") {
+            if let Some(url) = normalized.remove("httpUrl") {
+                normalized.insert("url".to_string(), url);
+            }
+            Some("http")
+        } else if normalized.contains_key("url") {
+            Some("http")
+        } else {
+            None
+        };
+        if let Some(transport) = inferred {
+            normalized.insert("type".to_string(), Value::String(transport.to_string()));
+        }
+    }
+
+    let normalized = Value::Object(normalized);
+    validate_server_spec(&normalized)?;
+    Ok(normalized)
+}
+
 /// 基础校验：允许 stdio/http/sse；或省略 type（视为 stdio）。对应必填字段存在
 pub fn validate_server_spec(spec: &Value) -> Result<(), AppError> {
     if !spec.is_object() {
@@ -48,6 +77,29 @@ pub fn validate_server_spec(spec: &Value) -> Result<(), AppError> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn infers_stdio_and_http_transports() {
+        assert_eq!(
+            normalize_server_spec(&json!({"command": "npx"})).unwrap()["type"],
+            "stdio"
+        );
+        assert_eq!(
+            normalize_server_spec(&json!({"url": "https://example.com/mcp"})).unwrap()["type"],
+            "http"
+        );
+        let http_url =
+            normalize_server_spec(&json!({"httpUrl": "https://example.com/mcp"})).unwrap();
+        assert_eq!(http_url["type"], "http");
+        assert_eq!(http_url["url"], "https://example.com/mcp");
+        assert!(http_url.get("httpUrl").is_none());
+    }
 }
 
 /// 从 MCP 条目中提取服务器规范

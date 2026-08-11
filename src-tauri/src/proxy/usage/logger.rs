@@ -92,6 +92,8 @@ pub struct RequestLog {
     pub error_message: Option<String>,
     pub failure_kind: Option<String>,
     pub route_trace: Option<String>,
+    pub thinking_effort: Option<String>,
+    pub thinking_effort_source: Option<String>,
     pub session_id: Option<String>,
     /// 供应商类型 (claude, claude_auth, codex, gemini, gemini_cli, openrouter)
     pub provider_type: Option<String>,
@@ -182,8 +184,9 @@ impl<'a> UsageLogger<'a> {
                 reasoning_tokens, cache_creation_1h_tokens, input_token_semantics,
                 input_cost_usd, output_cost_usd, cache_read_cost_usd, cache_creation_cost_usd, total_cost_usd,
                 latency_ms, first_token_ms, status_code, error_message, session_id,
-                provider_type, is_streaming, cost_multiplier, created_at, failure_kind, route_trace
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31)"
+                provider_type, is_streaming, cost_multiplier, created_at, failure_kind, route_trace,
+                thinking_effort, thinking_effort_source
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33)"
         );
         let affected_rows = conn
             .execute(
@@ -220,6 +223,8 @@ impl<'a> UsageLogger<'a> {
                     created_at,
                     log.failure_kind,
                     log.route_trace,
+                    log.thinking_effort,
+                    log.thinking_effort_source,
                 ],
             )
             .map_err(|e| AppError::Database(format!("记录请求日志失败: {e}")))?;
@@ -308,6 +313,8 @@ impl<'a> UsageLogger<'a> {
             error_message: Some(error_message),
             failure_kind: None,
             route_trace: None,
+            thinking_effort: None,
+            thinking_effort_source: None,
             session_id: None,
             provider_type: None,
             is_streaming: false,
@@ -337,6 +344,8 @@ impl<'a> UsageLogger<'a> {
         provider_type: Option<String>,
         failure_kind: Option<String>,
         route_trace: Option<String>,
+        thinking_effort: Option<String>,
+        thinking_effort_source: Option<String>,
     ) -> Result<(), AppError> {
         let request_model = model.clone();
         let log = RequestLog {
@@ -357,6 +366,8 @@ impl<'a> UsageLogger<'a> {
             error_message: Some(error_message),
             failure_kind,
             route_trace,
+            thinking_effort,
+            thinking_effort_source,
             session_id,
             provider_type,
             is_streaming,
@@ -496,6 +507,8 @@ impl<'a> UsageLogger<'a> {
         provider_type: Option<String>,
         is_streaming: bool,
         route_trace: Option<String>,
+        thinking_effort: Option<String>,
+        thinking_effort_source: Option<String>,
     ) -> Result<(), AppError> {
         self.log_with_calculation_and_error(
             request_id,
@@ -516,6 +529,8 @@ impl<'a> UsageLogger<'a> {
             is_streaming,
             None,
             route_trace,
+            thinking_effort,
+            thinking_effort_source,
         )
     }
 
@@ -540,6 +555,8 @@ impl<'a> UsageLogger<'a> {
         is_streaming: bool,
         error_message: Option<String>,
         route_trace: Option<String>,
+        thinking_effort: Option<String>,
+        thinking_effort_source: Option<String>,
     ) -> Result<(), AppError> {
         let pricing = self.get_model_pricing(&pricing_model)?;
 
@@ -576,6 +593,8 @@ impl<'a> UsageLogger<'a> {
             error_message,
             failure_kind: None,
             route_trace,
+            thinking_effort,
+            thinking_effort_source,
             session_id,
             provider_type,
             is_streaming,
@@ -617,6 +636,8 @@ mod tests {
             error_message: None,
             failure_kind: None,
             route_trace: None,
+            thinking_effort: None,
+            thinking_effort_source: None,
             session_id: None,
             provider_type: Some("codex".to_string()),
             is_streaming: true,
@@ -669,6 +690,8 @@ mod tests {
             None,
             Some("claude".to_string()),
             false,
+            None,
+            None,
             None,
         )?;
 
@@ -833,6 +856,8 @@ mod tests {
             error_message: None,
             failure_kind: None,
             route_trace: None,
+            thinking_effort: None,
+            thinking_effort_source: None,
             session_id: None,
             provider_type: Some("grokbuild".to_string()),
             is_streaming: false,
@@ -893,12 +918,15 @@ mod tests {
             Some("pi".to_string()),
             true,
             None,
+            Some("high".to_string()),
+            Some("reasoning.effort=high".to_string()),
         )?;
 
         let conn = crate::database::lock_conn!(db.conn);
-        let row: (String, i64, i64, i64, String) = conn.query_row(
+        let row: (String, i64, i64, i64, String, String, String) = conn.query_row(
             "SELECT api_type, input_token_semantics, reasoning_tokens,
-                    cache_creation_1h_tokens, total_cost_usd
+                    cache_creation_1h_tokens, total_cost_usd,
+                    thinking_effort, thinking_effort_source
              FROM proxy_request_logs WHERE request_id = 'pi-total'",
             [],
             |row| {
@@ -908,6 +936,8 @@ mod tests {
                     row.get(2)?,
                     row.get(3)?,
                     row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
                 ))
             },
         )?;
@@ -920,6 +950,8 @@ mod tests {
             Decimal::from_str(&row.4).unwrap(),
             Decimal::from_str("0.0154").unwrap()
         );
+        assert_eq!(row.5, "high");
+        assert_eq!(row.6, "reasoning.effort=high");
         Ok(())
     }
 }

@@ -590,6 +590,7 @@ pub(crate) fn create_usage_collector(
     let stream_parser = parser_config.stream_parser;
     let model_extractor = parser_config.model_extractor;
     let session_id = ctx.session_id.clone();
+    let thinking_effort = ctx.thinking_effort.clone();
     let route_trace = serialize_route_trace(ctx);
 
     Some(SseUsageCollector::new(
@@ -608,6 +609,7 @@ pub(crate) fn create_usage_collector(
                 let outbound_model = fallback_model.clone();
                 let api_type = api_type.clone();
                 let route_trace = route_trace.clone();
+                let thinking_effort = thinking_effort.clone();
 
                 tokio::spawn(async move {
                     log_usage_internal(
@@ -625,6 +627,7 @@ pub(crate) fn create_usage_collector(
                         true, // is_streaming
                         status_code,
                         Some(session_id),
+                        thinking_effort,
                         route_trace,
                     )
                     .await;
@@ -639,6 +642,7 @@ pub(crate) fn create_usage_collector(
                 let outbound_model = fallback_model.clone();
                 let api_type = api_type.clone();
                 let route_trace = route_trace.clone();
+                let thinking_effort = thinking_effort.clone();
 
                 tokio::spawn(async move {
                     log_usage_internal(
@@ -656,6 +660,7 @@ pub(crate) fn create_usage_collector(
                         true, // is_streaming
                         status_code,
                         Some(session_id),
+                        thinking_effort,
                         route_trace,
                     )
                     .await;
@@ -697,6 +702,7 @@ fn spawn_log_usage(
         .unwrap_or_else(|| ctx.request_model.clone());
     let latency_ms = ctx.latency_ms();
     let session_id = ctx.session_id.clone();
+    let thinking_effort = ctx.thinking_effort.clone();
     let route_trace = serialize_route_trace(ctx);
 
     tokio::spawn(async move {
@@ -715,6 +721,7 @@ fn spawn_log_usage(
             is_streaming,
             status_code,
             Some(session_id),
+            thinking_effort,
             route_trace,
         )
         .await;
@@ -751,6 +758,7 @@ async fn log_usage_internal(
     is_streaming: bool,
     status_code: u16,
     session_id: Option<String>,
+    thinking_effort: Option<crate::proxy::thinking_effort::ThinkingEffort>,
     route_trace: Option<String>,
 ) {
     use super::usage::logger::UsageLogger;
@@ -794,6 +802,8 @@ async fn log_usage_internal(
         None, // provider_type
         is_streaming,
         route_trace,
+        thinking_effort.as_ref().map(|effort| effort.value.clone()),
+        thinking_effort.map(|effort| effort.source),
     ) {
         log::warn!("[USG-001] 记录使用量失败: {e}");
     }
@@ -1297,6 +1307,7 @@ mod tests {
             200,
             None,
             None,
+            None,
         )
         .await;
 
@@ -1370,6 +1381,7 @@ mod tests {
             None,
             false,
             200,
+            None,
             None,
             None,
         )
@@ -1455,6 +1467,7 @@ mod tests {
             None,
             false,
             200,
+            None,
             None,
             None,
         )

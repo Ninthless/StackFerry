@@ -1,9 +1,11 @@
+use crate::app_config::AppType;
 use crate::error::AppError;
-use crate::provider::Provider;
+use crate::provider::{Provider, ProviderMeta};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use toml_edit::{value, DocumentMut, Item, Table};
 
 const CC_SWITCH_DB_FILE: &str = "cc-switch.db";
@@ -33,11 +35,17 @@ struct CandidateRoots {
 }
 
 #[derive(Clone)]
-struct CcSwitchCodexRow {
+struct CcSwitchProviderRow {
     id: String,
+    app_type: String,
     name: String,
     settings_config: String,
     category: Option<String>,
+    website_url: Option<String>,
+    notes: Option<String>,
+    icon: Option<String>,
+    icon_color: Option<String>,
+    meta: Option<String>,
 }
 
 #[derive(Clone)]
@@ -53,12 +61,23 @@ struct CcSwitchCodexSection {
 
 pub(crate) struct CcSwitchProviderCandidate {
     pub source_id: String,
+    pub app_type: AppType,
     pub provider: Provider,
 }
 
+pub(crate) struct CcSwitchInvalidCandidate {
+    pub source_id: String,
+    pub app_type: Option<AppType>,
+    pub app_label: String,
+    pub name: String,
+    pub reason: String,
+}
+
 pub(crate) struct CcSwitchParseResult {
+    pub source_path: PathBuf,
+    pub source_version: i64,
     pub candidates: Vec<CcSwitchProviderCandidate>,
-    pub skipped: usize,
+    pub invalid: Vec<CcSwitchInvalidCandidate>,
     pub warnings: Vec<String>,
 }
 
@@ -207,30 +226,66 @@ fn table_columns(connection: &Connection, table: &str) -> Result<Vec<String>, Ap
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
-fn read_ccswitch_codex_rows(connection: &Connection) -> Result<Vec<CcSwitchCodexRow>, AppError> {
+fn optional_column<'a>(columns: &[String], name: &'a str) -> &'a str {
+    if columns.iter().any(|column| column == name) {
+        name
+    } else {
+        "NULL"
+    }
+}
+
+fn read_ccswitch_provider_rows(
+    connection: &Connection,
+) -> Result<Vec<CcSwitchProviderRow>, AppError> {
     let columns = table_columns(connection, "providers")?;
-    let category = if columns.iter().any(|column| column == "category") {
-        "category"
+    for required in ["id", "app_type", "name", "settings_config"] {
+        if !columns.iter().any(|column| column == required) {
+            return Err(AppError::Database(format!(
+                "cc-switch providers 表缺少必要字段 {required}"
+            )));
+        }
+    }
+    let category = optional_column(&columns, "category");
+    let website_url = optional_column(&columns, "website_url");
+    let notes = optional_column(&columns, "notes");
+    let icon = optional_column(&columns, "icon");
+    let icon_color = optional_column(&columns, "icon_color");
+    let meta = optional_column(&columns, "meta");
+    let sort_index = if columns.iter().any(|column| column == "sort_index") {
+        "sort_index"
+    } else {
+        "NULL"
+    };
+    let created_at = if columns.iter().any(|column| column == "created_at") {
+        "created_at"
     } else {
         "NULL"
     };
     let sql = format!(
-        "SELECT id, name, settings_config, {category} FROM providers
-         WHERE app_type = 'codex' ORDER BY sort_index ASC, created_at ASC"
+        "SELECT id, app_type, name, settings_config, {category}, {website_url},
+                {notes}, {icon}, {icon_color}, {meta}
+         FROM providers
+         ORDER BY COALESCE({sort_index}, 999999), COALESCE({created_at}, 0), app_type, id"
     );
     let mut statement = connection.prepare(&sql)?;
     let rows = statement.query_map([], |row| {
-        Ok(CcSwitchCodexRow {
+        Ok(CcSwitchProviderRow {
             id: row.get(0)?,
-            name: row.get(1)?,
-            settings_config: row.get(2)?,
-            category: row.get(3)?,
+            app_type: row.get(1)?,
+            name: row.get(2)?,
+            settings_config: row.get(3)?,
+            category: row.get(4)?,
+            website_url: row.get(5)?,
+            notes: row.get(6)?,
+            icon: row.get(7)?,
+            icon_color: row.get(8)?,
+            meta: row.get(9)?,
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
-fn is_official_row(row: &CcSwitchCodexRow) -> bool {
+fn is_official_codex_row(row: &CcSwitchProviderRow) -> bool {
     row.id.trim().eq_ignore_ascii_case("codex-official")
         || row
             .category
@@ -345,7 +400,7 @@ fn experimental_bearer_token(
 }
 
 fn select_section(
-    row: &CcSwitchCodexRow,
+    row: &CcSwitchProviderRow,
     settings: &Value,
     global_sections: &HashMap<String, CcSwitchCodexSection>,
 ) -> Option<CcSwitchCodexSection> {
@@ -463,9 +518,81 @@ fn safe_warning_label(value: &str) -> String {
     output
 }
 
-fn parse_rows(rows: Vec<CcSwitchCodexRow>) -> CcSwitchParseResult {
+fn invalid_candidate(
+    row: &CcSwitchProviderRow,
+    app_type: Option<AppType>,
+    reason: impl Into<String>,
+) -> CcSwitchInvalidCandidate {
+    CcSwitchInvalidCandidate {
+        source_id: safe_warning_label(&row.id),
+        app_label: safe_warning_label(&row.app_type),
+        app_type,
+        name: safe_warning_label(&row.name),
+        reason: reason.into(),
+    }
+}
+
+fn parse_meta(row: &CcSwitchProviderRow) -> Result<Option<ProviderMeta>, String> {
+    match row
+        .meta
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(raw) => serde_json::from_str(raw)
+            .map(Some)
+            .map_err(|_| "meta 不是有效 JSON".to_string()),
+        None => Ok(None),
+    }
+}
+
+fn parse_passthrough_provider(
+    row: &CcSwitchProviderRow,
+    app_type: AppType,
+) -> Result<CcSwitchProviderCandidate, String> {
+    let id = row.id.trim();
+    if id.is_empty() || id.chars().any(char::is_control) {
+        return Err("供应商 ID 无效".to_string());
+    }
+    let settings_config: Value = serde_json::from_str(&row.settings_config)
+        .map_err(|_| "settings_config 不是有效 JSON".to_string())?;
+    if !settings_config.is_object() {
+        return Err("settings_config 必须是 JSON 对象".to_string());
+    }
+    let name = if row.name.trim().is_empty() {
+        row.id.trim().to_string()
+    } else {
+        row.name.trim().to_string()
+    };
+    let mut provider = Provider::with_id(
+        id.to_string(),
+        name,
+        settings_config,
+        row.website_url.clone(),
+    );
+    provider.category = row.category.clone();
+    provider.notes = row.notes.clone();
+    provider.icon = row.icon.clone();
+    provider.icon_color = row.icon_color.clone();
+    provider.meta = parse_meta(row)?;
+    super::ProviderService::validate_provider_settings(&app_type, &provider)
+        .map_err(|error| error.to_string())?;
+    Ok(CcSwitchProviderCandidate {
+        source_id: row.id.trim().to_string(),
+        app_type,
+        provider,
+    })
+}
+
+fn parse_rows(
+    source_path: PathBuf,
+    source_version: i64,
+    rows: Vec<CcSwitchProviderRow>,
+) -> CcSwitchParseResult {
     let mut global_sections = HashMap::new();
-    for row in rows.iter().filter(|row| !is_official_row(row)) {
+    for row in rows.iter().filter(|row| {
+        AppType::from_str(&row.app_type).ok() == Some(AppType::Codex) && !is_official_codex_row(row)
+    }) {
         let Ok(settings) = serde_json::from_str::<Value>(&row.settings_config) else {
             continue;
         };
@@ -478,8 +605,10 @@ fn parse_rows(rows: Vec<CcSwitchCodexRow>) -> CcSwitchParseResult {
     }
 
     let mut result = CcSwitchParseResult {
+        source_path,
+        source_version,
         candidates: Vec::new(),
-        skipped: 0,
+        invalid: Vec::new(),
         warnings: Vec::new(),
     };
     for row in rows {
@@ -488,32 +617,75 @@ fn parse_rows(rows: Vec<CcSwitchCodexRow>) -> CcSwitchParseResult {
             safe_warning_label(&row.name),
             safe_warning_label(&row.id)
         );
-        if is_official_row(&row) {
-            result.skipped += 1;
+        let app_type = match AppType::from_str(&row.app_type) {
+            Ok(AppType::Pi) => {
+                result
+                    .invalid
+                    .push(invalid_candidate(&row, None, "CC Switch 不支持 Pi 供应商"));
+                continue;
+            }
+            Ok(app_type) => app_type,
+            Err(_) => {
+                result
+                    .invalid
+                    .push(invalid_candidate(&row, None, "无法识别 Agent 类型"));
+                continue;
+            }
+        };
+        if row
+            .category
+            .as_deref()
+            .is_some_and(|category| category.trim().eq_ignore_ascii_case("official"))
+        {
+            result.invalid.push(invalid_candidate(
+                &row,
+                Some(app_type),
+                "官方认证不作为第三方供应商导入",
+            ));
+            continue;
+        }
+        if app_type != AppType::Codex {
+            match parse_passthrough_provider(&row, app_type.clone()) {
+                Ok(candidate) => result.candidates.push(candidate),
+                Err(reason) => result
+                    .invalid
+                    .push(invalid_candidate(&row, Some(app_type), reason)),
+            }
+            continue;
+        }
+        if is_official_codex_row(&row) {
             result
                 .warnings
                 .push(format!("跳过 {label}：官方认证不作为第三方供应商导入"));
+            result.invalid.push(invalid_candidate(
+                &row,
+                Some(AppType::Codex),
+                "官方认证不作为第三方供应商导入",
+            ));
             continue;
         }
         let Some(id) = imported_provider_id(&row.id) else {
-            result.skipped += 1;
-            result
-                .warnings
-                .push(format!("跳过 {label}：供应商 ID 无效"));
+            result.invalid.push(invalid_candidate(
+                &row,
+                Some(AppType::Codex),
+                "供应商 ID 无效",
+            ));
             continue;
         };
         let Ok(settings) = serde_json::from_str::<Value>(&row.settings_config) else {
-            result.skipped += 1;
-            result
-                .warnings
-                .push(format!("跳过 {label}：settings_config 不是有效 JSON"));
+            result.invalid.push(invalid_candidate(
+                &row,
+                Some(AppType::Codex),
+                "settings_config 不是有效 JSON",
+            ));
             continue;
         };
         let Some(section) = select_section(&row, &settings, &global_sections) else {
-            result.skipped += 1;
-            result
-                .warnings
-                .push(format!("跳过 {label}：未找到可用 config/base_url"));
+            result.invalid.push(invalid_candidate(
+                &row,
+                Some(AppType::Codex),
+                "未找到可用 config/base_url",
+            ));
             continue;
         };
         let name = if row.name.trim().is_empty() {
@@ -525,21 +697,37 @@ fn parse_rows(rows: Vec<CcSwitchCodexRow>) -> CcSwitchParseResult {
             row.name.trim().to_string()
         };
         let api_key = auth_api_key(&settings).or(section.experimental_bearer_token.clone());
-        let provider = Provider::with_id(
+        let mut provider = Provider::with_id(
             id.clone(),
             name.clone(),
             build_provider_config(&id, &name, &section, api_key.as_deref()),
-            None,
+            row.website_url.clone(),
         );
+        provider.category = row.category.clone();
+        provider.notes = row.notes.clone();
+        provider.icon = row.icon.clone();
+        provider.icon_color = row.icon_color.clone();
+        provider.meta = parse_meta(&row).ok().flatten();
+        if let Err(error) =
+            super::ProviderService::validate_provider_settings(&AppType::Codex, &provider)
+        {
+            result.invalid.push(invalid_candidate(
+                &row,
+                Some(AppType::Codex),
+                error.to_string(),
+            ));
+            continue;
+        }
         result.candidates.push(CcSwitchProviderCandidate {
             source_id: row.id.trim().to_string(),
+            app_type: AppType::Codex,
             provider,
         });
     }
     result
 }
 
-pub(crate) fn read_ccswitch_codex_candidates(
+pub(crate) fn read_ccswitch_candidates(
     explicit_path: Option<&str>,
 ) -> Result<CcSwitchParseResult, AppError> {
     let path = resolve_ccswitch_db_path(explicit_path)?;
@@ -553,7 +741,32 @@ pub(crate) fn read_ccswitch_codex_candidates(
             path.display()
         ))
     })?;
-    Ok(parse_rows(read_ccswitch_codex_rows(&connection)?))
+    let source_version = connection
+        .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+        .unwrap_or(0);
+    if source_version > 16 {
+        return Err(AppError::Database(format!(
+            "cc-switch 数据库版本过新：支持到 16，检测到 {source_version}"
+        )));
+    }
+    Ok(parse_rows(
+        path,
+        source_version,
+        read_ccswitch_provider_rows(&connection)?,
+    ))
+}
+
+pub(crate) fn read_ccswitch_codex_candidates(
+    explicit_path: Option<&str>,
+) -> Result<CcSwitchParseResult, AppError> {
+    let mut result = read_ccswitch_candidates(explicit_path)?;
+    result
+        .candidates
+        .retain(|candidate| candidate.app_type == AppType::Codex);
+    result
+        .invalid
+        .retain(|candidate| candidate.app_type.as_ref() == Some(&AppType::Codex));
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -613,6 +826,25 @@ mod tests {
                 .expect("candidate config"),
         )
         .expect("candidate base URL")
+    }
+
+    fn codex_row(id: &str, name: &str, settings_config: String) -> CcSwitchProviderRow {
+        CcSwitchProviderRow {
+            id: id.into(),
+            app_type: "codex".into(),
+            name: name.into(),
+            settings_config,
+            category: None,
+            website_url: None,
+            notes: None,
+            icon: None,
+            icon_color: None,
+            meta: None,
+        }
+    }
+
+    fn parse_test_rows(rows: Vec<CcSwitchProviderRow>) -> CcSwitchParseResult {
+        parse_rows(PathBuf::from("cc-switch.db"), 0, rows)
     }
 
     #[test]
@@ -719,17 +951,17 @@ base_url = "https://example.com/v1"
                     .collect::<Vec<_>>(),
                 ["first", "later"]
             );
-            assert_eq!(result.skipped, 1);
+            assert_eq!(result.invalid.len(), 1);
         }
     }
 
     #[test]
     fn parser_matches_row_identity_before_stale_active_provider() {
         let rows = vec![
-            CcSwitchCodexRow {
-                id: "sky".into(),
-                name: "Sky".into(),
-                settings_config: settings(
+            codex_row(
+                "sky",
+                "Sky",
+                settings(
                     r#"model = "sky-model"
 model_provider = "magic"
 [model_providers.magic]
@@ -737,12 +969,11 @@ base_url = "https://magic.example/v1"
 "#,
                     Some("sk-sky"),
                 ),
-                category: None,
-            },
-            CcSwitchCodexRow {
-                id: "magic".into(),
-                name: "Magic".into(),
-                settings_config: settings(
+            ),
+            codex_row(
+                "magic",
+                "Magic",
+                settings(
                     r#"model = "magic-model"
 model_provider = "sky"
 [model_providers.magic]
@@ -752,10 +983,9 @@ base_url = "https://sky.example/v1"
 "#,
                     Some("sk-magic"),
                 ),
-                category: None,
-            },
+            ),
         ];
-        let result = parse_rows(rows);
+        let result = parse_test_rows(rows);
         assert_eq!(result.candidates.len(), 2);
         assert_eq!(
             config_base_url(&result.candidates[0].provider),
@@ -770,38 +1000,34 @@ base_url = "https://sky.example/v1"
     #[test]
     fn parser_supports_bearer_custom_root_defaults_and_sanitized_warnings() {
         let rows = vec![
-            CcSwitchCodexRow {
-                id: "openai".into(),
-                name: "Proxy".into(),
-                settings_config: settings(
+            codex_row(
+                "openai",
+                "Proxy",
+                settings(
                     r#"[model_providers.custom]
 base_url = "https://proxy.example/v1/"
 experimental_bearer_token = "sk-bearer-secret"
 "#,
                     None,
                 ),
-                category: None,
-            },
-            CcSwitchCodexRow {
-                id: "root-provider".into(),
-                name: "Root".into(),
-                settings_config: settings(
+            ),
+            codex_row(
+                "root-provider",
+                "Root",
+                settings(
                     r#"base_url = "https://root.example/v1/"
 experimental_bearer_token = "sk-root-secret"
 "#,
                     None,
                 ),
-                category: None,
-            },
-            CcSwitchCodexRow {
-                id: "broken\nid".into(),
-                name: "Broken\rName".into(),
-                settings_config:
-                    r#"{"auth":{"OPENAI_API_KEY":"sk-must-not-leak"},"config":"not toml"}"#.into(),
-                category: None,
-            },
+            ),
+            codex_row(
+                "broken\nid",
+                "Broken\rName",
+                r#"{"auth":{"OPENAI_API_KEY":"sk-must-not-leak"},"config":"not toml"}"#.into(),
+            ),
         ];
-        let result = parse_rows(rows);
+        let result = parse_test_rows(rows);
         assert_eq!(result.candidates[0].provider.id, "openai-custom");
         assert_eq!(
             config_base_url(&result.candidates[0].provider),
@@ -819,11 +1045,49 @@ experimental_bearer_token = "sk-root-secret"
             .as_str()
             .expect("config")
             .contains("gpt-5.5"));
-        assert_eq!(result.skipped, 1);
+        assert_eq!(result.invalid.len(), 1);
         assert!(result.warnings.iter().all(|warning| {
             !warning.contains('\n')
                 && !warning.contains('\r')
                 && !warning.contains("sk-must-not-leak")
         }));
+    }
+
+    #[test]
+    fn passthrough_apps_preserve_provider_keys_and_skip_official_rows() {
+        let custom = CcSwitchProviderRow {
+            id: "provider.with:stable_key".into(),
+            app_type: "opencode".into(),
+            name: "Stable".into(),
+            settings_config: json!({
+                "options": {
+                    "baseURL": "https://example.com/v1",
+                    "apiKey": "secret"
+                },
+                "models": {}
+            })
+            .to_string(),
+            category: None,
+            website_url: None,
+            notes: None,
+            icon: None,
+            icon_color: None,
+            meta: None,
+        };
+        let official = CcSwitchProviderRow {
+            id: "official".into(),
+            app_type: "gemini".into(),
+            name: "Official".into(),
+            settings_config: json!({"env": {}}).to_string(),
+            category: Some("official".into()),
+            website_url: None,
+            notes: None,
+            icon: None,
+            icon_color: None,
+            meta: None,
+        };
+        let result = parse_test_rows(vec![custom, official]);
+        assert_eq!(result.candidates[0].provider.id, "provider.with:stable_key");
+        assert_eq!(result.invalid.len(), 1);
     }
 }

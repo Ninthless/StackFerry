@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use crate::app_config::{McpApps, McpConfig, McpServer, MultiAppConfig};
 use crate::error::AppError;
 
-use super::validation::{extract_server_spec, validate_server_spec};
+use super::validation::{extract_server_spec, normalize_server_spec};
 
 fn should_sync_codex_mcp() -> bool {
     // Codex 未安装/未初始化时：~/.codex 目录不存在。
@@ -71,11 +71,15 @@ pub fn import_from_codex(config: &mut MultiAppConfig) -> Result<usize, AppError>
                 continue;
             };
 
-            // type 缺省为 stdio
             let typ = entry_tbl
                 .get("type")
                 .and_then(|v| v.as_str())
-                .unwrap_or("stdio");
+                .or_else(|| entry_tbl.contains_key("url").then_some("http"))
+                .or_else(|| entry_tbl.contains_key("command").then_some("stdio"));
+            let Some(typ) = typ else {
+                log::warn!("跳过无法识别传输类型的 Codex MCP 项 '{id}'");
+                continue;
+            };
 
             // 构建 JSON 规范
             let mut spec = serde_json::Map::new();
@@ -86,7 +90,9 @@ pub fn import_from_codex(config: &mut MultiAppConfig) -> Result<usize, AppError>
                 "stdio" => vec!["type", "command", "args", "env", "cwd"],
                 // DB 中的统一规范使用 headers，Codex TOML 使用 http_headers。
                 // 两者都必须视为核心字段，避免鉴权值落入通用日志路径。
-                "http" | "sse" => vec!["type", "url", "headers", "http_headers"],
+                "http" | "sse" => {
+                    vec!["type", "url", "headers", "http_headers", "env_http_headers"]
+                }
                 _ => vec!["type"],
             };
 
@@ -144,10 +150,26 @@ pub fn import_from_codex(config: &mut MultiAppConfig) -> Result<usize, AppError>
                             spec.insert("headers".into(), serde_json::Value::Object(headers_json));
                         }
                     }
+                    if let Some(headers_tbl) =
+                        entry_tbl.get("env_http_headers").and_then(|v| v.as_table())
+                    {
+                        let mut headers_json = serde_json::Map::new();
+                        for (k, v) in headers_tbl {
+                            if let Some(sv) = v.as_str() {
+                                headers_json.insert(k.clone(), json!(sv));
+                            }
+                        }
+                        if !headers_json.is_empty() {
+                            spec.insert(
+                                "env_http_headers".into(),
+                                serde_json::Value::Object(headers_json),
+                            );
+                        }
+                    }
                 }
                 _ => {
                     log::warn!("跳过未知类型 '{typ}' 的 Codex MCP 项 '{id}'");
-                    return changed;
+                    continue;
                 }
             }
 
@@ -210,13 +232,13 @@ pub fn import_from_codex(config: &mut MultiAppConfig) -> Result<usize, AppError>
                 }
             }
 
-            let spec_v = serde_json::Value::Object(spec);
-
-            // 校验：单项失败继续处理
-            if let Err(e) = validate_server_spec(&spec_v) {
-                log::warn!("跳过无效 Codex MCP 项 '{id}': {e}");
-                continue;
-            }
+            let spec_v = match normalize_server_spec(&serde_json::Value::Object(spec)) {
+                Ok(spec) => spec,
+                Err(e) => {
+                    log::warn!("跳过无效 Codex MCP 项 '{id}': {e}");
+                    continue;
+                }
+            };
 
             if let Some(existing) = servers.get_mut(id) {
                 // 已存在：仅启用 Codex 应用

@@ -1,4 +1,6 @@
-use crate::services::pi_extension::{self, PiInventory, PiPackageSearchResult};
+use crate::services::pi_extension::{
+    self, PiInventory, PiPackageInstallResult, PiPackageSearchResult,
+};
 
 #[tauri::command]
 pub async fn get_pi_extension_inventory() -> Result<PiInventory, String> {
@@ -29,7 +31,7 @@ pub async fn unregister_pi_local_extension(path: String) -> Result<PiInventory, 
 }
 
 #[tauri::command]
-pub async fn install_pi_package(source: String) -> Result<PiInventory, String> {
+pub async fn install_pi_package(source: String) -> Result<PiPackageInstallResult, String> {
     pi_extension::install_package(source).await
 }
 

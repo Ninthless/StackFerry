@@ -181,6 +181,10 @@ pub struct RequestLogDetail {
     pub failure_kind: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub route_trace: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_effort_source: Option<String>,
 }
 
 /// 把 31 列的查询结果映射为 `RequestLogDetail`。
@@ -193,7 +197,7 @@ pub struct RequestLogDetail {
 ///  cache_creation_cost_usd, total_cost_usd, is_streaming, latency_ms,
 ///  first_token_ms, duration_ms, status_code, error_message, created_at,
 ///  data_source, pricing_model, input_token_semantics, upstream_response_id,
-///  stop_reason, failure_kind, route_trace`
+///  stop_reason, failure_kind, route_trace, thinking_effort, thinking_effort_source`
 ///
 /// 不需要 provider_name 时（如 backfill）SELECT `NULL AS provider_name` 占位即可。
 fn row_to_request_log_detail(row: &rusqlite::Row<'_>) -> rusqlite::Result<RequestLogDetail> {
@@ -233,6 +237,8 @@ fn row_to_request_log_detail(row: &rusqlite::Row<'_>) -> rusqlite::Result<Reques
         stop_reason: row.get(30)?,
         failure_kind: row.get(31)?,
         route_trace: row.get(32)?,
+        thinking_effort: row.get(33)?,
+        thinking_effort_source: row.get(34)?,
     })
 }
 
@@ -1696,7 +1702,7 @@ impl Database {
                     l.is_streaming, l.latency_ms, l.first_token_ms, l.duration_ms,
                     l.status_code, l.error_message, l.created_at, l.data_source, l.pricing_model,
                     l.input_token_semantics, l.upstream_response_id, l.stop_reason,
-                    l.failure_kind, l.route_trace
+                    l.failure_kind, l.route_trace, l.thinking_effort, l.thinking_effort_source
              FROM proxy_request_logs l
              LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type
              {where_clause}
@@ -1813,7 +1819,7 @@ impl Database {
                     is_streaming, latency_ms, first_token_ms, duration_ms,
                     status_code, error_message, created_at, l.data_source, l.pricing_model,
                     l.input_token_semantics, l.upstream_response_id, l.stop_reason,
-                    l.failure_kind, l.route_trace
+                    l.failure_kind, l.route_trace, l.thinking_effort, l.thinking_effort_source
              FROM proxy_request_logs l
              LEFT JOIN providers p ON l.provider_id = p.id AND l.app_type = p.app_type
              WHERE l.request_id = ?"
@@ -1971,7 +1977,8 @@ impl Database {
                         cache_creation_cost_usd, total_cost_usd, is_streaming, latency_ms,
                         first_token_ms, duration_ms, status_code, error_message, created_at,
                         data_source, pricing_model, input_token_semantics,
-                        upstream_response_id, stop_reason, failure_kind, route_trace
+                        upstream_response_id, stop_reason, failure_kind, route_trace,
+                        thinking_effort, thinking_effort_source
              FROM proxy_request_logs
              WHERE CAST(total_cost_usd AS REAL) <= 0
                AND (input_tokens > 0 OR output_tokens > 0
