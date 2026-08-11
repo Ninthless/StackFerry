@@ -938,6 +938,10 @@ html.dark {
   width: 100%;
 }
 
+.pi-extensions-scope-filter {
+  width: 100%;
+}
+
 .pi-extensions-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -969,7 +973,7 @@ html.dark {
 .pi-extensions-toolbar .resource-toolbar-primary-filters {
   display: grid;
   grid-column: 2;
-  grid-template-columns: repeat(2, minmax(8rem, 1fr));
+  grid-template-columns: repeat(3, minmax(7rem, 1fr));
   min-width: 0;
   width: auto;
 }
@@ -983,7 +987,7 @@ html.dark {
 
 .pi-runtime-health-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.5rem 1rem;
 }
@@ -1177,6 +1181,21 @@ html.dark {
     width: 100%;
   }
 
+  .pi-extensions-summary .management-summary-trailing > div {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .pi-project-selector {
+    width: 100%;
+  }
+
+  .pi-project-selector > :first-child {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+
   .pi-extensions-tabs {
     width: 100%;
   }
@@ -1194,7 +1213,7 @@ html.dark {
 
   .pi-extensions-toolbar .resource-toolbar-primary-filters {
     grid-column: 1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
   }
 
@@ -1581,6 +1600,7 @@ input[type="password"]::-ms-clear {
 
   .pi-extensions-toolbar .resource-toolbar-primary-filters {
     grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .pi-extensions-toolbar .resource-toolbar-actions {

@@ -2738,8 +2738,25 @@
     "filters": {
       "status": "按状态筛选",
       "source": "按来源筛选",
+      "scope": "按作用域筛选",
       "allStatuses": "全部状态",
-      "allSources": "全部来源"
+      "allSources": "全部来源",
+      "allScopes": "全部作用域"
+    },
+    "scope": {
+      "global": "全局",
+      "project": "项目"
+    },
+    "project": {
+      "select": "选择项目",
+      "clear": "清除项目",
+      "trust": "信任",
+      "untrusted": "此项目尚未信任",
+      "required": "请先选择项目",
+      "requiredDescription": "查看和管理项目资源需要先选择项目目录。",
+      "trustTitle": "信任 Pi 项目",
+      "trustMessage": "信任“{{path}}”并允许该项目中的 Pi 资源以当前用户权限执行？",
+      "trustConfirm": "信任项目"
     },
     "status": {
       "active": "正常",
@@ -2836,6 +2853,8 @@
     "installDialog": {
       "title": "添加 Pi 扩展或 Package",
       "description": "选择来源并在添加前检查内容。",
+      "target": "安装目标",
+      "projectRequired": "选择项目后才能使用项目目标。",
       "modes": {
         "extensionFile": "扩展文件",
         "extensionDirectory": "扩展目录",
@@ -2872,6 +2891,9 @@
       "fields": {
         "name": "名称",
         "source": "来源",
+        "scope": "作用域",
+        "projectDir": "项目目录",
+        "resourceKey": "资源键",
         "ownership": "归属",
         "package": "Package",
         "path": "解析路径",
@@ -2910,7 +2932,10 @@
       "registerSuccess": "本地扩展注册成功",
       "registerFailed": "注册本地扩展失败",
       "unregisterSuccess": "已取消注册 {{name}}",
-      "unregisterFailed": "取消注册本地扩展失败"
+      "unregisterFailed": "取消注册本地扩展失败",
+      "projectSaveFailed": "保存最近 Pi 项目失败",
+      "projectTrusted": "项目已信任",
+      "projectTrustFailed": "信任项目失败"
     }
   },
   "deeplink": {

@@ -404,6 +404,7 @@ export interface Settings {
   // 覆盖 Codex 配置目录（可选）
   codexConfigDir?: string;
   piConfigDir?: string;
+  recentPiProjectDir?: string;
   // 覆盖 Gemini 配置目录（可选）
   geminiConfigDir?: string;
   // 覆盖 Grok Build 配置目录（可选）

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { FolderOpen, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { piExtensionsApi } from "@/lib/api/piExtensions";
+import type { PiExtensionScope, PiScopeTarget } from "@/lib/api/piExtensions";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -30,9 +31,11 @@ interface PiPackageInstallDialogProps {
   cliAvailable: boolean;
   configUnavailableReason?: string;
   cliUnavailableReason?: string;
+  projectDir?: string;
+  initialScope: PiExtensionScope;
   onOpenChange: (open: boolean) => void;
-  onRegisterExtension: (path: string) => Promise<void>;
-  onInstallPackage: (source: string) => Promise<void>;
+  onRegisterExtension: (path: string, target: PiScopeTarget) => Promise<void>;
+  onInstallPackage: (source: string, target: PiScopeTarget) => Promise<void>;
 }
 
 export function PiPackageInstallDialog({
@@ -42,6 +45,8 @@ export function PiPackageInstallDialog({
   cliAvailable,
   configUnavailableReason,
   cliUnavailableReason,
+  projectDir,
+  initialScope,
   onOpenChange,
   onRegisterExtension,
   onInstallPackage,
@@ -50,16 +55,20 @@ export function PiPackageInstallDialog({
   const [mode, setMode] = useState<InstallMode>("extensionFile");
   const [value, setValue] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [scope, setScope] = useState<PiExtensionScope>(initialScope);
 
   useEffect(() => {
     if (open) {
       setValue("");
       setConfirmed(false);
+      setScope(initialScope);
     }
-  }, [open, mode]);
+  }, [initialScope, open, mode]);
 
   const isExtension = mode === "extensionFile" || mode === "extensionDirectory";
-  const modeAvailable = configMutable && (isExtension || cliAvailable);
+  const targetAvailable = scope === "global" || Boolean(projectDir);
+  const modeAvailable =
+    configMutable && targetAvailable && (isExtension || cliAvailable);
   const unavailableReason = !configMutable
     ? configUnavailableReason
     : !isExtension && !cliAvailable
@@ -85,10 +94,14 @@ export function PiPackageInstallDialog({
         ? `npm:${rawSource}`
         : rawSource;
     if (!source || !confirmed) return;
+    const target = {
+      scope,
+      projectDir: scope === "project" ? projectDir : undefined,
+    };
     if (isExtension) {
-      await onRegisterExtension(source);
+      await onRegisterExtension(source, target);
     } else {
-      await onInstallPackage(source);
+      await onInstallPackage(source, target);
     }
   };
 
@@ -126,6 +139,41 @@ export function PiPackageInstallDialog({
               ))}
             </TabsList>
           </Tabs>
+          <div className="space-y-2">
+            <Label>{t("piExtensions.installDialog.target")}</Label>
+            <div
+              className="grid grid-cols-2 rounded-md border border-border bg-muted/35 p-1"
+              role="group"
+              aria-label={t("piExtensions.installDialog.target")}
+            >
+              {(["global", "project"] as PiExtensionScope[]).map((item) => (
+                <Button
+                  key={item}
+                  type="button"
+                  size="sm"
+                  variant={scope === item ? "secondary" : "ghost"}
+                  className="h-7"
+                  disabled={item === "project" && !projectDir}
+                  onClick={() => setScope(item)}
+                >
+                  {t(`piExtensions.scope.${item}`)}
+                </Button>
+              ))}
+            </div>
+            {scope === "project" && projectDir && (
+              <p
+                className="truncate text-xs text-muted-foreground"
+                title={projectDir}
+              >
+                {projectDir}
+              </p>
+            )}
+            {!projectDir && (
+              <p className="text-xs text-muted-foreground">
+                {t("piExtensions.installDialog.projectRequired")}
+              </p>
+            )}
+          </div>
           <div className="space-y-2">
             <Label htmlFor="pi-extension-source">
               {t(`piExtensions.installDialog.labels.${mode}`)}

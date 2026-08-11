@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ExternalLink,
   FolderCog,
+  FolderOpen,
   Loader2,
   MoreHorizontal,
   Package,
@@ -23,6 +24,9 @@ import {
   type PiPackage,
   type PiPackageSearchItem,
   type PiPackageStatus,
+  type PiExtensionScope,
+  type PiExtensionTarget,
+  type PiRuntimeInfo,
 } from "@/lib/api/piExtensions";
 import { settingsApi } from "@/lib/api";
 import {
@@ -32,6 +36,7 @@ import {
   useRemovePiPackage,
   useSearchPiPackages,
   useSetPiExtensionEnabled,
+  useTrustPiProject,
   useUnregisterPiLocalExtension,
 } from "@/hooks/usePiExtensions";
 import { extractErrorMessage } from "@/utils/errorUtils";
@@ -73,6 +78,7 @@ import {
 } from "@/components/ui/tooltip";
 
 type PanelTab = "extensions" | "packages" | "discover";
+type ScopeFilter = "all" | PiExtensionScope;
 type DetailTarget =
   | { type: "extension"; item: PiExtension }
   | { type: "package"; item: PiPackage }
@@ -123,6 +129,9 @@ export default function PiExtensionsPanel({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
+  const [projectDir, setProjectDir] = useState("");
+  const [trustConfirmOpen, setTrustConfirmOpen] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
   const [detailTarget, setDetailTarget] = useState<DetailTarget>(null);
   const [expandedPackages, setExpandedPackages] = useState<Set<string>>(
@@ -137,14 +146,32 @@ export default function PiExtensionsPanel({
   const [installTarget, setInstallTarget] =
     useState<PiPackageSearchItem | null>(null);
 
-  const inventoryQuery = usePiExtensionInventory();
+  const inventoryQuery = usePiExtensionInventory(projectDir || undefined);
   const inventory = inventoryQuery.data;
   const searchQuery = useSearchPiPackages(discoverQuery, PAGE_SIZE);
-  const toggleMutation = useSetPiExtensionEnabled();
-  const removeMutation = useRemovePiPackage();
-  const installMutation = useInstallPiPackage();
-  const registerMutation = useRegisterPiLocalExtension();
-  const unregisterMutation = useUnregisterPiLocalExtension();
+  const toggleMutation = useSetPiExtensionEnabled(projectDir || undefined);
+  const removeMutation = useRemovePiPackage(projectDir || undefined);
+  const installMutation = useInstallPiPackage(projectDir || undefined);
+  const registerMutation = useRegisterPiLocalExtension(projectDir || undefined);
+  const unregisterMutation = useUnregisterPiLocalExtension(
+    projectDir || undefined,
+  );
+  const trustMutation = useTrustPiProject(projectDir || undefined);
+
+  useEffect(() => {
+    let active = true;
+    void settingsApi
+      .get()
+      .then((settings) => {
+        if (active && settings.recentPiProjectDir) {
+          setProjectDir(settings.recentPiProjectDir);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!detailTarget || !inventory) return;
@@ -192,9 +219,11 @@ export default function PiExtensionsPanel({
         statusFilter === "all" || extension.status === statusFilter;
       const matchesSource =
         sourceFilter === "all" || extension.sourceType === sourceFilter;
-      return matchesQuery && matchesStatus && matchesSource;
+      const matchesScope =
+        scopeFilter === "all" || extension.scope === scopeFilter;
+      return matchesQuery && matchesStatus && matchesSource && matchesScope;
     });
-  }, [inventory?.extensions, search, sourceFilter, statusFilter]);
+  }, [inventory?.extensions, scopeFilter, search, sourceFilter, statusFilter]);
 
   const filteredPackages = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -211,9 +240,11 @@ export default function PiExtensionsPanel({
         statusFilter === "all" || packageItem.status === statusFilter;
       const matchesSource =
         sourceFilter === "all" || packageItem.sourceType === sourceFilter;
-      return matchesQuery && matchesStatus && matchesSource;
+      const matchesScope =
+        scopeFilter === "all" || packageItem.scope === scopeFilter;
+      return matchesQuery && matchesStatus && matchesSource && matchesScope;
     });
-  }, [inventory?.packages, search, sourceFilter, statusFilter]);
+  }, [inventory?.packages, scopeFilter, search, sourceFilter, statusFilter]);
 
   const enabledCount =
     inventory?.extensions.filter((extension) => extension.enabled).length ?? 0;
@@ -227,11 +258,20 @@ export default function PiExtensionsPanel({
   const hasFilters =
     search.trim().length > 0 ||
     statusFilter !== "all" ||
-    sourceFilter !== "all";
-  const configMutable = inventory?.runtime.mutable === true;
-  const cliAvailable = inventory?.runtime.cliAvailable === true;
+    sourceFilter !== "all" ||
+    scopeFilter !== "all";
+  const globalRuntime = inventory?.runtimes.find(
+    (runtime) => runtime.scope === "global",
+  );
+  const projectRuntime = inventory?.runtimes.find(
+    (runtime) => runtime.scope === "project",
+  );
+  const selectedRuntime =
+    scopeFilter === "project" ? projectRuntime : globalRuntime;
+  const configMutable = selectedRuntime?.mutable === true;
+  const cliAvailable = selectedRuntime?.cliAvailable === true;
   const configUnavailableReason = !configMutable
-    ? inventory?.runtime.error || t("piExtensions.actions.configUnavailable")
+    ? selectedRuntime?.error || t("piExtensions.actions.configUnavailable")
     : undefined;
   const cliUnavailableReason = !cliAvailable
     ? t("piExtensions.actions.cliRequired")
@@ -248,6 +288,43 @@ export default function PiExtensionsPanel({
   }, [searchQuery.data?.pages]);
   const reportError = (key: string, error: unknown) => {
     toast.error(t(key), { description: extractErrorMessage(error) });
+  };
+
+  const targetFor = (
+    item: Pick<PiExtension, "scope" | "resourceKey" | "projectDir">,
+  ): PiExtensionTarget => ({
+    scope: item.scope,
+    resourceKey: item.resourceKey,
+    projectDir: item.projectDir,
+  });
+
+  const runtimeFor = (scope: PiExtensionScope) =>
+    inventory?.runtimes.find((runtime) => runtime.scope === scope);
+
+  const selectProject = async () => {
+    const selected = await settingsApi.pickDirectory(projectDir || undefined);
+    if (!selected) return;
+    setProjectDir(selected);
+    setScopeFilter("all");
+    try {
+      const settings = await settingsApi.get();
+      await settingsApi.save({ ...settings, recentPiProjectDir: selected });
+    } catch (error) {
+      reportError("piExtensions.messages.projectSaveFailed", error);
+    }
+  };
+
+  const clearProject = () => {
+    setProjectDir("");
+    if (scopeFilter === "project") setScopeFilter("all");
+    void settingsApi
+      .get()
+      .then((settings) =>
+        settingsApi.save({ ...settings, recentPiProjectDir: undefined }),
+      )
+      .catch((error) =>
+        reportError("piExtensions.messages.projectSaveFailed", error),
+      );
   };
 
   const selectDetail = (target: DetailTarget) => {
@@ -271,7 +348,10 @@ export default function PiExtensionsPanel({
 
   const handleToggle = async (extension: PiExtension, enabled: boolean) => {
     try {
-      await toggleMutation.mutateAsync({ id: extension.id, enabled });
+      await toggleMutation.mutateAsync({
+        target: targetFor(extension),
+        enabled,
+      });
     } catch (error) {
       reportError("piExtensions.messages.toggleFailed", error);
     }
@@ -280,7 +360,7 @@ export default function PiExtensionsPanel({
   const handleRemove = async () => {
     if (!removeTarget) return;
     try {
-      await removeMutation.mutateAsync(removeTarget.source);
+      await removeMutation.mutateAsync(targetFor(removeTarget));
       toast.success(
         t("piExtensions.messages.removeSuccess", {
           name: removeTarget.displayName,
@@ -296,7 +376,7 @@ export default function PiExtensionsPanel({
   const handleUnregister = async () => {
     if (!unregisterTarget) return;
     try {
-      await unregisterMutation.mutateAsync(unregisterTarget.path);
+      await unregisterMutation.mutateAsync(targetFor(unregisterTarget));
       toast.success(
         t("piExtensions.messages.unregisterSuccess", {
           name: unregisterTarget.name,
@@ -312,7 +392,10 @@ export default function PiExtensionsPanel({
   const handleConfirmDiscoverInstall = async () => {
     if (!installTarget) return;
     try {
-      const result = await installMutation.mutateAsync(installTarget.source);
+      const result = await installMutation.mutateAsync({
+        source: installTarget.source,
+        target: { scope: "global" },
+      });
       reportInstallResult(result.isolatedExtensions, installTarget.name);
       setInstallTarget(null);
     } catch (error) {
@@ -356,6 +439,7 @@ export default function PiExtensionsPanel({
     setSearch("");
     setStatusFilter("all");
     setSourceFilter("all");
+    setScopeFilter("all");
     closeDetail();
   };
 
@@ -412,19 +496,24 @@ export default function PiExtensionsPanel({
         cliAvailable={cliAvailable}
         configUnavailableReason={configUnavailableReason}
         cliUnavailableReason={cliUnavailableReason}
+        projectDir={projectDir || undefined}
+        initialScope={scopeFilter === "project" ? "project" : "global"}
         onOpenChange={setInstallOpen}
-        onRegisterExtension={async (path) => {
+        onRegisterExtension={async (path, target) => {
           try {
-            await registerMutation.mutateAsync(path);
+            await registerMutation.mutateAsync({ path, target });
             toast.success(t("piExtensions.messages.registerSuccess"));
             setInstallOpen(false);
           } catch (error) {
             reportError("piExtensions.messages.registerFailed", error);
           }
         }}
-        onInstallPackage={async (source) => {
+        onInstallPackage={async (source, target) => {
           try {
-            const result = await installMutation.mutateAsync(source);
+            const result = await installMutation.mutateAsync({
+              source,
+              target,
+            });
             reportInstallResult(result.isolatedExtensions);
             setInstallOpen(false);
           } catch (error) {
@@ -441,6 +530,27 @@ export default function PiExtensionsPanel({
         confirmText={t("piExtensions.removeConfirm.confirm")}
         onConfirm={() => void handleRemove()}
         onCancel={() => setRemoveTarget(null)}
+      />
+      <ConfirmDialog
+        isOpen={trustConfirmOpen}
+        title={t("piExtensions.project.trustTitle")}
+        message={t("piExtensions.project.trustMessage", {
+          path: projectDir,
+        })}
+        confirmText={t("piExtensions.project.trustConfirm")}
+        variant="info"
+        onConfirm={() => {
+          void trustMutation
+            .mutateAsync(projectDir)
+            .then(() => {
+              setTrustConfirmOpen(false);
+              toast.success(t("piExtensions.messages.projectTrusted"));
+            })
+            .catch((error) =>
+              reportError("piExtensions.messages.projectTrustFailed", error),
+            );
+        }}
+        onCancel={() => setTrustConfirmOpen(false)}
       />
       <ConfirmDialog
         isOpen={unregisterTarget !== null}
@@ -475,8 +585,10 @@ export default function PiExtensionsPanel({
       <TooltipProvider delayDuration={300}>
         <PiDetailPage
           target={detailTarget}
-          configMutable={configMutable}
-          cliAvailable={cliAvailable}
+          configMutable={runtimeFor(detailTarget.item.scope)?.mutable === true}
+          cliAvailable={
+            runtimeFor(detailTarget.item.scope)?.cliAvailable === true
+          }
           togglePending={toggleMutation.isPending}
           removePending={removeMutation.isPending}
           unregisterPending={unregisterMutation.isPending}
@@ -495,7 +607,21 @@ export default function PiExtensionsPanel({
         className="pi-extensions-workbench px-6"
         mode="list"
         summary={
-          <ManagementSummary className="pi-extensions-summary" trailing={tabs}>
+          <ManagementSummary
+            className="pi-extensions-summary"
+            trailing={
+              <div className="flex min-w-0 items-center gap-2">
+                <ProjectSelector
+                  projectDir={projectDir}
+                  trusted={inventory.project?.trusted === true}
+                  onSelect={() => void selectProject()}
+                  onClear={clearProject}
+                  onTrust={() => setTrustConfirmOpen(true)}
+                />
+                {tabs}
+              </div>
+            }
+          >
             <ManagementSummaryItem
               label={t("piExtensions.summary.extensions")}
               value={inventory.extensions.length}
@@ -522,6 +648,8 @@ export default function PiExtensionsPanel({
             search={search}
             statusFilter={statusFilter}
             sourceFilter={sourceFilter}
+            scopeFilter={scopeFilter}
+            projectSelected={Boolean(projectDir)}
             packageStatuses={packageStatuses}
             discoverInput={discoverInput}
             isDiscoverSearching={
@@ -534,6 +662,7 @@ export default function PiExtensionsPanel({
             onSearchChange={setSearch}
             onStatusChange={setStatusFilter}
             onSourceChange={setSourceFilter}
+            onScopeChange={(value) => setScopeFilter(value as ScopeFilter)}
             onDiscoverInputChange={setDiscoverInput}
             onDiscover={submitDiscovery}
             onAdd={() => setInstallOpen(true)}
@@ -550,21 +679,27 @@ export default function PiExtensionsPanel({
               onSelect={(item) => selectDetail({ type: "extension", item })}
             />
           )}
-          <RuntimeHealthBand
-            piDir={inventory.runtime.piDir}
-            settingsPath={inventory.runtime.settingsPath}
-            mutable={configMutable}
-            cliAvailable={cliAvailable}
-            cliVersion={inventory.runtime.cliVersion}
-            error={inventory.runtime.error}
-          />
+          {inventory.runtimes.map((runtime) => (
+            <RuntimeHealthBand key={runtime.scope} runtime={runtime} />
+          ))}
+          {projectDir && inventory.project?.trusted === false && (
+            <ProjectTrustBanner
+              projectDir={projectDir}
+              onTrust={() => setTrustConfirmOpen(true)}
+            />
+          )}
+          {!projectDir && scopeFilter === "project" && (
+            <ProjectSelectionGuide onSelect={() => void selectProject()} />
+          )}
           {tab === "extensions" && (
             <ExtensionInventory
               extensions={filteredExtensions}
               hasFilters={hasFilters}
               configMutable={configMutable}
               togglePendingId={
-                toggleMutation.isPending ? toggleMutation.variables?.id : null
+                toggleMutation.isPending
+                  ? toggleMutation.variables?.target.resourceKey
+                  : null
               }
               unregisterPending={unregisterMutation.isPending}
               onAdd={() => setInstallOpen(true)}
@@ -627,6 +762,8 @@ function PiToolbar({
   search,
   statusFilter,
   sourceFilter,
+  scopeFilter,
+  projectSelected,
   packageStatuses,
   discoverInput,
   isDiscoverSearching,
@@ -635,6 +772,7 @@ function PiToolbar({
   onSearchChange,
   onStatusChange,
   onSourceChange,
+  onScopeChange,
   onDiscoverInputChange,
   onDiscover,
   onAdd,
@@ -644,6 +782,8 @@ function PiToolbar({
   search: string;
   statusFilter: string;
   sourceFilter: string;
+  scopeFilter: ScopeFilter;
+  projectSelected: boolean;
   packageStatuses: PiPackageStatus[];
   discoverInput: string;
   isDiscoverSearching: boolean;
@@ -652,6 +792,7 @@ function PiToolbar({
   onSearchChange: (value: string) => void;
   onStatusChange: (value: string) => void;
   onSourceChange: (value: string) => void;
+  onScopeChange: (value: string) => void;
   onDiscoverInputChange: (value: string) => void;
   onDiscover: () => void;
   onAdd: () => void;
@@ -720,6 +861,25 @@ function PiToolbar({
           </Button>
         ) : (
           <>
+            <Select value={scopeFilter} onValueChange={onScopeChange}>
+              <SelectTrigger
+                className="pi-extensions-scope-filter h-8"
+                aria-label={t("piExtensions.filters.scope")}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  {t("piExtensions.filters.allScopes")}
+                </SelectItem>
+                <SelectItem value="global">
+                  {t("piExtensions.scope.global")}
+                </SelectItem>
+                <SelectItem value="project" disabled={!projectSelected}>
+                  {t("piExtensions.scope.project")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={statusFilter} onValueChange={onStatusChange}>
               <SelectTrigger
                 className="pi-extensions-status-filter h-8"
@@ -794,28 +954,25 @@ function PiToolbar({
   );
 }
 
-function RuntimeHealthBand({
-  piDir,
-  settingsPath,
-  mutable,
-  cliAvailable,
-  cliVersion,
-  error,
-}: {
-  piDir: string;
-  settingsPath: string;
-  mutable: boolean;
-  cliAvailable: boolean;
-  cliVersion?: string;
-  error?: string;
-}) {
+function RuntimeHealthBand({ runtime }: { runtime: PiRuntimeInfo }) {
   const { t } = useTranslation();
+  const {
+    scope,
+    projectDir,
+    piDir,
+    settingsPath,
+    mutable,
+    cliAvailable,
+    cliVersion,
+    error,
+  } = runtime;
   return (
     <section
       className="pi-runtime-health border-b border-border/70 py-2.5"
       aria-label={t("piExtensions.runtime.title")}
     >
       <div className="pi-runtime-health-grid">
+        <ScopeBadge scope={scope} />
         <div className="pi-runtime-path" title={piDir}>
           <span>{t("piExtensions.runtime.piDir")}</span>
           <strong>{piDir}</strong>
@@ -845,7 +1002,127 @@ function RuntimeHealthBand({
           <span className="break-words">{error}</span>
         </div>
       )}
+      {projectDir && (
+        <div
+          className="mt-2 truncate text-xs text-muted-foreground"
+          title={projectDir}
+        >
+          {projectDir}
+        </div>
+      )}
     </section>
+  );
+}
+
+function ScopeBadge({ scope }: { scope: PiExtensionScope }) {
+  const { t } = useTranslation();
+  return (
+    <Badge
+      variant={scope === "global" ? "secondary" : "outline"}
+      className="h-5 shrink-0 rounded px-1.5"
+    >
+      {t(`piExtensions.scope.${scope}`)}
+    </Badge>
+  );
+}
+
+function ProjectSelector({
+  projectDir,
+  trusted,
+  onSelect,
+  onClear,
+  onTrust,
+}: {
+  projectDir: string;
+  trusted: boolean;
+  onSelect: () => void;
+  onClear: () => void;
+  onTrust: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="pi-project-selector flex min-w-0 items-center gap-1">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-8 min-w-0 max-w-64"
+        onClick={onSelect}
+      >
+        <FolderOpen className="h-4 w-4 shrink-0" />
+        <span className="truncate">
+          {projectDir || t("piExtensions.project.select")}
+        </span>
+      </Button>
+      {projectDir && !trusted && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8"
+          onClick={onTrust}
+        >
+          {t("piExtensions.project.trust")}
+        </Button>
+      )}
+      {projectDir && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={onClear}
+          aria-label={t("piExtensions.project.clear")}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function ProjectTrustBanner({
+  projectDir,
+  onTrust,
+}: {
+  projectDir: string;
+  onTrust: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="flex items-center gap-3 border-x border-b border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
+      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">
+          {t("piExtensions.project.untrusted")}
+        </p>
+        <p
+          className="truncate text-xs text-muted-foreground"
+          title={projectDir}
+        >
+          {projectDir}
+        </p>
+      </div>
+      <Button type="button" variant="outline" size="sm" onClick={onTrust}>
+        {t("piExtensions.project.trust")}
+      </Button>
+    </section>
+  );
+}
+
+function ProjectSelectionGuide({ onSelect }: { onSelect: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <WorkbenchEmptyState
+      icon={<FolderOpen className="h-5 w-5" />}
+      title={t("piExtensions.project.required")}
+      description={t("piExtensions.project.requiredDescription")}
+      actions={
+        <Button size="sm" onClick={onSelect}>
+          {t("piExtensions.project.select")}
+        </Button>
+      }
+    />
   );
 }
 
@@ -935,7 +1212,9 @@ function ExtensionInventory({
   return (
     <div className="divide-y divide-border border-x border-b border-border">
       {extensions.map((extension) => {
-        const adapterManaged = isPiMcpAdapterSource(extension.packageSource);
+        const adapterManaged =
+          extension.scope === "global" &&
+          isPiMcpAdapterSource(extension.packageSource);
         const toggleBlocked =
           ["missing", "invalid"].includes(extension.status) ||
           adapterManaged ||
@@ -955,6 +1234,7 @@ function ExtensionInventory({
                 <Badge variant="secondary" className="h-5 rounded px-1.5">
                   {t(`piExtensions.source.${extension.sourceType}`)}
                 </Badge>
+                <ScopeBadge scope={extension.scope} />
                 {adapterManaged && (
                   <StatusBadge status="protected" className="h-5 px-1.5">
                     {t("piExtensions.adapterBadge")}
@@ -974,7 +1254,7 @@ function ExtensionInventory({
               <StatusBadge status={statusTone(extension.status)}>
                 {t(`piExtensions.status.${extension.status}`)}
               </StatusBadge>
-              {togglePendingId === extension.id ? (
+              {togglePendingId === extension.resourceKey ? (
                 <Loader2 className="mx-2 h-4 w-4 animate-spin text-muted-foreground" />
               ) : (
                 <Tooltip>
@@ -1113,7 +1393,9 @@ function PackageInventory({
     <div className="divide-y divide-border border-x border-b border-border">
       {packages.map((packageItem) => {
         const isExpanded = expanded.has(packageItem.id);
-        const adapterManaged = isPiMcpAdapterSource(packageItem.source);
+        const adapterManaged =
+          packageItem.scope === "global" &&
+          isPiMcpAdapterSource(packageItem.source);
         const removeProtected =
           adapterManaged || packageItem.status === "missing";
         return (
@@ -1156,6 +1438,7 @@ function PackageInventory({
                       {t("piExtensions.adapterBadge")}
                     </StatusBadge>
                   )}
+                  <ScopeBadge scope={packageItem.scope} />
                 </div>
                 <div className="pi-resource-meta">{packageItem.source}</div>
               </button>
@@ -1544,8 +1827,12 @@ function ExtensionDetailPane({
   onUnregister: (item: PiExtension) => void;
 }) {
   const { t } = useTranslation();
-  const adapterManaged = isPiMcpAdapterSource(item.packageSource);
+  const adapterManaged =
+    item.scope === "global" && isPiMcpAdapterSource(item.packageSource);
   const rows: Array<[string, string | undefined]> = [
+    ["scope", t(`piExtensions.scope.${item.scope}`)],
+    ["projectDir", item.projectDir],
+    ["resourceKey", item.resourceKey],
     ["source", item.packageSource || item.sourceType],
     ["ownership", item.origin],
     ["package", item.packageId],
@@ -1743,7 +2030,8 @@ function ExtensionConflictSection({
               >
                 {t("piExtensions.conflicts.withExtension", {
                   name: conflict.otherExtensionName,
-                })}
+                })}{" "}
+                · {t(`piExtensions.scope.${conflict.otherExtensionScope}`)}
               </p>
             </div>
           </div>
@@ -1776,8 +2064,12 @@ function PackageDetailPane({
   onRemove: (item: PiPackage) => void;
 }) {
   const { t } = useTranslation();
-  const adapterManaged = isPiMcpAdapterSource(item.source);
+  const adapterManaged =
+    item.scope === "global" && isPiMcpAdapterSource(item.source);
   const rows: Array<[string, string | undefined]> = [
+    ["scope", t(`piExtensions.scope.${item.scope}`)],
+    ["projectDir", item.projectDir],
+    ["resourceKey", item.resourceKey],
     ["source", item.source],
     ["path", item.installedPath],
     ["version", item.version],

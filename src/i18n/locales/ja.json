@@ -2716,8 +2716,25 @@
     "filters": {
       "status": "状態で絞り込む",
       "source": "ソースで絞り込む",
+      "scope": "スコープで絞り込む",
       "allStatuses": "すべての状態",
-      "allSources": "すべてのソース"
+      "allSources": "すべてのソース",
+      "allScopes": "すべてのスコープ"
+    },
+    "scope": {
+      "global": "グローバル",
+      "project": "プロジェクト"
+    },
+    "project": {
+      "select": "プロジェクトを選択",
+      "clear": "プロジェクトを解除",
+      "trust": "信頼する",
+      "untrusted": "このプロジェクトは信頼されていません",
+      "required": "先にプロジェクトを選択してください",
+      "requiredDescription": "プロジェクトリソースの表示と管理にはプロジェクトディレクトリが必要です。",
+      "trustTitle": "Pi プロジェクトを信頼",
+      "trustMessage": "「{{path}}」を信頼し、このプロジェクトの Pi リソースを現在のユーザー権限で実行できるようにしますか？",
+      "trustConfirm": "プロジェクトを信頼"
     },
     "status": {
       "active": "有効",
@@ -2814,6 +2831,8 @@
     "installDialog": {
       "title": "Pi 拡張機能または Package を追加",
       "description": "ソースを選択し、追加前に内容を確認してください。",
+      "target": "インストール先",
+      "projectRequired": "プロジェクト先を使用するにはプロジェクトを選択してください。",
       "modes": {
         "extensionFile": "拡張ファイル",
         "extensionDirectory": "拡張フォルダー",
@@ -2850,6 +2869,9 @@
       "fields": {
         "name": "名前",
         "source": "ソース",
+        "scope": "スコープ",
+        "projectDir": "プロジェクトディレクトリ",
+        "resourceKey": "リソースキー",
         "ownership": "所属",
         "package": "Package",
         "path": "解決済みパス",
@@ -2888,7 +2910,10 @@
       "registerSuccess": "ローカル拡張機能を登録しました",
       "registerFailed": "ローカル拡張機能の登録に失敗しました",
       "unregisterSuccess": "{{name}} の登録を解除しました",
-      "unregisterFailed": "ローカル拡張機能の登録解除に失敗しました"
+      "unregisterFailed": "ローカル拡張機能の登録解除に失敗しました",
+      "projectSaveFailed": "最近の Pi プロジェクトを保存できませんでした",
+      "projectTrusted": "プロジェクトを信頼しました",
+      "projectTrustFailed": "プロジェクトを信頼できませんでした"
     }
   },
   "deeplink": {

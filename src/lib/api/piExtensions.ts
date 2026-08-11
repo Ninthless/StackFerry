@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 export type PiExtensionOrigin = "auto" | "local" | "package";
 export type PiExtensionSourceType = "auto" | "local" | "npm" | "git";
+export type PiExtensionScope = "global" | "project";
 export type PiInventoryStatus =
   | "active"
   | "disabled"
@@ -13,6 +14,8 @@ export type PiPackageStatus = "installed" | "missing" | "invalid" | "conflict";
 export type PiExtensionRegistrationKind = "tool" | "command" | "flag";
 
 export interface PiRuntimeInfo {
+  scope: PiExtensionScope;
+  projectDir?: string;
   piDir: string;
   settingsPath: string;
   cliAvailable: boolean;
@@ -37,6 +40,9 @@ export interface PiExtension {
   registrations: PiExtensionRegistration[];
   analysisComplete: boolean;
   conflicts: PiExtensionConflict[];
+  scope: PiExtensionScope;
+  resourceKey: string;
+  projectDir?: string;
 }
 
 export interface PiExtensionRegistration {
@@ -50,6 +56,7 @@ export interface PiExtensionConflict {
   otherExtensionId: string;
   otherExtensionName: string;
   otherExtensionPath: string;
+  otherExtensionScope: PiExtensionScope;
 }
 
 export interface PiPackage {
@@ -66,12 +73,34 @@ export interface PiPackage {
   themeCount: number;
   extensions: PiExtension[];
   error?: string;
+  scope: PiExtensionScope;
+  resourceKey: string;
+  projectDir?: string;
 }
 
 export interface PiExtensionInventory {
-  runtime: PiRuntimeInfo;
+  runtimes: PiRuntimeInfo[];
   extensions: PiExtension[];
   packages: PiPackage[];
+  project?: PiProjectStatus;
+}
+
+export interface PiProjectStatus {
+  projectDir: string;
+  trusted: boolean;
+  decision?: boolean;
+  inheritedFrom?: string;
+}
+
+export interface PiExtensionTarget {
+  scope: PiExtensionScope;
+  resourceKey: string;
+  projectDir?: string;
+}
+
+export interface PiScopeTarget {
+  scope: PiExtensionScope;
+  projectDir?: string;
 }
 
 export interface PiPackageInstallResult {
@@ -156,6 +185,12 @@ const adaptConflict = (value: unknown): PiExtensionConflict => {
       "other_extension_path",
       "",
     ),
+    otherExtensionScope: field(
+      conflict,
+      "otherExtensionScope",
+      "other_extension_scope",
+      "global",
+    ),
   };
 };
 
@@ -187,27 +222,44 @@ const adaptExtension = (value: unknown): PiExtension => {
       false,
     ),
     conflicts: conflicts.map(adaptConflict),
+    scope: field(extension, "scope", "scope", "global"),
+    resourceKey: field(
+      extension,
+      "resourceKey",
+      "resource_key",
+      field(extension, "id", "id", ""),
+    ),
+    projectDir: optionalString(extension, "projectDir", "project_dir"),
   };
 };
 
 const adaptInventory = (value: unknown): PiExtensionInventory => {
   const inventory = asRecord(value);
-  const runtime = asRecord(inventory.runtime);
+  const runtimeItems = Array.isArray(inventory.runtimes)
+    ? inventory.runtimes
+    : inventory.runtime
+      ? [inventory.runtime]
+      : [];
   const extensions = Array.isArray(inventory.extensions)
     ? inventory.extensions
     : [];
   const packages = Array.isArray(inventory.packages) ? inventory.packages : [];
 
   return {
-    runtime: {
-      piDir: field(runtime, "piDir", "pi_dir", ""),
-      settingsPath: field(runtime, "settingsPath", "settings_path", ""),
-      cliAvailable: field(runtime, "cliAvailable", "cli_available", false),
-      cliPath: optionalString(runtime, "cliPath", "cli_path"),
-      cliVersion: optionalString(runtime, "cliVersion", "cli_version"),
-      mutable: field(runtime, "mutable", "mutable", true),
-      error: optionalString(runtime, "error", "error"),
-    },
+    runtimes: runtimeItems.map((item) => {
+      const runtime = asRecord(item);
+      return {
+        scope: field(runtime, "scope", "scope", "global"),
+        projectDir: optionalString(runtime, "projectDir", "project_dir"),
+        piDir: field(runtime, "piDir", "pi_dir", ""),
+        settingsPath: field(runtime, "settingsPath", "settings_path", ""),
+        cliAvailable: field(runtime, "cliAvailable", "cli_available", false),
+        cliPath: optionalString(runtime, "cliPath", "cli_path"),
+        cliVersion: optionalString(runtime, "cliVersion", "cli_version"),
+        mutable: field(runtime, "mutable", "mutable", true),
+        error: optionalString(runtime, "error", "error"),
+      };
+    }),
     extensions: extensions.map(adaptExtension),
     packages: packages.map((item) => {
       const packageItem = asRecord(item);
@@ -241,8 +293,39 @@ const adaptInventory = (value: unknown): PiExtensionInventory => {
           ? packageItem.extensions.map(adaptExtension)
           : [],
         error: optionalString(packageItem, "error", "error"),
+        scope: field(packageItem, "scope", "scope", "global"),
+        resourceKey: field(
+          packageItem,
+          "resourceKey",
+          "resource_key",
+          field(packageItem, "id", "id", ""),
+        ),
+        projectDir: optionalString(packageItem, "projectDir", "project_dir"),
       };
     }),
+    project:
+      (inventory.projectTrust ?? inventory.project_trust)
+        ? (() => {
+            const project = asRecord(
+              inventory.projectTrust ?? inventory.project_trust,
+            );
+            return {
+              projectDir: field(project, "projectDir", "project_dir", ""),
+              trusted: field(project, "trusted", "trusted", false),
+              decision: field<boolean | undefined>(
+                project,
+                "decision",
+                "decision",
+                undefined,
+              ),
+              inheritedFrom: optionalString(
+                project,
+                "inheritedFrom",
+                "inherited_from",
+              ),
+            };
+          })()
+        : undefined,
   };
 };
 
@@ -296,8 +379,10 @@ const adaptSearchResult = (value: unknown): PiPackageSearchResult => {
 };
 
 export const piExtensionsApi = {
-  async getInventory(): Promise<PiExtensionInventory> {
-    return adaptInventory(await invoke("get_pi_extension_inventory"));
+  async getInventory(projectDir?: string): Promise<PiExtensionInventory> {
+    return adaptInventory(
+      await invoke("get_pi_extension_inventory", { projectDir }),
+    );
   },
 
   async searchPackages(options: {
@@ -308,20 +393,42 @@ export const piExtensionsApi = {
     return adaptSearchResult(await invoke("search_pi_packages", options));
   },
 
-  async registerLocalExtension(path: string): Promise<PiExtensionInventory> {
+  async registerLocalExtension(
+    path: string,
+    target: PiScopeTarget,
+  ): Promise<PiExtensionInventory> {
     return adaptInventory(
-      await invoke("register_pi_local_extension", { path }),
+      await invoke("register_pi_local_extension", {
+        path,
+        scope: target.scope,
+        projectDir: target.projectDir,
+      }),
     );
   },
 
-  async unregisterLocalExtension(path: string): Promise<PiExtensionInventory> {
+  async unregisterLocalExtension(
+    target: PiExtensionTarget,
+  ): Promise<PiExtensionInventory> {
     return adaptInventory(
-      await invoke("unregister_pi_local_extension", { path }),
+      await invoke("unregister_pi_local_extension", {
+        resourceKey: target.resourceKey,
+        scope: target.scope,
+        projectDir: target.projectDir,
+      }),
     );
   },
 
-  async installPackage(source: string): Promise<PiPackageInstallResult> {
-    const result = asRecord(await invoke("install_pi_package", { source }));
+  async installPackage(
+    source: string,
+    target: PiScopeTarget,
+  ): Promise<PiPackageInstallResult> {
+    const result = asRecord(
+      await invoke("install_pi_package", {
+        source,
+        scope: target.scope,
+        projectDir: target.projectDir,
+      }),
+    );
     const isolatedExtensions = Array.isArray(
       result.isolatedExtensions ?? result.isolated_extensions,
     )
@@ -335,16 +442,35 @@ export const piExtensionsApi = {
     };
   },
 
-  async removePackage(source: string): Promise<PiExtensionInventory> {
-    return adaptInventory(await invoke("remove_pi_package", { source }));
+  async removePackage(
+    target: PiExtensionTarget,
+  ): Promise<PiExtensionInventory> {
+    return adaptInventory(
+      await invoke("remove_pi_package", {
+        resourceKey: target.resourceKey,
+        scope: target.scope,
+        projectDir: target.projectDir,
+      }),
+    );
   },
 
   async setExtensionEnabled(
-    id: string,
+    target: PiExtensionTarget,
     enabled: boolean,
   ): Promise<PiExtensionInventory> {
     return adaptInventory(
-      await invoke("set_pi_extension_enabled", { id, enabled }),
+      await invoke("set_pi_extension_enabled", {
+        resourceKey: target.resourceKey,
+        enabled,
+        scope: target.scope,
+        projectDir: target.projectDir,
+      }),
+    );
+  },
+
+  async trustProject(projectDir: string): Promise<PiExtensionInventory> {
+    return adaptInventory(
+      await invoke("set_pi_project_trust", { projectDir, trusted: true }),
     );
   },
 

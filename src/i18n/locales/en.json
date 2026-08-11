@@ -2716,8 +2716,25 @@
     "filters": {
       "status": "Filter by status",
       "source": "Filter by source",
+      "scope": "Filter by scope",
       "allStatuses": "All statuses",
-      "allSources": "All sources"
+      "allSources": "All sources",
+      "allScopes": "All scopes"
+    },
+    "scope": {
+      "global": "Global",
+      "project": "Project"
+    },
+    "project": {
+      "select": "Select project",
+      "clear": "Clear project",
+      "trust": "Trust",
+      "untrusted": "This project is not trusted",
+      "required": "Select a project first",
+      "requiredDescription": "Project resources require a selected project directory.",
+      "trustTitle": "Trust Pi project",
+      "trustMessage": "Trust \"{{path}}\" and allow Pi resources in this project to execute with your user permissions?",
+      "trustConfirm": "Trust project"
     },
     "status": {
       "active": "Active",
@@ -2814,6 +2831,8 @@
     "installDialog": {
       "title": "Add Pi extension or package",
       "description": "Choose a source and review it before adding.",
+      "target": "Install target",
+      "projectRequired": "Select a project to use the project target.",
       "modes": {
         "extensionFile": "Extension file",
         "extensionDirectory": "Extension folder",
@@ -2850,6 +2869,9 @@
       "fields": {
         "name": "Name",
         "source": "Source",
+        "scope": "Scope",
+        "projectDir": "Project directory",
+        "resourceKey": "Resource key",
         "ownership": "Ownership",
         "package": "Package",
         "path": "Resolved path",
@@ -2888,7 +2910,10 @@
       "registerSuccess": "Local extension registered",
       "registerFailed": "Failed to register local extension",
       "unregisterSuccess": "Unregistered {{name}}",
-      "unregisterFailed": "Failed to unregister local extension"
+      "unregisterFailed": "Failed to unregister local extension",
+      "projectSaveFailed": "Failed to save the recent Pi project",
+      "projectTrusted": "Project trusted",
+      "projectTrustFailed": "Failed to trust project"
     }
   },
   "deeplink": {

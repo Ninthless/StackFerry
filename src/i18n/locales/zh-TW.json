@@ -2709,8 +2709,25 @@
     "filters": {
       "status": "依狀態篩選",
       "source": "依來源篩選",
+      "scope": "依作用域篩選",
       "allStatuses": "全部狀態",
-      "allSources": "全部來源"
+      "allSources": "全部來源",
+      "allScopes": "全部作用域"
+    },
+    "scope": {
+      "global": "全域",
+      "project": "專案"
+    },
+    "project": {
+      "select": "選擇專案",
+      "clear": "清除專案",
+      "trust": "信任",
+      "untrusted": "此專案尚未信任",
+      "required": "請先選擇專案",
+      "requiredDescription": "檢視和管理專案資源需要先選擇專案目錄。",
+      "trustTitle": "信任 Pi 專案",
+      "trustMessage": "信任「{{path}}」並允許該專案中的 Pi 資源以目前使用者權限執行？",
+      "trustConfirm": "信任專案"
     },
     "status": {
       "active": "正常",
@@ -2807,6 +2824,8 @@
     "installDialog": {
       "title": "新增 Pi 擴充功能或 Package",
       "description": "選擇來源並在新增前檢查內容。",
+      "target": "安裝目標",
+      "projectRequired": "選擇專案後才能使用專案目標。",
       "modes": {
         "extensionFile": "擴充檔案",
         "extensionDirectory": "擴充目錄",
@@ -2843,6 +2862,9 @@
       "fields": {
         "name": "名稱",
         "source": "來源",
+        "scope": "作用域",
+        "projectDir": "專案目錄",
+        "resourceKey": "資源鍵",
         "ownership": "歸屬",
         "package": "Package",
         "path": "解析路徑",
@@ -2881,7 +2903,10 @@
       "registerSuccess": "本機擴充功能註冊成功",
       "registerFailed": "註冊本機擴充功能失敗",
       "unregisterSuccess": "已取消註冊 {{name}}",
-      "unregisterFailed": "取消註冊本機擴充功能失敗"
+      "unregisterFailed": "取消註冊本機擴充功能失敗",
+      "projectSaveFailed": "儲存最近 Pi 專案失敗",
+      "projectTrusted": "專案已信任",
+      "projectTrustFailed": "信任專案失敗"
     }
   },
   "deeplink": {

@@ -6,24 +6,31 @@ import {
 } from "@tanstack/react-query";
 import {
   piExtensionsApi,
+  type PiExtensionTarget,
   type PiExtensionInventory,
+  type PiScopeTarget,
 } from "@/lib/api/piExtensions";
 
 export const piExtensionKeys = {
   all: ["piExtensions"] as const,
-  inventory: ["piExtensions", "inventory"] as const,
+  inventory: (projectDir?: string) =>
+    ["piExtensions", "inventory", projectDir ?? null] as const,
   search: (query: string, limit: number) =>
     ["piExtensions", "search", query, limit] as const,
 };
 
 const useInventoryMutation = <TVariables>(
   mutationFn: (variables: TVariables) => Promise<PiExtensionInventory>,
+  projectDir?: string,
 ) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
     onSuccess: (inventory) => {
-      queryClient.setQueryData(piExtensionKeys.inventory, inventory);
+      queryClient.setQueryData(
+        piExtensionKeys.inventory(projectDir),
+        inventory,
+      );
       queryClient.invalidateQueries({
         queryKey: ["piExtensions", "search"],
       });
@@ -31,10 +38,10 @@ const useInventoryMutation = <TVariables>(
   });
 };
 
-export function usePiExtensionInventory() {
+export function usePiExtensionInventory(projectDir?: string) {
   return useQuery({
-    queryKey: piExtensionKeys.inventory,
-    queryFn: () => piExtensionsApi.getInventory(),
+    queryKey: piExtensionKeys.inventory(projectDir),
+    queryFn: () => piExtensionsApi.getInventory(projectDir),
   });
 }
 
@@ -52,24 +59,37 @@ export function useSearchPiPackages(query: string, limit: number) {
   });
 }
 
-export function useRegisterPiLocalExtension() {
-  return useInventoryMutation((path: string) =>
-    piExtensionsApi.registerLocalExtension(path),
+export function useRegisterPiLocalExtension(projectDir?: string) {
+  return useInventoryMutation(
+    ({ path, target }: { path: string; target: PiScopeTarget }) =>
+      piExtensionsApi.registerLocalExtension(path, target),
+    projectDir,
   );
 }
 
-export function useUnregisterPiLocalExtension() {
-  return useInventoryMutation((path: string) =>
-    piExtensionsApi.unregisterLocalExtension(path),
+export function useUnregisterPiLocalExtension(projectDir?: string) {
+  return useInventoryMutation(
+    (target: PiExtensionTarget) =>
+      piExtensionsApi.unregisterLocalExtension(target),
+    projectDir,
   );
 }
 
-export function useInstallPiPackage() {
+export function useInstallPiPackage(projectDir?: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (source: string) => piExtensionsApi.installPackage(source),
+    mutationFn: ({
+      source,
+      target,
+    }: {
+      source: string;
+      target: PiScopeTarget;
+    }) => piExtensionsApi.installPackage(source, target),
     onSuccess: (result) => {
-      queryClient.setQueryData(piExtensionKeys.inventory, result.inventory);
+      queryClient.setQueryData(
+        piExtensionKeys.inventory(projectDir),
+        result.inventory,
+      );
       queryClient.invalidateQueries({
         queryKey: ["piExtensions", "search"],
       });
@@ -77,15 +97,25 @@ export function useInstallPiPackage() {
   });
 }
 
-export function useRemovePiPackage() {
-  return useInventoryMutation((source: string) =>
-    piExtensionsApi.removePackage(source),
+export function useRemovePiPackage(projectDir?: string) {
+  return useInventoryMutation(
+    (target: PiExtensionTarget) => piExtensionsApi.removePackage(target),
+    projectDir,
   );
 }
 
-export function useSetPiExtensionEnabled() {
+export function useSetPiExtensionEnabled(projectDir?: string) {
   return useInventoryMutation(
-    ({ id, enabled }: { id: string; enabled: boolean }) =>
-      piExtensionsApi.setExtensionEnabled(id, enabled),
+    ({ target, enabled }: { target: PiExtensionTarget; enabled: boolean }) =>
+      piExtensionsApi.setExtensionEnabled(target, enabled),
+    projectDir,
+  );
+}
+
+export function useTrustPiProject(projectDir?: string) {
+  return useInventoryMutation(
+    (targetProjectDir: string) =>
+      piExtensionsApi.trustProject(targetProjectDir),
+    projectDir,
   );
 }
