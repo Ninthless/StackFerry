@@ -172,7 +172,7 @@ export function ProxyTabContent({
               )}
 
               <Tabs defaultValue="claude" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList layout="equal" className="w-full">
                   <TabsTrigger value="claude">Claude</TabsTrigger>
                   <TabsTrigger value="codex">Codex</TabsTrigger>
                   <TabsTrigger value="gemini">Gemini</TabsTrigger>

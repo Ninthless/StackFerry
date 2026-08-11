@@ -19,12 +19,16 @@ import { useTranslation } from "react-i18next";
 import type { AppId } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { UpdateBadge } from "@/components/UpdateBadge";
+import { AppSwitcher } from "@/components/AppSwitcher";
 import type { AppView } from "@/components/shell/types";
+import type { VisibleApps } from "@/types";
 
 interface AppSidebarProps {
   activeApp: AppId;
+  visibleApps: VisibleApps;
   currentView: AppView;
   isRouteActive: boolean;
+  onAppSwitch: (app: AppId) => void;
   onViewChange: (view: AppView) => void;
   onOpenHermesWebUI: () => void;
   onOpenSettings: () => void;
@@ -42,8 +46,10 @@ interface NavItem {
 
 export function AppSidebar({
   activeApp,
+  visibleApps,
   currentView,
   isRouteActive,
+  onAppSwitch,
   onViewChange,
   onOpenHermesWebUI,
   onOpenSettings,
@@ -185,6 +191,14 @@ export function AppSidebar({
 
   return (
     <aside className="flex h-full w-[232px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+      <div className="shrink-0 border-b border-sidebar-border px-3 py-2.5">
+        <AppSwitcher
+          activeApp={activeApp}
+          onSwitch={onAppSwitch}
+          visibleApps={visibleApps}
+          variant="sidebar"
+        />
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
         <nav aria-label={t("shell.navigation")}>
           <div className="mb-2 px-1 text-[10px] font-semibold uppercase text-sidebar-foreground/40">

@@ -26,11 +26,18 @@ export const AppCountBar: React.FC<AppCountBarProps> = ({
   const bulkEnabled = totalCount !== undefined && onToggleAll !== undefined;
 
   return (
-    <div className="mb-4 flex flex-shrink-0 items-center justify-between gap-4 border-b border-border py-3">
-      <Badge variant="outline" className="h-7 bg-background px-3">
+    <div className="app-count-bar mb-4 flex flex-shrink-0 items-center justify-between gap-4 border-b border-border py-3">
+      <Badge
+        variant="outline"
+        className="h-7 shrink-0 whitespace-nowrap bg-background px-3"
+      >
         {totalLabel}
       </Badge>
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+      <div
+        className="app-count-bar-stats flex min-w-0 flex-1 items-center justify-end gap-2 overflow-x-auto no-scrollbar"
+        tabIndex={0}
+        aria-label={totalLabel}
+      >
         {appIds.map((app) => {
           const count = counts[app] ?? 0;
           const allEnabled =
@@ -45,7 +52,7 @@ export const AppCountBar: React.FC<AppCountBarProps> = ({
             <Badge
               key={app}
               variant="secondary"
-              className={APP_ICON_MAP[app].badgeClass}
+              className={`shrink-0 whitespace-nowrap ${APP_ICON_MAP[app].badgeClass}`}
             >
               {bulkEnabled && (
                 <Checkbox

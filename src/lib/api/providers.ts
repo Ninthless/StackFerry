@@ -31,6 +31,61 @@ export interface CcSwitchImportResult {
   providers: Provider[];
 }
 
+export type CcSwitchImportAction =
+  | "add"
+  | "update"
+  | "preserveLocal"
+  | "attach"
+  | "invalid";
+
+export interface CcSwitchPreviewItem {
+  key: string;
+  appType: AppId | string;
+  sourceId: string;
+  name: string;
+  endpoint?: string | null;
+  modelCount: number;
+  credentialState: "source" | "missing" | "unknown";
+  action: CcSwitchImportAction;
+  selectable: boolean;
+  reason?: string | null;
+}
+
+export interface CcSwitchPreviewSummary {
+  total: number;
+  selectable: number;
+  added: number;
+  updated: number;
+  preserved: number;
+  attached: number;
+  invalid: number;
+}
+
+export interface CcSwitchImportPreview {
+  token: string;
+  sourcePath: string;
+  sourceVersion: number;
+  items: CcSwitchPreviewItem[];
+  summary: CcSwitchPreviewSummary;
+  warnings: string[];
+}
+
+export interface CcSwitchImportSelection {
+  token: string;
+  keys: string[];
+}
+
+export interface CcSwitchApplyResult {
+  imported: number;
+  added: number;
+  updated: number;
+  preserved: number;
+  attached: number;
+  skipped: number;
+  affectedApps: AppId[];
+  warnings: string[];
+}
+
 export interface OpenTerminalOptions {
   cwd?: string;
 }
@@ -110,6 +165,24 @@ export const providersApi = {
   ): Promise<CcSwitchImportResult> {
     return await invoke("import_ccswitch_codex_providers", {
       dbPath: dbPath ?? null,
+    });
+  },
+
+  async previewCcSwitchProviderImport(
+    dbPath?: string | null,
+  ): Promise<CcSwitchImportPreview> {
+    return await invoke("preview_ccswitch_provider_import", {
+      dbPath: dbPath ?? null,
+    });
+  },
+
+  async applyCcSwitchProviderImport(
+    selection: CcSwitchImportSelection,
+    dbPath?: string | null,
+  ): Promise<CcSwitchApplyResult> {
+    return await invoke("apply_ccswitch_provider_import", {
+      dbPath: dbPath ?? null,
+      selection,
     });
   },
 

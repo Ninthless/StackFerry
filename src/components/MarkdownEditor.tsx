@@ -43,7 +43,11 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         minHeight,
         maxHeight: maxHeight ?? "none",
       },
-      ".cm-scroller": { overflow: "auto" },
+      ".cm-scroller": {
+        flex: "1 1 auto",
+        minHeight: "0",
+        overflow: "auto",
+      },
     });
     const readOnlyTheme = EditorView.theme({
       ".cm-cursor, .cm-dropCursor": { border: "none" },

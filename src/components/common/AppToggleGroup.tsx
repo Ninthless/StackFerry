@@ -7,12 +7,14 @@ import {
 } from "@/components/ui/tooltip";
 import type { AppId } from "@/lib/api/types";
 import { APP_IDS, APP_ICON_MAP } from "@/config/appConfig";
+import { cn } from "@/lib/utils";
 
 interface AppToggleGroupProps {
   apps: Partial<Record<AppId, boolean>>;
   onToggle: (app: AppId, enabled: boolean) => void;
   appIds?: AppId[];
   disabled?: boolean;
+  className?: string;
 }
 
 export const AppToggleGroup: React.FC<AppToggleGroupProps> = ({
@@ -20,9 +22,15 @@ export const AppToggleGroup: React.FC<AppToggleGroupProps> = ({
   onToggle,
   appIds = APP_IDS,
   disabled = false,
+  className,
 }) => {
   return (
-    <div className="flex items-center gap-1.5 flex-shrink-0">
+    <div
+      className={cn(
+        "app-toggle-group flex flex-wrap items-center gap-1.5",
+        className,
+      )}
+    >
       {appIds.map((app) => {
         const { label, icon } = APP_ICON_MAP[app];
         const enabled = Boolean(apps[app]);

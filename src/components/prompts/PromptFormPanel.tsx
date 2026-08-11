@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import MarkdownEditor from "@/components/MarkdownEditor";
-import { FullScreenPanel } from "@/components/common/FullScreenPanel";
 import type { Prompt, AppId } from "@/lib/api";
 
 interface PromptFormPanelProps {
@@ -12,7 +11,7 @@ interface PromptFormPanelProps {
   editingId?: string;
   initialData?: Prompt;
   onSave: (id: string, prompt: Prompt) => Promise<void>;
-  onClose: () => void;
+  onCancel: () => void;
 }
 
 const PromptFormPanel: React.FC<PromptFormPanelProps> = ({
@@ -20,10 +19,9 @@ const PromptFormPanel: React.FC<PromptFormPanelProps> = ({
   editingId,
   initialData,
   onSave,
-  onClose,
+  onCancel,
 }) => {
   const { t } = useTranslation();
-  const appName = t(`apps.${appId}`);
   const filenameMap: Record<AppId, string> = {
     claude: "CLAUDE.md",
     "claude-desktop": "CLAUDE.md",
@@ -62,8 +60,12 @@ const PromptFormPanel: React.FC<PromptFormPanelProps> = ({
       setName(initialData.name);
       setDescription(initialData.description || "");
       setContent(initialData.content);
+    } else {
+      setName("");
+      setDescription("");
+      setContent("");
     }
-  }, [initialData]);
+  }, [editingId, initialData]);
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -84,62 +86,41 @@ const PromptFormPanel: React.FC<PromptFormPanelProps> = ({
         updatedAt: timestamp,
       };
       await onSave(id, prompt);
-      onClose();
     } catch {
     } finally {
       setSaving(false);
     }
   };
 
-  const title = editingId
-    ? t("prompts.editTitle", { appName })
-    : t("prompts.addTitle", { appName });
-
   return (
-    <FullScreenPanel
-      isOpen={true}
-      title={title}
-      onClose={onClose}
-      footer={
-        <Button
-          type="button"
-          onClick={handleSave}
-          disabled={!name.trim() || saving}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {saving ? t("common.saving") : t("common.save")}
-        </Button>
-      }
-    >
-      <div className="space-y-6 rounded-md border border-border bg-card p-6">
-        <div>
-          <Label htmlFor="name" className="text-foreground">
-            {t("prompts.name")}
-          </Label>
-          <Input
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t("prompts.namePlaceholder")}
-            className="mt-2"
-          />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="prompt-name">{t("prompts.name")}</Label>
+            <Input
+              id="prompt-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t("prompts.namePlaceholder")}
+              className="mt-1.5"
+            />
+          </div>
+          <div>
+            <Label htmlFor="prompt-description">
+              {t("prompts.description")}
+            </Label>
+            <Input
+              id="prompt-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={t("prompts.descriptionPlaceholder")}
+              className="mt-1.5"
+            />
+          </div>
         </div>
-
-        <div>
-          <Label htmlFor="description" className="text-foreground">
-            {t("prompts.description")}
-          </Label>
-          <Input
-            id="description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder={t("prompts.descriptionPlaceholder")}
-            className="mt-2"
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="content" className="block mb-2 text-foreground">
+        <div className="mt-5">
+          <Label htmlFor="prompt-content" className="mb-1.5 block">
             {t("prompts.content")}
           </Label>
           <MarkdownEditor
@@ -147,11 +128,23 @@ const PromptFormPanel: React.FC<PromptFormPanelProps> = ({
             onChange={setContent}
             placeholder={t("prompts.contentPlaceholder", { filename })}
             darkMode={isDarkMode}
-            minHeight="167px"
+            minHeight="420px"
           />
         </div>
       </div>
-    </FullScreenPanel>
+      <div className="mt-4 flex shrink-0 justify-end gap-2 border-t border-border pt-3">
+        <Button type="button" variant="outline" onClick={onCancel}>
+          {t("common.cancel")}
+        </Button>
+        <Button
+          type="button"
+          onClick={handleSave}
+          disabled={!name.trim() || saving}
+        >
+          {saving ? t("common.saving") : t("common.save")}
+        </Button>
+      </div>
+    </div>
   );
 };
 

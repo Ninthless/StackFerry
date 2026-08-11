@@ -4,6 +4,7 @@ import {
   useEffect,
   forwardRef,
   useImperativeHandle,
+  type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import {
   Search,
   Loader2,
   Settings,
+  GitFork,
   AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
@@ -49,6 +51,7 @@ export type SkillsPageSource = "repos" | "skillssh";
 interface SkillsPageProps {
   availableApps: readonly AppId[];
   onSourceChange?: (source: SkillsPageSource) => void;
+  workbenchTabs?: ReactNode;
 }
 
 export interface SkillsPageHandle {
@@ -93,7 +96,7 @@ const SKILLSSH_PAGE_SIZE = 20;
  * 用于浏览和安装来自仓库或 skills.sh 的 Skills
  */
 export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
-  ({ availableApps, onSourceChange }, ref) => {
+  ({ availableApps, onSourceChange, workbenchTabs }, ref) => {
     const { t } = useTranslation();
     const [repoManagerOpen, setRepoManagerOpen] = useState(false);
     const [pendingInstallSkill, setPendingInstallSkill] =
@@ -381,14 +384,19 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
     }, [effectiveSource, onSourceChange]);
 
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background/50 px-6">
+      <div className="skills-discovery flex min-h-0 flex-1 flex-col overflow-hidden bg-background/50 px-6">
+        {workbenchTabs && (
+          <div className="flex min-h-10 shrink-0 items-center justify-end border-b border-border/70 py-1.5">
+            {workbenchTabs}
+          </div>
+        )}
         {/* 技能网格（可滚动详情区域） */}
         <div className="flex min-h-0 flex-1 flex-col animate-fade-in">
           <div className="shrink-0 py-4">
             {/* 搜索来源切换 + 搜索框 */}
-            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <div className="skills-discovery-toolbar flex flex-col gap-3">
               {/* 来源切换 */}
-              <div className="inline-flex gap-1 rounded-md border border-border-default bg-background p-1 shrink-0">
+              <div className="skills-discovery-source inline-flex shrink-0 gap-1 rounded-md border border-border-default bg-background p-1">
                 <Button
                   type="button"
                   size="sm"
@@ -420,7 +428,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
               {effectiveSource === "repos" ? (
                 <>
                   {/* 仓库模式搜索框 */}
-                  <div className="relative flex-1 min-w-0">
+                  <div className="skills-discovery-search relative min-w-0 flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       type="text"
@@ -431,7 +439,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
                     />
                   </div>
                   {/* 仓库筛选 */}
-                  <div className="w-full md:w-56">
+                  <div className="skills-discovery-repo-filter min-w-0">
                     <Select value={filterRepo} onValueChange={setFilterRepo}>
                       <SelectTrigger className="bg-card border shadow-sm text-foreground">
                         <SelectValue
@@ -462,7 +470,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
                     </Select>
                   </div>
                   {/* 安装状态筛选 */}
-                  <div className="w-full md:w-36">
+                  <div className="skills-discovery-status-filter min-w-0">
                     <Select
                       value={filterStatus}
                       onValueChange={(val) =>
@@ -500,7 +508,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
                     </Select>
                   </div>
                   {searchQuery && (
-                    <p className="mt-2 text-sm text-muted-foreground">
+                    <p className="skills-discovery-count text-sm text-muted-foreground">
                       {t("skills.count", { count: filteredSkills.length })}
                     </p>
                   )}
@@ -508,7 +516,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
               ) : (
                 <>
                   {/* skills.sh 搜索框 */}
-                  <div className="relative flex-1 min-w-0">
+                  <div className="skills-discovery-search relative min-w-0 flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       type="text"
@@ -527,7 +535,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
                     disabled={
                       skillsShInput.trim().length < 2 || fetchingSkillsSh
                     }
-                    className="shrink-0"
+                    className="skills-discovery-search-action shrink-0"
                   >
                     {fetchingSkillsSh ? (
                       <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -538,6 +546,19 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
                   </Button>
                 </>
               )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="skills-discovery-repo-action shrink-0"
+                onClick={() => setRepoManagerOpen(true)}
+              >
+                <GitFork className="mr-1.5 h-4 w-4" />
+                {t("skills.repoManager")}
+                <span className="ml-1 text-xs text-muted-foreground">
+                  {repos.length}
+                </span>
+              </Button>
             </div>
 
             {/* 内容区域 */}
@@ -612,7 +633,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="skills-discovery-grid grid grid-cols-1 gap-4">
                   {filteredSkills.map((skill) => (
                     <SkillCard
                       key={skill.key}
@@ -650,7 +671,7 @@ export const SkillsPage = forwardRef<SkillsPageHandle, SkillsPageProps>(
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="skills-discovery-grid grid grid-cols-1 gap-4">
                       {accumulatedResults.map((skill) => {
                         const installed = isSkillsShInstalled(skill);
                         return (

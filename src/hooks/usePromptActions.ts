@@ -7,6 +7,7 @@ export function usePromptActions(appId: AppId) {
   const { t } = useTranslation();
   const [prompts, setPrompts] = useState<Record<string, Prompt>>({});
   const [loading, setLoading] = useState(false);
+  const [pendingToggleId, setPendingToggleId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -36,6 +37,10 @@ export function usePromptActions(appId: AppId) {
 
   const deletePrompt = useCallback(
     async (id: string) => {
+      if (prompts[id]?.enabled) {
+        toast.error(t("prompts.deleteEnabledReason"));
+        return;
+      }
       try {
         await promptsApi.deletePrompt(appId, id);
         await reload();
@@ -45,7 +50,7 @@ export function usePromptActions(appId: AppId) {
         throw error;
       }
     },
-    [appId, reload, t],
+    [appId, prompts, reload, t],
   );
 
   const enablePrompt = useCallback(
@@ -64,10 +69,9 @@ export function usePromptActions(appId: AppId) {
 
   const toggleEnabled = useCallback(
     async (id: string, enabled: boolean) => {
-      // Optimistic update
+      if (pendingToggleId) return;
       const previousPrompts = prompts;
 
-      // 如果要启用当前提示词，先禁用其他所有提示词
       if (enabled) {
         const updatedPrompts = Object.keys(prompts).reduce(
           (acc, key) => {
@@ -90,12 +94,12 @@ export function usePromptActions(appId: AppId) {
         }));
       }
 
+      setPendingToggleId(id);
       try {
         if (enabled) {
           await promptsApi.enablePrompt(appId, id);
           toast.success(t("prompts.enableSuccess"), { closeButton: true });
         } else {
-          // 禁用提示词 - 需要后端支持
           await promptsApi.upsertPrompt(appId, id, {
             ...prompts[id],
             enabled: false,
@@ -104,15 +108,16 @@ export function usePromptActions(appId: AppId) {
         }
         await reload();
       } catch (error) {
-        // Rollback on failure
         setPrompts(previousPrompts);
         toast.error(
           enabled ? t("prompts.enableFailed") : t("prompts.disableFailed"),
         );
         throw error;
+      } finally {
+        setPendingToggleId(null);
       }
     },
-    [appId, prompts, reload, t],
+    [appId, pendingToggleId, prompts, reload, t],
   );
 
   const importFromFile = useCallback(async () => {
@@ -127,6 +132,15 @@ export function usePromptActions(appId: AppId) {
     }
   }, [appId, reload, t]);
 
+  const getCurrentFileContent = useCallback(async () => {
+    try {
+      return await promptsApi.getCurrentFileContent(appId);
+    } catch (error) {
+      toast.error(t("prompts.currentFileFailed"));
+      throw error;
+    }
+  }, [appId, t]);
+
   return {
     prompts,
     loading,
@@ -135,6 +149,8 @@ export function usePromptActions(appId: AppId) {
     deletePrompt,
     enablePrompt,
     toggleEnabled,
+    pendingToggleId,
     importFromFile,
+    getCurrentFileContent,
   };
 }

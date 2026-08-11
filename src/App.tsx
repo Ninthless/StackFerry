@@ -11,6 +11,7 @@ import {
   Download,
   FolderArchive,
   Search,
+  FolderOpen,
 } from "lucide-react";
 import type { Provider, VisibleApps } from "@/types";
 import type { EnvConflict } from "@/types/env";
@@ -49,13 +50,15 @@ import { ClaudeDesktopRouteToggle } from "@/components/proxy/ClaudeDesktopRouteT
 import { FailoverToggle } from "@/components/proxy/FailoverToggle";
 import UsageScriptModal from "@/components/UsageScriptModal";
 import UnifiedMcpPanel from "@/components/mcp/UnifiedMcpPanel";
-import PromptPanel from "@/components/prompts/PromptPanel";
+import PromptPanel, {
+  type PromptPageState,
+} from "@/components/prompts/PromptPanel";
 import {
-  SkillsPage,
   getSkillsPageHeaderActions,
   type SkillsPageSource,
 } from "@/components/skills/SkillsPage";
-import UnifiedSkillsPanel from "@/components/skills/UnifiedSkillsPanel";
+import SkillsWorkbench from "@/components/skills/SkillsWorkbench";
+import type { InstalledSkillsPageState } from "@/components/skills/UnifiedSkillsPanel";
 import { DeepLinkImportDialog } from "@/components/DeepLinkImportDialog";
 import { FirstRunNoticeDialog } from "@/components/FirstRunNoticeDialog";
 import { Button } from "@/components/ui/button";
@@ -70,8 +73,9 @@ import ToolsPanel from "@/components/openclaw/ToolsPanel";
 import AgentsDefaultsPanel from "@/components/openclaw/AgentsDefaultsPanel";
 import OpenClawHealthBanner from "@/components/openclaw/OpenClawHealthBanner";
 import HermesMemoryPanel from "@/components/hermes/HermesMemoryPanel";
-import PiExtensionsPanel from "@/components/pi/PiExtensionsPanel";
-import { AppSwitcher } from "@/components/AppSwitcher";
+import PiExtensionsPanel, {
+  type PiExtensionsPageState,
+} from "@/components/pi/PiExtensionsPanel";
 import { AppSelect } from "@/components/common/AppSelect";
 import { AppSidebar } from "@/components/shell/AppSidebar";
 import {
@@ -173,6 +177,13 @@ function App() {
     useState<SkillsPageSource>("repos");
   const [settingsDefaultTab, setSettingsDefaultTab] = useState("general");
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [promptPageState, setPromptPageState] = useState<PromptPageState>({
+    mode: "list",
+  });
+  const [piExtensionsPageState, setPiExtensionsPageState] =
+    useState<PiExtensionsPageState>({ mode: "list" });
+  const [installedSkillsPageState, setInstalledSkillsPageState] =
+    useState<InstalledSkillsPageState>({ mode: "list" });
 
   useEffect(() => {
     localStorage.setItem(VIEW_STORAGE_KEY, currentView);
@@ -183,6 +194,21 @@ function App() {
       setCurrentView("providers");
     }
   }, [activeApp, currentView]);
+
+  useEffect(() => {
+    if (
+      currentView !== "piExtensions" &&
+      piExtensionsPageState.mode !== "list"
+    ) {
+      setPiExtensionsPageState({ mode: "list" });
+    }
+  }, [currentView, piExtensionsPageState.mode]);
+
+  useEffect(() => {
+    if (currentView !== "skills" && installedSkillsPageState.mode !== "list") {
+      setInstalledSkillsPageState({ mode: "list" });
+    }
+  }, [currentView, installedSkillsPageState.mode]);
 
   const { data: settingsData } = useSettingsQuery();
   const visibleApps: VisibleApps = settingsData?.visibleApps ?? {
@@ -204,6 +230,12 @@ function App() {
     PROMPT_APP_STORAGE_KEY,
     availablePromptApps,
   );
+
+  const handlePromptAppChange = (app: AppId) => {
+    promptPanelRef.current?.closeEditor();
+    setPromptPageState({ mode: "list" });
+    setPromptApp(app);
+  };
   const availableSkillsApps = useMemo(() => {
     const apps = SKILLS_APP_IDS.filter((app) => visibleApps[app]);
     return apps.length > 0 ? apps : (["claude"] as AppId[]);
@@ -789,11 +821,6 @@ function App() {
     }
   };
 
-  const handleOpenSkillsDiscovery = () => {
-    setSkillsDiscoverySource("repos");
-    setCurrentView("skillsDiscovery");
-  };
-
   const handleAppSwitch = (app: AppId) => {
     setActiveApp(app);
     setCurrentView("providers");
@@ -802,12 +829,22 @@ function App() {
   const getViewTitle = () => {
     switch (currentView) {
       case "providers":
-        return t(`apps.${activeApp}`);
+        return t("provider.title");
       case "settings":
         return t("settings.title");
       case "prompts":
+        if (promptPageState.mode === "create") {
+          return t("prompts.addTitle", { appName: t(`apps.${promptApp}`) });
+        }
+        if (promptPageState.mode === "edit") {
+          return promptPageState.name;
+        }
         return t("prompts.manage");
       case "skills":
+        if (installedSkillsPageState.mode === "detail") {
+          return installedSkillsPageState.name;
+        }
+        return t("skills.title");
       case "skillsDiscovery":
         return t("skills.title");
       case "mcp":
@@ -825,6 +862,9 @@ function App() {
       case "hermesMemory":
         return t("hermes.memory.title");
       case "piExtensions":
+        if (piExtensionsPageState.mode === "detail") {
+          return piExtensionsPageState.name;
+        }
         return t("piExtensions.title");
     }
   };
@@ -860,8 +900,12 @@ function App() {
                   )}
               </div>
             )}
-          <CcSwitchImportButton appId={activeApp} />
-          <ProfileSwitcher activeApp={activeApp} />
+          <span className="page-header-secondary-action">
+            <CcSwitchImportButton appId={activeApp} />
+          </span>
+          <span className="page-header-secondary-action">
+            <ProfileSwitcher activeApp={activeApp} />
+          </span>
           <Button type="button" size="sm" onClick={() => setIsAddOpen(true)}>
             <Plus className="h-4 w-4" />
             <span>{t("provider.addProvider")}</span>
@@ -871,23 +915,73 @@ function App() {
     }
 
     if (currentView === "prompts") {
+      if (promptPageState.mode !== "list") {
+        return (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setPromptPageState({ mode: "list" });
+              promptPanelRef.current?.closeEditor();
+            }}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>{t("common.back")}</span>
+          </Button>
+        );
+      }
       return (
         <>
           <AppSelect
             value={promptApp}
             appIds={availablePromptApps}
-            onValueChange={setPromptApp}
+            onValueChange={handlePromptAppChange}
             ariaLabel={t("prompts.selectApplication")}
           />
           <Button
             type="button"
             size="sm"
-            onClick={() => promptPanelRef.current?.openAdd()}
+            onClick={() => setPromptPageState({ mode: "create" })}
           >
             <Plus className="h-4 w-4" />
             <span>{t("prompts.add")}</span>
           </Button>
         </>
+      );
+    }
+
+    if (
+      currentView === "piExtensions" &&
+      piExtensionsPageState.mode === "detail"
+    ) {
+      return (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setPiExtensionsPageState({ mode: "list" })}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>{t("common.back")}</span>
+        </Button>
+      );
+    }
+
+    if (
+      currentView === "skills" &&
+      installedSkillsPageState.mode === "detail"
+    ) {
+      return (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setInstalledSkillsPageState({ mode: "list" })}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span>{t("common.back")}</span>
+        </Button>
       );
     }
 
@@ -906,7 +1000,11 @@ function App() {
 
     if (currentView === "skills") {
       return (
-        <Button type="button" size="sm" onClick={handleOpenSkillsDiscovery}>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => unifiedSkillsPanelRef.current?.openDiscovery()}
+        >
           <Search className="h-4 w-4" />
           <span>{t("skills.discover")}</span>
         </Button>
@@ -932,6 +1030,43 @@ function App() {
   };
 
   const getHeaderOverflowActions = (): PageHeaderOverflowAction[] => {
+    if (currentView === "providers") {
+      return [
+        ...(activeApp === "codex"
+          ? [
+              {
+                key: "import-cc-switch",
+                label: t("provider.importFromCcSwitch"),
+                icon: <Download className="h-4 w-4" />,
+                onSelect: () => {
+                  const button = document.querySelector<HTMLButtonElement>(
+                    '[data-header-action="import-cc-switch"]',
+                  );
+                  button?.click();
+                },
+              },
+            ]
+          : []),
+        ...(activeApp === "claude" ||
+        activeApp === "claude-desktop" ||
+        activeApp === "codex"
+          ? [
+              {
+                key: "open-profile-switcher",
+                label: t("profiles.manage"),
+                icon: <FolderOpen className="h-4 w-4" />,
+                onSelect: () => {
+                  const button = document.querySelector<HTMLButtonElement>(
+                    '[data-header-action="profile-switcher"]',
+                  );
+                  button?.click();
+                },
+              },
+            ]
+          : []),
+      ];
+    }
+
     if (currentView === "mcp") {
       return [
         {
@@ -1000,30 +1135,41 @@ function App() {
               key={promptApp}
               ref={promptPanelRef}
               appId={promptApp}
+              requestedMode={promptPageState.mode}
+              onPageStateChange={setPromptPageState}
             />
           );
         case "hermesMemory":
           return <HermesMemoryPanel />;
         case "piExtensions":
-          return <PiExtensionsPanel />;
+          return (
+            <PiExtensionsPanel
+              requestedMode={piExtensionsPageState.mode}
+              onPageStateChange={setPiExtensionsPageState}
+            />
+          );
         case "skills":
           return (
-            <UnifiedSkillsPanel
+            <SkillsWorkbench
               ref={unifiedSkillsPanelRef}
-              onOpenDiscovery={handleOpenSkillsDiscovery}
+              initialTab="installed"
               availableApps={availableSkillsApps}
+              onSourceChange={setSkillsDiscoverySource}
+              requestedMode={installedSkillsPageState.mode}
+              onPageStateChange={setInstalledSkillsPageState}
             />
           );
         case "skillsDiscovery":
           return (
-            <SkillsPage
+            <SkillsWorkbench
               ref={skillsPageRef}
+              initialTab="discover"
               availableApps={availableSkillsApps}
               onSourceChange={setSkillsDiscoverySource}
             />
           );
         case "mcp":
-          return <UnifiedMcpPanel ref={mcpPanelRef} />;
+          return <UnifiedMcpPanel ref={mcpPanelRef} activeApp={activeApp} />;
 
         case "sessions":
           return <SessionManagerPage />;
@@ -1128,8 +1274,10 @@ function App() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <AppSidebar
           activeApp={activeApp}
+          visibleApps={visibleApps}
           currentView={currentView}
           isRouteActive={isProxyRunning && isCurrentAppTakeoverActive}
+          onAppSwitch={handleAppSwitch}
           onViewChange={setCurrentView}
           onOpenHermesWebUI={() => void openHermesWebUI()}
           onOpenSettings={() => {
@@ -1146,25 +1294,28 @@ function App() {
           }}
         />
 
-        <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-workspace">
+        <section
+          className="workbench-container flex min-w-0 flex-1 flex-col overflow-hidden bg-workspace"
+          data-workbench-container
+          data-current-view={currentView}
+          data-page-mode={
+            currentView === "skills"
+              ? installedSkillsPageState.mode
+              : currentView === "prompts"
+                ? promptPageState.mode
+                : currentView === "piExtensions"
+                  ? piExtensionsPageState.mode
+                  : undefined
+          }
+        >
           {currentView !== "settings" && (
             <PageHeader
               title={getViewTitle()}
               context={getViewContext()}
-              appSwitcher={
-                currentView === "providers" ? (
-                  <AppSwitcher
-                    activeApp={activeApp}
-                    onSwitch={handleAppSwitch}
-                    visibleApps={visibleApps}
-                    variant="header"
-                  />
-                ) : undefined
-              }
-              showTitle={currentView !== "providers"}
               actions={renderHeaderActions()}
               overflowActions={getHeaderOverflowActions()}
               overflowLabel={t("shell.moreActions")}
+              compactOverflowOnly={currentView === "providers"}
             />
           )}
 

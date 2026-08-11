@@ -1,18 +1,17 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ExternalLink, Download, Trash2, Loader2 } from "lucide-react";
+import {
+  ExternalLink,
+  Download,
+  Trash2,
+  Loader2,
+  GitBranch,
+  Folder,
+} from "lucide-react";
 import { settingsApi } from "@/lib/api";
 import type { DiscoverableSkill } from "@/lib/api/skills";
+import { StatusBadge } from "@/components/common/ManagementWorkbench";
 
 type SkillCardSkill = DiscoverableSkill & { installed: boolean };
 
@@ -65,105 +64,105 @@ export function SkillCard({
     skill.directory.trim().toLowerCase() !== skill.name.trim().toLowerCase();
 
   return (
-    <Card
+    <div
       data-skill-key={skill.key}
-      className="group relative flex h-full flex-col overflow-hidden transition-colors hover:border-primary/30"
+      className="skill-discovery-card group flex min-h-[180px] min-w-0 flex-col border border-border bg-card p-4 transition-colors hover:border-border/90 hover:bg-muted/25"
     >
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <CardTitle className="text-base font-semibold truncate">
-              {skill.name}
-            </CardTitle>
-            <div className="flex items-center gap-2 mt-1.5">
-              {showDirectory && (
-                <CardDescription className="text-xs truncate">
-                  {skill.directory}
-                </CardDescription>
-              )}
-              {skill.repoOwner && skill.repoName && (
-                <Badge
-                  variant="outline"
-                  className="shrink-0 text-[10px] px-1.5 py-0 h-4 border-border-default"
-                >
-                  {skill.repoOwner}/{skill.repoName}
-                </Badge>
-              )}
-              {typeof installs === "number" && (
-                <Badge
-                  variant="secondary"
-                  className="shrink-0 text-[10px] px-1.5 py-0 h-4"
-                >
-                  <Download className="h-2.5 w-2.5 mr-0.5" />
-                  {installs.toLocaleString()}
-                </Badge>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-semibold text-foreground">
+            {skill.name}
+          </h3>
+          {skill.repoOwner && skill.repoName && (
+            <div className="mt-1.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <GitBranch className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">
+                {skill.repoOwner}/{skill.repoName}
+              </span>
+              {skill.repoBranch && (
+                <span className="shrink-0 text-muted-foreground/70">
+                  · {skill.repoBranch}
+                </span>
               )}
             </div>
-          </div>
-          {skill.installed && (
-            <Badge
-              variant="default"
-              className="shrink-0 border-0 bg-primary text-primary-foreground hover:bg-primary"
-            >
-              {t("skills.installed")}
-            </Badge>
           )}
         </div>
-      </CardHeader>
-      {skill.description ? (
-        <CardContent className="flex-1 pt-0">
-          <p className="text-sm text-muted-foreground/90 line-clamp-4 leading-relaxed">
-            {skill.description}
-          </p>
-        </CardContent>
-      ) : (
-        <div className="flex-1" />
-      )}
-      <CardFooter className="flex gap-2 pt-3 border-t border-border/50 relative z-10">
-        {skill.readmeUrl && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleOpenGithub}
-            disabled={loading}
-            className="flex-1"
-          >
-            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-            {t("skills.view")}
-          </Button>
-        )}
-        {skill.installed ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleUninstall}
-            disabled={loading}
-            className="flex-1 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          >
-            {loading ? (
-              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-            )}
-            {loading ? t("skills.uninstalling") : t("skills.uninstall")}
-          </Button>
-        ) : (
-          <Button
-            variant="mcp"
-            size="sm"
-            onClick={handleInstall}
-            disabled={loading || !skill.repoOwner}
-            className="flex-1"
-          >
-            {loading ? (
-              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-            ) : (
-              <Download className="h-3.5 w-3.5 mr-1.5" />
-            )}
-            {loading ? t("skills.installing") : t("skills.install")}
-          </Button>
-        )}
-      </CardFooter>
-    </Card>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {typeof installs === "number" && (
+            <StatusBadge status="muted" className="h-5 px-1.5">
+              <Download className="mr-0.5 h-2.5 w-2.5" />
+              {installs.toLocaleString()}
+            </StatusBadge>
+          )}
+          {skill.installed && (
+            <StatusBadge status="success" className="h-5 px-1.5">
+              {t("skills.installed")}
+            </StatusBadge>
+          )}
+        </div>
+      </div>
+
+      <p className="mt-3 line-clamp-3 min-h-[3.75rem] text-sm leading-5 text-muted-foreground">
+        {skill.description || t("skills.noDescription")}
+      </p>
+
+      <div className="mt-auto flex min-w-0 items-end justify-between gap-3 border-t border-border/70 pt-3">
+        <div className="min-w-0">
+          {showDirectory && (
+            <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <Folder className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate" title={skill.directory}>
+                {skill.directory}
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {skill.readmeUrl && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8"
+              onClick={handleOpenGithub}
+              disabled={loading}
+            >
+              <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+              {t("skills.view")}
+            </Button>
+          )}
+          {skill.installed ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleUninstall}
+              disabled={loading}
+              className="h-8 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              {loading ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              {loading ? t("skills.uninstalling") : t("skills.uninstall")}
+            </Button>
+          ) : (
+            <Button
+              variant="mcp"
+              size="sm"
+              onClick={handleInstall}
+              disabled={loading || !skill.repoOwner}
+              className="h-8"
+            >
+              {loading ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              {loading ? t("skills.installing") : t("skills.install")}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

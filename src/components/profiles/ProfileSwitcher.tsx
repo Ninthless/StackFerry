@@ -101,17 +101,18 @@ export function ProfileSwitcher({ activeApp }: ProfileSwitcherProps) {
             role="combobox"
             aria-expanded={open}
             title={t(`profiles.switcherTooltip.${scope}`)}
+            data-header-action="profile-switcher"
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium transition-colors max-[1100px]:w-8 max-[1100px]:justify-center max-[1100px]:px-0",
+              "inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium transition-colors",
               "hover:bg-black/5 dark:hover:bg-white/5",
               currentProfile ? "text-foreground" : "text-muted-foreground",
             )}
           >
             <FolderOpen className="h-4 w-4 shrink-0 opacity-70" />
-            <span className="max-w-[9rem] truncate max-[1100px]:sr-only">
+            <span className="max-w-[9rem] truncate">
               {currentProfile?.name ?? t("profiles.none")}
             </span>
-            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50 max-[1100px]:hidden" />
+            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
           </button>
         </PopoverTrigger>
         <PopoverContent

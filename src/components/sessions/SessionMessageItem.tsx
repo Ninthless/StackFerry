@@ -103,13 +103,13 @@ export const SessionMessageItem = memo(function SessionMessageItem({
   return (
     <div
       className={cn(
-        "rounded-lg border px-3 py-2.5 relative group transition-shadow min-w-0",
+        "session-message-item relative min-w-0 border-b border-border/60 px-3 py-3",
         message.role.toLowerCase() === "user"
-          ? "bg-primary/5 border-primary/20 ml-8"
+          ? "ml-6 bg-primary/[0.035]"
           : message.role.toLowerCase() === "assistant"
-            ? "mr-8 border-foreground/15 bg-foreground/[0.035]"
-            : "bg-muted/40 border-border/60",
-        isActive && "ring-2 ring-primary ring-offset-2",
+            ? "mr-6 bg-foreground/[0.025]"
+            : "bg-muted/30",
+        isActive && "bg-primary/10",
       )}
     >
       <Tooltip>

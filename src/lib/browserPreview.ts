@@ -198,6 +198,77 @@ export const createBrowserPreviewCommandHandler = () => {
         const appId = args.app as AppId;
         return { ...providers[appId] };
       }
+      case "preview_ccswitch_provider_import":
+        return {
+          token: "browser-preview-cc-switch",
+          sourcePath: "C:\\Users\\Preview\\AppData\\cc-switch\\cc-switch.db",
+          sourceVersion: 16,
+          items: [
+            {
+              key: "claude:relay-preview",
+              appType: "claude",
+              sourceId: "relay-preview",
+              name: "Relay Preview",
+              endpoint: "https://relay.example/v1",
+              modelCount: 3,
+              credentialState: "source",
+              action: "add",
+              selectable: true,
+              reason: null,
+            },
+            {
+              key: "codex:team-gateway",
+              appType: "codex",
+              sourceId: "team-gateway",
+              name: "Team Gateway",
+              endpoint: "https://codex.example/v1",
+              modelCount: 1,
+              credentialState: "source",
+              action: "update",
+              selectable: true,
+              reason: null,
+            },
+            {
+              key: "opencode:local-edited",
+              appType: "opencode",
+              sourceId: "local-edited",
+              name: "Local Edited",
+              endpoint: "https://opencode.example/v1",
+              modelCount: 4,
+              credentialState: "missing",
+              action: "preserveLocal",
+              selectable: false,
+              reason: "StackFerry 中的配置已被本地修改",
+            },
+          ],
+          summary: {
+            total: 3,
+            selectable: 2,
+            added: 1,
+            updated: 1,
+            preserved: 1,
+            attached: 0,
+            invalid: 0,
+          },
+          warnings: [],
+        };
+      case "apply_ccswitch_provider_import": {
+        const selection = args.selection as { keys?: string[] } | undefined;
+        const keys = selection?.keys ?? [];
+        const affectedApps = Array.from(
+          new Set(keys.map((key) => key.split(":", 1)[0] as AppId)),
+        );
+        return {
+          imported: keys.length,
+          added: keys.filter((key) => key === "claude:relay-preview").length,
+          updated: keys.filter((key) => key === "codex:team-gateway").length,
+          preserved: 0,
+          attached: 0,
+          skipped: 0,
+          affectedApps,
+          warnings: [],
+        };
+      }
       case "add_provider": {
         const appId = args.app as AppId;
         const provider = args.provider as Provider;
@@ -372,6 +443,22 @@ export const createBrowserPreviewCommandHandler = () => {
           },
           extensions: [],
           packages: [],
+        };
+      case "install_pi_package":
+        return {
+          inventory: {
+            runtime: {
+              piDir: "C:\\Preview\\.pi",
+              settingsPath: "C:\\Preview\\.pi\\settings.json",
+              cliAvailable: true,
+              cliPath: "C:\\Preview\\pi.exe",
+              cliVersion: "0.31.0",
+              mutable: true,
+            },
+            extensions: [],
+            packages: [],
+          },
+          isolatedExtensions: [],
         };
       case "search_pi_packages":
         return {

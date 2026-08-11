@@ -27,6 +27,7 @@ interface PageHeaderProps {
   actions?: ReactNode;
   overflowActions?: PageHeaderOverflowAction[];
   overflowLabel?: string;
+  compactOverflowOnly?: boolean;
 }
 
 export function PageHeader({
@@ -37,12 +38,13 @@ export function PageHeader({
   actions,
   overflowActions = [],
   overflowLabel = "More actions",
+  compactOverflowOnly = false,
 }: PageHeaderProps) {
   const hasActions = Boolean(actions) || overflowActions.length > 0;
 
   return (
-    <header className="flex h-[72px] shrink-0 items-center gap-4 border-b border-border bg-background px-6">
-      <div className="min-w-0 flex-1">
+    <header className="page-header flex min-h-[72px] shrink-0 items-center gap-4 border-b border-border bg-background px-6">
+      <div className="page-header-title min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           {appSwitcher}
           <h1
@@ -61,8 +63,12 @@ export function PageHeader({
         )}
       </div>
       {hasActions && (
-        <div className="flex shrink-0 items-center justify-end gap-2 py-2">
-          {actions}
+        <div className="page-header-actions flex shrink-0 items-center justify-end gap-2 py-2">
+          {actions && (
+            <div className="page-header-primary-actions flex min-w-0 items-center gap-2">
+              {actions}
+            </div>
+          )}
           {overflowActions.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -72,7 +78,10 @@ export function PageHeader({
                   variant="outline"
                   aria-label={overflowLabel}
                   title={overflowLabel}
-                  className="h-8 w-8"
+                  className={cn(
+                    "page-header-overflow h-8 w-8",
+                    compactOverflowOnly && "page-header-overflow-compact-only",
+                  )}
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>

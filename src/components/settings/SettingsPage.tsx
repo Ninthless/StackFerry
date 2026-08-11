@@ -219,7 +219,7 @@ export function SettingsPage({
   const isBusy = useMemo(() => isLoading && !settings, [isLoading, settings]);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden px-6 max-[1100px]:px-3">
+    <div className="settings-page-container settings-page-root flex h-full flex-col overflow-hidden px-6">
       {isBusy ? (
         <div className="flex flex-1 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -231,47 +231,54 @@ export function SettingsPage({
           className="flex h-full min-h-0 flex-col"
         >
           <TabsList
-            className="mx-auto grid w-full max-w-[960px] shrink-0 grid-cols-6 gap-1 border-b border-border py-3"
+            layout="scrollable"
+            className="mx-auto flex w-full max-w-[960px] shrink-0 border-b border-border py-3"
             aria-label={t("common.settings")}
           >
             <TabsTrigger
               value="general"
-              className="min-w-0 gap-2 px-2 max-[1000px]:text-xs max-[900px]:[&>svg]:hidden"
+              className="settings-tab-trigger gap-2 px-3"
+              title={t("settings.tabGeneral")}
             >
               <Settings2 className="h-4 w-4" />
               <span>{t("settings.tabGeneral")}</span>
             </TabsTrigger>
             <TabsTrigger
               value="proxy"
-              className="min-w-0 gap-2 px-2 max-[1000px]:text-xs max-[900px]:[&>svg]:hidden"
+              className="settings-tab-trigger gap-2 px-3"
+              title={t("settings.tabProxy")}
             >
               <Network className="h-4 w-4" />
               <span>{t("settings.tabProxy")}</span>
             </TabsTrigger>
             <TabsTrigger
               value="auth"
-              className="min-w-0 gap-2 px-2 max-[1000px]:text-xs max-[900px]:[&>svg]:hidden"
+              className="settings-tab-trigger gap-2 px-3"
+              title={t("settings.tabAuth")}
             >
               <ShieldCheck className="h-4 w-4" />
               <span>{t("settings.tabAuth")}</span>
             </TabsTrigger>
             <TabsTrigger
               value="advanced"
-              className="min-w-0 gap-2 px-2 max-[1000px]:text-xs max-[900px]:[&>svg]:hidden"
+              className="settings-tab-trigger gap-2 px-3"
+              title={t("settings.tabAdvanced")}
             >
               <SlidersHorizontal className="h-4 w-4" />
               <span>{t("settings.tabAdvanced")}</span>
             </TabsTrigger>
             <TabsTrigger
               value="usage"
-              className="min-w-0 gap-2 px-2 max-[1000px]:text-xs max-[900px]:[&>svg]:hidden"
+              className="settings-tab-trigger gap-2 px-3"
+              title={t("settings.tabUsage")}
             >
               <ChartNoAxesCombined className="h-4 w-4" />
               <span>{t("settings.tabUsage")}</span>
             </TabsTrigger>
             <TabsTrigger
               value="about"
-              className="min-w-0 gap-2 px-2 max-[1000px]:text-xs max-[900px]:[&>svg]:hidden"
+              className="settings-tab-trigger gap-2 px-3"
+              title={t("common.about")}
             >
               <Info className="h-4 w-4" />
               <span>{t("common.about")}</span>
@@ -561,7 +568,7 @@ export function SettingsPage({
 
             {activeTab === "advanced" && settings && (
               <div
-                className="flex h-[61px] shrink-0 items-center border-t border-border-default px-6 py-3 max-[1100px]:px-3"
+                className="settings-save-bar flex h-[61px] shrink-0 items-center border-t border-border-default px-6 py-3"
                 style={{ backgroundColor: "hsl(var(--background))" }}
               >
                 <div className="mx-auto flex h-9 w-full max-w-[960px] items-center justify-end gap-3 pr-2">

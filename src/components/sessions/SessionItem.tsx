@@ -1,4 +1,4 @@
-import { ChevronRight, Clock } from "lucide-react";
+import { Clock, FolderOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -47,10 +47,10 @@ export function SessionItem({
   return (
     <div
       className={cn(
-        "flex items-start gap-2 rounded-lg px-3 py-2.5 transition-all group",
+        "group flex items-start gap-2 rounded px-2.5 py-2 transition-colors",
         isSelected
-          ? "bg-primary/10 border border-primary/30"
-          : "hover:bg-muted/60 border border-transparent",
+          ? "bg-muted text-foreground"
+          : "text-foreground hover:bg-muted/60",
       )}
     >
       {selectionMode && (
@@ -70,14 +70,17 @@ export function SessionItem({
         onClick={() => onSelect(sessionKey)}
         className="min-w-0 flex-1 text-left"
       >
-        <div className="flex items-center gap-2 mb-1">
+        <div className="mb-1 flex items-start gap-2">
+          <span className="text-sm font-medium line-clamp-2 flex-1">
+            {searchQuery ? highlightText(title, searchQuery) : title}
+          </span>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="shrink-0">
+              <span className="mt-0.5 shrink-0">
                 <ProviderIcon
                   icon={getProviderIconName(session.providerId)}
                   name={session.providerId}
-                  size={18}
+                  size={14}
                 />
               </span>
             </TooltipTrigger>
@@ -85,23 +88,24 @@ export function SessionItem({
               {getProviderLabel(session.providerId, t)}
             </TooltipContent>
           </Tooltip>
-          <span className="text-sm font-medium line-clamp-2 flex-1">
-            {searchQuery ? highlightText(title, searchQuery) : title}
-          </span>
-          <ChevronRight
-            className={cn(
-              "size-4 text-muted-foreground/50 shrink-0 transition-transform",
-              isSelected && "text-primary rotate-90",
-            )}
-          />
         </div>
 
-        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-          <Clock className="size-3" />
-          <span>
-            {lastActive
-              ? formatRelativeTime(lastActive, t)
-              : t("common.unknown")}
+        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+          <span className="flex min-w-0 items-center gap-1">
+            <FolderOpen className="size-3 shrink-0" />
+            <span className="truncate">
+              {session.projectDir
+                ? session.projectDir.split(/[\\/]/).filter(Boolean).pop()
+                : t("sessionManager.unknownDirectory")}
+            </span>
+          </span>
+          <span className="ml-auto flex shrink-0 items-center gap-1">
+            <Clock className="size-3" />
+            <span>
+              {lastActive
+                ? formatRelativeTime(lastActive, t)
+                : t("common.unknown")}
+            </span>
           </span>
         </div>
       </button>

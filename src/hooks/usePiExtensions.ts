@@ -1,5 +1,5 @@
 import {
-  keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -12,8 +12,8 @@ import {
 export const piExtensionKeys = {
   all: ["piExtensions"] as const,
   inventory: ["piExtensions", "inventory"] as const,
-  search: (query: string, offset: number, limit: number) =>
-    ["piExtensions", "search", query, offset, limit] as const,
+  search: (query: string, limit: number) =>
+    ["piExtensions", "search", query, limit] as const,
 };
 
 const useInventoryMutation = <TVariables>(
@@ -38,16 +38,17 @@ export function usePiExtensionInventory() {
   });
 }
 
-export function useSearchPiPackages(
-  query: string,
-  offset: number,
-  limit: number,
-) {
-  return useQuery({
-    queryKey: piExtensionKeys.search(query, offset, limit),
-    queryFn: () => piExtensionsApi.searchPackages({ query, offset, limit }),
-    enabled: query.trim().length > 0,
-    placeholderData: keepPreviousData,
+export function useSearchPiPackages(query: string, limit: number) {
+  return useInfiniteQuery({
+    queryKey: piExtensionKeys.search(query, limit),
+    queryFn: ({ pageParam }) =>
+      piExtensionsApi.searchPackages({ query, offset: pageParam, limit }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const nextOffset = lastPage.offset + lastPage.limit;
+      return nextOffset < lastPage.total ? nextOffset : undefined;
+    },
+    enabled: query.trim().length >= 2,
   });
 }
 
@@ -64,9 +65,16 @@ export function useUnregisterPiLocalExtension() {
 }
 
 export function useInstallPiPackage() {
-  return useInventoryMutation((source: string) =>
-    piExtensionsApi.installPackage(source),
-  );
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (source: string) => piExtensionsApi.installPackage(source),
+    onSuccess: (result) => {
+      queryClient.setQueryData(piExtensionKeys.inventory, result.inventory);
+      queryClient.invalidateQueries({
+        queryKey: ["piExtensions", "search"],
+      });
+    },
+  });
 }
 
 export function useRemovePiPackage() {

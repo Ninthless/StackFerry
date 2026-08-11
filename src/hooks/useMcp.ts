@@ -14,10 +14,11 @@ export function useAllMcpServers() {
   });
 }
 
-export function usePiMcpAdapterStatus(projectDir?: string) {
+export function usePiMcpAdapterStatus(projectDir?: string, enabled = true) {
   return useQuery({
     queryKey: ["mcp", "pi-adapter-status", projectDir ?? null],
     queryFn: () => mcpApi.getPiAdapterStatus(projectDir),
+    enabled,
   });
 }
 

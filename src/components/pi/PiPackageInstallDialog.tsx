@@ -26,8 +26,10 @@ type InstallMode =
 interface PiPackageInstallDialogProps {
   open: boolean;
   pending: boolean;
-  disabled: boolean;
-  disabledReason?: string;
+  configMutable: boolean;
+  cliAvailable: boolean;
+  configUnavailableReason?: string;
+  cliUnavailableReason?: string;
   onOpenChange: (open: boolean) => void;
   onRegisterExtension: (path: string) => Promise<void>;
   onInstallPackage: (source: string) => Promise<void>;
@@ -36,8 +38,10 @@ interface PiPackageInstallDialogProps {
 export function PiPackageInstallDialog({
   open,
   pending,
-  disabled,
-  disabledReason,
+  configMutable,
+  cliAvailable,
+  configUnavailableReason,
+  cliUnavailableReason,
   onOpenChange,
   onRegisterExtension,
   onInstallPackage,
@@ -55,6 +59,12 @@ export function PiPackageInstallDialog({
   }, [open, mode]);
 
   const isExtension = mode === "extensionFile" || mode === "extensionDirectory";
+  const modeAvailable = configMutable && (isExtension || cliAvailable);
+  const unavailableReason = !configMutable
+    ? configUnavailableReason
+    : !isExtension && !cliAvailable
+      ? cliUnavailableReason
+      : undefined;
   const canBrowse =
     mode === "extensionFile" ||
     mode === "extensionDirectory" ||
@@ -69,7 +79,11 @@ export function PiPackageInstallDialog({
   };
 
   const handleSubmit = async () => {
-    const source = value.trim();
+    const rawSource = value.trim();
+    const source =
+      mode === "npm" && !rawSource.toLocaleLowerCase().startsWith("npm:")
+        ? `npm:${rawSource}`
+        : rawSource;
     if (!source || !confirmed) return;
     if (isExtension) {
       await onRegisterExtension(source);
@@ -149,8 +163,8 @@ export function PiPackageInstallDialog({
               {t("piExtensions.installDialog.risk")}
             </span>
           </label>
-          {disabledReason && (
-            <p className="text-sm text-destructive">{disabledReason}</p>
+          {unavailableReason && (
+            <p className="text-sm text-destructive">{unavailableReason}</p>
           )}
         </div>
         <DialogFooter>
@@ -165,7 +179,7 @@ export function PiPackageInstallDialog({
           <Button
             type="button"
             onClick={() => void handleSubmit()}
-            disabled={!value.trim() || !confirmed || pending || disabled}
+            disabled={!value.trim() || !confirmed || pending || !modeAvailable}
           >
             {pending && <Loader2 className="h-4 w-4 animate-spin" />}
             {t("piExtensions.installDialog.confirm")}

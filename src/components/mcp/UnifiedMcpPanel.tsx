@@ -1,56 +1,74 @@
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Clock3,
-  Edit3,
-  ExternalLink,
-  Package,
-  RefreshCw,
-  Search,
-  Server,
-  Trash2,
-  X,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Download, MoreHorizontal, Search, Server, X } from "lucide-react";
+import { toast } from "sonner";
+import type { AppId } from "@/lib/api/types";
+import type { McpServer } from "@/types";
+import { MCP_APP_IDS } from "@/config/appConfig";
 import {
   useAllMcpServers,
   useBulkToggleMcpApp,
-  useToggleMcpApp,
   useDeleteMcpServer,
   useImportMcpFromApps,
   useInstallPiMcpAdapter,
   usePiMcpAdapterStatus,
+  useToggleMcpApp,
 } from "@/hooks/useMcp";
-import type { McpServer, PiMcpAdapterStatus } from "@/types";
-import type { AppId } from "@/lib/api/types";
-import McpFormModal from "./McpFormModal";
-import { ConfirmDialog } from "../ConfirmDialog";
-import { settingsApi } from "@/lib/api";
-import { mcpPresets } from "@/config/mcpPresets";
-import { toast } from "sonner";
-import { MCP_APP_IDS } from "@/config/appConfig";
-import { AppCountBar } from "@/components/common/AppCountBar";
-import { AppToggleGroup } from "@/components/common/AppToggleGroup";
-import { ListItemRow } from "@/components/common/ListItemRow";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  ManagementSummary,
+  ManagementSummaryItem,
+  ManagementWorkbench,
+  ResourceToolbar,
+} from "@/components/common/ManagementWorkbench";
 import { WorkbenchEmptyState } from "@/components/common/WorkbenchEmptyState";
+import { ConfirmDialog } from "../ConfirmDialog";
+import McpFormModal from "./McpFormModal";
+import { McpManagementMatrix, PiProjectionHealth } from "./McpManagementView";
 
 export interface UnifiedMcpPanelHandle {
   openAdd: () => void;
   openImport: () => void;
 }
 
+interface UnifiedMcpPanelProps {
+  activeApp: AppId;
+}
+
+type ProjectionFilter = "all" | "projected" | "unprojected";
+type ClientFilter = "all" | AppId;
+
 const UnifiedMcpPanel = React.forwardRef<
   UnifiedMcpPanelHandle,
-  Record<never, never>
->((_, ref) => {
+  UnifiedMcpPanelProps
+>(({ activeApp }, ref) => {
   const { t } = useTranslation();
+  const showPiAdapter = activeApp === "pi";
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ProjectionFilter>("all");
+  const [clientFilter, setClientFilter] = useState<ClientFilter>("all");
   const [isInstallAdapterOpen, setIsInstallAdapterOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -65,7 +83,7 @@ const UnifiedMcpPanel = React.forwardRef<
     isLoading: isPiAdapterStatusLoading,
     error: piAdapterStatusError,
     refetch: refetchPiAdapterStatus,
-  } = usePiMcpAdapterStatus();
+  } = usePiMcpAdapterStatus(undefined, showPiAdapter);
   const toggleAppMutation = useToggleMcpApp();
   const bulkToggleAppMutation = useBulkToggleMcpApp();
   const deleteServerMutation = useDeleteMcpServer();
@@ -77,31 +95,44 @@ const UnifiedMcpPanel = React.forwardRef<
     return Object.entries(serversMap);
   }, [serversMap]);
 
-  const enabledCounts = useMemo(() => {
-    const counts = {
-      claude: 0,
-      "claude-desktop": 0,
-      codex: 0,
-      gemini: 0,
-      grokbuild: 0,
-      opencode: 0,
-      openclaw: 0,
-      hermes: 0,
-      pi: 0,
-    };
-    serverEntries.forEach(([_, server]) => {
-      for (const app of MCP_APP_IDS) {
-        if (server.apps[app]) counts[app]++;
-      }
-    });
-    return counts;
-  }, [serverEntries]);
+  const enabledProjectionCount = useMemo(
+    () =>
+      serverEntries.reduce(
+        (total, [_, server]) =>
+          total + MCP_APP_IDS.filter((app) => Boolean(server.apps[app])).length,
+        0,
+      ),
+    [serverEntries],
+  );
+
+  const attentionCount = useMemo(() => {
+    if (!showPiAdapter) return 0;
+    if (piAdapterStatusError) return 1;
+    if (!piAdapterStatus) return 0;
+    const countsMatch =
+      piAdapterStatus.desiredServerCount ===
+      piAdapterStatus.projectedServerCount;
+    const needsAdapter =
+      piAdapterStatus.desiredServerCount > 0 ||
+      piAdapterStatus.state !== "uninstalled";
+    return !needsAdapter ||
+      (piAdapterStatus.state === "installed" && countsMatch)
+      ? 0
+      : 1;
+  }, [piAdapterStatus, piAdapterStatusError, showPiAdapter]);
 
   const filteredServerEntries = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
-    if (!query) return serverEntries;
 
     return serverEntries.filter(([id, server]) => {
+      const projectedCount = MCP_APP_IDS.filter(
+        (app) => server.apps[app],
+      ).length;
+      if (statusFilter === "projected" && projectedCount === 0) return false;
+      if (statusFilter === "unprojected" && projectedCount > 0) return false;
+      if (clientFilter !== "all" && !server.apps[clientFilter]) return false;
+      if (!query) return true;
+
       const spec = server.server ?? {};
       const values = [
         id,
@@ -116,6 +147,7 @@ const UnifiedMcpPanel = React.forwardRef<
         spec.url,
         server.homepage,
         server.docs,
+        server.source,
       ];
       return values.some(
         (value) =>
@@ -123,13 +155,12 @@ const UnifiedMcpPanel = React.forwardRef<
           value.toLocaleLowerCase().includes(query),
       );
     });
-  }, [searchQuery, serverEntries]);
+  }, [clientFilter, searchQuery, serverEntries, statusFilter]);
 
-  const pendingApp = bulkToggleAppMutation.isPending
-    ? bulkToggleAppMutation.variables?.app
-    : toggleAppMutation.isPending
-      ? toggleAppMutation.variables?.app
-      : null;
+  const isMutationPending =
+    bulkToggleAppMutation.isPending ||
+    toggleAppMutation.isPending ||
+    deleteServerMutation.isPending;
 
   const handleToggleApp = async (
     serverId: string,
@@ -143,22 +174,28 @@ const UnifiedMcpPanel = React.forwardRef<
     }
   };
 
-  const handleToggleAll = async (app: AppId, enabled: boolean) => {
-    const serverIds = serverEntries
+  const handleToggleFiltered = async (app: AppId, enabled: boolean) => {
+    const serverIds = filteredServerEntries
       .filter(([_, server]) => Boolean(server.apps[app]) !== enabled)
       .map(([id]) => id);
     if (serverIds.length === 0) return;
 
-    const result = await bulkToggleAppMutation.mutateAsync({
-      serverIds,
-      app,
-      enabled,
-    });
-    if (result.failed.length > 0) {
-      toast.error(
-        t("common.bulkToggleFailed", { count: result.failed.length }),
-        { description: String(result.failed[0].error) },
-      );
+    try {
+      const result = await bulkToggleAppMutation.mutateAsync({
+        serverIds,
+        app,
+        enabled,
+      });
+      if (result.failed.length > 0) {
+        toast.error(
+          t("common.bulkToggleFailed", { count: result.failed.length }),
+          {
+            description: String(result.failed[0].error),
+          },
+        );
+      }
+    } catch (error) {
+      toast.error(t("common.error"), { description: String(error) });
     }
   };
 
@@ -244,375 +281,227 @@ const UnifiedMcpPanel = React.forwardRef<
   };
 
   return (
-    <div className="px-6 flex flex-col flex-1 min-h-0 overflow-hidden">
-      <AppCountBar
-        totalLabel={t("mcp.serverCount", { count: serverEntries.length })}
-        counts={enabledCounts}
-        appIds={MCP_APP_IDS}
-        totalCount={serverEntries.length}
-        onToggleAll={handleToggleAll}
-        pendingApp={pendingApp}
-      />
-
-      <PiMcpAdapterStatusRow
-        status={piAdapterStatus}
-        isLoading={isPiAdapterStatusLoading}
-        queryError={piAdapterStatusError}
-        isInstalling={installPiAdapterMutation.isPending}
-        onInstall={() => setIsInstallAdapterOpen(true)}
-        onRecheck={() => void refetchPiAdapterStatus()}
-      />
-
-      <div className="relative mb-3 flex-shrink-0">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder={t("mcp.unifiedPanel.searchPlaceholder")}
-          aria-label={t("mcp.unifiedPanel.searchAriaLabel")}
-          className="pl-9 pr-9"
-        />
-        {searchQuery && (
-          <button
-            type="button"
-            onClick={() => setSearchQuery("")}
-            aria-label={t("common.clearSearch")}
-            title={t("common.clearSearch")}
-            className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
-        {isLoading ? (
-          <div className="text-center py-12 text-muted-foreground">
-            {t("mcp.loading")}
-          </div>
-        ) : serverEntries.length === 0 ? (
-          <WorkbenchEmptyState
-            icon={<Server className="h-5 w-5" />}
-            title={t("mcp.unifiedPanel.noServers")}
-            description={t("mcp.emptyDescription")}
+    <TooltipProvider delayDuration={300}>
+      <ManagementWorkbench
+        className="mcp-management-workbench px-6"
+        summary={
+          <>
+            <ManagementSummary className="mcp-management-summary">
+              <ManagementSummaryItem
+                label={t("mcp.summary.servers")}
+                value={serverEntries.length}
+              />
+              <ManagementSummaryItem
+                label={t("mcp.summary.projections")}
+                value={enabledProjectionCount}
+                status={enabledProjectionCount > 0 ? "success" : "muted"}
+              />
+              <ManagementSummaryItem
+                label={t("mcp.summary.attention")}
+                value={attentionCount}
+                status={attentionCount > 0 ? "warning" : "success"}
+              />
+            </ManagementSummary>
+            {showPiAdapter && (
+              <PiProjectionHealth
+                status={piAdapterStatus}
+                isLoading={isPiAdapterStatusLoading}
+                queryError={piAdapterStatusError}
+                isInstalling={installPiAdapterMutation.isPending}
+                onInstall={() => setIsInstallAdapterOpen(true)}
+                onRecheck={() => void refetchPiAdapterStatus()}
+              />
+            )}
+          </>
+        }
+        toolbar={
+          <ResourceToolbar
+            className="mcp-resource-toolbar"
+            aria-label={t("mcp.toolbar")}
+            search={
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={t("mcp.unifiedPanel.searchPlaceholder")}
+                  aria-label={t("mcp.unifiedPanel.searchAriaLabel")}
+                  className="h-8 pl-8 pr-9"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    aria-label={t("common.clearSearch")}
+                    title={t("common.clearSearch")}
+                    className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            }
+            primaryFilters={
+              <>
+                <Select
+                  value={statusFilter}
+                  onValueChange={(value) =>
+                    setStatusFilter(value as ProjectionFilter)
+                  }
+                >
+                  <SelectTrigger
+                    className="mcp-status-filter h-8 w-36"
+                    aria-label={t("mcp.filters.status")}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("mcp.filters.all")}</SelectItem>
+                    <SelectItem value="projected">
+                      {t("mcp.filters.projected")}
+                    </SelectItem>
+                    <SelectItem value="unprojected">
+                      {t("mcp.filters.unprojected")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={clientFilter}
+                  onValueChange={(value) =>
+                    setClientFilter(value as ClientFilter)
+                  }
+                >
+                  <SelectTrigger
+                    className="mcp-client-filter h-8 w-36"
+                    aria-label={t("mcp.filters.client")}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
+                      {t("mcp.filters.allClients")}
+                    </SelectItem>
+                    {MCP_APP_IDS.map((app) => (
+                      <SelectItem key={app} value={app}>
+                        {t(`mcp.unifiedPanel.apps.${app}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            }
             actions={
-              <Button type="button" size="sm" onClick={handleAdd}>
-                {t("mcp.addMcp")}
-              </Button>
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label={t("common.moreActions")}
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("common.moreActions")}</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    disabled={
+                      importMutation.isPending ||
+                      isMutationPending ||
+                      installPiAdapterMutation.isPending
+                    }
+                    onSelect={() => void handleImport()}
+                  >
+                    <Download className="h-4 w-4" />
+                    {t("mcp.importExisting")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             }
           />
-        ) : filteredServerEntries.length === 0 ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            {t("mcp.unifiedPanel.noSearchResults")}
-          </div>
-        ) : (
-          <TooltipProvider delayDuration={300}>
-            <div className="overflow-hidden rounded-md border border-border bg-card">
-              {filteredServerEntries.map(([id, server], index) => (
-                <UnifiedMcpListItem
-                  key={id}
-                  id={id}
-                  server={server}
-                  onToggleApp={handleToggleApp}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  isLast={index === filteredServerEntries.length - 1}
-                />
-              ))}
+        }
+        contentClassName="overflow-hidden"
+      >
+        <div className="mcp-management-content h-full overflow-y-auto overflow-x-hidden pb-16 pt-3">
+          {isLoading ? (
+            <div className="py-12 text-center text-muted-foreground">
+              {t("mcp.loading")}
             </div>
-          </TooltipProvider>
+          ) : serverEntries.length === 0 ? (
+            <WorkbenchEmptyState
+              icon={<Server className="h-5 w-5" />}
+              title={t("mcp.unifiedPanel.noServers")}
+              description={t("mcp.emptyDescription")}
+              actions={
+                <Button type="button" size="sm" onClick={handleAdd}>
+                  {t("mcp.addMcp")}
+                </Button>
+              }
+            />
+          ) : filteredServerEntries.length === 0 ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">
+              {t("mcp.unifiedPanel.noSearchResults")}
+            </div>
+          ) : (
+            <McpManagementMatrix
+              entries={filteredServerEntries}
+              isMutationPending={isMutationPending}
+              onToggleApp={handleToggleApp}
+              onToggleFiltered={handleToggleFiltered}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          )}
+        </div>
+
+        {isFormOpen && (
+          <McpFormModal
+            editingId={editingId || undefined}
+            initialData={
+              editingId && serversMap ? serversMap[editingId] : undefined
+            }
+            existingIds={serversMap ? Object.keys(serversMap) : []}
+            defaultFormat="json"
+            onSave={async () => {
+              setIsFormOpen(false);
+              setEditingId(null);
+            }}
+            onClose={handleCloseForm}
+          />
         )}
-      </div>
 
-      {isFormOpen && (
-        <McpFormModal
-          editingId={editingId || undefined}
-          initialData={
-            editingId && serversMap ? serversMap[editingId] : undefined
-          }
-          existingIds={serversMap ? Object.keys(serversMap) : []}
-          defaultFormat="json"
-          onSave={async () => {
-            setIsFormOpen(false);
-            setEditingId(null);
-          }}
-          onClose={handleCloseForm}
-        />
-      )}
+        {confirmDialog && (
+          <ConfirmDialog
+            isOpen={confirmDialog.isOpen}
+            title={confirmDialog.title}
+            message={confirmDialog.message}
+            onConfirm={confirmDialog.onConfirm}
+            onCancel={() => setConfirmDialog(null)}
+          />
+        )}
 
-      {confirmDialog && (
-        <ConfirmDialog
-          isOpen={confirmDialog.isOpen}
-          title={confirmDialog.title}
-          message={confirmDialog.message}
-          onConfirm={confirmDialog.onConfirm}
-          onCancel={() => setConfirmDialog(null)}
-        />
-      )}
-
-      <ConfirmDialog
-        isOpen={isInstallAdapterOpen}
-        title={t("mcp.piAdapter.installTitle")}
-        message={t("mcp.piAdapter.installMessage")}
-        confirmText={t("mcp.piAdapter.installConfirm")}
-        variant="info"
-        pending={installPiAdapterMutation.isPending}
-        onConfirm={() => void handleInstallPiAdapter()}
-        onCancel={() => setIsInstallAdapterOpen(false)}
-      />
-    </div>
+        {showPiAdapter && (
+          <ConfirmDialog
+            isOpen={isInstallAdapterOpen}
+            title={t("mcp.piAdapter.installTitle")}
+            message={t("mcp.piAdapter.installMessage")}
+            confirmText={t("mcp.piAdapter.installConfirm")}
+            variant="info"
+            pending={installPiAdapterMutation.isPending}
+            onConfirm={() => void handleInstallPiAdapter()}
+            onCancel={() => setIsInstallAdapterOpen(false)}
+          />
+        )}
+      </ManagementWorkbench>
+    </TooltipProvider>
   );
 });
 
 UnifiedMcpPanel.displayName = "UnifiedMcpPanel";
-
-const PiMcpAdapterStatusRow: React.FC<{
-  status?: PiMcpAdapterStatus;
-  isLoading: boolean;
-  queryError: Error | null;
-  isInstalling: boolean;
-  onInstall: () => void;
-  onRecheck: () => void;
-}> = ({
-  status,
-  isLoading,
-  queryError,
-  isInstalling,
-  onInstall,
-  onRecheck,
-}) => {
-  const { t } = useTranslation();
-  const state = queryError ? "error" : status?.state;
-
-  if (!state && !isLoading) return null;
-
-  const stateStyles = {
-    uninstalled: "text-muted-foreground",
-    declaredMissing: "text-destructive",
-    installed: "text-emerald-600 dark:text-emerald-400",
-    incompatible: "text-destructive",
-    error: "text-destructive",
-  } as const;
-  const countsMatch =
-    status?.desiredServerCount === status?.projectedServerCount;
-  const StateIcon =
-    state === "installed" && countsMatch
-      ? CheckCircle2
-      : state === "installed"
-        ? Clock3
-        : state === "declaredMissing" ||
-            state === "incompatible" ||
-            state === "error"
-          ? AlertTriangle
-          : Package;
-  const error = queryError ? String(queryError) : status?.error;
-  const guidance =
-    state === "declaredMissing"
-      ? status?.canRepair
-        ? t("mcp.piAdapter.repairableMissingHint")
-        : t("mcp.piAdapter.declaredMissingHint")
-      : null;
-  const canInstall = status?.canInstall === true || status?.canRepair === true;
-  const canRecheck =
-    Boolean(queryError) ||
-    state === "declaredMissing" ||
-    state === "incompatible" ||
-    state === "error";
-  const stateLabel =
-    state === "installed"
-      ? countsMatch
-        ? t("mcp.piAdapter.effective")
-        : t("mcp.piAdapter.projectionPending", {
-            desired: status?.desiredServerCount ?? 0,
-            projected: status?.projectedServerCount ?? 0,
-          })
-      : state === "uninstalled" && (status?.desiredServerCount ?? 0) > 0
-        ? t("mcp.piAdapter.notEffective")
-        : t(`mcp.piAdapter.${state}`);
-
-  return (
-    <div
-      className="-mt-2 mb-4 flex min-h-8 flex-shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/60 pb-3 text-xs"
-      aria-live="polite"
-    >
-      <Package className="h-3.5 w-3.5 text-muted-foreground" />
-      <span className="font-medium" title={status?.configPath}>
-        {t("mcp.piAdapter.label")}
-      </span>
-      {isLoading && !state ? (
-        <span className="text-muted-foreground">
-          {t("mcp.piAdapter.loading")}
-        </span>
-      ) : (
-        <span
-          className={`inline-flex items-center gap-1 ${stateStyles[state!]}`}
-        >
-          <StateIcon className="h-3.5 w-3.5" />
-          {stateLabel}
-          {state === "installed" && status?.installedVersion
-            ? ` v${status.installedVersion}`
-            : ""}
-        </span>
-      )}
-      {status && (
-        <span className="text-muted-foreground">
-          {t("mcp.piAdapter.counts", {
-            desired: status.desiredServerCount,
-            projected: status.projectedServerCount,
-          })}
-        </span>
-      )}
-      {status?.projectOverridePath && (
-        <span
-          className="ml-auto truncate text-amber-600 dark:text-amber-400"
-          title={status.projectOverridePath}
-        >
-          {t("mcp.piAdapter.projectOverride")}
-        </span>
-      )}
-      {error && (
-        <span
-          className="min-w-0 flex-1 truncate text-destructive"
-          title={error}
-        >
-          {error}
-        </span>
-      )}
-      {guidance && (
-        <span className="min-w-0 flex-1 truncate text-destructive">
-          {guidance}
-        </span>
-      )}
-      {canRecheck && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="ml-auto h-7 px-2"
-          disabled={isLoading || isInstalling}
-          onClick={onRecheck}
-        >
-          <RefreshCw
-            className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`}
-          />
-          {t("mcp.piAdapter.recheck")}
-        </Button>
-      )}
-      {canInstall && (
-        <Button
-          type="button"
-          size="sm"
-          className={canRecheck ? "h-7 px-2" : "ml-auto h-7 px-2"}
-          disabled={isInstalling}
-          onClick={onInstall}
-        >
-          <Package className="h-3.5 w-3.5" />
-          {status?.canRepair
-            ? t("mcp.piAdapter.repairInstall")
-            : t("mcp.piAdapter.install")}
-        </Button>
-      )}
-    </div>
-  );
-};
-
-interface UnifiedMcpListItemProps {
-  id: string;
-  server: McpServer;
-  onToggleApp: (serverId: string, app: AppId, enabled: boolean) => void;
-  onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
-  isLast?: boolean;
-}
-
-const UnifiedMcpListItem: React.FC<UnifiedMcpListItemProps> = ({
-  id,
-  server,
-  onToggleApp,
-  onEdit,
-  onDelete,
-  isLast,
-}) => {
-  const { t } = useTranslation();
-  const name = server.name || id;
-  const description = server.description || "";
-
-  const meta = mcpPresets.find((p) => p.id === id);
-  const docsUrl = server.docs || meta?.docs;
-  const homepageUrl = server.homepage || meta?.homepage;
-  const tags = server.tags || meta?.tags;
-
-  const openDocs = async () => {
-    const url = docsUrl || homepageUrl;
-    if (!url) return;
-    try {
-      await settingsApi.openExternal(url);
-    } catch {}
-  };
-
-  return (
-    <ListItemRow isLast={isLast}>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className="font-medium text-sm text-foreground truncate">
-            {name}
-          </span>
-          {docsUrl && (
-            <button
-              type="button"
-              onClick={openDocs}
-              className="text-muted-foreground/60 hover:text-foreground flex-shrink-0"
-              title={t("mcp.presets.docs")}
-            >
-              <ExternalLink size={12} />
-            </button>
-          )}
-        </div>
-        {description && (
-          <p
-            className="text-xs text-muted-foreground truncate"
-            title={description}
-          >
-            {description}
-          </p>
-        )}
-        {!description && tags && tags.length > 0 && (
-          <p className="text-xs text-muted-foreground/60 truncate">
-            {tags.join(", ")}
-          </p>
-        )}
-      </div>
-
-      <AppToggleGroup
-        apps={server.apps}
-        onToggle={(app, enabled) => onToggleApp(id, app, enabled)}
-        appIds={MCP_APP_IDS}
-      />
-
-      <div className="flex flex-shrink-0 items-center gap-0.5">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={() => onEdit(id)}
-          title={t("common.edit")}
-        >
-          <Edit3 size={14} />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive"
-          onClick={() => onDelete(id)}
-          title={t("common.delete")}
-        >
-          <Trash2 size={14} />
-        </Button>
-      </div>
-    </ListItemRow>
-  );
-};
 
 export default UnifiedMcpPanel;

@@ -4,14 +4,25 @@ import { cn } from "@/lib/utils";
 
 const Tabs = TabsPrimitive.Root;
 
+type TabsLayout = "equal" | "scrollable" | "compact";
+
+interface TabsListProps
+  extends React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> {
+  layout?: TabsLayout;
+}
+
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, ...props }, ref) => (
+  TabsListProps
+>(({ className, layout, ...props }, ref) => (
   <TabsPrimitive.List
     ref={ref}
     className={cn(
       "inline-flex items-center justify-center gap-1 text-muted-foreground",
+      layout === "equal" && "w-full [&>*]:min-w-0 [&>*]:flex-1",
+      layout === "scrollable" &&
+        "max-w-full justify-start overflow-x-auto no-scrollbar [&>*]:shrink-0",
+      layout === "compact" && "justify-start [&>*]:min-w-0 [&>*]:shrink-0",
       className,
     )}
     {...props}

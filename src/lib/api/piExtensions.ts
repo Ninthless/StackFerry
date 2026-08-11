@@ -10,6 +10,7 @@ export type PiInventoryStatus =
   | "invalid"
   | "conflict";
 export type PiPackageStatus = "installed" | "missing" | "invalid" | "conflict";
+export type PiExtensionRegistrationKind = "tool" | "command" | "flag";
 
 export interface PiRuntimeInfo {
   piDir: string;
@@ -33,6 +34,22 @@ export interface PiExtension {
   version?: string;
   status: PiInventoryStatus;
   error?: string;
+  registrations: PiExtensionRegistration[];
+  analysisComplete: boolean;
+  conflicts: PiExtensionConflict[];
+}
+
+export interface PiExtensionRegistration {
+  kind: PiExtensionRegistrationKind;
+  name: string;
+}
+
+export interface PiExtensionConflict {
+  kind: PiExtensionRegistrationKind | "path";
+  name: string;
+  otherExtensionId: string;
+  otherExtensionName: string;
+  otherExtensionPath: string;
 }
 
 export interface PiPackage {
@@ -55,6 +72,11 @@ export interface PiExtensionInventory {
   runtime: PiRuntimeInfo;
   extensions: PiExtension[];
   packages: PiPackage[];
+}
+
+export interface PiPackageInstallResult {
+  inventory: PiExtensionInventory;
+  isolatedExtensions: PiExtension[];
 }
 
 export interface PiPackageSearchItem {
@@ -103,6 +125,71 @@ const optionalString = (
   return typeof value === "string" && value.length > 0 ? value : undefined;
 };
 
+const adaptRegistration = (value: unknown): PiExtensionRegistration => {
+  const registration = asRecord(value);
+  return {
+    kind: field(registration, "kind", "kind", "tool"),
+    name: field(registration, "name", "name", ""),
+  };
+};
+
+const adaptConflict = (value: unknown): PiExtensionConflict => {
+  const conflict = asRecord(value);
+  return {
+    kind: field(conflict, "kind", "kind", "tool"),
+    name: field(conflict, "name", "name", ""),
+    otherExtensionId: field(
+      conflict,
+      "otherExtensionId",
+      "other_extension_id",
+      "",
+    ),
+    otherExtensionName: field(
+      conflict,
+      "otherExtensionName",
+      "other_extension_name",
+      "",
+    ),
+    otherExtensionPath: field(
+      conflict,
+      "otherExtensionPath",
+      "other_extension_path",
+      "",
+    ),
+  };
+};
+
+const adaptExtension = (value: unknown): PiExtension => {
+  const extension = asRecord(value);
+  const registrations = Array.isArray(extension.registrations)
+    ? extension.registrations
+    : [];
+  const conflicts = Array.isArray(extension.conflicts)
+    ? extension.conflicts
+    : [];
+  return {
+    id: field(extension, "id", "id", ""),
+    name: field(extension, "name", "name", ""),
+    path: field(extension, "path", "path", ""),
+    enabled: field(extension, "enabled", "enabled", false),
+    origin: field(extension, "origin", "origin", "local"),
+    sourceType: field(extension, "sourceType", "source_type", "local"),
+    packageId: optionalString(extension, "packageId", "package_id"),
+    packageSource: optionalString(extension, "packageSource", "package_source"),
+    version: optionalString(extension, "version", "version"),
+    status: field(extension, "status", "status", "invalid"),
+    error: optionalString(extension, "error", "error"),
+    registrations: registrations.map(adaptRegistration),
+    analysisComplete: field(
+      extension,
+      "analysisComplete",
+      "analysis_complete",
+      false,
+    ),
+    conflicts: conflicts.map(adaptConflict),
+  };
+};
+
 const adaptInventory = (value: unknown): PiExtensionInventory => {
   const inventory = asRecord(value);
   const runtime = asRecord(inventory.runtime);
@@ -121,26 +208,7 @@ const adaptInventory = (value: unknown): PiExtensionInventory => {
       mutable: field(runtime, "mutable", "mutable", true),
       error: optionalString(runtime, "error", "error"),
     },
-    extensions: extensions.map((item) => {
-      const extension = asRecord(item);
-      return {
-        id: field(extension, "id", "id", ""),
-        name: field(extension, "name", "name", ""),
-        path: field(extension, "path", "path", ""),
-        enabled: field(extension, "enabled", "enabled", false),
-        origin: field(extension, "origin", "origin", "local"),
-        sourceType: field(extension, "sourceType", "source_type", "local"),
-        packageId: optionalString(extension, "packageId", "package_id"),
-        packageSource: optionalString(
-          extension,
-          "packageSource",
-          "package_source",
-        ),
-        version: optionalString(extension, "version", "version"),
-        status: field(extension, "status", "status", "invalid"),
-        error: optionalString(extension, "error", "error"),
-      };
-    }),
+    extensions: extensions.map(adaptExtension),
     packages: packages.map((item) => {
       const packageItem = asRecord(item);
       return {
@@ -170,31 +238,7 @@ const adaptInventory = (value: unknown): PiExtensionInventory => {
         promptCount: field(packageItem, "promptCount", "prompt_count", 0),
         themeCount: field(packageItem, "themeCount", "theme_count", 0),
         extensions: Array.isArray(packageItem.extensions)
-          ? packageItem.extensions.map((extension) => {
-              const resource = asRecord(extension);
-              return {
-                id: field(resource, "id", "id", ""),
-                name: field(resource, "name", "name", ""),
-                path: field(resource, "path", "path", ""),
-                enabled: field(resource, "enabled", "enabled", false),
-                origin: field(resource, "origin", "origin", "package"),
-                sourceType: field(
-                  resource,
-                  "sourceType",
-                  "source_type",
-                  "local",
-                ),
-                packageId: optionalString(resource, "packageId", "package_id"),
-                packageSource: optionalString(
-                  resource,
-                  "packageSource",
-                  "package_source",
-                ),
-                version: optionalString(resource, "version", "version"),
-                status: field(resource, "status", "status", "invalid"),
-                error: optionalString(resource, "error", "error"),
-              };
-            })
+          ? packageItem.extensions.map(adaptExtension)
           : [],
         error: optionalString(packageItem, "error", "error"),
       };
@@ -276,8 +320,19 @@ export const piExtensionsApi = {
     );
   },
 
-  async installPackage(source: string): Promise<PiExtensionInventory> {
-    return adaptInventory(await invoke("install_pi_package", { source }));
+  async installPackage(source: string): Promise<PiPackageInstallResult> {
+    const result = asRecord(await invoke("install_pi_package", { source }));
+    const isolatedExtensions = Array.isArray(
+      result.isolatedExtensions ?? result.isolated_extensions,
+    )
+      ? (
+          (result.isolatedExtensions ?? result.isolated_extensions) as unknown[]
+        ).map(adaptExtension)
+      : [];
+    return {
+      inventory: adaptInventory(result.inventory),
+      isolatedExtensions,
+    };
   },
 
   async removePackage(source: string): Promise<PiExtensionInventory> {

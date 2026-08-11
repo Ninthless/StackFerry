@@ -31,7 +31,7 @@ export function SessionTocSidebar({
   if (items.length <= 2) return null;
 
   return (
-    <div className="w-64 border-l shrink-0 hidden xl:block">
+    <div className="session-toc-sidebar w-56 border-l shrink-0">
       <div className="p-3 border-b">
         <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <List className="size-3.5" />
@@ -84,7 +84,7 @@ export function SessionTocDialog({
       <DialogTrigger asChild>
         <Button
           size="icon"
-          className="fixed bottom-20 right-4 xl:hidden size-10 rounded-full shadow-lg z-30"
+          className="session-toc-dialog-trigger fixed bottom-20 right-4 size-9 rounded-full shadow-lg z-30"
         >
           <List className="size-4" />
         </Button>
@@ -115,7 +115,7 @@ export function SessionTocDialog({
                 type="button"
                 onClick={() => onItemClick(item.index)}
                 className={cn(
-                  "w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all",
+                  "w-full text-left px-3 py-2.5 rounded text-sm transition-all",
                   "hover:bg-primary/10 text-foreground",
                   "flex items-start gap-3",
                   "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset",

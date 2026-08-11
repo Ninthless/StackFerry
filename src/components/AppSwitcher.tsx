@@ -91,7 +91,7 @@ export function AppSwitcher({
             "flex min-w-0 items-center gap-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
             variant === "header"
               ? "h-7 w-[176px] rounded-sm bg-transparent px-1.5 font-semibold text-foreground hover:bg-muted"
-              : "h-11 w-full rounded-md border border-sidebar-foreground/20 bg-sidebar-active px-3 font-medium text-sidebar-foreground hover:border-sidebar-foreground/35 hover:bg-sidebar-hover",
+              : "h-9 w-full rounded-md border border-sidebar-foreground/20 bg-sidebar-active px-2.5 text-sm font-medium text-sidebar-foreground hover:border-sidebar-foreground/35 hover:bg-sidebar-hover",
           )}
         >
           <ProviderIcon
@@ -121,7 +121,7 @@ export function AppSwitcher({
               onSelect={() => handleSwitch(app)}
               aria-label={appDisplayName[app]}
               aria-current={isActive ? "true" : undefined}
-              className="h-9"
+              className="h-8"
             >
               <span className="relative inline-flex shrink-0">
                 <ProviderIcon
