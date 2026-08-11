@@ -2671,6 +2671,7 @@ fn run_package_cli_blocking(
     Ok(after)
 }
 
+#[derive(Debug)]
 struct BoundedOutput {
     status: ExitStatus,
     stdout: Vec<u8>,
@@ -4451,7 +4452,7 @@ printf '{"name":"pi-mcp-adapter","version":"2.20.0"}' > "$package_dir/package.js
 
     #[cfg(unix)]
     #[test]
-    fn local_extension_rejects_symlink_and_requires_absolute_path() {
+    fn local_extension_resolves_relative_path_and_rejects_symlink() {
         use std::os::unix::fs::symlink;
 
         let temp = tempdir().unwrap();
@@ -4459,9 +4460,12 @@ printf '{"name":"pi-mcp-adapter","version":"2.20.0"}' > "$package_dir/package.js
         let link = temp.path().join("link.ts");
         fs::write(&target, b"").unwrap();
         symlink(&target, &link).unwrap();
-        assert!(validate_local_extension_path("real.ts").is_err());
-        assert!(validate_local_extension_path(&path_string(&link)).is_err());
-        assert!(validate_local_extension_path(&path_string(&target)).is_ok());
+        assert_eq!(
+            validate_local_extension_path("real.ts", temp.path()).unwrap(),
+            fs::canonicalize(&target).unwrap()
+        );
+        assert!(validate_local_extension_path(&path_string(&link), temp.path()).is_err());
+        assert!(validate_local_extension_path(&path_string(&target), temp.path()).is_ok());
     }
 
     #[cfg(windows)]

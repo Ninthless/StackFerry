@@ -362,9 +362,6 @@ impl McpService {
                     // 已存在：仅启用 Claude，不覆盖其他字段（与导入模块语义保持一致）
                     let to_save = if let Some(existing_server) = existing.get(&server.id) {
                         let mut merged = existing_server.clone();
-                        if !merged.apps.claude {
-                            changed_count += 1;
-                        }
                         merged.apps.claude = true;
                         merged
                     } else {
@@ -402,9 +399,6 @@ impl McpService {
                     // 已存在：仅启用 Codex，不覆盖其他字段（与导入模块语义保持一致）
                     let to_save = if let Some(existing_server) = existing.get(&server.id) {
                         let mut merged = existing_server.clone();
-                        if !merged.apps.codex {
-                            changed_count += 1;
-                        }
                         merged.apps.codex = true;
                         merged
                     } else {
@@ -442,9 +436,6 @@ impl McpService {
                     // 已存在：仅启用 Gemini，不覆盖其他字段（与导入模块语义保持一致）
                     let to_save = if let Some(existing_server) = existing.get(&server.id) {
                         let mut merged = existing_server.clone();
-                        if !merged.apps.gemini {
-                            changed_count += 1;
-                        }
                         merged.apps.gemini = true;
                         merged
                     } else {
@@ -476,9 +467,6 @@ impl McpService {
                 for server in servers.values() {
                     let to_save = if let Some(existing_server) = existing.get(&server.id) {
                         let mut merged = existing_server.clone();
-                        if !merged.apps.grokbuild {
-                            changed_count += 1;
-                        }
                         merged.apps.grokbuild = true;
                         merged
                     } else {
@@ -511,9 +499,6 @@ impl McpService {
                     // 已存在：仅启用 OpenCode，不覆盖其他字段（与导入模块语义保持一致）
                     let to_save = if let Some(existing_server) = existing.get(&server.id) {
                         let mut merged = existing_server.clone();
-                        if !merged.apps.opencode {
-                            changed_count += 1;
-                        }
                         merged.apps.opencode = true;
                         merged
                     } else {
@@ -551,9 +536,6 @@ impl McpService {
                     // 已存在：仅启用 Hermes，不覆盖其他字段（与导入模块语义保持一致）
                     let to_save = if let Some(existing_server) = existing.get(&server.id) {
                         let mut merged = existing_server.clone();
-                        if !merged.apps.hermes {
-                            changed_count += 1;
-                        }
                         merged.apps.hermes = true;
                         merged
                     } else {
@@ -590,9 +572,6 @@ impl McpService {
                     )));
                 }
                 let mut merged = existing_server.clone();
-                if !merged.apps.pi {
-                    changed_count += 1;
-                }
                 merged.apps.pi = true;
                 merged
             } else {

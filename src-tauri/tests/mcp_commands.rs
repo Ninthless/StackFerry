@@ -1062,8 +1062,8 @@ command = "echo"
     );
     assert_eq!(
         McpService::import_from_codex(&state).expect("import from codex"),
-        1,
-        "enabling Codex on an existing server is an imported change"
+        0,
+        "enabling Codex on an existing server should not count as a new server"
     );
 
     let servers = state.db.get_all_mcp_servers().expect("get all mcp servers");
