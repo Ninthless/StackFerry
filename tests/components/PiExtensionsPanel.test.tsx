@@ -25,6 +25,10 @@ const mocks = vi.hoisted(() => ({
   installPackage: vi.fn(),
   registerLocalExtension: vi.fn(),
   unregisterLocalExtension: vi.fn(),
+  trustProject: vi.fn(),
+  getSettings: vi.fn(),
+  saveSettings: vi.fn(),
+  pickDirectory: vi.fn(),
   openExternal: vi.fn(),
 }));
 
@@ -43,12 +47,18 @@ vi.mock("@/lib/api/piExtensions", async () => {
       installPackage: mocks.installPackage,
       registerLocalExtension: mocks.registerLocalExtension,
       unregisterLocalExtension: mocks.unregisterLocalExtension,
+      trustProject: mocks.trustProject,
     },
   };
 });
 
 vi.mock("@/lib/api/settings", () => ({
-  settingsApi: { openExternal: mocks.openExternal },
+  settingsApi: {
+    get: mocks.getSettings,
+    save: mocks.saveSettings,
+    pickDirectory: mocks.pickDirectory,
+    openExternal: mocks.openExternal,
+  },
 }));
 
 vi.mock("react-i18next", () => ({
@@ -59,13 +69,16 @@ vi.mock("react-i18next", () => ({
 }));
 
 const inventory: PiExtensionInventory = {
-  runtime: {
-    piDir: "C:\\Users\\test\\.pi",
-    settingsPath: "C:\\Users\\test\\.pi\\settings.json",
-    cliAvailable: true,
-    cliVersion: "0.31.0",
-    mutable: true,
-  },
+  runtimes: [
+    {
+      scope: "global",
+      piDir: "C:\\Users\\test\\.pi",
+      settingsPath: "C:\\Users\\test\\.pi\\settings.json",
+      cliAvailable: true,
+      cliVersion: "0.31.0",
+      mutable: true,
+    },
+  ],
   extensions: [
     {
       id: "local-one",
@@ -78,6 +91,8 @@ const inventory: PiExtensionInventory = {
       registrations: [],
       analysisComplete: true,
       conflicts: [],
+      scope: "global",
+      resourceKey: "local-one",
     },
     {
       id: "broken-one",
@@ -92,6 +107,8 @@ const inventory: PiExtensionInventory = {
       registrations: [],
       analysisComplete: false,
       conflicts: [],
+      scope: "global",
+      resourceKey: "broken-one",
     },
     {
       id: "adapter-child",
@@ -106,6 +123,8 @@ const inventory: PiExtensionInventory = {
       registrations: [],
       analysisComplete: true,
       conflicts: [],
+      scope: "global",
+      resourceKey: "adapter-child",
     },
   ],
   packages: [
@@ -135,8 +154,12 @@ const inventory: PiExtensionInventory = {
           registrations: [],
           analysisComplete: true,
           conflicts: [],
+          scope: "global",
+          resourceKey: "pi-tools-extension",
         },
       ],
+      scope: "global",
+      resourceKey: "pi-tools",
     },
     {
       id: "pi-mcp-adapter",
@@ -151,6 +174,8 @@ const inventory: PiExtensionInventory = {
       promptCount: 0,
       themeCount: 0,
       extensions: [],
+      scope: "global",
+      resourceKey: "pi-mcp-adapter",
     },
     {
       id: "declared-missing",
@@ -164,6 +189,8 @@ const inventory: PiExtensionInventory = {
       promptCount: 0,
       themeCount: 0,
       extensions: [],
+      scope: "global",
+      resourceKey: "declared-missing",
     },
   ],
 };
@@ -247,6 +274,13 @@ describe("PiExtensionsPanel", () => {
         (extension) => extension.id !== "local-one",
       ),
     });
+    mocks.trustProject.mockResolvedValue(inventory);
+    mocks.getSettings.mockResolvedValue({
+      showInTray: true,
+      minimizeToTrayOnClose: false,
+    });
+    mocks.saveSettings.mockResolvedValue(true);
+    mocks.pickDirectory.mockResolvedValue(null);
   });
 
   it("renders all tabs, filters extensions, toggles valid items, and blocks broken items", async () => {
@@ -290,7 +324,11 @@ describe("PiExtensionsPanel", () => {
     );
     await waitFor(() =>
       expect(mocks.setExtensionEnabled).toHaveBeenCalledWith(
-        "local-one",
+        {
+          scope: "global",
+          resourceKey: "local-one",
+          projectDir: undefined,
+        },
         false,
       ),
     );
@@ -327,7 +365,11 @@ describe("PiExtensionsPanel", () => {
       }),
     );
     await waitFor(() =>
-      expect(mocks.removePackage).toHaveBeenCalledWith("pi-tools"),
+      expect(mocks.removePackage).toHaveBeenCalledWith({
+        scope: "global",
+        resourceKey: "pi-tools",
+        projectDir: undefined,
+      }),
     );
   });
 
@@ -349,6 +391,7 @@ describe("PiExtensionsPanel", () => {
               otherExtensionId: "web-access",
               otherExtensionName: "Pi Web Access",
               otherExtensionPath: "C:\\extensions\\web-access.ts",
+              otherExtensionScope: "global" as const,
             },
           ],
         },
@@ -365,14 +408,19 @@ describe("PiExtensionsPanel", () => {
     await user.type(search, "extra");
     await user.keyboard("{Enter}");
     await user.click(
-      await screen.findByRole("button", { name: "piExtensions.discover.install" }),
+      await screen.findByRole("button", {
+        name: "piExtensions.discover.install",
+      }),
     );
     await user.click(
-      screen.getByRole("button", { name: "piExtensions.installConfirm.confirm" }),
+      screen.getByRole("button", {
+        name: "piExtensions.installConfirm.confirm",
+      }),
     );
     await waitFor(() =>
       expect(mocks.installPackage).toHaveBeenCalledWith(
         "npm:@scope/pi-extra-package-with-a-very-long-name",
+        { scope: "global" },
       ),
     );
   });
@@ -439,9 +487,11 @@ describe("PiExtensionsPanel", () => {
     );
 
     await waitFor(() =>
-      expect(mocks.unregisterLocalExtension).toHaveBeenCalledWith(
-        "C:\\extensions\\one.ts",
-      ),
+      expect(mocks.unregisterLocalExtension).toHaveBeenCalledWith({
+        scope: "global",
+        resourceKey: "local-one",
+        projectDir: undefined,
+      }),
     );
   });
 
@@ -479,6 +529,7 @@ describe("PiExtensionsPanel", () => {
     await waitFor(() =>
       expect(mocks.installPackage).toHaveBeenCalledWith(
         "npm:@scope/pi-extra-package-with-a-very-long-name",
+        { scope: "global" },
       ),
     );
   });
@@ -793,6 +844,7 @@ describe("PiExtensionsPanel", () => {
     await waitFor(() =>
       expect(mocks.installPackage).toHaveBeenCalledWith(
         "npm:sample-package@1.2.3",
+        { scope: "global", projectDir: undefined },
       ),
     );
   });
@@ -832,6 +884,7 @@ describe("PiExtensionsPanel", () => {
                   otherExtensionId: "web-access",
                   otherExtensionName: "Pi Web Access",
                   otherExtensionPath: "C:\\extensions\\web-access.ts",
+                  otherExtensionScope: "global" as const,
                 },
               ],
             }
@@ -843,17 +896,17 @@ describe("PiExtensionsPanel", () => {
     const user = userEvent.setup();
 
     expect(
-      await screen.findByText(
-        'piExtensions.conflicts.bannerTitle:{"count":1}',
-      ),
+      await screen.findByText('piExtensions.conflicts.bannerTitle:{"count":1}'),
     ).toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: "piExtensions.conflicts.review" }),
     );
     expect(screen.getByText("web_search")).toBeInTheDocument();
     expect(
-      screen.getByText(
-        'piExtensions.conflicts.withExtension:{"name":"Pi Web Access"}',
+      screen.getByText((content) =>
+        content.includes(
+          'piExtensions.conflicts.withExtension:{"name":"Pi Web Access"}',
+        ),
       ),
     ).toBeInTheDocument();
     await user.click(
@@ -863,7 +916,11 @@ describe("PiExtensionsPanel", () => {
     );
     await waitFor(() =>
       expect(mocks.setExtensionEnabled).toHaveBeenCalledWith(
-        "local-one",
+        {
+          scope: "global",
+          resourceKey: "local-one",
+          projectDir: undefined,
+        },
         false,
       ),
     );
@@ -899,12 +956,12 @@ describe("PiExtensionsPanel", () => {
   it("keeps config mutations available when Pi CLI is unavailable and disables package operations", async () => {
     const cliUnavailableInventory = {
       ...inventory,
-      runtime: {
-        ...inventory.runtime,
+      runtimes: inventory.runtimes.map((runtime) => ({
+        ...runtime,
         cliAvailable: false,
         cliPath: undefined,
         cliVersion: undefined,
-      },
+      })),
     };
     mocks.getInventory.mockResolvedValueOnce(cliUnavailableInventory);
     mocks.registerLocalExtension.mockResolvedValue(cliUnavailableInventory);
@@ -942,6 +999,7 @@ describe("PiExtensionsPanel", () => {
     await waitFor(() =>
       expect(mocks.registerLocalExtension).toHaveBeenCalledWith(
         "C:\\extensions\\new.ts",
+        { scope: "global", projectDir: undefined },
       ),
     );
 
@@ -964,9 +1022,11 @@ describe("PiExtensionsPanel", () => {
       }),
     );
     await waitFor(() =>
-      expect(mocks.unregisterLocalExtension).toHaveBeenCalledWith(
-        "C:\\extensions\\one.ts",
-      ),
+      expect(mocks.unregisterLocalExtension).toHaveBeenCalledWith({
+        scope: "global",
+        resourceKey: "local-one",
+        projectDir: undefined,
+      }),
     );
 
     await user.click(
@@ -1021,7 +1081,11 @@ describe("PiExtensionsPanel", () => {
     );
     await waitFor(() =>
       expect(mocks.setExtensionEnabled).toHaveBeenCalledWith(
-        "local-one",
+        {
+          scope: "global",
+          resourceKey: "local-one",
+          projectDir: undefined,
+        },
         false,
       ),
     );
@@ -1072,6 +1136,117 @@ describe("PiExtensionsPanel", () => {
       screen.getByRole("switch", {
         name: 'piExtensions.actions.toggle:{"name":"Local One"}',
       }),
+    );
+  });
+
+  it("loads the recent project and trusts an untrusted project", async () => {
+    const projectInventory: PiExtensionInventory = {
+      ...inventory,
+      project: { projectDir: "C:\\work\\demo", trusted: false },
+      runtimes: [
+        ...inventory.runtimes,
+        {
+          scope: "project",
+          projectDir: "C:\\work\\demo",
+          piDir: "C:\\work\\demo\\.pi",
+          settingsPath: "C:\\work\\demo\\.pi\\settings.json",
+          cliAvailable: true,
+          mutable: true,
+        },
+      ],
+      extensions: [
+        ...inventory.extensions,
+        {
+          ...inventory.extensions[0],
+          id: "project-local",
+          name: "Project Local",
+          scope: "project",
+          resourceKey: "project-local",
+          projectDir: "C:\\work\\demo",
+        },
+      ],
+    };
+    mocks.getSettings.mockResolvedValue({
+      showInTray: true,
+      minimizeToTrayOnClose: false,
+      recentPiProjectDir: "C:\\work\\demo",
+    });
+    mocks.getInventory.mockImplementation((projectDir?: string) =>
+      Promise.resolve(projectDir ? projectInventory : inventory),
+    );
+    mocks.trustProject.mockResolvedValue({
+      ...projectInventory,
+      project: { ...projectInventory.project!, trusted: true },
+    });
+    renderPanel();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("Project Local")).toBeInTheDocument();
+    await user.click(
+      screen.getAllByRole("button", {
+        name: "piExtensions.project.trust",
+      })[0],
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "piExtensions.project.trustConfirm",
+      }),
+    );
+    await waitFor(() =>
+      expect(mocks.trustProject).toHaveBeenCalledWith("C:\\work\\demo"),
+    );
+  });
+
+  it("installs to the selected project with an explicit target", async () => {
+    mocks.getSettings.mockResolvedValue({
+      showInTray: true,
+      minimizeToTrayOnClose: false,
+      recentPiProjectDir: "C:\\work\\demo",
+    });
+    mocks.getInventory.mockResolvedValue({
+      ...inventory,
+      project: { projectDir: "C:\\work\\demo", trusted: true },
+      runtimes: [
+        ...inventory.runtimes,
+        {
+          ...inventory.runtimes[0],
+          scope: "project",
+          projectDir: "C:\\work\\demo",
+          piDir: "C:\\work\\demo\\.pi",
+          settingsPath: "C:\\work\\demo\\.pi\\settings.json",
+        },
+      ],
+    });
+    renderPanel();
+    const user = userEvent.setup();
+
+    await user.click(
+      (
+        await screen.findAllByRole("button", {
+          name: "piExtensions.add",
+        })
+      )[0],
+    );
+    await user.click(
+      screen.getByRole("button", { name: "piExtensions.scope.project" }),
+    );
+    await user.type(
+      screen.getByRole("textbox", {
+        name: "piExtensions.installDialog.labels.extensionFile",
+      }),
+      "C:\\work\\demo\\extension.ts",
+    );
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(
+      screen.getByRole("button", {
+        name: "piExtensions.installDialog.confirm",
+      }),
+    );
+    await waitFor(() =>
+      expect(mocks.registerLocalExtension).toHaveBeenCalledWith(
+        "C:\\work\\demo\\extension.ts",
+        { scope: "project", projectDir: "C:\\work\\demo" },
+      ),
     );
   });
 });
