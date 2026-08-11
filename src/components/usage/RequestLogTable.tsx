@@ -37,6 +37,7 @@ import {
   getLocaleFromLanguage,
   parseFiniteNumber,
 } from "./format";
+import { formatTimingPair } from "./timing";
 
 interface RequestLogTableProps {
   range: UsageRangeSelection;
@@ -46,6 +47,22 @@ interface RequestLogTableProps {
   model?: string;
   refreshIntervalMs: number;
   onRangeChange?: (range: UsageRangeSelection) => void;
+}
+
+function formatThinkingEffort(
+  effort: string | undefined,
+  t: ReturnType<typeof useTranslation>["t"],
+) {
+  if (!effort) return null;
+  if (effort.startsWith("budget:")) {
+    const budget = Number(effort.slice("budget:".length));
+    return Number.isFinite(budget)
+      ? t("usage.thinkingEffortBudget", {
+          count: budget,
+        })
+      : effort;
+  }
+  return t(`usage.thinkingEfforts.${effort}`, { defaultValue: effort });
 }
 
 export function RequestLogTable({
@@ -148,68 +165,72 @@ export function RequestLogTable({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="request-log-container space-y-4">
       <div className="rounded-md border border-border bg-card p-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {/* Status code */}
-          <Select
-            value={statusCode?.toString() || "all"}
-            onValueChange={(v) => {
-              const parsed = Number.parseInt(v, 10);
-              setStatusCode(
-                v === "all" || !Number.isFinite(parsed) ? undefined : parsed,
-              );
-              setPage(0);
-            }}
-          >
-            <SelectTrigger className="h-8 w-[100px] bg-background text-xs">
-              <SelectValue placeholder={t("usage.statusCode")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("common.all")}</SelectItem>
-              {(facets?.statusCodes ?? []).map((facet) => (
-                <SelectItem key={facet.value} value={facet.value}>
-                  {facet.value}
-                  {facet.value === "200" ? " OK" : ""} ({facet.count})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="request-log-toolbar flex flex-wrap items-center gap-1.5">
+          <div className="request-log-filter-group flex flex-wrap items-center gap-1.5">
+            {/* Status code */}
+            <Select
+              value={statusCode?.toString() || "all"}
+              onValueChange={(v) => {
+                const parsed = Number.parseInt(v, 10);
+                setStatusCode(
+                  v === "all" || !Number.isFinite(parsed) ? undefined : parsed,
+                );
+                setPage(0);
+              }}
+            >
+              <SelectTrigger className="h-8 w-[100px] bg-background text-xs">
+                <SelectValue placeholder={t("usage.statusCode")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("common.all")}</SelectItem>
+                {(facets?.statusCodes ?? []).map((facet) => (
+                  <SelectItem key={facet.value} value={facet.value}>
+                    {facet.value}
+                    {facet.value === "200" ? " OK" : ""} ({facet.count})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select
-            value={failureKind || "all"}
-            onValueChange={(value) => {
-              setFailureKind(value === "all" ? undefined : value);
-              setPage(0);
-            }}
-          >
-            <SelectTrigger className="h-8 w-[190px] bg-background text-xs">
-              <SelectValue placeholder={t("usage.failureKind")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("usage.allFailureKinds")}</SelectItem>
-              {(facets?.failureKinds ?? []).map((facet) => (
-                <SelectItem key={facet.value} value={facet.value}>
-                  {t(`usage.failureKinds.${facet.value}`, {
-                    defaultValue: facet.value,
-                  })}{" "}
-                  ({facet.count})
+            <Select
+              value={failureKind || "all"}
+              onValueChange={(value) => {
+                setFailureKind(value === "all" ? undefined : value);
+                setPage(0);
+              }}
+            >
+              <SelectTrigger className="h-8 w-[190px] bg-background text-xs">
+                <SelectValue placeholder={t("usage.failureKind")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  {t("usage.allFailureKinds")}
                 </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                {(facets?.failureKinds ?? []).map((facet) => (
+                  <SelectItem key={facet.value} value={facet.value}>
+                    {t(`usage.failureKinds.${facet.value}`, {
+                      defaultValue: facet.value,
+                    })}{" "}
+                    ({facet.count})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          {onRangeChange && (
-            <UsageDateRangePicker
-              selection={range}
-              triggerLabel={rangeLabel}
-              onApply={onRangeChange}
-            />
-          )}
+            {onRangeChange && (
+              <UsageDateRangePicker
+                selection={range}
+                triggerLabel={rangeLabel}
+                onApply={onRangeChange}
+              />
+            )}
+          </div>
           <Button
             variant="outline"
             size="sm"
-            className="ml-auto h-8"
+            className="request-log-export ml-auto h-8 shrink-0"
             onClick={() => void handleExport()}
             disabled={isExporting || total === 0}
           >
@@ -227,8 +248,8 @@ export function RequestLogTable({
         <div className="h-[400px] animate-pulse rounded bg-muted" />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-md border border-border bg-card">
-            <Table>
+          <div className="overflow-hidden rounded-md border border-border bg-card">
+            <Table className="min-w-[920px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-center whitespace-nowrap">
@@ -273,6 +294,10 @@ export function RequestLogTable({
                 ) : (
                   logs.map((log) => {
                     const unpriced = isUnpricedUsage(log);
+                    const thinkingEffort = formatThinkingEffort(
+                      log.thinkingEffort,
+                      t,
+                    );
                     return (
                       <TableRow
                         key={log.requestId}
@@ -315,6 +340,14 @@ export function RequestLogTable({
                               log.model
                             )}
                           </div>
+                          {thinkingEffort && (
+                            <div
+                              className="mx-auto mt-1 w-fit max-w-full truncate rounded border border-border bg-muted/50 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                              title={log.thinkingEffortSource || thinkingEffort}
+                            >
+                              {t("usage.thinkingEffortShort")}: {thinkingEffort}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-center px-1.5">
                           {(() => {
@@ -372,12 +405,7 @@ export function RequestLogTable({
                             )}
                         </TableCell>
                         <TableCell className="text-center whitespace-nowrap text-xs tabular-nums">
-                          {(log.latencyMs / 1000).toFixed(1)}s
-                          {log.firstTokenMs != null && (
-                            <span className="text-muted-foreground">
-                              /{(log.firstTokenMs / 1000).toFixed(1)}s
-                            </span>
-                          )}
+                          {formatTimingPair(log.latencyMs, log.firstTokenMs)}
                         </TableCell>
                         <TableCell className="text-center">
                           <span
@@ -411,9 +439,11 @@ export function RequestLogTable({
             </Table>
           </div>
 
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>{t("usage.totalRecords", { total })}</span>
-            <div className="flex items-center gap-1">
+          <div className="request-log-pagination flex items-center justify-between gap-3 text-sm text-muted-foreground">
+            <span className="shrink-0">
+              {t("usage.totalRecords", { total })}
+            </span>
+            <div className="request-log-page-controls flex min-w-0 items-center gap-1">
               <Button
                 size="sm"
                 variant="outline"
@@ -422,47 +452,50 @@ export function RequestLogTable({
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              {(() => {
-                const pages: (number | string)[] = [];
-                if (totalPages <= 9) {
-                  for (let i = 0; i < totalPages; i++) pages.push(i);
-                } else {
-                  const pageSet = new Set<number>();
-                  for (let i = 0; i < 3; i++) pageSet.add(i);
-                  for (let i = totalPages - 3; i < totalPages; i++)
-                    pageSet.add(i);
-                  for (
-                    let i = Math.max(0, page - 1);
-                    i <= Math.min(totalPages - 1, page + 1);
-                    i++
-                  )
-                    pageSet.add(i);
-                  const sorted = Array.from(pageSet).sort((a, b) => a - b);
-                  for (let i = 0; i < sorted.length; i++) {
-                    if (i > 0 && sorted[i] - sorted[i - 1] > 1) {
-                      pages.push(`ellipsis-${i}`);
+              <div className="request-log-page-numbers flex min-w-0 items-center gap-1">
+                {(() => {
+                  const pages: (number | string)[] = [];
+                  if (totalPages <= 7) {
+                    for (let i = 0; i < totalPages; i++) pages.push(i);
+                  } else {
+                    const pageSet = new Set<number>([
+                      0,
+                      totalPages - 1,
+                      page - 1,
+                      page,
+                      page + 1,
+                    ]);
+                    const sorted = Array.from(pageSet)
+                      .filter(
+                        (candidate) => candidate >= 0 && candidate < totalPages,
+                      )
+                      .sort((a, b) => a - b);
+                    for (let i = 0; i < sorted.length; i++) {
+                      if (i > 0 && sorted[i] - sorted[i - 1] > 1) {
+                        pages.push(`ellipsis-${i}`);
+                      }
+                      pages.push(sorted[i]);
                     }
-                    pages.push(sorted[i]);
                   }
-                }
-                return pages.map((p) =>
-                  typeof p === "string" ? (
-                    <span key={p} className="px-2 text-muted-foreground">
-                      ...
-                    </span>
-                  ) : (
-                    <Button
-                      key={p}
-                      variant={p === page ? "default" : "outline"}
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={() => setPage(p)}
-                    >
-                      {p + 1}
-                    </Button>
-                  ),
-                );
-              })()}
+                  return pages.map((p) =>
+                    typeof p === "string" ? (
+                      <span key={p} className="px-1 text-muted-foreground">
+                        ...
+                      </span>
+                    ) : (
+                      <Button
+                        key={p}
+                        variant={p === page ? "default" : "outline"}
+                        size="sm"
+                        className="h-8 w-8 shrink-0 p-0"
+                        onClick={() => setPage(p)}
+                      >
+                        {p + 1}
+                      </Button>
+                    ),
+                  );
+                })()}
+              </div>
               <Button
                 size="sm"
                 variant="outline"
@@ -471,7 +504,7 @@ export function RequestLogTable({
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
-              <div className="flex items-center gap-1 ml-2">
+              <div className="request-log-page-jump ml-2 flex shrink-0 items-center gap-1">
                 <Input
                   type="text"
                   value={pageInput}

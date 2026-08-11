@@ -250,117 +250,119 @@ export function UsageDashboard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="space-y-5 pb-8"
+      className="usage-dashboard-container space-y-5 pb-8"
     >
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-2">
+      <div className="usage-dashboard-header flex flex-col justify-between gap-4 mb-2">
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-semibold">{t("usage.title")}</h2>
           <p className="text-sm text-muted-foreground">{t("usage.subtitle")}</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center rounded-md border border-border bg-background p-1">
-            {APP_FILTER_OPTIONS.map((type) => {
-              const label = t(`usage.appFilter.${type}`);
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => changeAppType(type)}
-                  title={label}
-                  aria-label={label}
-                  className={cn(
-                    "flex h-8 items-center justify-center rounded-md px-2.5 transition-colors",
-                    appType === type
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  {type === "all" ? (
-                    <LayoutGrid className="h-4 w-4" />
-                  ) : (
-                    <ProviderIcon
-                      icon={APP_FILTER_ICON[type]}
-                      name={label}
-                      size={16}
-                    />
-                  )}
-                </button>
-              );
-            })}
+        <div className="usage-dashboard-toolbar flex flex-wrap items-center gap-2">
+          <div className="usage-dashboard-primary-filters flex items-center gap-2">
+            <div className="usage-dashboard-app-filter flex items-center rounded-md border border-border bg-background p-1">
+              {APP_FILTER_OPTIONS.map((type) => {
+                const label = t(`usage.appFilter.${type}`);
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => changeAppType(type)}
+                    title={label}
+                    aria-label={label}
+                    className={cn(
+                      "flex h-8 shrink-0 items-center justify-center rounded-md px-2.5 transition-colors",
+                      appType === type
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    {type === "all" ? (
+                      <LayoutGrid className="h-4 w-4" />
+                    ) : (
+                      <ProviderIcon
+                        icon={APP_FILTER_ICON[type]}
+                        name={label}
+                        size={16}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <Select
+              value={
+                providerName != null ? encodeOptionValue(providerName) : "all"
+              }
+              onValueChange={(v) => changeProviderName(decodeOptionValue(v))}
+              onOpenChange={setProviderOptionsOpen}
+            >
+              <SelectTrigger
+                className="usage-dashboard-select h-9 w-[112px] shrink-0 bg-background text-xs focus:border-border-default [&>span]:min-w-0 [&>span]:truncate"
+                title={providerName ?? t("usage.filterBySource")}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-w-[280px]">
+                <SelectItem value="all">{t("usage.allSources")}</SelectItem>
+                {providerOptionsLoading && providerOptions.length === 0 && (
+                  <div className="flex h-8 items-center justify-center">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+                {providerOptions.map((name) => (
+                  <SelectItem
+                    key={name}
+                    value={encodeOptionValue(name)}
+                    title={name}
+                    className="[&>span]:min-w-0 [&>span]:truncate"
+                  >
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={model != null ? encodeOptionValue(model) : "all"}
+              onValueChange={(v) => setModel(decodeOptionValue(v))}
+              onOpenChange={setModelOptionsOpen}
+            >
+              <SelectTrigger
+                className="usage-dashboard-select h-9 w-[112px] shrink-0 bg-background text-xs focus:border-border-default [&>span]:min-w-0 [&>span]:truncate"
+                title={model ?? t("usage.filterByModel")}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-w-[280px]">
+                <SelectItem value="all">{t("usage.allModels")}</SelectItem>
+                {modelOptionsLoading && modelOptions.length === 0 && (
+                  <div className="flex h-8 items-center justify-center">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+                {modelOptions.map((name) => (
+                  <SelectItem
+                    key={name}
+                    value={encodeOptionValue(name)}
+                    title={name}
+                    className="[&>span]:min-w-0 [&>span]:truncate"
+                  >
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          <Select
-            value={
-              providerName != null ? encodeOptionValue(providerName) : "all"
-            }
-            onValueChange={(v) => changeProviderName(decodeOptionValue(v))}
-            onOpenChange={setProviderOptionsOpen}
-          >
-            <SelectTrigger
-              className="h-9 w-[100px] bg-background text-xs focus:border-border-default [&>span]:min-w-0 [&>span]:truncate"
-              title={providerName ?? t("usage.filterBySource")}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="max-w-[280px]">
-              <SelectItem value="all">{t("usage.allSources")}</SelectItem>
-              {providerOptionsLoading && providerOptions.length === 0 && (
-                <div className="flex h-8 items-center justify-center">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                </div>
-              )}
-              {providerOptions.map((name) => (
-                <SelectItem
-                  key={name}
-                  value={encodeOptionValue(name)}
-                  title={name}
-                  className="[&>span]:min-w-0 [&>span]:truncate"
-                >
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={model != null ? encodeOptionValue(model) : "all"}
-            onValueChange={(v) => setModel(decodeOptionValue(v))}
-            onOpenChange={setModelOptionsOpen}
-          >
-            <SelectTrigger
-              className="h-9 w-[100px] bg-background text-xs focus:border-border-default [&>span]:min-w-0 [&>span]:truncate"
-              title={model ?? t("usage.filterByModel")}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="max-w-[280px]">
-              <SelectItem value="all">{t("usage.allModels")}</SelectItem>
-              {modelOptionsLoading && modelOptions.length === 0 && (
-                <div className="flex h-8 items-center justify-center">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                </div>
-              )}
-              {modelOptions.map((name) => (
-                <SelectItem
-                  key={name}
-                  value={encodeOptionValue(name)}
-                  title={name}
-                  className="[&>span]:min-w-0 [&>span]:truncate"
-                >
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <div className="flex items-center gap-2 ml-auto lg:ml-0">
+          <div className="usage-dashboard-secondary-filters flex items-center gap-2">
             <Select
               value={String(refreshIntervalMs)}
               onValueChange={(v) => changeRefreshInterval(Number(v))}
             >
               <SelectTrigger
-                className="h-9 w-[100px] bg-background text-xs focus:border-border-default"
+                className="h-9 w-[112px] shrink-0 bg-background text-xs focus:border-border-default"
                 title={t("usage.refreshInterval")}
                 aria-label={t("usage.refreshInterval")}
               >
@@ -407,7 +409,10 @@ export function UsageDashboard({
       <div className="space-y-4">
         <Tabs defaultValue="logs" className="w-full">
           <div className="flex items-center justify-between mb-4">
-            <TabsList className="border border-border bg-background p-1">
+            <TabsList
+              layout="scrollable"
+              className="border border-border bg-background p-1"
+            >
               <TabsTrigger value="logs" className="gap-2">
                 <ListFilter className="h-4 w-4" />
                 {t("usage.requestLogs")}

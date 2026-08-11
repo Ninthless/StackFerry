@@ -16,11 +16,27 @@ import {
   type RequestLog,
   type RouteAttempt,
 } from "@/types/usage";
+import { formatTiming } from "./timing";
 
 interface RequestDetailPanelProps {
   requestId: string;
   fallbackRequest?: RequestLog;
   onClose: () => void;
+}
+
+function formatThinkingEffort(
+  effort: string,
+  t: ReturnType<typeof useTranslation>["t"],
+) {
+  if (effort.startsWith("budget:")) {
+    const budget = Number(effort.slice("budget:".length));
+    return Number.isFinite(budget)
+      ? t("usage.thinkingEffortBudget", {
+          count: budget,
+        })
+      : effort;
+  }
+  return t(`usage.thinkingEfforts.${effort}`, { defaultValue: effort });
 }
 
 export function RequestDetailPanel({
@@ -181,6 +197,23 @@ export function RequestDetailPanel({
               </>
             )}
           </div>
+          {request.thinkingEffort && (
+            <div>
+              <dt className="text-muted-foreground">
+                {t("usage.thinkingEffort", "思考强度")}
+              </dt>
+              <dd>
+                <div className="font-medium">
+                  {formatThinkingEffort(request.thinkingEffort, t)}
+                </div>
+                {request.thinkingEffortSource && (
+                  <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                    {request.thinkingEffortSource}
+                  </div>
+                )}
+              </dd>
+            </div>
+          )}
           <div>
             <dt className="text-muted-foreground">
               {t("usage.status", "状态")}
@@ -331,14 +364,6 @@ export function RequestDetailPanel({
               {(freshInput + request.outputTokens).toLocaleString()}
             </dd>
           </div>
-          {request.firstTokenMs != null && (
-            <div>
-              <dt className="text-muted-foreground">
-                {t("usage.firstToken", "首个有效输出")}
-              </dt>
-              <dd className="font-mono">{request.firstTokenMs}ms</dd>
-            </div>
-          )}
           {request.failureKind && (
             <div className="col-span-2">
               <dt className="text-muted-foreground">
@@ -445,7 +470,13 @@ export function RequestDetailPanel({
             <dt className="text-muted-foreground">
               {t("usage.latency", "延迟")}
             </dt>
-            <dd className="font-mono">{request.latencyMs}ms</dd>
+            <dd className="font-mono">{formatTiming(request.latencyMs)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">
+              {t("usage.firstToken", "首个有效输出")}
+            </dt>
+            <dd className="font-mono">{formatTiming(request.firstTokenMs)}</dd>
           </div>
         </dl>
       </div>

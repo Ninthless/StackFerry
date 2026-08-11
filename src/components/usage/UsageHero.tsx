@@ -195,12 +195,13 @@ export function UsageHero({
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
+      className="usage-hero-container"
     >
       <Card className="relative overflow-hidden">
-        <CardContent className="p-4 md:p-5">
+        <CardContent className="usage-hero-content p-4">
           <div className="flex flex-col gap-4">
             {/* Top row: Main Token Count, Requests, Cost */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="usage-hero-summary flex flex-col justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="rounded-md border border-primary/20 bg-primary/10 p-2.5">
                   <AppGlyph appType={appType} />
@@ -219,7 +220,7 @@ export function UsageHero({
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span
-                      className="text-xl font-bold leading-none tabular-nums md:text-2xl"
+                      className="usage-hero-total text-xl font-bold leading-none tabular-nums"
                       title={realTotal.toLocaleString()}
                     >
                       {realTotal.toLocaleString()}
@@ -254,7 +255,7 @@ export function UsageHero({
             </div>
 
             {/* Bottom row: Breakdown and Hit Rate */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="usage-hero-stats grid grid-cols-2 gap-3">
               <MiniStat
                 icon={<ArrowDownToLine className="h-3.5 w-3.5" />}
                 label={t("usage.freshInput", "新增输入")}
@@ -282,7 +283,7 @@ export function UsageHero({
                 accent="text-foreground"
               />
 
-              <div className="col-span-2 flex flex-col justify-center rounded-md border border-border bg-background p-3 lg:col-span-1">
+              <div className="usage-hero-hit-rate col-span-2 flex flex-col justify-center rounded-md border border-border bg-background p-3">
                 <div className="flex items-center justify-between text-[11px] mb-2">
                   <span className="text-muted-foreground font-medium">
                     {t("usage.cacheHitRate", "缓存命中率")}

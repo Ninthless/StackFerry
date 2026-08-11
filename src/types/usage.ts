@@ -15,6 +15,8 @@ export interface RequestLog {
   apiType: string;
   model: string;
   requestModel?: string;
+  thinkingEffort?: string;
+  thinkingEffortSource?: string;
   /** 写入时实际用于计价的模型名；路由接管 + request 计价模式下可能与 model 不同 */
   pricingModel?: string;
   costMultiplier: string;
