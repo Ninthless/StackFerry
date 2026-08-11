@@ -83,6 +83,8 @@ hmac = "0.12"
 json5 = "0.4"
 json-five = "0.3.1"
 sys-locale = "0.3"
+globset = "0.4"
+ignore = "0.4"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"

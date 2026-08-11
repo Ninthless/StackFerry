@@ -77,6 +77,10 @@ pub fn get_settings_path() -> PathBuf {
     get_pi_dir().join("settings.json")
 }
 
+pub fn get_project_pi_dir(project_dir: &Path) -> PathBuf {
+    project_dir.join(".pi")
+}
+
 pub(crate) fn get_proxy_credential(provider_id: &str) -> Result<Option<Value>, AppError> {
     Ok(read_object(&get_pi_dir().join("auth.json"))?
         .get(provider_id)

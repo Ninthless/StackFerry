@@ -425,6 +425,8 @@ pub struct AppSettings {
     pub hermes_config_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pi_config_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recent_pi_project_dir: Option<String>,
 
     // ===== 当前供应商 ID（设备级）=====
     /// 当前 Claude 供应商 ID（本地存储，优先于数据库 is_current）
@@ -538,6 +540,7 @@ impl Default for AppSettings {
             openclaw_config_dir: None,
             hermes_config_dir: None,
             pi_config_dir: None,
+            recent_pi_project_dir: None,
             current_provider_claude: None,
             current_provider_claude_desktop: None,
             current_provider_codex: None,
@@ -622,6 +625,13 @@ impl AppSettings {
 
         self.pi_config_dir = self
             .pi_config_dir
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+
+        self.recent_pi_project_dir = self
+            .recent_pi_project_dir
             .as_ref()
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
@@ -949,6 +959,12 @@ pub fn get_pi_override_dir() -> Option<PathBuf> {
         .map(|p| resolve_override_path(p))
 }
 
+pub fn set_recent_pi_project_dir(project_dir: Option<String>) -> Result<(), AppError> {
+    mutate_settings(|settings| {
+        settings.recent_pi_project_dir = project_dir;
+    })
+}
+
 pub fn preserve_codex_official_auth_on_switch() -> bool {
     settings_store()
         .read()
@@ -1231,5 +1247,18 @@ mod tests {
 
         assert!(default_settings.use_app_window_controls);
         assert!(!fallback_settings.use_app_window_controls);
+    }
+
+    #[test]
+    fn recent_pi_project_dir_is_trimmed() {
+        let mut settings = AppSettings {
+            recent_pi_project_dir: Some("  C:\\workspace\\project  ".to_string()),
+            ..AppSettings::default()
+        };
+        settings.normalize_paths();
+        assert_eq!(
+            settings.recent_pi_project_dir.as_deref(),
+            Some("C:\\workspace\\project")
+        );
     }
 }

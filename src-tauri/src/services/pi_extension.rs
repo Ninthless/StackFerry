@@ -1,5 +1,7 @@
 use crate::config::{atomic_write, write_json_file};
 use futures::{stream, StreamExt};
+use globset::{Glob, GlobSet, GlobSetBuilder};
+use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -19,6 +21,7 @@ use std::os::windows::process::CommandExt;
 
 const STATE_FILE: &str = ".stackferry-extensions-state.json";
 const LOCK_DIR: &str = ".stackferry-mcp-write.lock";
+const TRUST_LOCK_DIR: &str = "trust.json.lock";
 const STATE_VERSION: u32 = 1;
 const CLI_TIMEOUT: Duration = Duration::from_secs(120);
 const CLI_PROBE_TIMEOUT: Duration = Duration::from_secs(3);
@@ -30,9 +33,18 @@ const NPM_LATEST_RESPONSE_LIMIT: usize = 512 * 1024;
 const NPM_SEARCH_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const NPM_LATEST_CONCURRENCY: usize = 5;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum PiExtensionScope {
+    Global,
+    Project,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PiRuntimeStatus {
+    pub scope: PiExtensionScope,
+    pub project_dir: Option<String>,
     pub pi_dir: String,
     pub settings_path: String,
     pub cli_available: bool,
@@ -46,6 +58,9 @@ pub struct PiRuntimeStatus {
 #[serde(rename_all = "camelCase")]
 pub struct PiExtensionResource {
     pub id: String,
+    pub resource_key: String,
+    pub scope: PiExtensionScope,
+    pub project_dir: Option<String>,
     pub name: String,
     pub path: String,
     pub enabled: bool,
@@ -76,12 +91,16 @@ pub struct PiExtensionConflict {
     pub other_extension_id: String,
     pub other_extension_name: String,
     pub other_extension_path: String,
+    pub other_extension_scope: PiExtensionScope,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PiInstalledPackage {
     pub id: String,
+    pub resource_key: String,
+    pub scope: PiExtensionScope,
+    pub project_dir: Option<String>,
     pub source: String,
     pub source_type: String,
     pub display_name: String,
@@ -94,14 +113,30 @@ pub struct PiInstalledPackage {
     pub theme_count: usize,
     pub extensions: Vec<PiExtensionResource>,
     pub error: Option<String>,
+    #[serde(skip)]
+    autoload: bool,
+    #[serde(skip)]
+    entry: Value,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PiInventory {
     pub runtime: PiRuntimeStatus,
+    pub runtimes: Vec<PiRuntimeStatus>,
+    pub project_dir: Option<String>,
+    pub project_trust: Option<PiProjectTrust>,
     pub extensions: Vec<PiExtensionResource>,
     pub packages: Vec<PiInstalledPackage>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PiProjectTrust {
+    pub project_dir: String,
+    pub trusted: bool,
+    pub decision: Option<bool>,
+    pub inherited_from: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -210,7 +245,9 @@ struct ExtensionAnalysis {
 #[derive(Debug, Clone)]
 enum PiCliKind {
     Direct,
+    #[cfg(target_os = "windows")]
     WindowsCmd,
+    #[cfg(target_os = "windows")]
     NodeScript(PathBuf),
 }
 
@@ -248,8 +285,12 @@ struct PiWriteLock {
 
 impl PiWriteLock {
     fn acquire(dir: &Path) -> Result<Self, String> {
+        Self::acquire_named(dir, LOCK_DIR)
+    }
+
+    fn acquire_named(dir: &Path, name: &str) -> Result<Self, String> {
         fs::create_dir_all(dir).map_err(|error| format!("创建 Pi 目录失败: {error}"))?;
-        let path = dir.join(LOCK_DIR);
+        let path = dir.join(name);
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
             match fs::create_dir(&path) {
@@ -284,21 +325,213 @@ fn process_lock() -> &'static Mutex<()> {
     LOCK.get_or_init(|| Mutex::new(()))
 }
 
+fn validate_project_dir(value: &str) -> Result<PathBuf, String> {
+    let value = value.trim();
+    if value.is_empty() || value.contains(['\n', '\r', '\0']) {
+        return Err("Pi 项目目录无效".to_string());
+    }
+    let expanded = expand_home_path(value);
+    if !expanded.is_absolute() {
+        return Err("Pi 项目目录必须使用绝对路径".to_string());
+    }
+    let metadata = fs::symlink_metadata(&expanded)
+        .map_err(|error| format!("读取 Pi 项目目录失败: {error}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("Pi 项目目录必须是存在的非 symlink 目录".to_string());
+    }
+    fs::canonicalize(expanded).map_err(|error| format!("解析 Pi 项目目录失败: {error}"))
+}
+
+fn scope_dir(
+    scope: PiExtensionScope,
+    project_dir: Option<&str>,
+) -> Result<(PathBuf, Option<PathBuf>), String> {
+    match scope {
+        PiExtensionScope::Global => Ok((crate::pi_config::get_pi_dir(), None)),
+        PiExtensionScope::Project => {
+            let project = validate_project_dir(
+                project_dir.ok_or_else(|| "项目作用域需要 projectDir".to_string())?,
+            )?;
+            ensure_project_trusted(&crate::pi_config::get_pi_dir(), &project)?;
+            Ok((
+                crate::pi_config::get_project_pi_dir(&project),
+                Some(project),
+            ))
+        }
+    }
+}
+
+fn validate_project_pi_dir(project_dir: &Path, pi_dir: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(pi_dir) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            Err("项目 .pi 目录不允许使用 symlink".to_string())
+        }
+        Ok(metadata) if !metadata.is_dir() => Err("项目 .pi 必须是目录".to_string()),
+        Ok(_) => {
+            let canonical = fs::canonicalize(pi_dir)
+                .map_err(|error| format!("解析项目 .pi 目录失败: {error}"))?;
+            if canonical.starts_with(project_dir) {
+                Ok(())
+            } else {
+                Err("项目 .pi 目录逃逸项目根".to_string())
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("读取项目 .pi 目录失败: {error}")),
+    }
+}
+
+fn expand_home_path(value: &str) -> PathBuf {
+    if value == "~" {
+        return crate::config::get_home_dir();
+    }
+    if let Some(relative) = value
+        .strip_prefix("~/")
+        .or_else(|| value.strip_prefix("~\\"))
+    {
+        return crate::config::get_home_dir().join(relative);
+    }
+    PathBuf::from(value)
+}
+
+fn get_project_trust_in_dir(global_pi_dir: &Path, project_dir: &Path) -> PiProjectTrust {
+    let project_dir_string = path_string(project_dir);
+    let trust_path = global_pi_dir.join("trust.json");
+    let root = read_json_object(&trust_path).unwrap_or_default();
+    let mut current = Some(project_dir);
+    while let Some(path) = current {
+        let key = path_string(path);
+        if let Some(decision) = root.get(&key).and_then(Value::as_bool) {
+            return PiProjectTrust {
+                project_dir: project_dir_string,
+                trusted: decision,
+                decision: Some(decision),
+                inherited_from: (path != project_dir).then_some(key),
+            };
+        }
+        current = path.parent();
+    }
+    PiProjectTrust {
+        project_dir: project_dir_string,
+        trusted: false,
+        decision: None,
+        inherited_from: None,
+    }
+}
+
+fn ensure_project_trusted(global_pi_dir: &Path, project_dir: &Path) -> Result<(), String> {
+    if get_project_trust_in_dir(global_pi_dir, project_dir).trusted {
+        Ok(())
+    } else {
+        Err("项目未受信任，拒绝修改 Pi 项目资源".to_string())
+    }
+}
+
+pub fn set_project_trust(project_dir: String, trusted: bool) -> Result<PiInventory, String> {
+    let project_dir = validate_project_dir(&project_dir)?;
+    let global_pi_dir = crate::pi_config::get_pi_dir();
+    let _process_guard = process_lock()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _file_guard = PiWriteLock::acquire_named(&global_pi_dir, TRUST_LOCK_DIR)?;
+    let trust_path = global_pi_dir.join("trust.json");
+    let snapshot = snapshot_file(&trust_path)?;
+    let mut root = match &snapshot.bytes {
+        Some(bytes) => serde_json::from_slice::<Value>(bytes)
+            .map_err(|error| format!("Pi trust.json JSON 无效: {error}"))?
+            .as_object()
+            .cloned()
+            .ok_or_else(|| "Pi trust.json 根节点必须是对象".to_string())?,
+        None => Map::new(),
+    };
+    if root
+        .values()
+        .any(|value| !value.is_boolean() && !value.is_null())
+    {
+        return Err("Pi trust.json decision 必须是 boolean 或 null".to_string());
+    }
+    root.insert(path_string(&project_dir), Value::Bool(trusted));
+    ensure_bytes_unchanged(&trust_path, snapshot.bytes.as_deref())?;
+    write_json_file(&trust_path, &Value::Object(root)).map_err(|error| error.to_string())?;
+    crate::settings::set_recent_pi_project_dir(Some(path_string(&project_dir)))
+        .map_err(|error| error.to_string())?;
+    Ok(get_scoped_inventory(Some(&project_dir)))
+}
+
 fn npm_search_cache() -> &'static Mutex<HashMap<NpmSearchCacheKey, NpmSearchCacheEntry>> {
     static CACHE: OnceLock<Mutex<HashMap<NpmSearchCacheKey, NpmSearchCacheEntry>>> =
         OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-pub fn get_inventory() -> PiInventory {
-    get_inventory_in_dir(&crate::pi_config::get_pi_dir())
+pub fn get_inventory(project_dir: Option<String>) -> Result<PiInventory, String> {
+    let project = project_dir
+        .as_deref()
+        .map(validate_project_dir)
+        .transpose()?;
+    if let Some(project) = &project {
+        crate::settings::set_recent_pi_project_dir(Some(path_string(project)))
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(get_scoped_inventory(project.as_deref()))
 }
 
-fn get_inventory_in_dir(pi_dir: &Path) -> PiInventory {
+fn get_scoped_inventory(project_dir: Option<&Path>) -> PiInventory {
+    let global_dir = crate::pi_config::get_pi_dir();
+    get_scoped_inventory_in_dirs(&global_dir, project_dir)
+}
+
+fn get_scoped_inventory_in_dirs(global_dir: &Path, project_dir: Option<&Path>) -> PiInventory {
+    let mut global = get_inventory_in_dir(global_dir, PiExtensionScope::Global, None);
+    let mut runtimes = vec![global.runtime.clone()];
+    let mut project_trust = None;
+    if let Some(project_dir) = project_dir {
+        let trust = get_project_trust_in_dir(global_dir, project_dir);
+        project_trust = Some(trust.clone());
+        let project_pi_dir = crate::pi_config::get_project_pi_dir(project_dir);
+        let project_dir_string = path_string(project_dir);
+        let mut project = get_inventory_in_dir(
+            &project_pi_dir,
+            PiExtensionScope::Project,
+            Some(project_dir_string.clone()),
+        );
+        project.runtime.mutable &= trust.trusted;
+        if !trust.trusted {
+            project.runtime.error = Some("项目未受信任，Pi 项目资源不会加载".to_string());
+            project.extensions.clear();
+            project.packages.clear();
+        }
+        runtimes.push(project.runtime.clone());
+        global.extensions.extend(project.extensions);
+        global.packages.extend(project.packages);
+    }
+    apply_package_scope_precedence(&mut global.extensions, &mut global.packages);
+    mark_conflicts(&mut global.extensions);
+    sync_package_extensions(&global.extensions, &mut global.packages);
+    global.runtimes = runtimes;
+    global.project_dir = project_dir.map(path_string);
+    global.project_trust = project_trust;
+    global
+}
+
+fn get_inventory_for_target(pi_dir: &Path, project_dir: Option<&Path>) -> PiInventory {
+    match project_dir {
+        Some(project_dir) => get_scoped_inventory(Some(project_dir)),
+        None => get_scoped_inventory_in_dirs(pi_dir, None),
+    }
+}
+
+fn get_inventory_in_dir(
+    pi_dir: &Path,
+    scope: PiExtensionScope,
+    project_dir: Option<String>,
+) -> PiInventory {
     let settings_path = pi_dir.join("settings.json");
     let cli = locate_pi_cli();
     let snapshot = read_settings(&settings_path);
     let mut runtime = PiRuntimeStatus {
+        scope,
+        project_dir: project_dir.clone(),
         pi_dir: path_string(pi_dir),
         settings_path: path_string(&settings_path),
         cli_available: cli.is_some(),
@@ -309,13 +542,16 @@ fn get_inventory_in_dir(pi_dir: &Path) -> PiInventory {
     };
     let Ok(root) = snapshot.root else {
         return PiInventory {
+            runtimes: vec![runtime.clone()],
             runtime,
+            project_dir,
+            project_trust: None,
             extensions: Vec::new(),
             packages: Vec::new(),
         };
     };
-    let mut extensions = scan_standalone_extensions(pi_dir, &root);
-    let mut packages = parse_packages(pi_dir, &root);
+    let mut extensions = scan_standalone_extensions(pi_dir, &root, scope, project_dir.as_deref());
+    let mut packages = parse_packages(pi_dir, &root, scope, project_dir.as_deref());
     for package in &packages {
         extensions.extend(package.extensions.clone());
     }
@@ -340,7 +576,10 @@ fn get_inventory_in_dir(pi_dir: &Path) -> PiInventory {
     }
     runtime.mutable = true;
     PiInventory {
+        runtimes: vec![runtime.clone()],
         runtime,
+        project_dir,
+        project_trust: None,
         extensions,
         packages,
     }
@@ -410,6 +649,8 @@ fn validate_settings_root(root: Map<String, Value>) -> Result<Map<String, Value>
 fn scan_standalone_extensions(
     pi_dir: &Path,
     root: &Map<String, Value>,
+    scope: PiExtensionScope,
+    project_dir: Option<&str>,
 ) -> Vec<PiExtensionResource> {
     let mut candidates: Vec<(PathBuf, String)> = Vec::new();
     let auto_dir = pi_dir.join("extensions");
@@ -455,11 +696,15 @@ fn scan_standalone_extensions(
         .into_iter()
         .map(|(path, origin)| {
             let display_path = path_string(&path);
+            let resource_key = stable_id(&origin, &display_path, &display_path);
             let enabled = extension_enabled(explicit, pi_dir, &path, true);
             let exists = path.is_file();
             let analysis = analyze_extension(&path);
             PiExtensionResource {
-                id: stable_id(&origin, &display_path, &display_path),
+                id: scoped_id(scope, &resource_key),
+                resource_key,
+                scope,
+                project_dir: project_dir.map(str::to_string),
                 name: extension_name(&path),
                 path: display_path,
                 enabled,
@@ -485,21 +730,36 @@ fn scan_standalone_extensions(
         .collect()
 }
 
-fn parse_packages(pi_dir: &Path, root: &Map<String, Value>) -> Vec<PiInstalledPackage> {
+fn parse_packages(
+    pi_dir: &Path,
+    root: &Map<String, Value>,
+    scope: PiExtensionScope,
+    project_dir: Option<&str>,
+) -> Vec<PiInstalledPackage> {
     let Some(entries) = root.get("packages").and_then(Value::as_array) else {
         return Vec::new();
     };
     entries
         .iter()
         .enumerate()
-        .map(|(index, entry)| parse_package(pi_dir, index, entry))
+        .map(|(index, entry)| parse_package(pi_dir, index, entry, scope, project_dir))
         .collect()
 }
 
-fn parse_package(pi_dir: &Path, index: usize, entry: &Value) -> PiInstalledPackage {
+fn parse_package(
+    pi_dir: &Path,
+    index: usize,
+    entry: &Value,
+    scope: PiExtensionScope,
+    project_dir: Option<&str>,
+) -> PiInstalledPackage {
     let source = package_source(entry).unwrap_or_default().to_string();
     let source_type = package_source_type(&source).to_string();
-    let package_id = stable_id("package", &source, &index.to_string());
+    let resource_key = package_identity(pi_dir, &source);
+    let package_id = scoped_id(
+        scope,
+        &stable_id("package", &resource_key, &index.to_string()),
+    );
     let installed = find_installed_package(pi_dir, &source);
     let mut error = None;
     if source.is_empty() {
@@ -544,7 +804,13 @@ fn parse_package(pi_dir: &Path, index: usize, entry: &Value) -> PiInstalledPacka
             .map(|path| analyze_extension(path))
             .unwrap_or_default();
         extensions.push(PiExtensionResource {
-            id: stable_id("package", &source, &resource.relative),
+            id: scoped_id(
+                scope,
+                &stable_id("package", &resource_key, &resource.relative),
+            ),
+            resource_key: stable_id("package", &resource_key, &resource.relative),
+            scope,
+            project_dir: project_dir.map(str::to_string),
             name: resource
                 .path
                 .as_ref()
@@ -599,6 +865,9 @@ fn parse_package(pi_dir: &Path, index: usize, entry: &Value) -> PiInstalledPacka
     }
     PiInstalledPackage {
         id: package_id,
+        resource_key,
+        scope,
+        project_dir: project_dir.map(str::to_string),
         source,
         source_type,
         display_name,
@@ -611,6 +880,11 @@ fn parse_package(pi_dir: &Path, index: usize, entry: &Value) -> PiInstalledPacka
         theme_count: resources.themes.len(),
         extensions,
         error,
+        autoload: filters
+            .and_then(|object| object.get("autoload"))
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
+        entry: entry.clone(),
     }
 }
 
@@ -635,17 +909,26 @@ fn package_resources(path: &Path, manifest: Option<&Map<String, Value>>) -> Pack
             return resources;
         }
     };
-    let pi = manifest
-        .and_then(|value| value.get("pi"))
-        .and_then(Value::as_object);
+    let pi_value = manifest.and_then(|value| value.get("pi"));
+    let pi = pi_value.and_then(Value::as_object);
+    if pi_value.is_some() && pi.is_none() {
+        resources.extensions.push(PackageResource {
+            relative: String::new(),
+            path: None,
+            error: Some("package manifest pi 必须是对象".to_string()),
+        });
+        return resources;
+    }
     for (field, output) in [
         ("extensions", &mut resources.extensions),
         ("skills", &mut resources.skills),
         ("prompts", &mut resources.prompts),
         ("themes", &mut resources.themes),
     ] {
-        if let Some(value) = pi.and_then(|value| value.get(field)) {
-            collect_resource_values(path, &canonical_root, value, output);
+        if let Some(pi) = pi {
+            if let Some(value) = pi.get(field) {
+                collect_resource_values(path, &canonical_root, field, value, output);
+            }
         } else {
             collect_conventional(path, &canonical_root, field, output);
         }
@@ -656,31 +939,32 @@ fn package_resources(path: &Path, manifest: Option<&Map<String, Value>>) -> Pack
 fn collect_resource_values(
     root: &Path,
     canonical_root: &Path,
+    field: &str,
     value: &Value,
     output: &mut Vec<PackageResource>,
 ) {
-    match value {
-        Value::String(value) => output.push(resolve_package_resource(root, canonical_root, value)),
+    let entries: Vec<&str> = match value {
         Value::Array(values) => {
-            for value in values {
-                match value.as_str() {
-                    Some(value) => {
-                        output.push(resolve_package_resource(root, canonical_root, value))
-                    }
-                    None => output.push(PackageResource {
-                        relative: String::new(),
-                        path: None,
-                        error: Some("package manifest 资源 entry 必须是字符串".to_string()),
-                    }),
-                }
-            }
+            let Some(entries) = values.iter().map(Value::as_str).collect::<Option<Vec<_>>>() else {
+                output.push(PackageResource {
+                    relative: String::new(),
+                    path: None,
+                    error: Some("package manifest 资源 entry 必须是字符串".to_string()),
+                });
+                return;
+            };
+            entries
         }
-        _ => output.push(PackageResource {
-            relative: String::new(),
-            path: None,
-            error: Some("package manifest 资源必须是字符串或字符串数组".to_string()),
-        }),
-    }
+        _ => {
+            output.push(PackageResource {
+                relative: String::new(),
+                path: None,
+                error: Some("package manifest 资源必须是字符串数组".to_string()),
+            });
+            return;
+        }
+    };
+    collect_package_patterns(root, canonical_root, field, &entries, output);
 }
 
 fn collect_conventional(
@@ -705,57 +989,214 @@ fn collect_conventional(
         _ => return,
     };
     if dir_metadata.is_dir() {
-        if let Ok(entries) = fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                let resource = entry.path();
-                let metadata = match fs::symlink_metadata(&resource) {
-                    Ok(metadata) if !metadata.file_type().is_symlink() => metadata,
-                    Ok(_) => {
-                        output.push(PackageResource {
-                            relative: resource
-                                .strip_prefix(path)
-                                .map(|value| value.to_string_lossy().replace('\\', "/"))
-                                .unwrap_or_default(),
-                            path: None,
-                            error: Some("package conventional 资源不允许使用 symlink".to_string()),
-                        });
-                        continue;
-                    }
-                    Err(_) => continue,
-                };
-                let target = if field == "extensions" {
-                    if metadata.is_file() && is_script_extension(&resource) {
-                        Some(resource)
-                    } else if metadata.is_dir() {
-                        ["index.ts", "index.js"]
-                            .into_iter()
-                            .map(|name| resource.join(name))
-                            .find(|path| {
-                                fs::symlink_metadata(path).is_ok_and(|metadata| {
-                                    metadata.is_file() && !metadata.file_type().is_symlink()
-                                })
-                            })
-                    } else {
-                        None
-                    }
-                } else if metadata.is_file() || metadata.is_dir() {
-                    Some(resource)
-                } else {
-                    None
-                };
-                let Some(target) = target else {
-                    continue;
-                };
-                let relative = target
-                    .strip_prefix(path)
-                    .map(|value| value.to_string_lossy().replace('\\', "/"))
-                    .unwrap_or_default();
-                let resolved = resolve_package_resource(path, canonical_root, &relative);
-                if resolved.error.is_none() {
-                    output.push(resolved);
-                }
-            }
+        collect_package_patterns(path, canonical_root, field, &[field], output);
+    }
+}
+
+fn collect_package_patterns(
+    root: &Path,
+    canonical_root: &Path,
+    field: &str,
+    patterns: &[&str],
+    output: &mut Vec<PackageResource>,
+) {
+    let mut discovery = Vec::new();
+    let mut overrides = Vec::new();
+    for raw in patterns {
+        let (prefix, pattern) = raw
+            .chars()
+            .next()
+            .filter(|prefix| matches!(prefix, '!' | '+' | '-'))
+            .map_or((None, *raw), |prefix| (Some(prefix), &raw[1..]));
+        let pattern = pattern
+            .strip_prefix("./")
+            .unwrap_or(pattern)
+            .replace('\\', "/");
+        if pattern.trim().is_empty()
+            || Path::new(&pattern).is_absolute()
+            || Path::new(&pattern).components().any(|component| {
+                matches!(
+                    component,
+                    Component::Prefix(_) | Component::RootDir | Component::ParentDir
+                )
+            })
+        {
+            output.push(PackageResource {
+                relative: pattern,
+                path: None,
+                error: Some(format!("package manifest 资源路径无效: {raw}")),
+            });
+            continue;
         }
+        if let Some(prefix) = prefix {
+            overrides.push((prefix, pattern));
+        } else {
+            discovery.push(pattern);
+        }
+    }
+    let mut discovered = BTreeMap::new();
+    for entry in discovery {
+        for path in discover_resource_entry(root, field, &entry) {
+            let relative = path
+                .strip_prefix(root)
+                .map(|value| value.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
+            discovered.insert(relative, path);
+        }
+    }
+    let paths: Vec<String> = discovered.keys().cloned().collect();
+    let enabled = apply_resource_patterns(&paths, &overrides);
+    for relative in enabled {
+        let resolved = resolve_package_resource(root, canonical_root, &relative);
+        if !output
+            .iter()
+            .any(|resource| resource.relative == resolved.relative)
+        {
+            output.push(resolved);
+        }
+    }
+    output.sort_by(|left, right| left.relative.cmp(&right.relative));
+}
+
+fn discover_resource_entry(root: &Path, field: &str, entry: &str) -> Vec<PathBuf> {
+    let has_glob = entry.contains(['*', '?', '[', '{']);
+    if !has_glob {
+        let path = root.join(entry);
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            return Vec::new();
+        };
+        if metadata.file_type().is_symlink() {
+            return Vec::new();
+        }
+        if metadata.is_file() {
+            return resource_file_matches(field, &path)
+                .then_some(path)
+                .into_iter()
+                .collect();
+        }
+        if metadata.is_dir() {
+            return discover_resource_dir(&path, field);
+        }
+        return Vec::new();
+    }
+    let Ok(glob) = Glob::new(entry).map(|glob| glob.compile_matcher()) else {
+        return Vec::new();
+    };
+    discover_resource_dir(root, field)
+        .into_iter()
+        .filter(|path| {
+            path.strip_prefix(root)
+                .is_ok_and(|relative| glob.is_match(relative.to_string_lossy().replace('\\', "/")))
+        })
+        .collect()
+}
+
+fn discover_resource_dir(dir: &Path, field: &str) -> Vec<PathBuf> {
+    let mut builder = WalkBuilder::new(dir);
+    builder
+        .hidden(true)
+        .follow_links(false)
+        .git_ignore(true)
+        .git_global(false)
+        .git_exclude(false)
+        .parents(false)
+        .add_custom_ignore_filename(".fdignore");
+    let mut files = Vec::new();
+    for entry in builder.build().filter_map(Result::ok) {
+        let path = entry.path();
+        if path == dir
+            || path
+                .strip_prefix(dir)
+                .into_iter()
+                .flat_map(Path::components)
+                .any(|component| component.as_os_str() == "node_modules")
+            || entry
+                .file_type()
+                .is_none_or(|file_type| !file_type.is_file())
+            || fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+        {
+            continue;
+        }
+        if field == "skills" {
+            let name = path.file_name().and_then(|value| value.to_str());
+            if name == Some("SKILL.md") {
+                files.push(path.to_path_buf());
+                continue;
+            }
+            if path.parent() == Some(dir)
+                && path.extension().and_then(|value| value.to_str()) == Some("md")
+            {
+                files.push(path.to_path_buf());
+            }
+            continue;
+        }
+        if field == "extensions" {
+            let parent = path.parent().unwrap_or(dir);
+            let name = path.file_name().and_then(|value| value.to_str());
+            if parent == dir && is_script_extension(path)
+                || matches!(name, Some("index.ts") | Some("index.js"))
+                    && parent.parent() == Some(dir)
+            {
+                files.push(path.to_path_buf());
+            }
+            continue;
+        }
+        if resource_file_matches(field, path) {
+            files.push(path.to_path_buf());
+        }
+    }
+    files
+}
+
+fn apply_resource_patterns(paths: &[String], overrides: &[(char, String)]) -> Vec<String> {
+    let excludes: Vec<String> = overrides
+        .iter()
+        .filter(|(prefix, _)| *prefix == '!')
+        .map(|(_, pattern)| pattern.clone())
+        .collect();
+    let force_includes: HashSet<&str> = overrides
+        .iter()
+        .filter(|(prefix, _)| *prefix == '+')
+        .map(|(_, pattern)| pattern.as_str())
+        .collect();
+    let force_excludes: HashSet<&str> = overrides
+        .iter()
+        .filter(|(prefix, _)| *prefix == '-')
+        .map(|(_, pattern)| pattern.as_str())
+        .collect();
+    let exclude_set =
+        build_glob_set(&excludes).unwrap_or_else(|_| GlobSetBuilder::new().build().unwrap());
+    paths
+        .iter()
+        .filter(|path| {
+            let mut enabled = !exclude_set.is_match(path);
+            if force_includes.contains(path.as_str()) {
+                enabled = true;
+            }
+            if force_excludes.contains(path.as_str()) {
+                enabled = false;
+            }
+            enabled
+        })
+        .cloned()
+        .collect()
+}
+
+fn build_glob_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
+    let mut builder = GlobSetBuilder::new();
+    for pattern in patterns {
+        builder.add(Glob::new(pattern)?);
+    }
+    builder.build()
+}
+
+fn resource_file_matches(field: &str, path: &Path) -> bool {
+    match field {
+        "extensions" => is_script_extension(path),
+        "skills" => path.extension().and_then(|value| value.to_str()) == Some("md"),
+        "prompts" => path.extension().and_then(|value| value.to_str()) == Some("md"),
+        "themes" => path.extension().and_then(|value| value.to_str()) == Some("json"),
+        _ => false,
     }
 }
 
@@ -821,7 +1262,7 @@ fn resolve_package_resource(root: &Path, canonical_root: &Path, value: &str) -> 
 
 fn find_installed_package(pi_dir: &Path, source: &str) -> Option<PathBuf> {
     if package_source_type(source) == "local" {
-        let path = PathBuf::from(source.strip_prefix("local:").unwrap_or(source));
+        let path = resolve_pi_path(pi_dir, source.strip_prefix("local:").unwrap_or(source));
         return path.is_dir().then_some(path);
     }
     let name = npm_package_name(source);
@@ -1248,6 +1689,7 @@ fn add_conflict(
         other_extension_id: other.id.clone(),
         other_extension_name: other.name.clone(),
         other_extension_path: other.path.clone(),
+        other_extension_scope: other.scope,
     };
     if !extension.conflicts.contains(&conflict) {
         extension.conflicts.push(conflict);
@@ -1258,6 +1700,7 @@ pub async fn search_packages(
     query: String,
     offset: Option<u32>,
     limit: Option<u32>,
+    project_dir: Option<String>,
 ) -> Result<PiPackageSearchResult, String> {
     let query = query.trim().to_string();
     let offset = offset.unwrap_or(0);
@@ -1265,7 +1708,7 @@ pub async fn search_packages(
     let cache_key = npm_search_cache_key(&query, offset, limit);
     if let Some(mut result) = get_cached_npm_search(&cache_key, Instant::now()) {
         result.query = query;
-        refresh_installed_status(&mut result, &get_inventory());
+        refresh_installed_status(&mut result, &get_inventory(project_dir)?);
         return Ok(result);
     }
     let response = crate::proxy::http_client::get()
@@ -1322,7 +1765,7 @@ pub async fn search_packages(
         limit,
     };
     put_cached_npm_search(cache_key, result.clone(), Instant::now());
-    refresh_installed_status(&mut result, &get_inventory());
+    refresh_installed_status(&mut result, &get_inventory(project_dir)?);
     Ok(result)
 }
 
@@ -1586,10 +2029,18 @@ fn resource_types_from_keywords(keywords: &[String]) -> Vec<String> {
         .collect()
 }
 
-pub fn register_local_extension(path: String) -> Result<PiInventory, String> {
-    let registered = validate_local_extension_path(&path)?;
+pub fn register_local_extension(
+    path: String,
+    scope: PiExtensionScope,
+    project_dir: Option<String>,
+) -> Result<PiInventory, String> {
+    let (pi_dir, project) = scope_dir(scope, project_dir.as_deref())?;
+    if let Some(project) = &project {
+        validate_project_pi_dir(project, &pi_dir)?;
+    }
+    let registered = validate_local_extension_path(&path, &pi_dir)?;
     let expected_target = canonical_extension_target(&registered)?;
-    mutate_settings(|pi_dir, root, _state| {
+    mutate_settings_in_dir(&pi_dir, |pi_dir, root, _state| {
         let current_target = canonical_extension_target(&registered)?;
         if !same_path(&current_target, &expected_target) {
             return Err("本地扩展路径在注册期间发生变化".to_string());
@@ -1607,13 +2058,32 @@ pub fn register_local_extension(path: String) -> Result<PiInventory, String> {
             entries.push(Value::String(path_string(&registered)));
         }
         Ok(())
-    })
+    })?;
+    Ok(get_scoped_inventory(project.as_deref()))
 }
 
-pub fn unregister_local_extension(path: String) -> Result<PiInventory, String> {
-    let registered = validate_absolute_input_path(&path)?;
+pub fn unregister_local_extension(
+    resource_key: String,
+    scope: PiExtensionScope,
+    project_dir: Option<String>,
+) -> Result<PiInventory, String> {
+    let (pi_dir, project) = scope_dir(scope, project_dir.as_deref())?;
+    if let Some(project) = &project {
+        validate_project_pi_dir(project, &pi_dir)?;
+    }
+    let inventory = get_scoped_inventory(project.as_deref());
+    let extension = inventory
+        .extensions
+        .into_iter()
+        .find(|extension| {
+            extension.resource_key == resource_key
+                && extension.scope == scope
+                && extension.origin == "local"
+        })
+        .ok_or_else(|| "未找到可取消注册的 Pi extension".to_string())?;
+    let registered = PathBuf::from(extension.path);
     let target = canonical_extension_target(&registered).ok();
-    mutate_settings(|pi_dir, root, _state| {
+    mutate_settings_in_dir(&pi_dir, |pi_dir, root, _state| {
         let Some(entries) = root.get_mut("extensions").and_then(Value::as_array_mut) else {
             return Ok(());
         };
@@ -1629,20 +2099,31 @@ pub fn unregister_local_extension(path: String) -> Result<PiInventory, String> {
                     .is_none_or(|target| !same_path(&stored, target))
         });
         Ok(())
-    })
+    })?;
+    Ok(get_scoped_inventory(project.as_deref()))
 }
 
-pub fn set_extension_enabled(id: String, enabled: bool) -> Result<PiInventory, String> {
-    let pi_dir = crate::pi_config::get_pi_dir();
-    set_extension_enabled_in_dir(&pi_dir, id, enabled)
+pub fn set_extension_enabled(
+    resource_key: String,
+    enabled: bool,
+    scope: PiExtensionScope,
+    project_dir: Option<String>,
+) -> Result<PiInventory, String> {
+    let (pi_dir, project) = scope_dir(scope, project_dir.as_deref())?;
+    if let Some(project) = &project {
+        validate_project_pi_dir(project, &pi_dir)?;
+    }
+    set_extension_enabled_in_dir(&pi_dir, scope, project.as_deref(), resource_key, enabled)
 }
 
 fn set_extension_enabled_in_dir(
     pi_dir: &Path,
-    id: String,
+    scope: PiExtensionScope,
+    project_dir: Option<&Path>,
+    resource_key: String,
     enabled: bool,
 ) -> Result<PiInventory, String> {
-    let inventory = get_inventory_in_dir(pi_dir);
+    let inventory = get_inventory_for_target(pi_dir, project_dir);
     if !inventory.runtime.mutable {
         return Err(inventory
             .runtime
@@ -1652,7 +2133,7 @@ fn set_extension_enabled_in_dir(
     let extension = inventory
         .extensions
         .into_iter()
-        .find(|extension| extension.id == id)
+        .find(|extension| extension.resource_key == resource_key && extension.scope == scope)
         .ok_or_else(|| "未找到 Pi extension".to_string())?;
     if enabled && !extension.conflicts.is_empty() {
         let conflicts = extension
@@ -1673,7 +2154,7 @@ fn set_extension_enabled_in_dir(
     } else {
         toggle_standalone_extension_in_dir(pi_dir, &extension, enabled)?;
     }
-    Ok(get_inventory_in_dir(pi_dir))
+    Ok(get_inventory_for_target(pi_dir, project_dir))
 }
 
 fn toggle_standalone_extension_in_dir(
@@ -1799,14 +2280,6 @@ fn toggle_package_extension_in_dir(
         }
         Ok(())
     })
-}
-
-fn mutate_settings(
-    mutation: impl FnOnce(&Path, &mut Map<String, Value>, &mut ManagedState) -> Result<(), String>,
-) -> Result<PiInventory, String> {
-    let pi_dir = crate::pi_config::get_pi_dir();
-    mutate_settings_in_dir(&pi_dir, mutation)?;
-    Ok(get_inventory_in_dir(&pi_dir))
 }
 
 fn mutate_settings_in_dir(
@@ -1962,15 +2435,38 @@ fn ensure_bytes_unchanged(path: &Path, expected: Option<&[u8]>) -> Result<(), St
     Ok(())
 }
 
-pub async fn install_package(source: String) -> Result<PiPackageInstallResult, String> {
+pub async fn install_package(
+    source: String,
+    scope: PiExtensionScope,
+    project_dir: Option<String>,
+) -> Result<PiPackageInstallResult, String> {
     reject_mcp_adapter_source(&source)?;
-    let inventory = run_package_cli("install", source.clone()).await?;
-    isolate_new_package_conflicts(&source, inventory)
+    let (pi_dir, project) = scope_dir(scope, project_dir.as_deref())?;
+    if let Some(project) = &project {
+        validate_project_pi_dir(project, &pi_dir)?;
+    }
+    let inventory =
+        run_package_cli_in_scope(&pi_dir, project.as_deref(), "install", source.clone()).await?;
+    isolate_new_package_conflicts_in_dir(&pi_dir, scope, project.as_deref(), &source, inventory)
 }
 
-pub async fn remove_package(source: String) -> Result<PiInventory, String> {
-    reject_mcp_adapter_source(&source)?;
-    run_package_cli("remove", source).await
+pub async fn remove_package(
+    resource_key: String,
+    scope: PiExtensionScope,
+    project_dir: Option<String>,
+) -> Result<PiInventory, String> {
+    let (pi_dir, project) = scope_dir(scope, project_dir.as_deref())?;
+    if let Some(project) = &project {
+        validate_project_pi_dir(project, &pi_dir)?;
+    }
+    let inventory = get_scoped_inventory(project.as_deref());
+    let package = inventory
+        .packages
+        .into_iter()
+        .find(|package| package.resource_key == resource_key && package.scope == scope)
+        .ok_or_else(|| "未找到 Pi package".to_string())?;
+    reject_mcp_adapter_source(&package.source)?;
+    run_package_cli_in_scope(&pi_dir, project.as_deref(), "remove", package.source).await
 }
 
 pub(crate) async fn install_mcp_adapter() -> Result<PiInventory, String> {
@@ -1979,23 +2475,17 @@ pub(crate) async fn install_mcp_adapter() -> Result<PiInventory, String> {
     install_mcp_adapter_with(&pi_dir, &cli, CLI_TIMEOUT).await
 }
 
-fn isolate_new_package_conflicts(
-    source: &str,
-    inventory: PiInventory,
-) -> Result<PiPackageInstallResult, String> {
-    let pi_dir = crate::pi_config::get_pi_dir();
-    isolate_new_package_conflicts_in_dir(&pi_dir, source, inventory)
-}
-
 fn isolate_new_package_conflicts_in_dir(
     pi_dir: &Path,
+    scope: PiExtensionScope,
+    project_dir: Option<&Path>,
     source: &str,
     inventory: PiInventory,
 ) -> Result<PiPackageInstallResult, String> {
     let conflicting = inventory
         .packages
         .iter()
-        .find(|package| package_sources_match(&package.source, source))
+        .find(|package| package.scope == scope && package_sources_match(&package.source, source))
         .map(|package| {
             package
                 .extensions
@@ -2014,7 +2504,7 @@ fn isolate_new_package_conflicts_in_dir(
     for extension in &conflicting {
         toggle_package_extension_in_dir(pi_dir, extension, false)?;
     }
-    let inventory = get_inventory_in_dir(pi_dir);
+    let inventory = get_inventory_for_target(pi_dir, project_dir);
     let isolated_extensions = conflicting
         .iter()
         .filter_map(|isolated| {
@@ -2041,16 +2531,31 @@ async fn install_mcp_adapter_with(
         cli,
         "install",
         crate::mcp::PI_MCP_ADAPTER_PACKAGE.to_string(),
+        false,
+        None,
         timeout,
     )
     .await
 }
 
-async fn run_package_cli(action: &str, source: String) -> Result<PiInventory, String> {
+async fn run_package_cli_in_scope(
+    pi_dir: &Path,
+    project_dir: Option<&Path>,
+    action: &str,
+    source: String,
+) -> Result<PiInventory, String> {
     validate_package_source(&source)?;
-    let pi_dir = crate::pi_config::get_pi_dir();
     let cli = locate_pi_cli().ok_or_else(|| "未找到可用的 Pi CLI".to_string())?;
-    run_package_cli_with(&pi_dir, &cli, action, source, CLI_TIMEOUT).await
+    run_package_cli_with(
+        pi_dir,
+        &cli,
+        action,
+        source,
+        project_dir.is_some(),
+        project_dir,
+        CLI_TIMEOUT,
+    )
+    .await
 }
 
 async fn run_package_cli_with(
@@ -2058,13 +2563,24 @@ async fn run_package_cli_with(
     cli: &PiCli,
     action: &str,
     source: String,
+    local: bool,
+    project_dir: Option<&Path>,
     timeout: Duration,
 ) -> Result<PiInventory, String> {
     let pi_dir = pi_dir.to_path_buf();
     let cli = cli.clone();
     let action = action.to_string();
+    let project_dir = project_dir.map(Path::to_path_buf);
     tokio::task::spawn_blocking(move || {
-        run_package_cli_blocking(&pi_dir, &cli, &action, source, timeout)
+        run_package_cli_blocking(
+            &pi_dir,
+            &cli,
+            &action,
+            source,
+            local,
+            project_dir.as_deref(),
+            timeout,
+        )
     })
     .await
     .map_err(|error| format!("Pi CLI 任务失败: {error}"))?
@@ -2075,13 +2591,15 @@ fn run_package_cli_blocking(
     cli: &PiCli,
     action: &str,
     source: String,
+    local: bool,
+    project_dir: Option<&Path>,
     timeout: Duration,
 ) -> Result<PiInventory, String> {
     let _process_guard = process_lock()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let _file_guard = PiWriteLock::acquire(pi_dir)?;
-    let before = get_inventory_in_dir(pi_dir);
+    let before = get_inventory_for_target(pi_dir, project_dir);
     if !before.runtime.mutable {
         return Err(before
             .runtime
@@ -2099,13 +2617,21 @@ fn run_package_cli_blocking(
     if action == "remove" && before_package.is_none() {
         return Err("目标 Pi package 不存在，remove 无需执行".to_string());
     }
-    let mut command = build_pi_command(cli, &[action, &source])?;
+    let args = if local {
+        vec![action, &source, "-l", "--approve"]
+    } else {
+        vec![action, &source]
+    };
+    let mut command = build_pi_command(cli, &args)?;
     command
         .env("PI_CODING_AGENT_DIR", pi_dir)
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if let Some(project_dir) = project_dir {
+        command.current_dir(project_dir);
+    }
     let output = run_bounded_command(command, timeout)?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -2118,7 +2644,7 @@ fn run_package_cli_blocking(
             format!("Pi CLI 执行失败，exit code: {:?}", output.status.code())
         });
     }
-    let after = get_inventory_in_dir(pi_dir);
+    let after = get_inventory_for_target(pi_dir, project_dir);
     if !after.runtime.mutable {
         return Err(after
             .runtime
@@ -2295,12 +2821,14 @@ fn build_pi_command(cli: &PiCli, args: &[&str]) -> Result<Command, String> {
             configure_windows_command(&mut command);
             Ok(command)
         }
+        #[cfg(target_os = "windows")]
         PiCliKind::NodeScript(script) => {
             let mut command = Command::new("node");
             command.arg(script).args(args);
             configure_windows_command(&mut command);
             Ok(command)
         }
+        #[cfg(target_os = "windows")]
         PiCliKind::WindowsCmd => build_windows_cmd_command(&cli.path, args),
     }
 }
@@ -2326,16 +2854,10 @@ fn build_windows_cmd_command(cli: &Path, args: &[&str]) -> Result<Command, Strin
         invocation.push_str(&windows_cmd_quote(arg));
     }
     let mut command = Command::new("cmd.exe");
-    command
-        .args(["/D", "/S", "/C"])
-        .arg(format!("\"{invocation}\""));
+    command.args(["/D", "/S", "/C"]);
+    command.raw_arg(format!(" \"{invocation}\""));
     command.creation_flags(0x08000000);
     Ok(command)
-}
-
-#[cfg(not(target_os = "windows"))]
-fn build_windows_cmd_command(_cli: &Path, _args: &[&str]) -> Result<Command, String> {
-    Err("当前平台不支持 Windows cmd CLI".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -2404,8 +2926,8 @@ fn locate_pi_cli_in_dirs(search_dirs: Vec<PathBuf>) -> Option<PiCli> {
     None
 }
 
+#[cfg(target_os = "windows")]
 fn resolve_cli_kind(path: &Path) -> PiCliKind {
-    #[cfg(target_os = "windows")]
     if path
         .extension()
         .and_then(|value| value.to_str())
@@ -2417,6 +2939,11 @@ fn resolve_cli_kind(path: &Path) -> PiCliKind {
             .filter(|script| script.is_file());
         return script.map_or(PiCliKind::WindowsCmd, PiCliKind::NodeScript);
     }
+    PiCliKind::Direct
+}
+
+#[cfg(not(target_os = "windows"))]
+fn resolve_cli_kind(_path: &Path) -> PiCliKind {
     PiCliKind::Direct
 }
 
@@ -2444,14 +2971,23 @@ fn validate_package_source(source: &str) -> Result<(), String> {
     if source.contains(['&', '|', '<', '>', '^', '"']) {
         return Err("Pi package source 包含 Windows 命令控制字符".to_string());
     }
-    if Path::new(source).is_absolute() {
+    if source
+        .strip_prefix("local:")
+        .is_some_and(|path| !path.trim().is_empty())
+    {
         return Ok(());
     }
-    if let Some(local) = source.strip_prefix("local:") {
-        if Path::new(local).is_absolute() {
-            return Ok(());
-        }
-        return Err("Pi local package source 必须使用绝对路径".to_string());
+    let path_source = source;
+    if Path::new(path_source).is_absolute()
+        || path_source == "~"
+        || path_source.starts_with("~/")
+        || path_source.starts_with("~\\")
+        || path_source.starts_with("./")
+        || path_source.starts_with(".\\")
+        || path_source.starts_with("../")
+        || path_source.starts_with("..\\")
+    {
+        return Ok(());
     }
     if source.starts_with("npm:")
         || source.starts_with("git:")
@@ -2462,22 +2998,23 @@ fn validate_package_source(source: &str) -> Result<(), String> {
     {
         return Ok(());
     }
-    Err("Pi package source 仅支持 npm、git、https/ssh 或本地绝对路径".to_string())
+    Err("Pi package source 仅支持 npm、git、https/ssh 或本地路径".to_string())
 }
 
-fn validate_absolute_input_path(path: &str) -> Result<PathBuf, String> {
+fn resolve_input_path(path: &str, base_dir: &Path) -> Result<PathBuf, String> {
     if path.trim().is_empty() || path.contains(['\n', '\r', '\0']) || path != path.trim() {
         return Err("Pi extension path 无效".to_string());
     }
-    let path = PathBuf::from(path);
-    if !path.is_absolute() {
-        return Err("本地扩展必须使用绝对路径".to_string());
-    }
-    Ok(path)
+    let path = expand_home_path(path);
+    Ok(if path.is_absolute() {
+        path
+    } else {
+        base_dir.join(path)
+    })
 }
 
-fn validate_local_extension_path(path: &str) -> Result<PathBuf, String> {
-    let path = validate_absolute_input_path(path)?;
+fn validate_local_extension_path(path: &str, base_dir: &Path) -> Result<PathBuf, String> {
+    let path = resolve_input_path(path, base_dir)?;
     let metadata =
         fs::symlink_metadata(&path).map_err(|error| format!("读取本地扩展路径失败: {error}"))?;
     if metadata.file_type().is_symlink() {
@@ -2593,6 +3130,154 @@ fn package_display_name(source: &str) -> String {
     })
 }
 
+fn package_identity(pi_dir: &Path, source: &str) -> String {
+    if let Some(name) = npm_package_name(source) {
+        return format!("npm:{}", name.to_ascii_lowercase());
+    }
+    if package_source_type(source) == "git" {
+        let normalized = normalize_source(source);
+        let without_ref = normalized
+            .rsplit_once('@')
+            .map_or(normalized.as_str(), |(url, tail)| {
+                if tail.contains('/') || url.ends_with("git") {
+                    normalized.as_str()
+                } else {
+                    url
+                }
+            });
+        return format!("git:{without_ref}");
+    }
+    let raw = source.strip_prefix("local:").unwrap_or(source);
+    let path = resolve_pi_path(pi_dir, raw);
+    let resolved = fs::canonicalize(&path).unwrap_or(path);
+    format!("local:{}", normalized_path(&path_string(&resolved)))
+}
+
+fn scoped_id(scope: PiExtensionScope, resource_key: &str) -> String {
+    stable_id(
+        match scope {
+            PiExtensionScope::Global => "global",
+            PiExtensionScope::Project => "project",
+        },
+        resource_key,
+        resource_key,
+    )
+}
+
+fn apply_package_scope_precedence(
+    extensions: &mut Vec<PiExtensionResource>,
+    packages: &mut Vec<PiInstalledPackage>,
+) {
+    let global: HashMap<String, PiInstalledPackage> = packages
+        .iter()
+        .filter(|package| package.scope == PiExtensionScope::Global)
+        .map(|package| (package.resource_key.clone(), package.clone()))
+        .collect();
+    for package in packages
+        .iter_mut()
+        .filter(|package| package.scope == PiExtensionScope::Project && !package.autoload)
+    {
+        let Some(base) = global.get(&package.resource_key) else {
+            continue;
+        };
+        package.version = base.version.clone();
+        package.installed_path = base.installed_path.clone();
+        package.status = base.status.clone();
+        package.extension_count = base.extension_count;
+        package.skill_count = base.skill_count;
+        package.prompt_count = base.prompt_count;
+        package.theme_count = base.theme_count;
+        package.extensions = base
+            .extensions
+            .iter()
+            .cloned()
+            .map(|mut extension| {
+                let relative = base
+                    .installed_path
+                    .as_ref()
+                    .and_then(|root| Path::new(&extension.path).strip_prefix(root).ok())
+                    .map(|path| path.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_else(|| extension.path.clone());
+                extension.scope = PiExtensionScope::Project;
+                extension.project_dir = package.project_dir.clone();
+                extension.package_id = Some(package.id.clone());
+                extension.enabled = package_extension_enabled(package.entry.as_object(), &relative);
+                extension.status = if extension.enabled {
+                    "active".to_string()
+                } else {
+                    "disabled".to_string()
+                };
+                extension.id = scoped_id(PiExtensionScope::Project, &extension.resource_key);
+                extension.conflicts.clear();
+                extension
+            })
+            .collect();
+    }
+    let overridden: HashSet<String> = packages
+        .iter()
+        .filter(|package| {
+            package.scope == PiExtensionScope::Project
+                && global.contains_key(&package.resource_key)
+                && package.autoload
+        })
+        .map(|package| package.resource_key.clone())
+        .collect();
+    let deltas: HashSet<String> = packages
+        .iter()
+        .filter(|package| {
+            package.scope == PiExtensionScope::Project
+                && global.contains_key(&package.resource_key)
+                && !package.autoload
+        })
+        .map(|package| package.resource_key.clone())
+        .collect();
+    packages.retain(|package| {
+        package.scope != PiExtensionScope::Global
+            || !overridden.contains(&package.resource_key)
+                && !deltas.contains(&package.resource_key)
+    });
+    let package_ids: HashSet<String> = packages.iter().map(|package| package.id.clone()).collect();
+    extensions.retain(|extension| {
+        extension.scope != PiExtensionScope::Global
+            || extension
+                .package_id
+                .as_ref()
+                .is_none_or(|package_id| package_ids.contains(package_id))
+    });
+    extensions.extend(
+        packages
+            .iter()
+            .filter(|package| package.scope == PiExtensionScope::Project)
+            .flat_map(|package| package.extensions.clone()),
+    );
+    let mut seen = HashSet::new();
+    extensions.retain(|extension| seen.insert(extension.id.clone()));
+}
+
+fn sync_package_extensions(
+    extensions: &[PiExtensionResource],
+    packages: &mut [PiInstalledPackage],
+) {
+    let by_id: HashMap<&str, &PiExtensionResource> = extensions
+        .iter()
+        .map(|extension| (extension.id.as_str(), extension))
+        .collect();
+    for package in packages {
+        for extension in &mut package.extensions {
+            if let Some(current) = by_id.get(extension.id.as_str()) {
+                *extension = (*current).clone();
+            }
+        }
+        if package
+            .extensions
+            .iter()
+            .any(|extension| extension.enabled && extension.status == "conflict")
+        {
+            package.status = "conflict".to_string();
+        }
+    }
+}
+
 fn package_extension_enabled(filters: Option<&Map<String, Value>>, relative: &str) -> bool {
     let Some(patterns) = filters
         .and_then(|object| object.get("extensions"))
@@ -2606,19 +3291,42 @@ fn package_extension_enabled(filters: Option<&Map<String, Value>>, relative: &st
     if patterns.is_empty() {
         return false;
     }
-    let mut enabled = filters
-        .and_then(|object| object.get("autoload"))
-        .and_then(Value::as_bool)
-        .unwrap_or(true);
-    for pattern in patterns.iter().filter_map(Value::as_str) {
-        let (value, next) = if let Some(value) = pattern.strip_prefix(['!', '-']) {
-            (value, false)
-        } else {
-            (pattern.strip_prefix('+').unwrap_or(pattern), true)
-        };
-        if glob_matches(value, relative) {
-            enabled = next;
-        }
+    let values: Vec<&str> = patterns.iter().filter_map(Value::as_str).collect();
+    let includes: Vec<&str> = values
+        .iter()
+        .copied()
+        .filter(|value| !value.starts_with(['!', '+', '-']))
+        .collect();
+    let excludes: Vec<&str> = values
+        .iter()
+        .filter_map(|value| value.strip_prefix('!'))
+        .collect();
+    let force_includes: HashSet<&str> = values
+        .iter()
+        .filter_map(|value| value.strip_prefix('+'))
+        .collect();
+    let force_excludes: HashSet<&str> = values
+        .iter()
+        .filter_map(|value| value.strip_prefix('-'))
+        .collect();
+    let mut enabled = if includes.is_empty() {
+        true
+    } else {
+        includes
+            .iter()
+            .any(|pattern| glob_matches(pattern, relative))
+    };
+    if excludes
+        .iter()
+        .any(|pattern| glob_matches(pattern, relative))
+    {
+        enabled = false;
+    }
+    if force_includes.contains(relative) {
+        enabled = true;
+    }
+    if force_excludes.contains(relative) {
+        enabled = false;
     }
     enabled
 }
@@ -2696,7 +3404,7 @@ fn extension_enabled(
 }
 
 fn resolve_pi_path(pi_dir: &Path, value: &str) -> PathBuf {
-    let path = PathBuf::from(value);
+    let path = expand_home_path(value);
     if path.is_absolute() {
         path
     } else {
@@ -2858,6 +3566,10 @@ mod tests {
         write_json_file(path, value).unwrap();
     }
 
+    fn test_inventory(pi_dir: &Path) -> PiInventory {
+        get_inventory_in_dir(pi_dir, PiExtensionScope::Global, None)
+    }
+
     fn npm_candidate(keywords: &[&str]) -> NpmSearchCandidate {
         NpmSearchCandidate {
             item: PiPackageCatalogItem {
@@ -2888,7 +3600,7 @@ mod tests {
     fn bad_settings_returns_runtime_error_and_rejects_mutation() {
         let temp = tempdir().unwrap();
         fs::write(temp.path().join("settings.json"), b"{bad").unwrap();
-        let inventory = get_inventory_in_dir(temp.path());
+        let inventory = test_inventory(temp.path());
         assert!(!inventory.runtime.mutable);
         assert!(inventory.runtime.error.is_some());
         let result = mutate_settings_in_dir(temp.path(), |_, _, _| Ok(()));
@@ -2907,7 +3619,7 @@ mod tests {
         ] {
             let temp = tempdir().unwrap();
             write(&temp.path().join("settings.json"), &value);
-            let inventory = get_inventory_in_dir(temp.path());
+            let inventory = test_inventory(temp.path());
             assert!(!inventory.runtime.mutable);
             assert!(inventory.runtime.error.is_some());
             assert!(mutate_settings_in_dir(temp.path(), |_, _, _| Ok(())).is_err());
@@ -2976,7 +3688,7 @@ mod tests {
                 "extensions": ["-extensions/auto.ts", "+local.js", "local-dir"]
             }),
         );
-        let inventory = get_inventory_in_dir(temp.path());
+        let inventory = test_inventory(temp.path());
         assert_eq!(inventory.extensions.len(), 4);
         assert!(inventory
             .extensions
@@ -3059,7 +3771,7 @@ mod tests {
             &json!({"extensions": ["-disabled.ts"]}),
         );
 
-        let inventory = get_inventory_in_dir(temp.path());
+        let inventory = test_inventory(temp.path());
         let first = inventory
             .extensions
             .iter()
@@ -3095,15 +3807,21 @@ mod tests {
             &temp.path().join("settings.json"),
             &json!({"extensions": ["-disabled.ts"]}),
         );
-        let inventory = get_inventory_in_dir(temp.path());
+        let inventory = test_inventory(temp.path());
         let disabled = inventory
             .extensions
             .iter()
             .find(|extension| extension.name == "disabled")
             .unwrap();
         assert!(!disabled.conflicts.is_empty());
-        let error =
-            set_extension_enabled_in_dir(temp.path(), disabled.id.clone(), true).unwrap_err();
+        let error = set_extension_enabled_in_dir(
+            temp.path(),
+            PiExtensionScope::Global,
+            None,
+            disabled.resource_key.clone(),
+            true,
+        )
+        .unwrap_err();
         assert!(error.contains("web_search"));
     }
 
@@ -3119,6 +3837,7 @@ mod tests {
         let package_dir = temp.path().join("npm/node_modules/new-package");
         fs::create_dir_all(package_dir.join("extensions")).unwrap();
         fs::create_dir_all(package_dir.join("skills/search")).unwrap();
+        fs::write(package_dir.join("skills/search/SKILL.md"), b"").unwrap();
         fs::write(
             package_dir.join("extensions/index.ts"),
             r#"pi.registerTool({ name: "web_search" });"#,
@@ -3138,10 +3857,15 @@ mod tests {
             &temp.path().join("settings.json"),
             &json!({"packages": ["npm:new-package"]}),
         );
-        let inventory = get_inventory_in_dir(temp.path());
-        let result =
-            isolate_new_package_conflicts_in_dir(temp.path(), "npm:new-package", inventory)
-                .unwrap();
+        let inventory = test_inventory(temp.path());
+        let result = isolate_new_package_conflicts_in_dir(
+            temp.path(),
+            PiExtensionScope::Global,
+            None,
+            "npm:new-package",
+            inventory,
+        )
+        .unwrap();
         assert_eq!(result.isolated_extensions.len(), 1);
         assert!(!result.isolated_extensions[0].enabled);
         let settings = read_json_object(&temp.path().join("settings.json")).unwrap();
@@ -3216,7 +3940,7 @@ mod tests {
                 ]
             }),
         );
-        let inventory = get_inventory_in_dir(temp.path());
+        let inventory = test_inventory(temp.path());
         assert_eq!(inventory.packages.len(), 2);
         assert_eq!(inventory.packages[0].extension_count, 1);
         assert!(inventory.packages[0].extensions[0].enabled);
@@ -3242,7 +3966,7 @@ mod tests {
                 ]
             }),
         );
-        let inventory = get_inventory_in_dir(temp.path());
+        let inventory = test_inventory(temp.path());
         let extension = inventory.packages[0].extensions[0].clone();
         let source = extension.package_source.clone().unwrap();
         let extension_path = extension.path.clone();
@@ -3312,7 +4036,7 @@ mod tests {
             &temp.path().join("settings.json"),
             &json!({"packages": ["npm:pkg"]}),
         );
-        let extension = get_inventory_in_dir(temp.path()).packages[0].extensions[0].clone();
+        let extension = test_inventory(temp.path()).packages[0].extensions[0].clone();
         toggle_package_extension_in_dir(temp.path(), &extension, false).unwrap();
         let disabled = read_json_object(&temp.path().join("settings.json")).unwrap();
         assert!(disabled["packages"][0].is_object());
@@ -3326,6 +4050,9 @@ mod tests {
     fn mcp_adapter_extension_toggle_is_rejected() {
         let extension = PiExtensionResource {
             id: String::new(),
+            resource_key: String::new(),
+            scope: PiExtensionScope::Global,
+            project_dir: None,
             name: "adapter".to_string(),
             path: "adapter.ts".to_string(),
             enabled: true,
@@ -3352,14 +4079,12 @@ mod tests {
             "npm:pi-mcp-adapter@latest",
             "npm:pi-mcp-adapter@2.19.0",
         ] {
-            assert!(install_package(source.to_string())
-                .await
-                .unwrap_err()
-                .contains("MCP 页面"));
-            assert!(remove_package(source.to_string())
-                .await
-                .unwrap_err()
-                .contains("MCP 页面"));
+            assert!(
+                install_package(source.to_string(), PiExtensionScope::Global, None)
+                    .await
+                    .unwrap_err()
+                    .contains("MCP 页面")
+            );
         }
     }
 
@@ -3384,20 +4109,24 @@ mod tests {
         fs::write(
             &cli_path,
             r#"@echo off
-if "%1"=="--version" (
+if "%~1"=="--version" (
   echo 1.0.0
   exit /b 0
 )
-if not "%1"=="install" exit /b 2
-if not "%2"=="npm:pi-mcp-adapter" exit /b 3
-powershell -NoProfile -Command "$dir=$env:PI_CODING_AGENT_DIR; New-Item -ItemType Directory -Force -Path (Join-Path $dir 'npm\node_modules\pi-mcp-adapter') | Out-Null; Set-Content -Path (Join-Path $dir 'settings.json') -Value '{\"packages\":[\"npm:pi-mcp-adapter@2.20.0\"]}' -NoNewline; Set-Content -Path (Join-Path $dir 'npm\node_modules\pi-mcp-adapter\package.json') -Value '{\"name\":\"pi-mcp-adapter\",\"version\":\"2.20.0\"}' -NoNewline"
+if not "%~1"=="install" exit /b 2
+if not "%~2"=="npm:pi-mcp-adapter" exit /b 3
+mkdir "%PI_CODING_AGENT_DIR%\npm\node_modules\pi-mcp-adapter" >nul 2>&1
+if errorlevel 1 exit /b 4
+> "%PI_CODING_AGENT_DIR%\settings.json" echo {"packages":["npm:pi-mcp-adapter@2.20.0"]}
+if errorlevel 1 exit /b 5
+> "%PI_CODING_AGENT_DIR%\npm\node_modules\pi-mcp-adapter\package.json" echo {"name":"pi-mcp-adapter","version":"2.20.0"}
 exit /b %errorlevel%
 "#,
         )
         .unwrap();
         let cli = PiCli {
             path: cli_path,
-            kind: PiCliKind::Direct,
+            kind: PiCliKind::WindowsCmd,
             version: "1.0.0".to_string(),
         };
 
@@ -3472,6 +4201,223 @@ printf '{"name":"pi-mcp-adapter","version":"2.20.0"}' > "$package_dir/package.js
             assert!(resource.error.is_some());
             assert!(resource.path.is_none());
         }
+    }
+
+    #[test]
+    fn project_trust_uses_nearest_parent_and_validates_values() {
+        let temp = tempdir().unwrap();
+        let global = temp.path().join("global");
+        let parent = temp.path().join("workspace");
+        let project = parent.join("project");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(&global).unwrap();
+        write(
+            &global.join("trust.json"),
+            &json!({
+                path_string(&parent): true,
+                path_string(temp.path()): false
+            }),
+        );
+        let trust = get_project_trust_in_dir(&global, &project);
+        assert!(trust.trusted);
+        assert_eq!(
+            trust.inherited_from.as_deref(),
+            Some(path_string(&parent).as_str())
+        );
+        write(
+            &global.join("trust.json"),
+            &json!({path_string(&parent): "yes"}),
+        );
+        let trust = get_project_trust_in_dir(&global, &project);
+        assert!(!trust.trusted);
+        assert!(trust.decision.is_none());
+    }
+
+    #[test]
+    fn project_dir_validation_rejects_relative_file_and_symlink() {
+        let temp = tempdir().unwrap();
+        assert!(validate_project_dir("relative").is_err());
+        let file = temp.path().join("file");
+        fs::write(&file, b"").unwrap();
+        assert!(validate_project_dir(&path_string(&file)).is_err());
+        assert_eq!(
+            validate_project_dir(&path_string(temp.path())).unwrap(),
+            fs::canonicalize(temp.path()).unwrap()
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let link = temp.path().join("link");
+            symlink(temp.path(), &link).unwrap();
+            assert!(validate_project_dir(&path_string(&link)).is_err());
+        }
+    }
+
+    #[test]
+    fn trust_write_preserves_entries_and_explicitly_overrides_parent() {
+        let temp = tempdir().unwrap();
+        let global = temp.path().join("global");
+        let parent = temp.path().join("workspace");
+        let project = parent.join("project");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(&global).unwrap();
+        write(
+            &global.join("trust.json"),
+            &json!({path_string(&parent): true}),
+        );
+        let _guard = process_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _lock = PiWriteLock::acquire_named(&global, TRUST_LOCK_DIR).unwrap();
+        let trust_path = global.join("trust.json");
+        let mut root = read_json_object(&trust_path).unwrap();
+        root.insert(path_string(&project), Value::Bool(false));
+        write_json_file(&trust_path, &Value::Object(root)).unwrap();
+        drop(_lock);
+        drop(_guard);
+        let trust = get_project_trust_in_dir(&global, &project);
+        assert!(!trust.trusted);
+        assert_eq!(trust.decision, Some(false));
+        assert!(read_json_object(&trust_path)
+            .unwrap()
+            .contains_key(&path_string(&parent)));
+    }
+
+    #[test]
+    fn package_manifest_disables_conventional_fallback_and_rejects_strings() {
+        let temp = tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("extensions")).unwrap();
+        fs::write(temp.path().join("extensions/main.ts"), b"").unwrap();
+        let empty = json!({"name": "pkg", "pi": {}});
+        let resources = package_resources(temp.path(), empty.as_object());
+        assert!(resources.extensions.is_empty());
+        let invalid = json!({"name": "pkg", "pi": {"extensions": "extensions"}});
+        let resources = package_resources(temp.path(), invalid.as_object());
+        assert!(resources.extensions[0]
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("字符串数组")));
+    }
+
+    #[test]
+    fn package_discovery_respects_ignore_files_and_resource_boundaries() {
+        let temp = tempdir().unwrap();
+        for dir in [
+            "extensions/nested",
+            "extensions/.hidden",
+            "extensions/node_modules/pkg",
+            "skills/one",
+            "skills/nested/two",
+            "prompts/nested",
+            "themes/nested",
+        ] {
+            fs::create_dir_all(temp.path().join(dir)).unwrap();
+        }
+        fs::write(temp.path().join("extensions/main.ts"), b"").unwrap();
+        fs::write(temp.path().join("extensions/nested/index.js"), b"").unwrap();
+        fs::write(temp.path().join("extensions/nested/ignored.ts"), b"").unwrap();
+        fs::write(temp.path().join("extensions/.hidden/hidden.ts"), b"").unwrap();
+        fs::write(
+            temp.path().join("extensions/node_modules/pkg/index.ts"),
+            b"",
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("extensions/.fdignore"),
+            "nested/index.js\n",
+        )
+        .unwrap();
+        fs::write(temp.path().join("skills/root.md"), b"").unwrap();
+        fs::write(temp.path().join("skills/one/SKILL.md"), b"").unwrap();
+        fs::write(temp.path().join("skills/nested/two/SKILL.md"), b"").unwrap();
+        fs::write(temp.path().join("prompts/nested/review.md"), b"").unwrap();
+        fs::write(temp.path().join("themes/nested/dark.json"), b"{}").unwrap();
+        let resources = package_resources(temp.path(), Some(&Map::new()));
+        assert_eq!(resources.extensions.len(), 1);
+        assert_eq!(resources.extensions[0].relative, "extensions/main.ts");
+        assert_eq!(resources.skills.len(), 3);
+        assert_eq!(resources.prompts.len(), 1);
+        assert_eq!(resources.themes.len(), 1);
+    }
+
+    #[test]
+    fn settings_filter_uses_fixed_override_phases() {
+        let filters = json!({
+            "extensions": [
+                "extensions/**",
+                "-extensions/private/main.ts",
+                "+extensions/private/main.ts",
+                "!extensions/private/**"
+            ]
+        });
+        let object = filters.as_object().unwrap();
+        assert!(package_extension_enabled(
+            Some(object),
+            "extensions/main.ts"
+        ));
+        assert!(!package_extension_enabled(
+            Some(object),
+            "extensions/private/main.ts"
+        ));
+    }
+
+    #[test]
+    fn local_package_paths_resolve_from_settings_dir_and_home() {
+        let temp = tempdir().unwrap();
+        let local = temp.path().join("packages/local");
+        fs::create_dir_all(&local).unwrap();
+        assert_eq!(
+            find_installed_package(temp.path(), "local:packages/local"),
+            Some(local)
+        );
+        let home = crate::config::get_home_dir();
+        let home_package = home.join("pi-local-package-test");
+        fs::create_dir_all(&home_package).unwrap();
+        assert_eq!(
+            find_installed_package(temp.path(), "local:~/pi-local-package-test"),
+            Some(home_package.clone())
+        );
+        let _ = fs::remove_dir_all(home_package);
+    }
+
+    #[test]
+    fn project_package_overrides_global_and_autoload_false_is_delta() {
+        let temp = tempdir().unwrap();
+        let global = temp.path().join("global");
+        let project = temp.path().join("project");
+        let global_package = global.join("npm/node_modules/pkg");
+        fs::create_dir_all(global_package.join("extensions")).unwrap();
+        fs::create_dir_all(project.join(".pi")).unwrap();
+        fs::write(
+            global_package.join("extensions/main.ts"),
+            r#"pi.registerTool({ name: "global_tool" });"#,
+        )
+        .unwrap();
+        write(
+            &global_package.join("package.json"),
+            &json!({"name": "pkg", "pi": {"extensions": ["extensions"]}}),
+        );
+        write(
+            &global.join("settings.json"),
+            &json!({"packages": ["npm:pkg"]}),
+        );
+        write(
+            &global.join("trust.json"),
+            &json!({path_string(&project): true}),
+        );
+        write(
+            &project.join(".pi/settings.json"),
+            &json!({"packages": [{"source": "npm:pkg", "autoload": false, "extensions": ["!extensions/**", "+extensions/main.ts"]}]}),
+        );
+        let inventory = get_scoped_inventory_in_dirs(&global, Some(&project));
+        assert_eq!(inventory.packages.len(), 1);
+        assert_eq!(inventory.packages[0].scope, PiExtensionScope::Project);
+        assert_eq!(inventory.packages[0].extension_count, 1);
+        assert!(inventory.packages[0].extensions[0].enabled);
+        assert!(inventory
+            .extensions
+            .iter()
+            .all(|extension| extension.scope == PiExtensionScope::Project));
     }
 
     #[test]
@@ -3581,6 +4527,8 @@ exit 0
             &cli,
             "install",
             "npm:pkg".to_string(),
+            false,
+            None,
             Duration::from_secs(2),
         )
         .unwrap_err();
@@ -3796,6 +4744,8 @@ exit 0
         };
         let mut inventory = PiInventory {
             runtime: PiRuntimeStatus {
+                scope: PiExtensionScope::Global,
+                project_dir: None,
                 pi_dir: String::new(),
                 settings_path: String::new(),
                 cli_available: false,
@@ -3804,6 +4754,9 @@ exit 0
                 mutable: true,
                 error: None,
             },
+            runtimes: Vec::new(),
+            project_dir: None,
+            project_trust: None,
             extensions: Vec::new(),
             packages: Vec::new(),
         };
@@ -3811,6 +4764,9 @@ exit 0
         assert!(!result.items[0].installed);
         inventory.packages.push(PiInstalledPackage {
             id: String::new(),
+            resource_key: "npm:pi-test".to_string(),
+            scope: PiExtensionScope::Global,
+            project_dir: None,
             source: "npm:PI-TEST".to_string(),
             source_type: "npm".to_string(),
             display_name: String::new(),
@@ -3823,6 +4779,8 @@ exit 0
             theme_count: 0,
             extensions: Vec::new(),
             error: None,
+            autoload: true,
+            entry: json!("npm:PI-TEST"),
         });
         refresh_installed_status(&mut result, &inventory);
         assert!(result.items[0].installed);

@@ -1483,6 +1483,7 @@ pub fn run() {
             commands::install_pi_package,
             commands::remove_pi_package,
             commands::set_pi_extension_enabled,
+            commands::set_pi_project_trust,
             commands::upsert_mcp_server,
             commands::delete_mcp_server,
             commands::toggle_mcp_app,
