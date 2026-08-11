@@ -7,11 +7,41 @@ import {
   within,
 } from "@testing-library/react";
 import type { ComponentProps } from "react";
+import fs from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UsageDashboard } from "@/components/usage/UsageDashboard";
 
 const useProviderStatsMock = vi.hoisted(() => vi.fn());
 const useModelStatsMock = vi.hoisted(() => vi.fn());
+const dashboardSource = fs.readFileSync(
+  path.resolve(
+    __dirname,
+    "..",
+    "..",
+    "src",
+    "components",
+    "usage",
+    "UsageDashboard.tsx",
+  ),
+  "utf8",
+);
+const heroSource = fs.readFileSync(
+  path.resolve(
+    __dirname,
+    "..",
+    "..",
+    "src",
+    "components",
+    "usage",
+    "UsageHero.tsx",
+  ),
+  "utf8",
+);
+const layoutSource = fs.readFileSync(
+  path.resolve(__dirname, "..", "..", "src", "index.css"),
+  "utf8",
+);
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -169,5 +199,15 @@ describe("UsageDashboard", () => {
       expect.objectContaining({ appType: "pi" }),
       expect.anything(),
     );
+  });
+
+  it("uses local container layouts for controls, tabs, and hero statistics", () => {
+    expect(dashboardSource).toContain("usage-dashboard-container");
+    expect(dashboardSource).toContain('layout="scrollable"');
+    expect(dashboardSource).not.toMatch(/\blg:/);
+    expect(heroSource).toContain("usage-hero-container");
+    expect(heroSource).not.toMatch(/\b(?:md|lg):/);
+    expect(layoutSource).toContain("@container usage-dashboard");
+    expect(layoutSource).toContain("@container usage-hero (min-width: 840px)");
   });
 });

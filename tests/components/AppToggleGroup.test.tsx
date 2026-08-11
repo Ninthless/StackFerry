@@ -29,4 +29,26 @@ describe("AppToggleGroup", () => {
 
     expect(onToggle).toHaveBeenCalledWith("codex", true);
   });
+
+  it("supports caller layout classes without changing button dimensions", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <AppToggleGroup
+          apps={{ claude: true }}
+          appIds={["claude"]}
+          onToggle={vi.fn()}
+          className="justify-end"
+        />
+      </TooltipProvider>,
+    );
+
+    expect(container.querySelector(".app-toggle-group")).toHaveClass(
+      "flex-wrap",
+      "justify-end",
+    );
+    expect(screen.getByRole("button", { name: "Claude" })).toHaveClass(
+      "h-8",
+      "w-8",
+    );
+  });
 });

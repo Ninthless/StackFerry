@@ -8,12 +8,17 @@ import {
   fireEvent,
 } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import userEvent from "@testing-library/user-event";
 
 import UnifiedSkillsPanel, {
   type UnifiedSkillsPanelHandle,
 } from "@/components/skills/UnifiedSkillsPanel";
 import { skillsApi } from "@/lib/api";
 import type { InstalledSkill, SkillBackupEntry } from "@/lib/api/skills";
+import en from "@/i18n/locales/en.json";
+import ja from "@/i18n/locales/ja.json";
+import zh from "@/i18n/locales/zh.json";
+import zhTW from "@/i18n/locales/zh-TW.json";
 
 const scanUnmanagedMock = vi.fn();
 const toggleSkillAppMock = vi.fn();
@@ -254,6 +259,10 @@ describe("UnifiedSkillsPanel", () => {
       <UnifiedSkillsPanel onOpenDiscovery={() => {}} availableApps={["pi"]} />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: /Installed Skill/ }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Codex" })).toBeInTheDocument();
+    });
     screen.getByRole("button", { name: "Codex" }).click();
 
     await waitFor(() => {
@@ -267,6 +276,7 @@ describe("UnifiedSkillsPanel", () => {
   });
 
   it("filters locally while bulk toggling the complete mixed list", async () => {
+    const user = userEvent.setup();
     installedSkillsMock = [
       {
         ...makeInstalledSkill(),
@@ -303,9 +313,12 @@ describe("UnifiedSkillsPanel", () => {
     expect(screen.getByText("Visible Skill")).toBeInTheDocument();
     expect(screen.queryByText("Hidden Skill")).not.toBeInTheDocument();
 
-    screen
-      .getAllByRole("checkbox", { name: "common.enableAllForApp" })[0]
-      .click();
+    await user.click(
+      screen.getByRole("button", { name: "skills.bulkAssignments" }),
+    );
+    await user.click(
+      await screen.findByRole("menuitemcheckbox", { name: /Claude/ }),
+    );
 
     await waitFor(() => {
       expect(bulkToggleSkillAppMock).toHaveBeenCalledWith({
@@ -314,5 +327,31 @@ describe("UnifiedSkillsPanel", () => {
         enabled: true,
       });
     });
+  });
+
+  it("includes the installed count and exposes responsive action groups", async () => {
+    installedSkillsMock = [makeInstalledSkill()];
+
+    const { container } = render(
+      <UnifiedSkillsPanel onOpenDiscovery={() => {}} availableApps={["pi"]} />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "skills.bulkAssignments" }),
+    ).toBeInTheDocument();
+    expect(container.querySelector(".app-count-bar")).not.toBeInTheDocument();
+    expect(container.querySelector(".management-summary")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Installed Skill/ }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Pi" })).toBeInTheDocument();
+    });
+    expect(
+      container.querySelector(".installed-skill-detail-page"),
+    ).toContainElement(
+      screen.getByRole("button", { name: "Pi" }),
+    );
+    for (const locale of [en, ja, zh, zhTW]) {
+      expect(locale.skills.installedCount).toContain("{{count}}");
+    }
   });
 });

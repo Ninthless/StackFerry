@@ -12,6 +12,8 @@ const requestDetailMock = vi.hoisted((): { data: any } => ({
     apiType: "pi-messages",
     model: "pi-model",
     requestModel: "pi-model",
+    thinkingEffort: "high",
+    thinkingEffortSource: "reasoning.effort=high",
     pricingModel: "pi-model",
     costMultiplier: "1",
     inputTokens: 100,
@@ -65,6 +67,8 @@ vi.mock("react-i18next", () => ({
       const translations: Record<string, string> = {
         "usage.diagnosticOrigins.upstream": "上游服务",
         "usage.failureKinds.upstream_capacity": "上游容量不足",
+        "usage.thinkingEffort": "思考强度",
+        "usage.thinkingEfforts.high": "高",
       };
       return (
         translations[key] ??
@@ -132,6 +136,9 @@ describe("RequestDetailPanel", () => {
     expect(screen.getByText("100")).toBeInTheDocument();
     expect(screen.getByText("resp-pi-1")).toBeInTheDocument();
     expect(screen.getByText("stop")).toBeInTheDocument();
+    expect(screen.getByText("思考强度")).toBeInTheDocument();
+    expect(screen.getByText("高")).toBeInTheDocument();
+    expect(screen.getByText("reasoning.effort=high")).toBeInTheDocument();
     expect(screen.getByText("路由诊断")).toBeInTheDocument();
     expect(screen.getByText("诊断归属")).toBeInTheDocument();
     expect(screen.getByText("上游服务")).toBeInTheDocument();
@@ -139,6 +146,7 @@ describe("RequestDetailPanel", () => {
     expect(screen.getAllByText("上游容量不足")).toHaveLength(2);
     expect(screen.getByText("首个有效输出")).toBeInTheDocument();
     expect(screen.getByText("87ms")).toBeInTheDocument();
+    expect(screen.getAllByText("123ms").length).toBeGreaterThan(0);
     expect(screen.queryByText(/原始/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));
@@ -162,5 +170,22 @@ describe("RequestDetailPanel", () => {
     expect(screen.getByText("pi-messages")).toBeInTheDocument();
 
     requestDetailMock.data = fallbackRequest;
+  });
+
+  it("shows unavailable timing instead of zero for session imports", () => {
+    const original = requestDetailMock.data;
+    requestDetailMock.data = {
+      ...original,
+      latencyMs: 0,
+      firstTokenMs: undefined,
+      dataSource: "pi_session",
+    };
+
+    render(<RequestDetailPanel requestId="pi-request" onClose={vi.fn()} />);
+
+    expect(screen.getAllByText("—")).toHaveLength(2);
+    expect(screen.queryByText("0ms")).not.toBeInTheDocument();
+
+    requestDetailMock.data = original;
   });
 });

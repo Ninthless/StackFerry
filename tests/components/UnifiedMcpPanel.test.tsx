@@ -17,6 +17,11 @@ const hookState = vi.hoisted(() => ({
   queryError: null as Error | null,
   servers: {} as Record<string, McpServer>,
   installPending: false,
+  togglePending: false,
+  bulkPending: false,
+  deletePending: false,
+  importPending: false,
+  adapterQueryEnabled: true,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -30,24 +35,36 @@ vi.mock("sonner", () => ({ toast: toastMocks }));
 
 vi.mock("@/hooks/useMcp", () => ({
   useAllMcpServers: () => ({ data: hookState.servers, isLoading: false }),
-  usePiMcpAdapterStatus: () => ({
-    data: hookState.status,
-    isLoading: false,
-    error: hookState.queryError,
-    refetch: refetchPiAdapterStatusMock,
-  }),
+  usePiMcpAdapterStatus: (_projectDir?: string, enabled = true) => {
+    hookState.adapterQueryEnabled = enabled;
+    return {
+      data: enabled ? hookState.status : undefined,
+      isLoading: false,
+      error: enabled ? hookState.queryError : null,
+      refetch: refetchPiAdapterStatusMock,
+    };
+  },
   useInstallPiMcpAdapter: () => ({
     mutateAsync: installPiAdapterMock,
     isPending: hookState.installPending,
   }),
-  useToggleMcpApp: () => ({ mutateAsync: toggleMcpAppMock }),
+  useToggleMcpApp: () => ({
+    mutateAsync: toggleMcpAppMock,
+    isPending: hookState.togglePending,
+  }),
   useBulkToggleMcpApp: () => ({
     mutateAsync: bulkToggleMcpAppMock,
-    isPending: false,
+    isPending: hookState.bulkPending,
     variables: undefined,
   }),
-  useDeleteMcpServer: () => ({ mutateAsync: vi.fn() }),
-  useImportMcpFromApps: () => ({ mutateAsync: vi.fn() }),
+  useDeleteMcpServer: () => ({
+    mutateAsync: vi.fn(),
+    isPending: hookState.deletePending,
+  }),
+  useImportMcpFromApps: () => ({
+    mutateAsync: vi.fn(),
+    isPending: hookState.importPending,
+  }),
 }));
 
 import UnifiedMcpPanel from "@/components/mcp/UnifiedMcpPanel";
@@ -58,6 +75,11 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
     hookState.queryError = null;
     hookState.servers = {};
     hookState.installPending = false;
+    hookState.togglePending = false;
+    hookState.bulkPending = false;
+    hookState.deletePending = false;
+    hookState.importPending = false;
+    hookState.adapterQueryEnabled = true;
     toggleMcpAppMock.mockReset();
     toggleMcpAppMock.mockResolvedValue(true);
     bulkToggleMcpAppMock.mockReset();
@@ -83,15 +105,19 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       projectedServerCount: 2,
     };
 
-    render(<UnifiedMcpPanel />);
+    render(<UnifiedMcpPanel activeApp="pi" />);
 
     expect(screen.getByText("mcp.piAdapter.label")).toHaveAttribute(
       "title",
       "/home/test/.pi/agent/mcp.json",
     );
-    expect(screen.getByText(/mcp\.piAdapter\.effective/)).toHaveTextContent(
-      "v2.19.0",
-    );
+    expect(screen.getByText("mcp.piAdapter.effective")).toBeInTheDocument();
+    expect(
+      screen.getByText(/mcp\.piAdapter\.configuredVersion/),
+    ).toHaveTextContent("2.19.0");
+    expect(
+      screen.getByText(/mcp\.piAdapter\.installedVersion/),
+    ).toHaveTextContent("2.19.0");
     expect(screen.getByText(/mcp\.piAdapter\.counts/)).toHaveTextContent(
       '"desired":2',
     );
@@ -99,6 +125,37 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       "title",
       "/workspace/.pi/mcp.json",
     );
+  });
+
+  it("only enables and renders the Pi adapter for the Pi supplier", () => {
+    hookState.status = {
+      state: "error",
+      configuredVersion: null,
+      installedVersion: null,
+      configPath: "/home/test/.pi/agent/mcp.json",
+      projectOverridePath: null,
+      error: "adapter unavailable",
+      canInstall: false,
+      canRepair: false,
+      desiredServerCount: 1,
+      projectedServerCount: 0,
+    };
+
+    const view = render(<UnifiedMcpPanel activeApp="claude" />);
+
+    expect(hookState.adapterQueryEnabled).toBe(false);
+    expect(screen.queryByText("mcp.piAdapter.label")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("mcp.summary.attention").nextSibling,
+    ).toHaveTextContent("0");
+
+    view.rerender(<UnifiedMcpPanel activeApp="pi" />);
+
+    expect(hookState.adapterQueryEnabled).toBe(true);
+    expect(screen.getByText("mcp.piAdapter.label")).toBeInTheDocument();
+    expect(
+      screen.getByText("mcp.summary.attention").nextSibling,
+    ).toHaveTextContent("1");
   });
 
   it("shows adapter configuration errors", () => {
@@ -115,10 +172,38 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       projectedServerCount: 0,
     };
 
-    render(<UnifiedMcpPanel />);
+    render(<UnifiedMcpPanel activeApp="pi" />);
 
     expect(screen.getByText("mcp.piAdapter.error")).toBeInTheDocument();
-    expect(screen.getByText("adapter package is disabled")).toBeInTheDocument();
+    expect(screen.getByText("adapter package is disabled")).toHaveAttribute(
+      "title",
+      "adapter package is disabled",
+    );
+  });
+
+  it.each([
+    ["uninstalled", "mcp.piAdapter.uninstalled", true],
+    ["declaredMissing", "mcp.piAdapter.declaredMissing", false],
+    ["installed", "mcp.piAdapter.effective", false],
+    ["incompatible", "mcp.piAdapter.incompatible", false],
+    ["error", "mcp.piAdapter.error", false],
+  ] as const)("shows the %s adapter state", (state, label, canInstall) => {
+    hookState.status = {
+      state,
+      configuredVersion: state === "installed" ? "latest" : null,
+      installedVersion: state === "installed" ? "2.19.0" : null,
+      configPath: "/home/test/.pi/agent/mcp.json",
+      projectOverridePath: null,
+      error: state === "error" ? "adapter error" : null,
+      canInstall,
+      canRepair: false,
+      desiredServerCount: state === "installed" ? 1 : 0,
+      projectedServerCount: state === "installed" ? 1 : 0,
+    };
+
+    render(<UnifiedMcpPanel activeApp="pi" />);
+
+    expect(screen.getByText(label)).toBeInTheDocument();
   });
 
   it("confirms installation and keeps the dialog pending", async () => {
@@ -134,7 +219,7 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       desiredServerCount: 1,
       projectedServerCount: 0,
     };
-    const view = render(<UnifiedMcpPanel />);
+    const view = render(<UnifiedMcpPanel activeApp="pi" />);
 
     fireEvent.click(
       screen.getByRole("button", { name: "mcp.piAdapter.install" }),
@@ -145,7 +230,7 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
     ).toBeInTheDocument();
 
     hookState.installPending = true;
-    view.rerender(<UnifiedMcpPanel />);
+    view.rerender(<UnifiedMcpPanel activeApp="pi" />);
 
     expect(
       screen.getByRole("button", { name: "common.cancel" }),
@@ -185,7 +270,7 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       },
       error: "server id conflict",
     });
-    render(<UnifiedMcpPanel />);
+    render(<UnifiedMcpPanel activeApp="pi" />);
 
     fireEvent.click(
       screen.getByRole("button", { name: "mcp.piAdapter.install" }),
@@ -216,7 +301,7 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       desiredServerCount: 1,
       projectedServerCount: 0,
     };
-    render(<UnifiedMcpPanel />);
+    render(<UnifiedMcpPanel activeApp="pi" />);
 
     expect(
       screen.queryByRole("button", { name: "mcp.piAdapter.install" }),
@@ -240,7 +325,7 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       desiredServerCount: 1,
       projectedServerCount: 0,
     };
-    render(<UnifiedMcpPanel />);
+    render(<UnifiedMcpPanel activeApp="pi" />);
 
     expect(
       screen.getByText("mcp.piAdapter.repairableMissingHint"),
@@ -263,7 +348,7 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       desiredServerCount: 3,
       projectedServerCount: 1,
     };
-    render(<UnifiedMcpPanel />);
+    render(<UnifiedMcpPanel activeApp="pi" />);
 
     expect(
       screen.getByText(/mcp\.piAdapter\.projectionPending/),
@@ -273,7 +358,7 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
     );
   });
 
-  it("toggles one matrix cell without a current application", async () => {
+  it("renders matrix headers and toggles one accessible cell", async () => {
     hookState.servers = {
       "server-1": {
         id: "server-1",
@@ -292,20 +377,27 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       },
     };
 
-    render(<UnifiedMcpPanel />);
+    render(<UnifiedMcpPanel activeApp="pi" />);
 
-    expect(screen.getByRole("button", { name: "Pi" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "OpenClaw" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Claude" }),
+      screen.getByRole("table", { name: "mcp.matrix.label" }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Claude Desktop" }),
-    ).not.toBeInTheDocument();
+    const matrix = screen.getByRole("table", { name: "mcp.matrix.label" });
+    expect(matrix).toHaveTextContent("Claude");
+    expect(matrix).toHaveTextContent("Codex");
+    expect(matrix).toHaveTextContent("Pi");
+    expect(matrix).toHaveTextContent("Gemini");
+    expect(matrix).toHaveTextContent("Grok Build");
+    expect(matrix).toHaveTextContent("OpenCode");
+    expect(matrix).toHaveTextContent("Hermes");
+    expect(screen.queryByText("OpenClaw")).not.toBeInTheDocument();
+    expect(screen.queryByText("Claude Desktop")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Codex" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /mcp\.matrix\.cellLabel.*Matrix Server.*Codex/,
+      }),
+    );
 
     await waitFor(() => {
       expect(toggleMcpAppMock).toHaveBeenCalledWith({
@@ -317,7 +409,37 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
     expect(toggleMcpAppMock).toHaveBeenCalledTimes(1);
   });
 
-  it("searches locally and bulk toggles the complete list", async () => {
+  it("constrains long server paths to the identity column", () => {
+    const longPath =
+      "C:\\Users\\ninth\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\f8d2abcb7481383b\\bin\\node_repl.exe";
+    hookState.servers = {
+      node_repl: {
+        id: "node_repl",
+        name: "node_repl",
+        server: { type: "stdio", command: longPath },
+        apps: {
+          claude: false,
+          codex: true,
+          pi: false,
+          gemini: false,
+          grokbuild: false,
+          opencode: false,
+          openclaw: false,
+          hermes: false,
+        },
+      },
+    };
+
+    const { container } = render(<UnifiedMcpPanel activeApp="codex" />);
+    const source = container.querySelector(".mcp-server-source");
+
+    expect(source).toHaveClass("min-w-0", "flex-1", "truncate");
+    expect(source).not.toHaveClass("shrink-0");
+    expect(source).toHaveAttribute("title", longPath);
+    expect(source?.closest(".mcp-server-identity-content")).toBeInTheDocument();
+  });
+
+  it("searches locally and bulk toggles only the filtered servers", async () => {
     hookState.servers = {
       visible: {
         id: "visible",
@@ -351,7 +473,7 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       },
     };
 
-    render(<UnifiedMcpPanel />);
+    render(<UnifiedMcpPanel activeApp="pi" />);
     fireEvent.change(
       screen.getByRole("textbox", {
         name: "mcp.unifiedPanel.searchAriaLabel",
@@ -359,21 +481,216 @@ describe("UnifiedMcpPanel Pi adapter status", () => {
       { target: { value: "visible needle" } },
     );
 
-    expect(screen.getByText("Visible Needle")).toBeInTheDocument();
+    expect(screen.getAllByText("Visible Needle")).toHaveLength(2);
     expect(screen.queryByText("Hidden Server")).not.toBeInTheDocument();
 
     fireEvent.click(
-      screen.getAllByRole("checkbox", {
-        name: /common\.enableAllForApp/,
-      })[0],
+      screen.getByRole("checkbox", {
+        name: /mcp\.matrix\.enableFiltered.*Claude/,
+      }),
     );
 
     await waitFor(() => {
       expect(bulkToggleMcpAppMock).toHaveBeenCalledWith({
-        serverIds: ["visible", "hidden"],
+        serverIds: ["visible"],
         app: "claude",
         enabled: true,
       });
     });
+    expect(
+      screen.queryByText(/mcp\.matrix\.filteredScope/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("combines projection and client filters before column bulk actions", async () => {
+    hookState.servers = {
+      target: {
+        id: "target",
+        name: "Target Server",
+        source: "workspace-target",
+        server: { type: "stdio", command: "target-command" },
+        apps: {
+          claude: true,
+          codex: false,
+          pi: false,
+          gemini: false,
+          grokbuild: false,
+          opencode: false,
+          openclaw: false,
+          hermes: false,
+        },
+      },
+      otherProjected: {
+        id: "other-projected",
+        name: "Other Projected",
+        server: { type: "stdio", command: "other-command" },
+        apps: {
+          claude: false,
+          codex: true,
+          pi: false,
+          gemini: false,
+          grokbuild: false,
+          opencode: false,
+          openclaw: false,
+          hermes: false,
+        },
+      },
+      unprojected: {
+        id: "unprojected",
+        name: "Unprojected",
+        server: { type: "stdio", command: "unprojected-command" },
+        apps: {
+          claude: false,
+          codex: false,
+          pi: false,
+          gemini: false,
+          grokbuild: false,
+          opencode: false,
+          openclaw: false,
+          hermes: false,
+        },
+      },
+    };
+
+    render(<UnifiedMcpPanel activeApp="pi" />);
+    fireEvent.change(
+      screen.getByRole("textbox", {
+        name: "mcp.unifiedPanel.searchAriaLabel",
+      }),
+      { target: { value: "workspace-target" } },
+    );
+    fireEvent.click(
+      screen.getByRole("combobox", { name: "mcp.filters.status" }),
+    );
+    fireEvent.click(
+      screen.getByRole("option", { name: "mcp.filters.projected" }),
+    );
+    fireEvent.click(
+      screen.getByRole("combobox", { name: "mcp.filters.client" }),
+    );
+    fireEvent.click(
+      screen.getByRole("option", {
+        name: "mcp.unifiedPanel.apps.claude",
+      }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /mcp\.matrix\.enableFiltered.*Codex.*"count":1/,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(bulkToggleMcpAppMock).toHaveBeenCalledWith({
+        serverIds: ["target"],
+        app: "codex",
+        enabled: true,
+      });
+    });
+    expect(
+      screen.queryByText(/mcp\.matrix\.filteredScope/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("disables matrix controls while a projection mutation is pending", () => {
+    hookState.togglePending = true;
+    hookState.servers = {
+      "server-1": {
+        id: "server-1",
+        name: "Pending Server",
+        server: { type: "stdio", command: "pending-server" },
+        apps: {
+          claude: false,
+          codex: false,
+          pi: false,
+          gemini: false,
+          grokbuild: false,
+          opencode: false,
+          openclaw: false,
+          hermes: false,
+        },
+      },
+    };
+
+    render(<UnifiedMcpPanel activeApp="pi" />);
+
+    expect(
+      screen.getByRole("checkbox", {
+        name: /mcp\.matrix\.cellLabel.*Pending Server.*Claude/,
+      }),
+    ).toBeDisabled();
+    expect(
+      screen
+        .getAllByRole("button", { name: "common.moreActions" })
+        .filter((button) => button.hasAttribute("disabled")),
+    ).toHaveLength(2);
+  });
+
+  it("exposes narrow detail and page overflow containment hooks", () => {
+    hookState.servers = {
+      "server-1": {
+        id: "server-1",
+        name: "Responsive Server",
+        server: { type: "stdio", command: "responsive-server" },
+        apps: {
+          claude: true,
+          codex: false,
+          pi: true,
+          gemini: false,
+          grokbuild: false,
+          opencode: false,
+          openclaw: false,
+          hermes: false,
+        },
+      },
+    };
+    hookState.status = {
+      state: "error",
+      configuredVersion: null,
+      installedVersion: null,
+      configPath: "/home/test/.pi/agent/mcp.json",
+      projectOverridePath: null,
+      error: "a very long adapter error",
+      canInstall: false,
+      canRepair: false,
+      desiredServerCount: 1,
+      projectedServerCount: 0,
+    };
+
+    const { container } = render(<UnifiedMcpPanel activeApp="pi" />);
+
+    expect(
+      container.querySelector('[data-layout="no-page-horizontal-scroll"]'),
+    ).toHaveClass("mcp-compact-list");
+    expect(
+      container.querySelector('[data-layout="local-horizontal-scroll"]'),
+    ).toHaveClass("mcp-matrix-scroll", "container-scroll-x");
+    expect(container.querySelector(".mcp-matrix-sticky")).toBeInTheDocument();
+    expect(
+      container.querySelector(".mcp-compact-detail"),
+    ).not.toBeInTheDocument();
+    expect(
+      container.querySelector(".pi-projection-health-actions"),
+    ).toContainElement(
+      screen.getByRole("button", { name: "mcp.piAdapter.recheck" }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /mcp\.matrix\.toggleDetails.*Responsive Server/,
+      }),
+    );
+
+    expect(
+      screen.getByRole("region", {
+        name: /mcp\.matrix\.detailsLabel.*Responsive Server/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("checkbox", {
+        name: /mcp\.matrix\.cellLabel.*Responsive Server.*Pi/,
+      }),
+    ).toHaveLength(2);
+    expect(container.querySelector(".mcp-compact-detail")).toBeInTheDocument();
   });
 });

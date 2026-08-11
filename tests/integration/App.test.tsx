@@ -157,8 +157,22 @@ vi.mock("@/components/UpdateBadge", () => ({
 }));
 
 vi.mock("@/components/pi/PiExtensionsPanel", () => ({
-  default: () => (
-    <div data-testid="pi-extensions-panel">pi-extensions-panel</div>
+  default: ({ requestedMode, onPageStateChange }: any) => (
+    <div data-testid="pi-extensions-panel">
+      <span>{requestedMode}</span>
+      <button
+        type="button"
+        onClick={() =>
+          onPageStateChange({
+            mode: "detail",
+            name: "Local One",
+            resourceType: "extension",
+          })
+        }
+      >
+        open-pi-extension-detail
+      </button>
+    </div>
   ),
 }));
 
@@ -313,7 +327,12 @@ describe("App integration with MSW", () => {
     );
 
     let pageHeader = screen.getByRole("banner");
-    expect(within(pageHeader).getByTestId("app-switcher")).toBeVisible();
+    const sidebar = screen.getByRole("complementary");
+    expect(within(sidebar).getByTestId("app-switcher")).toBeVisible();
+    expect(within(pageHeader).queryByTestId("app-switcher")).not.toBeInTheDocument();
+    expect(
+      within(pageHeader).getByRole("heading", { name: "provider.title" }),
+    ).toBeVisible();
     expect(
       within(pageHeader).getByRole("button", { name: "provider.addProvider" }),
     ).toBeVisible();
@@ -346,7 +365,10 @@ describe("App integration with MSW", () => {
 
     await waitFor(() => {
       pageHeader = screen.getByRole("banner");
-      expect(within(pageHeader).getByTestId("app-switcher")).toBeVisible();
+      expect(within(sidebar).getByTestId("app-switcher")).toBeVisible();
+      expect(
+        within(pageHeader).queryByTestId("app-switcher"),
+      ).not.toBeInTheDocument();
     });
   }, 30_000);
 
@@ -529,6 +551,28 @@ describe("App integration with MSW", () => {
       },
     );
     expect(within(promptAppSelect).getByText("Codex")).toBeInTheDocument();
+    const promptHeader = screen.getByRole("banner");
+    expect(
+      within(promptHeader).getAllByRole("button", { name: "prompts.add" }),
+    ).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "prompts.add" })).toHaveLength(
+      1,
+    );
+    fireEvent.click(
+      within(promptHeader).getByRole("button", { name: "prompts.add" }),
+    );
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("banner")).getByRole("button", {
+          name: "common.back",
+        }),
+      ).toBeInTheDocument(),
+    );
+    fireEvent.click(
+      within(screen.getByRole("banner")).getByRole("button", {
+        name: "common.back",
+      }),
+    );
 
     fireEvent.click(within(sidebar).getByRole("button", { name: "Skills" }));
     expect(
@@ -549,15 +593,12 @@ describe("App integration with MSW", () => {
     fireEvent.click(
       within(sidebar).getByRole("button", { name: "MCP servers" }),
     );
-    await screen.findByText("Matrix Server");
-    expect(screen.getByRole("button", { name: "Codex" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.getByRole("button", { name: "Pi" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    expect(await screen.findAllByText("Matrix Server")).toHaveLength(2);
+    const mcpMatrix = screen.getByRole("table");
+    const matrixRows = within(mcpMatrix).getAllByRole("row");
+    const matrixCells = within(matrixRows[1]).getAllByRole("checkbox");
+    expect(matrixCells[1]).toBeChecked();
+    expect(matrixCells[2]).not.toBeChecked();
   }, 60_000);
 
   it("opens usage configuration for Pi providers", async () => {
@@ -657,6 +698,17 @@ describe("App integration with MSW", () => {
       await screen.findByTestId("pi-extensions-panel"),
     ).toBeInTheDocument();
     expect(window.localStorage.getItem(VIEW_STORAGE_KEY)).toBe("piExtensions");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "open-pi-extension-detail" }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Local One" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "common.back" }));
+    expect(
+      screen.getByRole("heading", { name: "piExtensions.title" }),
+    ).toBeInTheDocument();
   });
 
   it("duplicates openclaw providers with a generated key that avoids live-only ids", async () => {

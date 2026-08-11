@@ -1056,8 +1056,15 @@ command = "echo"
 
     let state = support::create_test_state().expect("create test state");
 
-    McpService::import_from_claude(&state).expect("import from claude");
-    McpService::import_from_codex(&state).expect("import from codex");
+    assert_eq!(
+        McpService::import_from_claude(&state).expect("import from claude"),
+        1
+    );
+    assert_eq!(
+        McpService::import_from_codex(&state).expect("import from codex"),
+        1,
+        "enabling Codex on an existing server is an imported change"
+    );
 
     let servers = state.db.get_all_mcp_servers().expect("get all mcp servers");
     let entry = servers.get("shared").expect("shared server exists");

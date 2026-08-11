@@ -45,6 +45,58 @@ describe("PageHeader", () => {
     expect(container.querySelector(".overflow-x-auto")).toBeNull();
   });
 
+  it("exposes stable container-query layout hooks", () => {
+    const { container } = render(
+      <PageHeader
+        title="Settings"
+        actions={<button type="button">Save</button>}
+      />,
+    );
+
+    expect(container.querySelector("header")).toHaveClass(
+      "page-header",
+      "min-h-[72px]",
+    );
+    expect(container.querySelector(".page-header-title")).toBeInTheDocument();
+    expect(container.querySelector(".page-header-actions")).toContainElement(
+      screen.getByRole("button", { name: "Save" }),
+    );
+    expect(
+      container.querySelector(".page-header-primary-actions"),
+    ).toContainElement(screen.getByRole("button", { name: "Save" }));
+  });
+
+  it("marks provider overflow as compact-only without hiding its commands", async () => {
+    const user = userEvent.setup();
+    const onImport = vi.fn();
+    const { container } = render(
+      <PageHeader
+        title="Providers"
+        compactOverflowOnly
+        overflowLabel="More actions"
+        overflowActions={[
+          {
+            key: "import",
+            label: "Import providers",
+            onSelect: onImport,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "More actions" })).toHaveClass(
+      "page-header-overflow-compact-only",
+    );
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(
+      screen.getByRole("menuitem", { name: "Import providers" }),
+    );
+    expect(onImport).toHaveBeenCalledOnce();
+    expect(container.querySelector(".page-header-actions")).not.toHaveClass(
+      "overflow-x-auto",
+    );
+  });
+
   it("uses the app switcher as the sole provider identity", () => {
     const { container } = render(
       <PageHeader

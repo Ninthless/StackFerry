@@ -80,4 +80,19 @@ describe("AppSwitcher", () => {
       screen.getByRole("button", { name: "shell.switchApplication" }),
     ).toHaveClass("h-7", "w-[176px]", "bg-transparent", "text-foreground");
   });
+
+  it("uses a compact sidebar treatment", () => {
+    render(
+      <AppSwitcher
+        activeApp="codex"
+        onSwitch={vi.fn()}
+        visibleApps={{ ...visibleApps, codex: true }}
+        variant="sidebar"
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "shell.switchApplication" }),
+    ).toHaveClass("h-9", "px-2.5", "text-sm");
+  });
 });

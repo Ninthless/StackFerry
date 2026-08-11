@@ -412,4 +412,52 @@ describe("SkillsPage - skills.sh install (regression)", () => {
       getSkillsPageHeaderActions("skillssh").map((action) => action.key),
     ).toEqual(["manage-repos"]);
   });
+
+  it("keeps repository management available inside the discover page", async () => {
+    skillReposMock = [makeSkillRepo()];
+    discoverableSkillsMock = [makeDiscoverableSkill()];
+
+    render(<SkillsPage availableApps={["claude"]} />);
+
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", {
+        name: /skills\.repoManager/,
+      }),
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "skills.repo.title" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders discoverable skills as large resource cards", () => {
+    skillReposMock = [makeSkillRepo()];
+    discoverableSkillsMock = [makeDiscoverableSkill()];
+
+    const { container } = render(<SkillsPage availableApps={["claude"]} />);
+
+    const card = container.querySelector("[data-skill-key]");
+    expect(card).toHaveClass("skill-discovery-card", "min-h-[180px]");
+    expect(card).toHaveTextContent("owner-a/repo-a");
+    expect(card).toHaveTextContent("Skill from a configured repository");
+  });
+
+  it("uses container layout hooks without viewport breakpoint classes", () => {
+    discoverableSkillsMock = [makeDiscoverableSkill()];
+    skillReposMock = [makeSkillRepo()];
+
+    const { container } = render(<SkillsPage availableApps={["claude"]} />);
+
+    expect(
+      container.querySelector(".skills-discovery-toolbar"),
+    ).not.toHaveClass("md:flex-row", "md:items-center");
+    expect(container.querySelector(".skills-discovery-grid")).toHaveClass(
+      "grid-cols-1",
+    );
+    expect(container.querySelector(".skills-discovery-grid")).not.toHaveClass(
+      "md:grid-cols-2",
+      "lg:grid-cols-3",
+    );
+  });
 });

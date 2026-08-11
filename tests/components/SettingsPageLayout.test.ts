@@ -14,16 +14,37 @@ const source = fs.readFileSync(
   ),
   "utf8",
 );
+const proxySource = fs.readFileSync(
+  path.resolve(
+    __dirname,
+    "..",
+    "..",
+    "src",
+    "components",
+    "settings",
+    "ProxyTabContent.tsx",
+  ),
+  "utf8",
+);
 
 describe("SettingsPage layout", () => {
-  it("uses one horizontal settings navigation", () => {
-    expect(source).toContain("grid-cols-6");
+  it("uses one scrollable horizontal settings navigation", () => {
+    expect(source).toContain('layout="scrollable"');
     expect(source).toContain('t("settings.tabUsage")');
+    expect(source).toContain("settings-tab-trigger");
+    expect(source.match(/title=\{t\(/g)).toHaveLength(6);
+    expect(source).not.toContain("grid-cols-6");
     expect(source).not.toContain("w-44 shrink-0 flex-col");
     expect(source).not.toContain("max-[1100px]:sr-only");
+    expect(source).not.toMatch(/\bmax-\[(?:900|1000|1100)px\]:/);
   });
 
   it("aligns navigation, content, and save controls to one content width", () => {
     expect(source.match(/max-w-\[960px\]/g)).toHaveLength(3);
+  });
+
+  it("uses the shared equal layout for proxy subtabs", () => {
+    expect(proxySource).toContain('<TabsList layout="equal"');
+    expect(proxySource).not.toContain("grid-cols-3");
   });
 });

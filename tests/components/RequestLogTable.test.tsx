@@ -1,10 +1,24 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import fs from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RequestLogTable } from "@/components/usage/RequestLogTable";
 import type { UsageRangeSelection } from "@/types/usage";
 
 const useRequestLogsMock = vi.hoisted(() => vi.fn());
 const useRequestLogFacetsMock = vi.hoisted(() => vi.fn());
+const requestLogSource = fs.readFileSync(
+  path.resolve(
+    __dirname,
+    "..",
+    "..",
+    "src",
+    "components",
+    "usage",
+    "RequestLogTable.tsx",
+  ),
+  "utf8",
+);
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -12,8 +26,12 @@ vi.mock("react-i18next", () => ({
       key: string,
       options?: {
         defaultValue?: string;
+        count?: number;
       },
-    ) => options?.defaultValue ?? key,
+    ) =>
+      key === "usage.thinkingEffortBudget" && options?.count != null
+        ? `Budget ${options.count}`
+        : (options?.defaultValue ?? key),
     i18n: {
       resolvedLanguage: "en",
       language: "en",
@@ -170,5 +188,169 @@ describe("RequestLogTable", () => {
         }),
       );
     });
+  });
+
+  it("keeps pagination bounded and uses one table scroll container", () => {
+    useRequestLogsMock.mockReturnValue({
+      data: {
+        data: [],
+        total: 4000,
+        page: 0,
+        pageSize: 20,
+      },
+      isLoading: false,
+    });
+
+    render(
+      <RequestLogTable
+        range={{ preset: "today" }}
+        rangeLabel="Today"
+        appType="all"
+        refreshIntervalMs={0}
+      />,
+    );
+
+    expect(screen.getAllByRole("button", { name: /^\d+$/ })).toHaveLength(3);
+    expect(requestLogSource).toContain("request-log-page-numbers");
+    expect(requestLogSource).toContain('<Table className="min-w-[920px]">');
+    expect(requestLogSource).not.toContain(
+      'className="overflow-x-auto rounded-md border border-border bg-card"',
+    );
+  });
+
+  it("shows normalized thinking effort below the request model", () => {
+    useRequestLogsMock.mockReturnValue({
+      data: {
+        data: [
+          {
+            requestId: "request-1",
+            providerId: "provider-1",
+            providerName: "Provider",
+            appType: "codex",
+            apiType: "codex",
+            model: "gpt-5.6",
+            requestModel: "gpt-5.6",
+            thinkingEffort: "budget:16000",
+            thinkingEffortSource: "thinking.budget_tokens=16000",
+            costMultiplier: "1",
+            inputTokens: 10,
+            outputTokens: 5,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            reasoningTokens: 0,
+            cacheCreation1hTokens: 0,
+            inputTokenSemantics: 0,
+            inputCostUsd: "0",
+            outputCostUsd: "0",
+            cacheReadCostUsd: "0",
+            cacheCreationCostUsd: "0",
+            totalCostUsd: "0",
+            isStreaming: false,
+            latencyMs: 100,
+            statusCode: 200,
+            createdAt: 1_700_000_000,
+            dataSource: "proxy",
+          },
+        ],
+        total: 1,
+        page: 0,
+        pageSize: 20,
+      },
+      isLoading: false,
+    });
+
+    render(
+      <RequestLogTable
+        range={{ preset: "today" }}
+        rangeLabel="Today"
+        appType="all"
+        refreshIntervalMs={0}
+      />,
+    );
+
+    expect(screen.getByTitle("thinking.budget_tokens=16000")).toHaveTextContent(
+      "Budget 16000",
+    );
+  });
+
+  it("shows milliseconds and distinguishes unavailable timing values", () => {
+    useRequestLogsMock.mockReturnValue({
+      data: {
+        data: [
+          {
+            requestId: "proxy-request",
+            providerId: "provider-1",
+            providerName: "Provider",
+            appType: "codex",
+            apiType: "codex",
+            model: "gpt-5.6",
+            requestModel: "gpt-5.6",
+            costMultiplier: "1",
+            inputTokens: 10,
+            outputTokens: 5,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            reasoningTokens: 0,
+            cacheCreation1hTokens: 0,
+            inputTokenSemantics: 0,
+            inputCostUsd: "0",
+            outputCostUsd: "0",
+            cacheReadCostUsd: "0",
+            cacheCreationCostUsd: "0",
+            totalCostUsd: "0",
+            isStreaming: true,
+            latencyMs: 842,
+            firstTokenMs: 173,
+            statusCode: 200,
+            createdAt: 1_700_000_000,
+            dataSource: "proxy",
+          },
+          {
+            requestId: "session-request",
+            providerId: "_codex_session",
+            providerName: "Codex (Session)",
+            appType: "codex",
+            apiType: "codex",
+            model: "gpt-5.6",
+            requestModel: "gpt-5.6",
+            costMultiplier: "1",
+            inputTokens: 10,
+            outputTokens: 5,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            reasoningTokens: 0,
+            cacheCreation1hTokens: 0,
+            inputTokenSemantics: 0,
+            inputCostUsd: "0",
+            outputCostUsd: "0",
+            cacheReadCostUsd: "0",
+            cacheCreationCostUsd: "0",
+            totalCostUsd: "0",
+            isStreaming: true,
+            latencyMs: 0,
+            statusCode: 200,
+            createdAt: 1_700_000_000,
+            dataSource: "codex_session",
+          },
+        ],
+        total: 2,
+        page: 0,
+        pageSize: 20,
+      },
+      isLoading: false,
+    });
+
+    render(
+      <RequestLogTable
+        range={{ preset: "today" }}
+        rangeLabel="Today"
+        appType="all"
+        refreshIntervalMs={0}
+      />,
+    );
+
+    expect(screen.getByText("842ms/173ms")).toBeInTheDocument();
+    expect(screen.getByText("—/—")).toBeInTheDocument();
+    expect(screen.queryByText("0.0s")).not.toBeInTheDocument();
   });
 });

@@ -82,27 +82,11 @@ const renderPage = (sessionProvider: string | null = "codex") => {
 };
 
 const openSearch = () => {
-  const searchButton = Array.from(screen.getAllByRole("button")).find(
-    (button) => button.querySelector(".lucide-search"),
-  );
-
-  if (!searchButton) {
-    throw new Error("Search button not found");
-  }
-
-  fireEvent.click(searchButton);
+  return screen.getByRole("textbox", { name: /搜索会话元数据/i });
 };
 
 const closeSearch = () => {
-  const closeButton = Array.from(screen.getAllByRole("button")).find((button) =>
-    button.querySelector(".lucide-x"),
-  );
-
-  if (!closeButton) {
-    throw new Error("Search close button not found");
-  }
-
-  fireEvent.click(closeButton);
+  fireEvent.click(screen.getByRole("button", { name: /清除/i }));
 };
 
 const openViewModeMenu = async () => {
@@ -111,11 +95,13 @@ const openViewModeMenu = async () => {
 
 const switchToGroupedView = async () => {
   await openViewModeMenu();
-  const groupedOption = await screen.findByRole("option", { name: /分类/i });
+  const groupedOption = await screen.findByRole("option", {
+    name: /按项目/i,
+  });
   await userEvent.click(groupedOption);
   await waitFor(() =>
     expect(
-      screen.queryByRole("option", { name: /分类/i }),
+      screen.queryByRole("option", { name: /按项目/i }),
     ).not.toBeInTheDocument(),
   );
 };
@@ -140,12 +126,7 @@ const collapseAllGroups = () => {
   fireEvent.click(screen.getByRole("button", { name: /全部收起/i }));
 };
 
-const expandDirectoryGroup = (provider: string, directory: string) => {
-  fireEvent.click(
-    screen.getByRole("button", {
-      name: new RegExp(`展开或折叠 ${provider} 供应商分组`),
-    }),
-  );
+const expandDirectoryGroup = (_provider: string, directory: string) => {
   fireEvent.click(
     screen.getByRole("button", {
       name: new RegExp(`展开或折叠 ${directory} 目录分组`),
@@ -230,6 +211,102 @@ describe("SessionManagerPage", () => {
     const { container } = renderPage();
 
     expect(container.firstElementChild).toHaveClass("py-4");
+  });
+
+  it("renders the stable master-detail workbench contract", () => {
+    const { container } = renderPage();
+
+    expect(screen.getByTestId("session-master-detail")).toHaveClass(
+      "session-manager-layout",
+    );
+    expect(
+      screen
+        .getByTestId("session-master-detail")
+        .closest('[data-layout-contract="dual-pane-from-680"]'),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("session-master-pane")).toBeInTheDocument();
+    expect(screen.getByTestId("session-detail-pane")).toBeInTheDocument();
+    expect(
+      container.querySelector(".session-manager-workbench"),
+    ).not.toHaveAttribute("onwheel");
+    expect(screen.getByTestId("session-master-detail")).toHaveAttribute(
+      "data-layout-contract",
+      "responsive-master-detail",
+    );
+  });
+
+  it("exposes the conversation as a polite accessible log", async () => {
+    renderPage();
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Alpha Session" }),
+      ).toBeInTheDocument(),
+    );
+
+    expect(screen.getByRole("log", { name: /对话记录/i })).toHaveAttribute(
+      "aria-live",
+      "polite",
+    );
+  });
+
+  it("keeps toolbar controls visible while filtering metadata", async () => {
+    renderPage();
+
+    const search = openSearch();
+    fireEvent.change(search, { target: { value: "Alpha" } });
+
+    expect(screen.getByRole("combobox", { name: /会话供应商/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /刷新/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /批量管理/i })).toBeVisible();
+    expect(search).toHaveAttribute(
+      "placeholder",
+      "搜索标题、摘要、项目、路径或 ID",
+    );
+  });
+
+  it("does not expose resume controls for OpenClaw sessions", async () => {
+    setSessionFixtures(
+      [
+        {
+          providerId: "openclaw",
+          sessionId: "openclaw-session",
+          title: "OpenClaw Session",
+          sourcePath: "/mock/openclaw/state.db",
+          resumeCommand: "openclaw resume openclaw-session",
+        },
+      ],
+      { "openclaw:/mock/openclaw/state.db": [] },
+    );
+    renderPage("openclaw");
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "OpenClaw Session" }),
+      ).toBeInTheDocument(),
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /恢复会话|复制命令/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("openclaw resume")).not.toBeInTheDocument();
+  });
+
+  it("switches compact detail state and returns to the list", async () => {
+    const { container } = renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText("Alpha Session")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Alpha Session/i }));
+
+    expect(
+      container.querySelector(".session-manager-compact-detail"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /返回会话列表/i }));
+    expect(
+      container.querySelector(".session-manager-compact-detail"),
+    ).not.toBeInTheDocument();
   });
 
   it("defaults a clean profile to Codex sessions", async () => {
@@ -406,6 +483,59 @@ describe("SessionManagerPage", () => {
       expect(
         screen.getByRole("button", { name: /批量删除/i }),
       ).not.toBeDisabled(),
+    );
+
+    deleteManySpy.mockRestore();
+  });
+
+  it("keeps failed sessions selected after a partial batch delete", async () => {
+    const deleteManySpy = vi
+      .spyOn(sessionsApi, "deleteMany")
+      .mockResolvedValueOnce([
+        {
+          providerId: "codex",
+          sessionId: "codex-session-1",
+          sourcePath: "/mock/codex/session-1.jsonl",
+          success: true,
+        },
+        {
+          providerId: "codex",
+          sessionId: "codex-session-2",
+          sourcePath: "/mock/codex/session-2.jsonl",
+          success: false,
+          error: "locked",
+        },
+        {
+          providerId: "codex",
+          sessionId: "codex-session-3",
+          sourcePath: "/mock/codex/session-3.jsonl",
+          success: true,
+        },
+      ]);
+
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText("Alpha Session")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /批量管理/i }));
+    fireEvent.click(screen.getByRole("button", { name: /全选当前/i }));
+    fireEvent.click(screen.getByRole("button", { name: /批量删除/i }));
+    fireEvent.click(
+      within(screen.getByTestId("confirm-dialog")).getByRole("button", {
+        name: /删除所选会话/i,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("Alpha Session")).not.toBeInTheDocument();
+      expect(screen.getByText("Beta Session")).toBeInTheDocument();
+      expect(screen.getByText("已选 1 项")).toBeInTheDocument();
+    });
+    expect(toastSuccessMock).toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "1 个会话删除失败",
+      expect.objectContaining({ description: "locked" }),
     );
 
     deleteManySpy.mockRestore();
@@ -701,18 +831,13 @@ describe("SessionManagerPage", () => {
       screen.getByRole("button", { name: /全部收起/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
-        name: /展开或折叠 codex 供应商分组/,
-      }),
-    ).toBeInTheDocument();
-    expect(
       screen.queryByRole("button", {
-        name: /展开或折叠 claude 供应商分组/,
+        name: /供应商分组/,
       }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /展开或折叠 codex 目录分组/ }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: /展开或折叠 codex 目录分组/ }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Alpha Session/ }),
     ).not.toBeInTheDocument();
@@ -749,14 +874,14 @@ describe("SessionManagerPage", () => {
 
     await waitFor(() =>
       expect(
-        screen.queryByRole("button", { name: /展开或折叠 codex 目录分组/ }),
+        screen.queryByRole("button", { name: /Alpha Session/ }),
       ).not.toBeInTheDocument(),
     );
     await waitFor(() =>
       expect(
         JSON.parse(window.localStorage.getItem(GROUP_EXPANSION_STORAGE_KEY)!),
       ).toEqual({
-        expandedProviderIds: [],
+        expandedProviderIds: ["codex"],
         expandedDirectoryKeys: [],
       }),
     );
@@ -780,13 +905,8 @@ describe("SessionManagerPage", () => {
       screen.getByRole("heading", { name: "Claude Session" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", {
-        name: /展开或折叠 claude 供应商分组/,
-      }),
+      screen.getByRole("button", { name: /展开或折叠 claude 目录分组/ }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /展开或折叠 claude 目录分组/ }),
-    ).not.toBeInTheDocument();
 
     expandDirectoryGroup("claude", "claude");
 
@@ -839,12 +959,8 @@ describe("SessionManagerPage", () => {
 
     await enterGroupedBatchMode();
 
-    const codexProviderCheckbox = screen.getByRole("checkbox", {
-      name: /选择 codex 供应商分组内会话/,
-    });
-    fireEvent.click(codexProviderCheckbox);
+    fireEvent.click(screen.getByRole("button", { name: /全选当前/i }));
 
-    expect(codexProviderCheckbox).toBeChecked();
     expect(
       screen.queryByRole("checkbox", {
         name: /选择 claude 供应商分组内会话/,
@@ -852,9 +968,7 @@ describe("SessionManagerPage", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByText("已选 3 项")).toBeInTheDocument();
 
-    fireEvent.click(codexProviderCheckbox);
-
-    expect(codexProviderCheckbox).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: /取消全选/i }));
     expect(screen.getByText("已选 0 项")).toBeInTheDocument();
   });
 
@@ -870,9 +984,6 @@ describe("SessionManagerPage", () => {
     await enterGroupedBatchMode();
     expandDirectoryGroup("codex", "codex");
 
-    const providerCheckbox = screen.getByRole("checkbox", {
-      name: /选择 codex 供应商分组内会话/,
-    });
     const codexDirectoryCheckbox = screen.getByRole("checkbox", {
       name: /选择 codex 目录分组内会话/,
     });
@@ -880,7 +991,6 @@ describe("SessionManagerPage", () => {
     fireEvent.click(codexDirectoryCheckbox);
 
     expect(codexDirectoryCheckbox).toBeChecked();
-    expect(providerCheckbox).toHaveAttribute("aria-checked", "mixed");
     expect(screen.getByText("已选 2 项")).toBeInTheDocument();
   });
 
@@ -898,11 +1008,6 @@ describe("SessionManagerPage", () => {
 
     fireEvent.click(screen.getAllByRole("checkbox", { name: "选择会话" })[0]);
 
-    expect(
-      screen.getByRole("checkbox", {
-        name: /选择 codex 供应商分组内会话/,
-      }),
-    ).toHaveAttribute("aria-checked", "mixed");
     expect(
       screen.getByRole("checkbox", { name: /选择 codex 目录分组内会话/ }),
     ).toHaveAttribute("aria-checked", "mixed");

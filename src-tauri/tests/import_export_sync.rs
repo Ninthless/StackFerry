@@ -672,15 +672,23 @@ command = "echo"
 args = ["hello"]
 
 [mcp_servers.http_server]
-type = "http"
 url = "https://example.com"
+bearer_token_env_var = "MCP_TOKEN"
+env_http_headers = { "X-Workspace" = "MCP_WORKSPACE" }
+
+[mcp_servers.unknown_server]
+type = "websocket"
+url = "wss://example.com"
+
+[mcp_servers.after_unknown]
+command = "echo"
 "#,
     )
     .expect("write codex config");
 
     let mut config = MultiAppConfig::default();
     let changed = stackferry_lib::import_from_codex(&mut config).expect("import codex");
-    assert!(changed >= 2, "should import both servers");
+    assert_eq!(changed, 3, "should import all supported servers");
 
     // v3.7.0: 检查统一结构
     let servers = config
@@ -712,6 +720,27 @@ url = "https://example.com"
     assert_eq!(
         http_spec.get("url").and_then(|v| v.as_str()).unwrap_or(""),
         "https://example.com"
+    );
+    assert_eq!(
+        http_spec
+            .get("bearer_token_env_var")
+            .and_then(|v| v.as_str()),
+        Some("MCP_TOKEN")
+    );
+    assert_eq!(
+        http_spec
+            .get("env_http_headers")
+            .and_then(|v| v.get("X-Workspace"))
+            .and_then(|v| v.as_str()),
+        Some("MCP_WORKSPACE")
+    );
+    assert!(
+        servers.get("unknown_server").is_none(),
+        "unsupported transport should be skipped"
+    );
+    assert!(
+        servers.contains_key("after_unknown"),
+        "unsupported entry must not stop later imports"
     );
 }
 

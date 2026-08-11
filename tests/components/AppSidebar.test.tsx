@@ -11,6 +11,7 @@ vi.mock("@/components/UpdateBadge", () => ({
 }));
 
 import { AppSidebar } from "@/components/shell/AppSidebar";
+import type { VisibleApps } from "@/types";
 
 const precedes = (before: Element, after: Element) =>
   Boolean(
@@ -18,12 +19,26 @@ const precedes = (before: Element, after: Element) =>
   );
 
 describe("AppSidebar", () => {
+  const visibleApps: VisibleApps = {
+    claude: true,
+    "claude-desktop": true,
+    codex: true,
+    pi: true,
+    gemini: true,
+    grokbuild: true,
+    opencode: true,
+    openclaw: true,
+    hermes: true,
+  };
+
   const renderSidebar = (activeApp: AppId = "claude") =>
     render(
       <AppSidebar
         activeApp={activeApp}
+        visibleApps={visibleApps}
         currentView="providers"
         isRouteActive={false}
+        onAppSwitch={vi.fn()}
         onViewChange={vi.fn()}
         onOpenHermesWebUI={vi.fn()}
         onOpenSettings={vi.fn()}
@@ -69,8 +84,10 @@ describe("AppSidebar", () => {
     rerender(
       <AppSidebar
         activeApp="hermes"
+        visibleApps={visibleApps}
         currentView="providers"
         isRouteActive={false}
+        onAppSwitch={vi.fn()}
         onViewChange={vi.fn()}
         onOpenHermesWebUI={vi.fn()}
         onOpenSettings={vi.fn()}
@@ -92,8 +109,10 @@ describe("AppSidebar", () => {
     rerender(
       <AppSidebar
         activeApp="pi"
+        visibleApps={visibleApps}
         currentView="providers"
         isRouteActive={false}
+        onAppSwitch={vi.fn()}
         onViewChange={vi.fn()}
         onOpenHermesWebUI={vi.fn()}
         onOpenSettings={vi.fn()}
@@ -113,8 +132,10 @@ describe("AppSidebar", () => {
     render(
       <AppSidebar
         activeApp="claude"
+        visibleApps={visibleApps}
         currentView="providers"
         isRouteActive
+        onAppSwitch={vi.fn()}
         onViewChange={vi.fn()}
         onOpenHermesWebUI={vi.fn()}
         onOpenSettings={onOpenSettings}
@@ -143,5 +164,33 @@ describe("AppSidebar", () => {
     expect(onOpenUsage).toHaveBeenCalledOnce();
     expect(onOpenSettings).toHaveBeenCalledOnce();
     expect(onOpenUpdate).toHaveBeenCalledOnce();
+  });
+
+  it("renders the active Agent selector above navigation", () => {
+    const onAppSwitch = vi.fn();
+
+    render(
+      <AppSidebar
+        activeApp="codex"
+        visibleApps={{ ...visibleApps, gemini: false }}
+        currentView="providers"
+        isRouteActive={false}
+        onAppSwitch={onAppSwitch}
+        onViewChange={vi.fn()}
+        onOpenHermesWebUI={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onOpenUsage={vi.fn()}
+        onOpenUpdate={vi.fn()}
+      />,
+    );
+
+    const selector = screen.getByRole("button", {
+      name: "shell.switchApplication",
+    });
+    const navigation = screen.getByRole("navigation");
+
+    expect(selector).toHaveAttribute("data-variant", "sidebar");
+    expect(selector).toHaveTextContent("Codex");
+    expect(precedes(selector, navigation)).toBe(true);
   });
 });
