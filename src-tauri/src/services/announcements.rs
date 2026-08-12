@@ -14,8 +14,7 @@ const CACHE_TTL_SECONDS: i64 = 30 * 60;
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
 const MAX_ANNOUNCEMENTS: usize = 50;
 const MAX_BODY_LENGTH: usize = 16 * 1024;
-const BUNDLED_MANIFEST: &str =
-    include_str!("../../../announcements/announcements.json");
+const BUNDLED_MANIFEST: &str = include_str!("../../../announcements/announcements.json");
 
 static ANNOUNCEMENT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -136,9 +135,7 @@ pub struct AnnouncementService;
 
 impl AnnouncementService {
     pub async fn get_feed(language: &str, force_refresh: bool) -> Result<AnnouncementFeed, String> {
-        let _guard = announcement_lock()
-            .lock()
-            .await;
+        let _guard = announcement_lock().lock().await;
         let mut store = load_store();
         let should_refresh = force_refresh || cache_expired(store.fetched_at);
         let mut refresh_error = None;
@@ -167,10 +164,7 @@ impl AnnouncementService {
             }
         }
 
-        let manifest = store
-            .manifest
-            .clone()
-            .unwrap_or_else(bundled_manifest);
+        let manifest = store.manifest.clone().unwrap_or_else(bundled_manifest);
         Ok(build_feed(
             &store,
             &manifest,
@@ -188,14 +182,9 @@ impl AnnouncementService {
     }
 
     pub async fn mark_all_read() -> Result<(), String> {
-        let _guard = announcement_lock()
-            .lock()
-            .await;
+        let _guard = announcement_lock().lock().await;
         let mut store = load_store();
-        let manifest = store
-            .manifest
-            .clone()
-            .unwrap_or_else(bundled_manifest);
+        let manifest = store.manifest.clone().unwrap_or_else(bundled_manifest);
         for announcement in visible_records(&manifest) {
             store.read_ids.insert(announcement.id.clone());
         }
@@ -307,7 +296,10 @@ async fn fetch_manifest(store: &AnnouncementStore) -> Result<FetchResult, String
     })
 }
 
-fn header_string(headers: &reqwest::header::HeaderMap, name: reqwest::header::HeaderName) -> Option<String> {
+fn header_string(
+    headers: &reqwest::header::HeaderMap,
+    name: reqwest::header::HeaderName,
+) -> Option<String> {
     headers
         .get(name)
         .and_then(|value| value.to_str().ok())
@@ -315,8 +307,8 @@ fn header_string(headers: &reqwest::header::HeaderMap, name: reqwest::header::He
 }
 
 fn bundled_manifest() -> AnnouncementManifest {
-    let manifest: AnnouncementManifest =
-        serde_json::from_str(BUNDLED_MANIFEST).expect("bundled announcement manifest must be valid");
+    let manifest: AnnouncementManifest = serde_json::from_str(BUNDLED_MANIFEST)
+        .expect("bundled announcement manifest must be valid");
     validate_manifest(&manifest).expect("bundled announcement manifest must pass validation");
     manifest
 }
@@ -419,14 +411,11 @@ fn validate_manifest(manifest: &AnnouncementManifest) -> Result<(), String> {
 
 fn valid_id(id: &str) -> bool {
     (3..=80).contains(&id.len())
-        && id
-            .chars()
-            .enumerate()
-            .all(|(index, character)| {
-                character.is_ascii_lowercase()
-                    || character.is_ascii_digit()
-                    || (character == '-' && index > 0)
-            })
+        && id.chars().enumerate().all(|(index, character)| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || (character == '-' && index > 0)
+        })
 }
 
 fn contains_html(body: &str) -> bool {
@@ -469,8 +458,14 @@ fn visible_records(manifest: &AnnouncementManifest) -> Vec<&AnnouncementRecord> 
         .announcements
         .iter()
         .filter(|announcement| {
-            announcement.platforms.iter().any(|value| value == current_platform())
-                && announcement.channels.iter().any(|value| value == current_channel())
+            announcement
+                .platforms
+                .iter()
+                .any(|value| value == current_platform())
+                && announcement
+                    .channels
+                    .iter()
+                    .any(|value| value == current_channel())
                 && announcement
                     .expires_at
                     .as_deref()
@@ -492,10 +487,7 @@ fn visible_records(manifest: &AnnouncementManifest) -> Vec<&AnnouncementRecord> 
     records
 }
 
-fn localized_value<'a, T>(
-    values: &'a BTreeMap<String, T>,
-    language: &str,
-) -> Option<&'a T> {
+fn localized_value<'a, T>(values: &'a BTreeMap<String, T>, language: &str) -> Option<&'a T> {
     let normalized = match language {
         "zh-CN" | "zh-Hans" => "zh",
         "zh-TW" | "zh-Hant" => "zh-TW",
@@ -561,14 +553,9 @@ async fn mutate_state(
     id: &str,
     mutation: impl FnOnce(&mut AnnouncementStore, &str),
 ) -> Result<(), String> {
-    let _guard = announcement_lock()
-        .lock()
-        .await;
+    let _guard = announcement_lock().lock().await;
     let mut store = load_store();
-    let manifest = store
-        .manifest
-        .clone()
-        .unwrap_or_else(bundled_manifest);
+    let manifest = store.manifest.clone().unwrap_or_else(bundled_manifest);
     if !manifest
         .announcements
         .iter()
@@ -603,13 +590,7 @@ mod tests {
     #[test]
     fn bundled_manifest_is_valid_and_visible() {
         let manifest = bundled_manifest();
-        let feed = build_feed(
-            &AnnouncementStore::default(),
-            &manifest,
-            "zh",
-            None,
-            false,
-        );
+        let feed = build_feed(&AnnouncementStore::default(), &manifest, "zh", None, false);
         assert!(!feed.announcements.is_empty());
         assert_eq!(feed.unread_count, feed.announcements.len());
     }
@@ -637,13 +618,7 @@ mod tests {
     #[test]
     fn localized_content_falls_back_to_english() {
         let manifest = bundled_manifest();
-        let feed = build_feed(
-            &AnnouncementStore::default(),
-            &manifest,
-            "fr",
-            None,
-            false,
-        );
+        let feed = build_feed(&AnnouncementStore::default(), &manifest, "fr", None, false);
         assert_eq!(
             feed.announcements[0].title,
             "StackFerry v0.1.19 is available"
@@ -661,8 +636,7 @@ mod tests {
         assert!(validate_manifest(&manifest).is_err());
 
         let mut manifest = bundled_manifest();
-        manifest.announcements[0].actions[0].url =
-            Some("http://example.com".to_string());
+        manifest.announcements[0].actions[0].url = Some("http://example.com".to_string());
         assert!(validate_manifest(&manifest).is_err());
     }
 }
