@@ -1918,6 +1918,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn codex_failover_reproduces_catalog_model_shadowing_provider_model() {
+        let (p1_origin, p1_requests, p1_handle) = spawn_upstream(vec![MockReply::json(
+            http::StatusCode::SERVICE_UNAVAILABLE,
+            json!({"error": {"message": "primary unavailable"}}),
+        )])
+        .await;
+        let (p2_origin, p2_requests, p2_handle) = spawn_upstream(vec![MockReply::json(
+            http::StatusCode::OK,
+            json!({
+                "id": "chatcmpl_deepseek",
+                "object": "chat.completion",
+                "model": "deepseek-v4-pro",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "OK"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            }),
+        )])
+        .await;
+        let db = Arc::new(Database::memory().expect("create database"));
+        configure_codex_failover(db.as_ref(), 1, 5).await;
+        let p1 = queued_provider("catalog-shadow-p1", "Primary", &p1_origin, 0);
+        let mut p2 = queued_provider("catalog-shadow-p2", "DeepSeek", &p2_origin, 1);
+        p2.settings_config["model"] = json!("deepseek-v4-pro");
+        p2.settings_config["modelCatalog"] = json!({
+            "models": [{"model": "gpt-5.5"}]
+        });
+        p2.meta = Some(crate::provider::ProviderMeta {
+            api_format: Some("openai_chat".to_string()),
+            ..Default::default()
+        });
+        db.save_provider("codex", &p1).expect("save p1");
+        db.save_provider("codex", &p2).expect("save p2");
+        let (proxy, proxy_origin) = start_proxy(db).await;
+
+        let response = reqwest::Client::new()
+            .post(format!("{proxy_origin}/v1/responses"))
+            .json(&json!({
+                "model": "gpt-5.5",
+                "input": "reproduce model routing",
+                "stream": false
+            }))
+            .send()
+            .await
+            .expect("send failover request");
+        assert_eq!(response.status(), http::StatusCode::OK);
+
+        proxy.stop().await.expect("stop proxy");
+        p1_handle.abort();
+        p2_handle.abort();
+        assert_eq!(p1_requests.lock().await.len(), 1);
+        let requests = p2_requests.lock().await;
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].body["model"], "deepseek-v4-pro");
+    }
+
+    #[tokio::test]
     async fn alpha_search_retryable_failures_do_not_circuit_break_main_responses() {
         let mut p1_replies = vec![MockReply::json(
             http::StatusCode::BAD_GATEWAY,

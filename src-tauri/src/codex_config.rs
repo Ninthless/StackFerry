@@ -537,7 +537,7 @@ fn normalized_codex_model_slug(model: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn is_known_openai_codex_model(model: &str) -> bool {
+pub(crate) fn is_known_openai_codex_model(model: &str) -> bool {
     let model = normalized_codex_model_slug(model);
     model == "codex-auto-review"
         || model.starts_with("gpt-5.2")

@@ -372,6 +372,7 @@ pub fn apply_codex_chat_upstream_model(
 /// the chat gating check. Reused by the anthropic conversion path (the forwarder has
 /// already confirmed this provider uses anthropic).
 pub fn apply_codex_upstream_model(provider: &Provider, body: &mut JsonValue) -> Option<String> {
+    let upstream_model = codex_provider_upstream_model(provider);
     let catalog_model_ids = codex_provider_catalog_model_ids(provider);
     if let Some(request_model) = body
         .get("model")
@@ -379,12 +380,19 @@ pub fn apply_codex_upstream_model(provider: &Provider, body: &mut JsonValue) -> 
         .map(str::trim)
         .filter(|model| !model.is_empty())
     {
-        if catalog_model_ids.contains(request_model) {
+        let request_is_codex_template =
+            crate::codex_config::is_known_openai_codex_model(request_model);
+        let provider_targets_different_model = upstream_model
+            .as_deref()
+            .is_some_and(|model| !model.eq_ignore_ascii_case(request_model));
+        if catalog_model_ids.contains(request_model)
+            && !(request_is_codex_template && provider_targets_different_model)
+        {
             return Some(request_model.to_string());
         }
     }
 
-    let upstream_model = codex_provider_upstream_model(provider)?;
+    let upstream_model = upstream_model?;
     body["model"] = JsonValue::String(upstream_model.clone());
     Some(upstream_model)
 }
