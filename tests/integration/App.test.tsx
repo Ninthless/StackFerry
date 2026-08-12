@@ -17,6 +17,7 @@ import {
   setProviders,
 } from "../msw/state";
 import { emitTauriEvent } from "../msw/tauriMocks";
+import { AnnouncementProvider } from "@/contexts/AnnouncementContext";
 
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
@@ -195,9 +196,11 @@ const renderApp = (AppComponent: ComponentType) => {
   const client = new QueryClient();
   return render(
     <QueryClientProvider client={client}>
-      <Suspense fallback={<div data-testid="loading">loading</div>}>
-        <AppComponent />
-      </Suspense>
+      <AnnouncementProvider>
+        <Suspense fallback={<div data-testid="loading">loading</div>}>
+          <AppComponent />
+        </Suspense>
+      </AnnouncementProvider>
     </QueryClientProvider>,
   );
 };
@@ -329,7 +332,9 @@ describe("App integration with MSW", () => {
     let pageHeader = screen.getByRole("banner");
     const sidebar = screen.getByRole("complementary");
     expect(within(sidebar).getByTestId("app-switcher")).toBeVisible();
-    expect(within(pageHeader).queryByTestId("app-switcher")).not.toBeInTheDocument();
+    expect(
+      within(pageHeader).queryByTestId("app-switcher"),
+    ).not.toBeInTheDocument();
     expect(
       within(pageHeader).getByRole("heading", { name: "provider.title" }),
     ).toBeVisible();

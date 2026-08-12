@@ -10,6 +10,12 @@ vi.mock("@/components/UpdateBadge", () => ({
   ),
 }));
 
+vi.mock("@/contexts/AnnouncementContext", () => ({
+  useAnnouncements: () => ({
+    feed: { unreadCount: 2 },
+  }),
+}));
+
 import { AppSidebar } from "@/components/shell/AppSidebar";
 import type { VisibleApps } from "@/types";
 
@@ -66,6 +72,7 @@ describe("AppSidebar", () => {
       expect(screen.getByText("Prompts")).toBeInTheDocument();
       expect(screen.getByText("Sessions")).toBeInTheDocument();
       expect(screen.getByText("MCP servers")).toBeInTheDocument();
+      expect(screen.getByText("announcements.title")).toBeInTheDocument();
       expect(
         screen.getByRole("button", { name: "Routing activity" }),
       ).toBeInTheDocument();
@@ -128,6 +135,7 @@ describe("AppSidebar", () => {
     const onOpenUsage = vi.fn();
     const onOpenSettings = vi.fn();
     const onOpenUpdate = vi.fn();
+    const onViewChange = vi.fn();
 
     render(
       <AppSidebar
@@ -136,7 +144,7 @@ describe("AppSidebar", () => {
         currentView="providers"
         isRouteActive
         onAppSwitch={vi.fn()}
-        onViewChange={vi.fn()}
+        onViewChange={onViewChange}
         onOpenHermesWebUI={vi.fn()}
         onOpenSettings={onOpenSettings}
         onOpenUsage={onOpenUsage}
@@ -164,6 +172,32 @@ describe("AppSidebar", () => {
     expect(onOpenUsage).toHaveBeenCalledOnce();
     expect(onOpenSettings).toHaveBeenCalledOnce();
     expect(onOpenUpdate).toHaveBeenCalledOnce();
+  });
+
+  it("shows a navigation entry and unread dot for announcements", () => {
+    const onViewChange = vi.fn();
+
+    render(
+      <AppSidebar
+        activeApp="claude"
+        visibleApps={visibleApps}
+        currentView="providers"
+        isRouteActive={false}
+        onAppSwitch={vi.fn()}
+        onViewChange={onViewChange}
+        onOpenHermesWebUI={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onOpenUsage={vi.fn()}
+        onOpenUpdate={vi.fn()}
+      />,
+    );
+
+    const announcements = screen.getByRole("button", {
+      name: "announcements.title announcements.unread",
+    });
+    fireEvent.click(announcements);
+
+    expect(onViewChange).toHaveBeenCalledWith("announcements");
   });
 
   it("renders the active Agent selector above navigation", () => {

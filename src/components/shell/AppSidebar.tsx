@@ -1,5 +1,6 @@
 import {
   Bot,
+  Bell,
   BookOpen,
   Brain,
   Cable,
@@ -22,6 +23,7 @@ import { UpdateBadge } from "@/components/UpdateBadge";
 import { AppSwitcher } from "@/components/AppSwitcher";
 import type { AppView } from "@/components/shell/types";
 import type { VisibleApps } from "@/types";
+import { useAnnouncements } from "@/contexts/AnnouncementContext";
 
 interface AppSidebarProps {
   activeApp: AppId;
@@ -57,6 +59,8 @@ export function AppSidebar({
   onOpenUpdate,
 }: AppSidebarProps) {
   const { t } = useTranslation();
+  const { feed } = useAnnouncements();
+  const hasUnreadAnnouncements = (feed?.unreadCount ?? 0) > 0;
 
   const coreItems: NavItem[] = [
     {
@@ -91,6 +95,12 @@ export function AppSidebar({
       label: t("mcp.title", { defaultValue: "MCP servers" }),
       icon: Cable,
       view: "mcp",
+    },
+    {
+      key: "announcements",
+      label: t("announcements.title"),
+      icon: Bell,
+      view: "announcements",
     },
   ];
 
@@ -184,6 +194,12 @@ export function AppSidebar({
         <span className="min-w-0 truncate">{item.label}</span>
         {item.key === "providers" && isRouteActive && (
           <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-sidebar-active-foreground" />
+        )}
+        {item.key === "announcements" && hasUnreadAnnouncements && (
+          <span
+            className="ml-auto h-2 w-2 shrink-0 rounded-full bg-red-500 ring-2 ring-sidebar"
+            aria-label={t("announcements.unread")}
+          />
         )}
       </button>
     );

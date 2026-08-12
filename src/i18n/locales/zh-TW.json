@@ -3527,6 +3527,24 @@
     "suggestedDefaults": "套用建議預設設定",
     "suggestedDefaultsHint": "使用此預設推薦的預設模型設定"
   },
+  "announcements": {
+    "title": "公告",
+    "view": "查看",
+    "dismiss": "關閉橫幅",
+    "acknowledge": "我已瞭解",
+    "loading": "正在載入公告",
+    "cachedNotice": "目前顯示上次成功取得的公告",
+    "count": "共 {{count}} 則公告",
+    "markAllRead": "全部標示為已讀",
+    "unread": "未讀",
+    "empty": "暫無公告",
+    "emptyDescription": "新公告發佈後會顯示在這裡",
+    "severity": {
+      "info": "通知",
+      "important": "重要",
+      "critical": "緊急"
+    }
+  },
   "subscription": {
     "title": "訂閱額度",
     "fiveHour": "5 小時",

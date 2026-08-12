@@ -130,6 +130,29 @@ const modelsDevSyncState = {
   configPath: "C:\\Preview\\StackFerry\\models-dev.json",
 };
 
+const browserPreviewAnnouncements = [
+  {
+    id: "2026-08-stackferry-0-1-19",
+    category: "release",
+    severity: "important",
+    publishedAt: "2026-08-12T01:30:00Z",
+    relatedVersion: "0.1.19",
+    title: "StackFerry v0.1.19 已发布",
+    summary: "新增安全、可离线使用的应用内公告中心，并完善窄屏导航和未读提醒。",
+    body: "本次更新新增完整的应用内公告系统。公告中心支持未读状态、全部已读、重要公告横幅、紧急公告确认和多语言内容。\n\n客户端会通过代理感知的网络请求获取静态公告清单，并在网络不可用时回退到最后有效缓存或内置公告。",
+    actions: [
+      {
+        type: "external",
+        url: "https://github.com/Ninthless/StackFerry/releases/tag/v0.1.19",
+        label: "查看发行说明",
+      },
+    ],
+    read: false,
+    dismissed: false,
+    acknowledged: false,
+  },
+];
+
 const cloneSettings = (settings: Settings): Settings => ({
   ...settings,
   visibleApps: settings.visibleApps ? { ...settings.visibleApps } : undefined,
@@ -149,6 +172,7 @@ export const createBrowserPreviewCommandHandler = () => {
     Object.keys(visibleApps).map((appId) => [appId, [] as string[]]),
   ) as Record<AppId, string[]>;
   const universalProviders: Record<string, UniversalProvider> = {};
+  let announcements = structuredClone(browserPreviewAnnouncements);
 
   return (command: string, payload: InvokeArgs = {}): unknown => {
     const args = Array.isArray(payload)
@@ -166,6 +190,50 @@ export const createBrowserPreviewCommandHandler = () => {
         return null;
       case "get_settings":
         return cloneSettings(settings);
+      case "get_announcements":
+      case "refresh_announcements":
+        return {
+          announcements: structuredClone(announcements),
+          unreadCount: announcements.filter(
+            (announcement) => !announcement.read,
+          ).length,
+          fetchedAt: Math.floor(Date.now() / 1000),
+          stale: false,
+          refreshError: null,
+        };
+      case "mark_announcement_read": {
+        const id = String(args.id);
+        announcements = announcements.map((announcement) =>
+          announcement.id === id
+            ? { ...announcement, read: true }
+            : announcement,
+        );
+        return true;
+      }
+      case "mark_all_announcements_read":
+        announcements = announcements.map((announcement) => ({
+          ...announcement,
+          read: true,
+        }));
+        return true;
+      case "dismiss_announcement": {
+        const id = String(args.id);
+        announcements = announcements.map((announcement) =>
+          announcement.id === id
+            ? { ...announcement, read: true, dismissed: true }
+            : announcement,
+        );
+        return true;
+      }
+      case "acknowledge_announcement": {
+        const id = String(args.id);
+        announcements = announcements.map((announcement) =>
+          announcement.id === id
+            ? { ...announcement, read: true, acknowledged: true }
+            : announcement,
+        );
+        return true;
+      }
       case "save_settings":
         settings = cloneSettings(args.settings as Settings);
         return true;

@@ -3534,6 +3534,25 @@
     "suggestedDefaults": "Apply Suggested Defaults",
     "suggestedDefaultsHint": "Use this preset's recommended default model configuration"
   },
+  "announcements": {
+    "title": "Announcements",
+    "view": "View",
+    "dismiss": "Dismiss banner",
+    "acknowledge": "I understand",
+    "loading": "Loading announcements",
+    "cachedNotice": "Showing the last successfully fetched announcements",
+    "count": "{{count}} announcement",
+    "count_other": "{{count}} announcements",
+    "markAllRead": "Mark all as read",
+    "unread": "Unread",
+    "empty": "No announcements",
+    "emptyDescription": "New announcements will appear here",
+    "severity": {
+      "info": "Notice",
+      "important": "Important",
+      "critical": "Critical"
+    }
+  },
   "subscription": {
     "title": "Subscription Quota",
     "fiveHour": "5-Hour",

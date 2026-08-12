@@ -3534,6 +3534,24 @@
     "suggestedDefaults": "推奨デフォルト設定を適用",
     "suggestedDefaultsHint": "このプリセットの推奨デフォルトモデル設定を使用します"
   },
+  "announcements": {
+    "title": "お知らせ",
+    "view": "表示",
+    "dismiss": "バナーを閉じる",
+    "acknowledge": "確認しました",
+    "loading": "お知らせを読み込んでいます",
+    "cachedNotice": "最後に取得できたお知らせを表示しています",
+    "count": "{{count}} 件のお知らせ",
+    "markAllRead": "すべて既読にする",
+    "unread": "未読",
+    "empty": "お知らせはありません",
+    "emptyDescription": "新しいお知らせはここに表示されます",
+    "severity": {
+      "info": "通知",
+      "important": "重要",
+      "critical": "緊急"
+    }
+  },
   "subscription": {
     "title": "サブスクリプションクォータ",
     "fiveHour": "5時間",

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-12T14:00:00Z",
+  "announcements": [
+    {
+      "id": "2026-08-stackferry-0-1-19",
+      "category": "release",
+      "severity": "important",
+      "publishedAt": "2026-08-12T14:00:00Z",
+      "expiresAt": null,
+      "minAppVersion": null,
+      "maxAppVersion": null,
+      "platforms": ["windows", "macos", "linux"],
+      "channels": ["stable"],
+      "relatedVersion": "0.1.19",
+      "locales": {
+        "zh": {
+          "title": "StackFerry v0.1.19 已发布",
+          "summary": "新增安全、可离线使用的应用内公告中心，并完善窄屏导航和未读提醒。",
+          "body": "本次更新新增完整的应用内公告系统。公告中心支持未读状态、全部已读、重要公告横幅、紧急公告确认和多语言内容。\n\n客户端会通过代理感知的网络请求获取静态公告清单，使用 ETag 和 Last-Modified 减少重复传输，并在网络不可用时回退到最后有效缓存或内置公告。\n\n公告页面现在使用工作区实际宽度进行响应式布局。窄屏默认显示公告列表，点击后切换到独立详情页；宽屏则保留列表与详情双栏。"
+        },
+        "en": {
+          "title": "StackFerry v0.1.19 is available",
+          "summary": "Adds a secure, offline-capable announcement center with improved narrow-screen navigation and unread indicators.",
+          "body": "This release adds a complete in-app announcement system with unread state, mark-all-read, important banners, critical acknowledgement dialogs, and localized content.\n\nThe client fetches a static manifest through the proxy-aware HTTP client, uses ETag and Last-Modified to reduce transfers, and falls back to the last valid cache or a bundled announcement when offline.\n\nThe announcement workspace now responds to its actual content width. Narrow layouts show the list first and switch to a dedicated detail view, while wider layouts keep the list and detail side by side."
+        },
+        "zh-TW": {
+          "title": "StackFerry v0.1.19 已發佈",
+          "summary": "新增安全、可離線使用的應用程式內公告中心，並改善窄螢幕導覽和未讀提醒。",
+          "body": "本次更新新增完整的應用程式內公告系統。公告中心支援未讀狀態、全部標示為已讀、重要公告橫幅、緊急公告確認和多語言內容。\n\n客戶端會透過支援代理的網路請求取得靜態公告清單，使用 ETag 和 Last-Modified 減少重複傳輸，並在網路不可用時回退到最後有效快取或內建公告。\n\n公告頁面現在使用工作區實際寬度進行響應式配置。窄螢幕預設顯示公告列表，點擊後切換到獨立詳細頁；寬螢幕則保留列表與詳細內容雙欄。"
+        },
+        "ja": {
+          "title": "StackFerry v0.1.19 をリリースしました",
+          "summary": "安全でオフライン対応のお知らせセンターと、狭い画面向けのナビゲーションおよび未読表示を追加しました。",
+          "body": "この更新では、未読状態、すべて既読、重要なお知らせバナー、緊急確認ダイアログ、多言語コンテンツを備えたアプリ内お知らせシステムを追加しました。\n\nクライアントはプロキシ対応 HTTP クライアントで静的マニフェストを取得し、ETag と Last-Modified で転送を減らします。オフライン時は最後に有効だったキャッシュまたは同梱のお知らせにフォールバックします。\n\nお知らせ画面は実際のコンテンツ幅に応じてレイアウトされます。狭い画面では一覧から専用詳細画面へ切り替わり、広い画面では一覧と詳細を左右に表示します。"
+        }
+      },
+      "actions": [
+        {
+          "type": "external",
+          "url": "https://github.com/Ninthless/StackFerry/releases/tag/v0.1.19",
+          "label": {
+            "zh": "查看发行说明",
+            "en": "View release notes",
+            "zh-TW": "查看發行說明",
+            "ja": "リリースノートを見る"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ninthless.github.io/StackFerry/announcements/schema.json",
+  "title": "StackFerry announcements",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "announcements"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "announcements": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "$ref": "#/$defs/announcement"
+      }
+    }
+  },
+  "$defs": {
+    "localizedContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "summary", "body"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 280
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "label"],
+      "properties": {
+        "type": {
+          "enum": ["update", "external"]
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "label": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        }
+      }
+    },
+    "announcement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "category",
+        "severity",
+        "publishedAt",
+        "platforms",
+        "channels",
+        "locales"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{2,79}$"
+        },
+        "category": {
+          "enum": ["release", "maintenance", "security", "service"]
+        },
+        "severity": {
+          "enum": ["info", "important", "critical"]
+        },
+        "publishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expiresAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "minAppVersion": {
+          "type": ["string", "null"]
+        },
+        "maxAppVersion": {
+          "type": ["string", "null"]
+        },
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["windows", "macos", "linux"]
+          }
+        },
+        "channels": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["stable", "prerelease"]
+          }
+        },
+        "relatedVersion": {
+          "type": ["string", "null"]
+        },
+        "locales": {
+          "type": "object",
+          "required": ["zh", "en"],
+          "minProperties": 2,
+          "additionalProperties": {
+            "$ref": "#/$defs/localizedContent"
+          }
+        },
+        "actions": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        }
+      }
+    }
+  }
+}

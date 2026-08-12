@@ -1387,6 +1387,12 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::get_announcements,
+            commands::refresh_announcements,
+            commands::mark_announcement_read,
+            commands::mark_all_announcements_read,
+            commands::dismiss_announcement,
+            commands::acknowledge_announcement,
             commands::get_providers,
             commands::get_current_provider,
             commands::add_provider,

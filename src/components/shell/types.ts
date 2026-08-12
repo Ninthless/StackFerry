@@ -1,5 +1,6 @@
 export type AppView =
   | "providers"
+  | "announcements"
   | "settings"
   | "prompts"
   | "skills"

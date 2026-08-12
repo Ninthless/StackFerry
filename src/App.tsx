@@ -85,6 +85,9 @@ import {
 import type { AppView } from "@/components/shell/types";
 import { PROMPT_APP_IDS, SKILLS_APP_IDS } from "@/config/appConfig";
 import { invalidateDatabaseState } from "@/lib/query/invalidateDatabaseState";
+import { AnnouncementCenter } from "@/components/announcements/AnnouncementCenter";
+import { AnnouncementBanner } from "@/components/announcements/AnnouncementBanner";
+import { CriticalAnnouncementDialog } from "@/components/announcements/CriticalAnnouncementDialog";
 
 interface SyncStatusUpdatedPayload {
   source?: string;
@@ -118,6 +121,7 @@ const getInitialApp = (): AppId => {
 const VIEW_STORAGE_KEY = "stackferry-last-view";
 const VALID_VIEWS: AppView[] = [
   "providers",
+  "announcements",
   "settings",
   "prompts",
   "skills",
@@ -184,6 +188,9 @@ function App() {
     useState<PiExtensionsPageState>({ mode: "list" });
   const [installedSkillsPageState, setInstalledSkillsPageState] =
     useState<InstalledSkillsPageState>({ mode: "list" });
+  const [requestedAnnouncementId, setRequestedAnnouncementId] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     localStorage.setItem(VIEW_STORAGE_KEY, currentView);
@@ -830,6 +837,8 @@ function App() {
     switch (currentView) {
       case "providers":
         return t("provider.title");
+      case "announcements":
+        return t("announcements.title");
       case "settings":
         return t("settings.title");
       case "prompts":
@@ -1120,6 +1129,16 @@ function App() {
   const renderContent = () => {
     const content = (() => {
       switch (currentView) {
+        case "announcements":
+          return (
+            <AnnouncementCenter
+              requestedAnnouncementId={requestedAnnouncementId}
+              onOpenUpdate={() => {
+                setSettingsDefaultTab("about");
+                setCurrentView("settings");
+              }}
+            />
+          );
         case "settings":
           return (
             <SettingsPage
@@ -1345,6 +1364,14 @@ function App() {
           )}
 
           <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {currentView !== "announcements" && (
+              <AnnouncementBanner
+                onOpen={(id) => {
+                  setRequestedAnnouncementId(id);
+                  setCurrentView("announcements");
+                }}
+              />
+            )}
             {isOpenClawView && openclawHealthWarnings.length > 0 && (
               <OpenClawHealthBanner warnings={openclawHealthWarnings} />
             )}
@@ -1358,6 +1385,12 @@ function App() {
         onOpenChange={setIsAddOpen}
         appId={activeApp}
         onSubmit={addProvider}
+      />
+      <CriticalAnnouncementDialog
+        onOpenUpdate={() => {
+          setSettingsDefaultTab("about");
+          setCurrentView("settings");
+        }}
       />
 
       <EditProviderDialog

@@ -4811,9 +4811,9 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "1.0.27"
+version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
+checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 dependencies = [
  "serde",
  "serde_core",
@@ -5189,7 +5189,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "stackferry"
-version = "0.1.18"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5227,6 +5227,7 @@ dependencies = [
  "rust_decimal",
  "rustls",
  "rustls-native-certs",
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml",

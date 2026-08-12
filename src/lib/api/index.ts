@@ -1,4 +1,11 @@
 export type { AppId } from "./types";
+export { announcementsApi } from "./announcements";
+export type {
+  Announcement,
+  AnnouncementAction,
+  AnnouncementFeed,
+  AnnouncementSeverity,
+} from "./announcements";
 export { providersApi, universalProvidersApi } from "./providers";
 export { settingsApi } from "./settings";
 export { backupsApi } from "./settings";

@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 mod auth;
+mod announcements;
 mod balance;
 mod codex_oauth;
 mod coding_plan;
@@ -38,6 +39,7 @@ mod webdav_sync;
 mod workspace;
 
 pub use auth::*;
+pub use announcements::*;
 pub use balance::*;
 pub use codex_oauth::*;
 pub use coding_plan::*;

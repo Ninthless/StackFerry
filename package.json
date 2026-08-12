@@ -1,6 +1,6 @@
 {
   "name": "stackferry",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Provider and configuration manager for AI coding tools",
   "type": "module",
   "scripts": {
@@ -13,6 +13,7 @@
     "build:renderer": "vite build",
     "typecheck": "tsc --noEmit",
     "release:validate": "node scripts/validate-release-version.mjs",
+    "announcements:validate": "node scripts/validate-announcements.mjs",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "test:unit": "vitest run",

@@ -141,6 +141,10 @@ html.dark {
     grid-column: 1;
   }
 
+  .announcement-layout {
+    grid-template-columns: minmax(260px, 34%) minmax(0, 1fr);
+  }
+
   .usage-dashboard-container {
     container-type: inline-size;
     container-name: usage-dashboard;
@@ -311,6 +315,34 @@ html.dark {
 
   .border-border-dragging {
     border-color: hsl(var(--primary) / 0.6);
+  }
+}
+
+@container workbench (max-width: 679px) {
+  .announcement-center:not([data-compact-detail="true"]) .announcement-detail {
+    display: none;
+  }
+
+  .announcement-center[data-compact-detail="true"] .announcement-list-toolbar,
+  .announcement-center[data-compact-detail="true"] .announcement-list {
+    display: none;
+  }
+
+  .announcement-layout {
+    display: block;
+  }
+
+  .announcement-list,
+  .announcement-detail {
+    height: 100%;
+  }
+
+  .announcement-list {
+    border-right: 0;
+  }
+
+  .announcement-detail-back {
+    display: inline-flex;
   }
 }
 
