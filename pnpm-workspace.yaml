@@ -1,6 +1,10 @@
-packages: []
+packages:
+  - "apps/*"
 
 allowBuilds:
   "@tailwindcss/oxide": true
+  better-sqlite3: true
+  electron: true
+  electron-winstaller: true
   esbuild: true
   msw: false

@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "source": "src-tauri/src/proxy",
+  "request": {
+    "preserveHeaderCase": true,
+    "supportedTransports": ["http", "sse", "websocket"],
+    "formats": [
+      "openai-chat",
+      "openai-responses",
+      "anthropic-messages",
+      "gemini",
+      "pi-http"
+    ]
+  },
+  "stream": {
+    "orderedChunks": true,
+    "cancellable": true,
+    "tracksFirstToken": true,
+    "drainsOrCancelsBodies": true
+  },
+  "log": {
+    "fields": [
+      "requestId",
+      "providerId",
+      "appType",
+      "apiType",
+      "model",
+      "requestModel",
+      "pricingModel",
+      "latencyMs",
+      "firstTokenMs",
+      "statusCode",
+      "failureKind",
+      "routeTrace",
+      "thinkingEffort",
+      "thinkingEffortSource"
+    ]
+  },
+  "faults": [
+    "timeout",
+    "disconnect",
+    "malformed-chunk",
+    "slow-consumer"
+  ]
+}

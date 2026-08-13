@@ -1,0 +1,17 @@
+model = "gpt-5.6"
+# preserved user setting
+model_reasoning_effort = "high"
+
+[features]
+shell_snapshot = true
+
+[mcp_servers.context7]
+type = "http"
+url = "https://mcp.context7.com/mcp"
+
+[mcp_servers.local]
+command = "npx"
+args = ["-y", "@example/mcp"]
+
+[projects.'C:\work\example']
+trust_level = "trusted"

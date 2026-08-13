@@ -1,0 +1,105 @@
+{
+  "name": "@stackferry/desktop-v1",
+  "version": "1.0.0",
+  "description": "Local control plane for AI agents",
+  "author": "Ninthless",
+  "private": true,
+  "type": "module",
+  "productName": "StackFerry 1.0",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:e2e": "pnpm build && playwright test",
+    "rebuild": "electron-builder install-app-deps",
+    "package": "pnpm build && electron-builder --dir && node scripts/verify-package.mjs",
+    "dist": "pnpm build && electron-builder"
+  },
+  "build": {
+    "appId": "io.ninthless.stackferry.v1",
+    "artifactName": "StackFerry-1.0-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "npmRebuild": true,
+    "publish": {
+      "provider": "github",
+      "owner": "ninthless",
+      "repo": "StackFerry",
+      "channel": "v1"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "category": "Development"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "@mantine/core": "^8.3.1",
+    "@mantine/hooks": "^8.3.1",
+    "@tanstack/react-query": "^5.90.3",
+    "@tanstack/react-router": "^1.170.25",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.2",
+    "electron-updater": "^6.8.9",
+    "jsonc-parser": "^3.3.1",
+    "lucide-react": "^0.542.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "smol-toml": "^1.4.2",
+    "undici": "^8.10.0",
+    "ws": "^8.21.3",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.0.1",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^4.3.1",
+    "drizzle-kit": "^0.31.10",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^4.0.0",
+    "jsdom": "^26.0.0",
+    "typescript": "^5.8.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.0"
+  }
+}

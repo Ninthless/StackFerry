@@ -17,7 +17,10 @@
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "test:unit": "vitest run",
-    "test:unit:watch": "vitest watch"
+    "test:unit:watch": "vitest watch",
+    "v1:dev": "pnpm --filter @stackferry/desktop-v1 dev",
+    "v1:check": "pnpm --filter @stackferry/desktop-v1 typecheck && pnpm --filter @stackferry/desktop-v1 test && pnpm --filter @stackferry/desktop-v1 build",
+    "v1:package": "pnpm --filter @stackferry/desktop-v1 package"
   },
   "keywords": [],
   "author": [

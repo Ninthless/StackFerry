@@ -1,0 +1,65 @@
+name: Desktop 1.0
+
+on:
+  workflow_call:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, rewrite/electron-prototype]
+
+concurrency:
+  group: desktop-v1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify 1.0 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.18.0
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @stackferry/desktop-v1 rebuild
+      - run: pnpm --filter @stackferry/desktop-v1 typecheck
+      - run: pnpm --filter @stackferry/desktop-v1 test
+      - run: pnpm --filter @stackferry/desktop-v1 exec playwright install --with-deps chromium
+        if: runner.os == 'Linux'
+      - run: pnpm --filter @stackferry/desktop-v1 test:e2e
+      - run: pnpm --filter @stackferry/desktop-v1 package
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+  signed-release-gate:
+    name: Signed release gate
+    if: startsWith(github.ref, 'refs/tags/v1.')
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require signing and notarization secrets
+        env:
+          WIN_CSC_LINK: ${{ secrets.V1_WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.V1_WIN_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.V1_APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.V1_APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.V1_APPLE_API_ISSUER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in WIN_CSC_LINK WIN_CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required 1.0 release secret: $name" >&2
+              exit 1
+            fi
+          done
