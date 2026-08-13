@@ -19,6 +19,28 @@ fn should_sync_codex_mcp() -> bool {
     crate::codex_config::get_codex_config_dir().exists()
 }
 
+pub fn is_codex_managed_runtime_server(id: &str, spec: &Value) -> bool {
+    let Some(command) = spec.get("command").and_then(Value::as_str) else {
+        return false;
+    };
+    let normalized = command.replace('\\', "/").to_ascii_lowercase();
+    let runtime_command = normalized.contains("/codex/runtimes/")
+        && normalized
+            .rsplit('/')
+            .next()
+            .is_some_and(|name| matches!(name, "node_repl" | "node_repl.exe"));
+    let runtime_environment = spec
+        .get("env")
+        .and_then(Value::as_object)
+        .is_some_and(|env| {
+            env.contains_key("NODE_REPL_NODE_PATH")
+                || env.contains_key("NODE_REPL_NODE_MODULE_DIRS")
+                || env.contains_key("SKY_CUA_NATIVE_PIPE")
+        });
+
+    runtime_command || (id.eq_ignore_ascii_case("node_repl") && runtime_environment)
+}
+
 /// 返回已启用的 MCP 服务器（过滤 enabled==true）
 fn collect_enabled_servers(cfg: &McpConfig) -> HashMap<String, Value> {
     let mut out = HashMap::new();
@@ -51,11 +73,15 @@ fn collect_enabled_servers(cfg: &McpConfig) -> HashMap<String, Value> {
 /// 已存在的服务器将启用 Codex 应用，不覆盖其他字段和应用状态
 pub fn import_from_codex(config: &mut MultiAppConfig) -> Result<usize, AppError> {
     let text = crate::codex_config::read_and_validate_codex_config_text()?;
+    import_from_codex_text(config, &text)
+}
+
+fn import_from_codex_text(config: &mut MultiAppConfig, text: &str) -> Result<usize, AppError> {
     if text.trim().is_empty() {
         return Ok(0);
     }
 
-    let root: toml::Table = toml::from_str(&text)
+    let root: toml::Table = toml::from_str(text)
         .map_err(|e| AppError::McpValidation(format!("解析 ~/.codex/config.toml 失败: {e}")))?;
 
     // 确保新结构存在
@@ -239,6 +265,11 @@ pub fn import_from_codex(config: &mut MultiAppConfig) -> Result<usize, AppError>
                     continue;
                 }
             };
+
+            if is_codex_managed_runtime_server(id, &spec_v) {
+                log::debug!("跳过 Codex 自管运行时 MCP '{id}'");
+                continue;
+            }
 
             if let Some(existing) = servers.get_mut(id) {
                 // 已存在：仅启用 Codex 应用
@@ -444,6 +475,12 @@ pub fn sync_single_server_to_codex(
     id: &str,
     server_spec: &Value,
 ) -> Result<(), AppError> {
+    if is_codex_managed_runtime_server(id, server_spec) {
+        return Err(AppError::McpValidation(format!(
+            "MCP 服务器 '{id}' 由 Codex 运行时管理，不能由 StackFerry 写入"
+        )));
+    }
+
     if !should_sync_codex_mcp() {
         return Ok(());
     }
@@ -753,6 +790,88 @@ pub(super) fn json_server_to_toml_table(spec: &Value) -> Result<toml_edit::Table
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn identifies_codex_managed_runtime_servers_without_matching_user_servers() {
+        assert!(is_codex_managed_runtime_server(
+            "node_repl",
+            &json!({
+                "type": "stdio",
+                "command": "node_repl",
+                "env": {
+                    "NODE_REPL_NODE_PATH": "C:\\missing\\node.exe"
+                }
+            })
+        ));
+        assert!(is_codex_managed_runtime_server(
+            "internal-browser-runtime",
+            &json!({
+                "type": "stdio",
+                "command": "C:\\Users\\user\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\hash\\bin\\node_repl.exe"
+            })
+        ));
+        assert!(!is_codex_managed_runtime_server(
+            "node_repl",
+            &json!({
+                "type": "stdio",
+                "command": "node",
+                "args": ["user-repl-server.js"]
+            })
+        ));
+        assert!(!is_codex_managed_runtime_server(
+            "user-node-server",
+            &json!({
+                "type": "stdio",
+                "command": "node",
+                "args": ["server.js"]
+            })
+        ));
+        assert!(!is_codex_managed_runtime_server(
+            "node-repl-tools",
+            &json!({
+                "type": "stdio",
+                "command": "npx",
+                "args": ["node-repl-tools"]
+            })
+        ));
+    }
+
+    #[test]
+    fn import_skips_codex_managed_runtime_servers() {
+        let mut config = MultiAppConfig::default();
+        let source = r#"
+[mcp_servers.node_repl]
+type = "stdio"
+command = 'C:\Users\user\AppData\Local\OpenAI\Codex\runtimes\cua_node\old\bin\node_repl.exe'
+
+[mcp_servers.user_server]
+type = "stdio"
+command = "npx"
+args = ["-y", "@example/mcp"]
+"#;
+
+        let imported = import_from_codex_text(&mut config, source).expect("import");
+        let servers = config.mcp.servers.expect("servers");
+
+        assert_eq!(imported, 1);
+        assert!(!servers.contains_key("node_repl"));
+        assert!(servers.contains_key("user_server"));
+    }
+
+    #[test]
+    fn sync_rejects_codex_managed_runtime_server_before_file_access() {
+        let error = sync_single_server_to_codex(
+            &MultiAppConfig::default(),
+            "node_repl",
+            &json!({
+                "type": "stdio",
+                "command": "C:\\Users\\user\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\old\\bin\\node_repl.exe"
+            }),
+        )
+        .expect_err("must reject");
+
+        assert!(matches!(error, AppError::McpValidation(_)));
+    }
 
     #[test]
     fn upsert_normalizes_non_table_mcp_servers_without_panicking() {

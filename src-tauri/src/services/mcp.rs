@@ -17,6 +17,13 @@ impl McpService {
 
     /// 添加或更新 MCP 服务器
     pub fn upsert_server(state: &AppState, server: McpServer) -> Result<(), AppError> {
+        if server.apps.codex && mcp::is_codex_managed_runtime_server(&server.id, &server.server) {
+            return Err(AppError::McpValidation(format!(
+                "MCP 服务器 '{}' 由 Codex 运行时管理，不能由 StackFerry 修改",
+                server.id
+            )));
+        }
+
         let previous = state.db.get_all_mcp_servers()?.get(&server.id).cloned();
         let prev_apps = previous
             .as_ref()
@@ -75,6 +82,17 @@ impl McpService {
         app: AppType,
         enabled: bool,
     ) -> Result<(), AppError> {
+        if matches!(app, AppType::Codex) && enabled {
+            if let Some(server) = state.db.get_all_mcp_servers()?.get(server_id) {
+                if mcp::is_codex_managed_runtime_server(&server.id, &server.server) {
+                    return Err(AppError::McpValidation(format!(
+                        "MCP 服务器 '{}' 由 Codex 运行时管理，不能由 StackFerry 启用",
+                        server.id
+                    )));
+                }
+            }
+        }
+
         let previous_enabled = state
             .db
             .get_all_mcp_servers()?
@@ -388,6 +406,7 @@ impl McpService {
 
         // 调用原有的导入逻辑（从 mcp.rs）
         let count = crate::mcp::import_from_codex(&mut temp_config)?;
+        Self::detach_codex_managed_runtime_servers(state)?;
 
         let mut changed_count = 0;
 
@@ -416,6 +435,26 @@ impl McpService {
         }
 
         Ok(changed_count)
+    }
+
+    fn detach_codex_managed_runtime_servers(state: &AppState) -> Result<(), AppError> {
+        let servers = state.db.get_all_mcp_servers()?;
+        for mut server in servers
+            .values()
+            .filter(|server| {
+                server.apps.codex
+                    && mcp::is_codex_managed_runtime_server(&server.id, &server.server)
+            })
+            .cloned()
+        {
+            server.apps.codex = false;
+            if server.apps.is_empty() {
+                state.db.delete_mcp_server(&server.id)?;
+            } else {
+                state.db.save_mcp_server(&server)?;
+            }
+        }
+        Ok(())
     }
 
     /// 从 Gemini 导入 MCP（v3.7.0 已更新为统一结构）
@@ -662,5 +701,94 @@ impl McpService {
                 failures.join("; ")
             )))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::Database;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    fn state() -> AppState {
+        AppState::new(Arc::new(Database::memory().expect("database")))
+    }
+
+    fn runtime_server(apps: McpApps) -> McpServer {
+        McpServer {
+            id: "node_repl".to_string(),
+            name: "node_repl".to_string(),
+            server: json!({
+                "type": "stdio",
+                "command": "C:\\Users\\user\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\old\\bin\\node_repl.exe"
+            }),
+            apps,
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn detach_deletes_codex_only_runtime_server() {
+        let state = state();
+        state
+            .db
+            .save_mcp_server(&runtime_server(McpApps {
+                codex: true,
+                ..McpApps::default()
+            }))
+            .expect("seed");
+
+        McpService::detach_codex_managed_runtime_servers(&state).expect("detach");
+
+        assert!(state.db.get_all_mcp_servers().expect("servers").is_empty());
+    }
+
+    #[test]
+    fn detach_preserves_other_agent_assignments() {
+        let state = state();
+        state
+            .db
+            .save_mcp_server(&runtime_server(McpApps {
+                claude: true,
+                codex: true,
+                ..McpApps::default()
+            }))
+            .expect("seed");
+
+        McpService::detach_codex_managed_runtime_servers(&state).expect("detach");
+
+        let server = state
+            .db
+            .get_all_mcp_servers()
+            .expect("servers")
+            .shift_remove("node_repl")
+            .expect("server");
+        assert!(server.apps.claude);
+        assert!(!server.apps.codex);
+    }
+
+    #[test]
+    fn enabling_codex_runtime_server_is_rejected_before_persistence() {
+        let state = state();
+        state
+            .db
+            .save_mcp_server(&runtime_server(McpApps::default()))
+            .expect("seed");
+
+        let error = McpService::toggle_app(&state, "node_repl", AppType::Codex, true)
+            .expect_err("must reject");
+
+        assert!(matches!(error, AppError::McpValidation(_)));
+        let server = state
+            .db
+            .get_all_mcp_servers()
+            .expect("servers")
+            .shift_remove("node_repl")
+            .expect("server");
+        assert!(!server.apps.codex);
     }
 }
