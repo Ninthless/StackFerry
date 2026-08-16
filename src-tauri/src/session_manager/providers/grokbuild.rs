@@ -196,6 +196,7 @@ fn parse_summary(path: &Path) -> Option<SessionMeta> {
     Some(SessionMeta {
         provider_id: "grokbuild".to_string(),
         session_id: session_id.clone(),
+        instance_id: None,
         title,
         summary: session_summary,
         project_dir: summary.info.cwd,

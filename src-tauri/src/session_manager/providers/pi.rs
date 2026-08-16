@@ -136,6 +136,7 @@ fn parse_session(path: &Path) -> Option<SessionMeta> {
     Some(SessionMeta {
         provider_id: PROVIDER_ID.to_string(),
         session_id,
+        instance_id: None,
         title,
         summary,
         project_dir,

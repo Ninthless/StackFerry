@@ -36,16 +36,34 @@ struct SessionIndexEntry {
 }
 
 pub fn scan_sessions() -> Vec<SessionMeta> {
-    let roots = session_roots();
-    scan_sessions_in_roots(&roots)
+    scan_sessions_in_home(&get_codex_config_dir(), None)
 }
 
 pub fn session_roots() -> Vec<PathBuf> {
-    let config_dir = get_codex_config_dir();
+    session_roots_for_home(&get_codex_config_dir())
+}
+
+pub fn session_roots_for_home(config_dir: &Path) -> Vec<PathBuf> {
     vec![
         config_dir.join("sessions"),
         config_dir.join("archived_sessions"),
     ]
+}
+
+pub fn scan_sessions_in_home(config_dir: &Path, instance_id: Option<&str>) -> Vec<SessionMeta> {
+    let roots = session_roots_for_home(config_dir);
+    let config_text = std::fs::read_to_string(config_dir.join("config.toml")).unwrap_or_default();
+    let db_paths = codex_state_db_paths(config_dir, &config_text)
+        .into_iter()
+        .filter(|path| path.starts_with(config_dir))
+        .collect::<Vec<_>>();
+    let titles =
+        load_thread_titles_from_paths(&config_dir.join(CODEX_SESSION_INDEX_FILENAME), &db_paths);
+    let mut sessions = scan_sessions_in_roots_with_titles(&roots, &titles);
+    for session in &mut sessions {
+        session.instance_id = instance_id.map(str::to_string);
+    }
+    sessions
 }
 
 fn scan_sessions_in_roots(roots: &[PathBuf]) -> Vec<SessionMeta> {
@@ -414,6 +432,7 @@ fn parse_session_with_titles(
     Some(SessionMeta {
         provider_id: PROVIDER_ID.to_string(),
         session_id: session_id.clone(),
+        instance_id: None,
         title,
         summary,
         project_dir,

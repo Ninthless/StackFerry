@@ -19,6 +19,8 @@ pub struct SessionMeta {
     pub provider_id: String,
     pub session_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
@@ -48,6 +50,7 @@ pub struct SessionMessage {
 pub struct DeleteSessionRequest {
     pub provider_id: String,
     pub session_id: String,
+    pub instance_id: Option<String>,
     pub source_path: String,
 }
 
@@ -56,6 +59,7 @@ pub struct DeleteSessionRequest {
 pub struct DeleteSessionOutcome {
     pub provider_id: String,
     pub session_id: String,
+    pub instance_id: Option<String>,
     pub source_path: String,
     pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -121,13 +125,14 @@ struct CachedSessionScan {
 
 #[derive(Default)]
 struct SessionScanCache {
-    entries: Mutex<HashMap<SessionProvider, CachedSessionScan>>,
+    entries: Mutex<HashMap<(SessionProvider, Option<String>), CachedSessionScan>>,
 }
 
 impl SessionScanCache {
     fn get_or_scan<F>(
         &self,
         provider: SessionProvider,
+        scope: Option<String>,
         roots: &[PathBuf],
         force_refresh: bool,
         scan: F,
@@ -142,7 +147,7 @@ impl SessionScanCache {
                 .entries
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if let Some(cached) = entries.get(&provider) {
+            if let Some(cached) = entries.get(&(provider, scope.clone())) {
                 if cached.fingerprint == fingerprint_before {
                     return cached.sessions.clone();
                 }
@@ -158,14 +163,14 @@ impl SessionScanCache {
 
         if fingerprint_before == fingerprint_after {
             entries.insert(
-                provider,
+                (provider, scope.clone()),
                 CachedSessionScan {
                     fingerprint: fingerprint_after,
                     sessions: sessions.clone(),
                 },
             );
         } else {
-            entries.remove(&provider);
+            entries.remove(&(provider, scope));
         }
 
         sessions
@@ -282,12 +287,61 @@ where
     Ok(sessions)
 }
 
+fn codex_instance_home(
+    db: &crate::database::Database,
+    instance_id: &str,
+) -> Result<PathBuf, String> {
+    let instance = db
+        .get_agent_instance(instance_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("实例 {instance_id} 不存在"))?;
+    if instance.app_type != "codex" {
+        return Err(format!("实例 {instance_id} 不属于 Codex"));
+    }
+    instance
+        .codex_home
+        .map(PathBuf::from)
+        .ok_or_else(|| format!("Codex 实例 {instance_id} 缺少 CODEX_HOME"))
+}
+
+pub fn scan_sessions_scoped(
+    db: &crate::database::Database,
+    provider_id: &str,
+    instance_id: Option<&str>,
+    force_refresh: bool,
+) -> Result<Vec<SessionMeta>, String> {
+    let provider = SessionProvider::parse(provider_id)?;
+    if provider != SessionProvider::Codex && instance_id.is_some() {
+        return Err("只有 Codex 会话支持实例作用域".to_string());
+    }
+    let scope = instance_id.map(str::to_string);
+    let (roots, scan): (Vec<PathBuf>, Box<dyn FnOnce() -> Vec<SessionMeta>>) =
+        if let Some(instance_id) = instance_id {
+            let home = codex_instance_home(db, instance_id)?;
+            let mut roots = codex::session_roots_for_home(&home);
+            roots.push(home.join("session_index.jsonl"));
+            let instance_id = instance_id.to_string();
+            (
+                roots,
+                Box::new(move || codex::scan_sessions_in_home(&home, Some(&instance_id))),
+            )
+        } else {
+            let roots = scan_roots(provider);
+            (roots, Box::new(move || scan_provider(provider)))
+        };
+    let cache = SESSION_SCAN_CACHE.get_or_init(SessionScanCache::default);
+    let mut sessions = cache.get_or_scan(provider, scope, &roots, force_refresh, scan);
+    sort_sessions(&mut sessions);
+    Ok(sessions)
+}
+
 pub fn scan_sessions(provider_id: &str, force_refresh: bool) -> Result<Vec<SessionMeta>, String> {
     let provider = SessionProvider::parse(provider_id)?;
     let roots = scan_roots(provider);
     let cache = SESSION_SCAN_CACHE.get_or_init(SessionScanCache::default);
-    let mut sessions =
-        cache.get_or_scan(provider, &roots, force_refresh, || scan_provider(provider));
+    let mut sessions = cache.get_or_scan(provider, None, &roots, force_refresh, || {
+        scan_provider(provider)
+    });
     sort_sessions(&mut sessions);
     Ok(sessions)
 }
@@ -313,6 +367,59 @@ pub fn load_messages(provider_id: &str, source_path: &str) -> Result<Vec<Session
         "pi" => pi::load_messages(path),
         _ => Err(format!("Unsupported provider: {provider_id}")),
     }
+}
+
+fn validate_scoped_source(
+    db: &crate::database::Database,
+    provider_id: &str,
+    instance_id: Option<&str>,
+    source_path: &str,
+) -> Result<PathBuf, String> {
+    let roots = if provider_id == "codex" {
+        match instance_id {
+            Some(instance_id) => {
+                codex::session_roots_for_home(&codex_instance_home(db, instance_id)?)
+            }
+            None => codex::session_roots(),
+        }
+    } else {
+        if instance_id.is_some() {
+            return Err("只有 Codex 会话支持实例作用域".to_string());
+        }
+        provider_roots(provider_id)?
+    };
+    let source = canonicalize_existing_path(Path::new(source_path), "session source")?;
+    for root in roots {
+        if root.exists() && source.starts_with(canonicalize_existing_path(&root, "session root")?) {
+            return Ok(source);
+        }
+    }
+    Err(format!(
+        "Session source path is outside provider roots: {}",
+        source.display()
+    ))
+}
+
+pub fn load_message_page_scoped(
+    db: &crate::database::Database,
+    provider_id: &str,
+    instance_id: Option<&str>,
+    source_path: &str,
+    cursor: Option<&str>,
+) -> Result<SessionMessagePage, String> {
+    let source = validate_scoped_source(db, provider_id, instance_id, source_path)?;
+    load_message_page(provider_id, &source.to_string_lossy(), cursor)
+}
+
+pub fn load_message_content_scoped(
+    db: &crate::database::Database,
+    provider_id: &str,
+    instance_id: Option<&str>,
+    source_path: &str,
+    content_cursor: &str,
+) -> Result<String, String> {
+    let source = validate_scoped_source(db, provider_id, instance_id, source_path)?;
+    load_message_content(provider_id, &source.to_string_lossy(), content_cursor)
 }
 
 pub fn load_message_page(
@@ -382,6 +489,40 @@ pub fn delete_session(
 
     let roots = provider_roots(provider_id)?;
     delete_session_with_roots(provider_id, session_id, Path::new(source_path), &roots)
+}
+
+pub fn delete_session_scoped(
+    db: &crate::database::Database,
+    provider_id: &str,
+    instance_id: Option<&str>,
+    session_id: &str,
+    source_path: &str,
+) -> Result<bool, String> {
+    if provider_id != "codex" || instance_id.is_none() {
+        return delete_session(provider_id, session_id, source_path);
+    }
+    let home = codex_instance_home(db, instance_id.expect("checked above"))?;
+    delete_session_with_roots(
+        provider_id,
+        session_id,
+        Path::new(source_path),
+        &codex::session_roots_for_home(&home),
+    )
+}
+
+pub fn delete_sessions_scoped(
+    db: &crate::database::Database,
+    requests: &[DeleteSessionRequest],
+) -> Vec<DeleteSessionOutcome> {
+    collect_delete_session_outcomes(requests, |request| {
+        delete_session_scoped(
+            db,
+            &request.provider_id,
+            request.instance_id.as_deref(),
+            &request.session_id,
+            &request.source_path,
+        )
+    })
 }
 
 pub fn delete_sessions(requests: &[DeleteSessionRequest]) -> Vec<DeleteSessionOutcome> {
@@ -485,6 +626,7 @@ where
             Ok(true) => DeleteSessionOutcome {
                 provider_id: request.provider_id.clone(),
                 session_id: request.session_id.clone(),
+                instance_id: request.instance_id.clone(),
                 source_path: request.source_path.clone(),
                 success: true,
                 error: None,
@@ -492,6 +634,7 @@ where
             Ok(false) => DeleteSessionOutcome {
                 provider_id: request.provider_id.clone(),
                 session_id: request.session_id.clone(),
+                instance_id: request.instance_id.clone(),
                 source_path: request.source_path.clone(),
                 success: false,
                 error: Some("Session was not deleted".to_string()),
@@ -499,6 +642,7 @@ where
             Err(error) => DeleteSessionOutcome {
                 provider_id: request.provider_id.clone(),
                 session_id: request.session_id.clone(),
+                instance_id: request.instance_id.clone(),
                 source_path: request.source_path.clone(),
                 success: false,
                 error: Some(error),
@@ -521,6 +665,7 @@ mod tests {
             vec![SessionMeta {
                 provider_id: "claude".to_string(),
                 session_id: "session-1".to_string(),
+                instance_id: None,
                 title: None,
                 summary: None,
                 project_dir: None,
@@ -563,6 +708,7 @@ mod tests {
             vec![SessionMeta {
                 provider_id: "codex".to_string(),
                 session_id: "session-1".to_string(),
+                instance_id: None,
                 title: std::fs::read_to_string(&source).ok(),
                 summary: None,
                 project_dir: None,
@@ -573,23 +719,23 @@ mod tests {
             }]
         };
 
-        let first = cache.get_or_scan(SessionProvider::Codex, &roots, false, scan);
-        let unchanged = cache.get_or_scan(SessionProvider::Codex, &roots, false, scan);
+        let first = cache.get_or_scan(SessionProvider::Codex, None, &roots, false, scan);
+        let unchanged = cache.get_or_scan(SessionProvider::Codex, None, &roots, false, scan);
         assert_eq!(scan_count.get(), 1);
         assert_eq!(first[0].title.as_deref(), Some("first"));
         assert_eq!(unchanged[0].title.as_deref(), Some("first"));
 
-        let forced = cache.get_or_scan(SessionProvider::Codex, &roots, true, scan);
+        let forced = cache.get_or_scan(SessionProvider::Codex, None, &roots, true, scan);
         assert_eq!(scan_count.get(), 2);
         assert_eq!(forced[0].title.as_deref(), Some("first"));
 
         std::fs::write(&source, "changed and longer").expect("change source");
-        let changed = cache.get_or_scan(SessionProvider::Codex, &roots, false, scan);
+        let changed = cache.get_or_scan(SessionProvider::Codex, None, &roots, false, scan);
         assert_eq!(scan_count.get(), 3);
         assert_eq!(changed[0].title.as_deref(), Some("changed and longer"));
 
         std::fs::remove_file(&source).expect("remove source");
-        let missing = cache.get_or_scan(SessionProvider::Codex, &roots, false, scan);
+        let missing = cache.get_or_scan(SessionProvider::Codex, None, &roots, false, scan);
         assert_eq!(scan_count.get(), 4);
         assert!(missing.is_empty());
     }
@@ -659,16 +805,19 @@ mod tests {
             DeleteSessionRequest {
                 provider_id: "codex".to_string(),
                 session_id: "s1".to_string(),
+                instance_id: None,
                 source_path: "/tmp/s1".to_string(),
             },
             DeleteSessionRequest {
                 provider_id: "claude".to_string(),
                 session_id: "s2".to_string(),
+                instance_id: None,
                 source_path: "/tmp/s2".to_string(),
             },
             DeleteSessionRequest {
                 provider_id: "gemini".to_string(),
                 session_id: "s3".to_string(),
+                instance_id: None,
                 source_path: "/tmp/s3".to_string(),
             },
         ];

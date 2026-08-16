@@ -2733,6 +2733,7 @@ pub async fn open_provider_terminal(
     state: State<'_, crate::store::AppState>,
     app: String,
     #[allow(non_snake_case)] providerId: String,
+    #[allow(non_snake_case)] instanceId: Option<String>,
     cwd: Option<String>,
 ) -> Result<bool, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
@@ -2746,15 +2747,61 @@ pub async fn open_provider_terminal(
         .get(&providerId)
         .ok_or_else(|| format!("提供商 {providerId} 不存在"))?;
 
-    // 从提供商配置中提取环境变量
     let config = &provider.settings_config;
-    let env_vars = extract_env_vars_from_config(config, &app_type);
+    let mut env_vars = extract_env_vars_from_config(config, &app_type);
+    let launch_id = if let Some(instance_id) = instanceId {
+        let instance = state
+            .db
+            .get_agent_instance(&instance_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("实例 {instance_id} 不存在，禁止回退到 Provider 凭据"))?;
+        if instance.provider_id != providerId || instance.app_type != app {
+            return Err(format!("实例 {instance_id} 不属于 {app}/{providerId}"));
+        }
+        let api_key =
+            crate::services::credential_isolation::CredentialIsolationService::resolve_api_key(
+                &state.db,
+                &instance_id,
+            )
+            .map_err(|error| error.to_string())?;
+        remove_api_key_env_vars(&mut env_vars);
+        env_vars.push((instance_api_key_env_name(&app_type).to_string(), api_key));
+        if let Some(codex_home) = instance.codex_home {
+            env_vars.push(("CODEX_HOME".to_string(), codex_home.clone()));
+            env_vars.push(("CODEX_SQLITE_HOME".to_string(), codex_home));
+        }
+        instance_id
+    } else {
+        providerId.clone()
+    };
 
-    // 根据平台启动终端，传入提供商ID用于生成唯一的配置文件名
-    launch_terminal_with_env(env_vars, &providerId, launch_cwd.as_deref())
+    launch_terminal_with_env(env_vars, &launch_id, &app_type, launch_cwd.as_deref())
         .map_err(|e| format!("启动终端失败: {e}"))?;
 
     Ok(true)
+}
+
+fn remove_api_key_env_vars(env_vars: &mut Vec<(String, String)>) {
+    env_vars.retain(|(name, _)| {
+        !matches!(
+            name.as_str(),
+            "ANTHROPIC_API_KEY"
+                | "ANTHROPIC_AUTH_TOKEN"
+                | "OPENAI_API_KEY"
+                | "CODEX_API_KEY"
+                | "GEMINI_API_KEY"
+                | "GOOGLE_API_KEY"
+        )
+    });
+}
+
+fn instance_api_key_env_name(app_type: &AppType) -> &'static str {
+    match app_type {
+        AppType::Claude | AppType::ClaudeDesktop => "ANTHROPIC_AUTH_TOKEN",
+        AppType::Codex => "STACKFERRY_INSTANCE_API_KEY",
+        AppType::Gemini => "GEMINI_API_KEY",
+        _ => "OPENAI_API_KEY",
+    }
 }
 
 /// 从提供商配置中提取环境变量
@@ -2849,8 +2896,13 @@ fn resolve_launch_cwd(cwd: Option<String>) -> Result<Option<PathBuf>, String> {
 fn launch_terminal_with_env(
     env_vars: Vec<(String, String)>,
     provider_id: &str,
+    app_type: &AppType,
     cwd: Option<&Path>,
 ) -> Result<(), String> {
+    if *app_type == AppType::Codex {
+        return launch_codex_terminal_with_env(&env_vars, provider_id, cwd, None);
+    }
+
     let temp_dir = std::env::temp_dir();
     let config_file = temp_dir.join(format!(
         "claude_{}_{}.json",
@@ -2881,6 +2933,88 @@ fn launch_terminal_with_env(
 
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     Err("不支持的操作系统".to_string())
+}
+
+fn launch_codex_terminal_with_env(
+    env_vars: &[(String, String)],
+    instance_id: &str,
+    cwd: Option<&Path>,
+    resume_session_id: Option<&str>,
+) -> Result<(), String> {
+    if resume_session_id.is_some_and(|id| {
+        id.is_empty() || !id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+    }) {
+        return Err("Codex 会话 ID 格式无效".to_string());
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let command = {
+        let exports = env_vars
+            .iter()
+            .map(|(name, value)| format!("export {name}={}", shell_single_quote(value)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let change_dir = cwd
+            .map(|path| {
+                format!(
+                    "cd {} || exit 1\n",
+                    shell_single_quote(&path.to_string_lossy())
+                )
+            })
+            .unwrap_or_default();
+        let resume = resume_session_id
+            .map(|id| format!(" resume {}", shell_single_quote(id)))
+            .unwrap_or_default();
+        format!("{exports}\n{change_dir}exec codex{resume}")
+    };
+
+    #[cfg(target_os = "windows")]
+    let command = {
+        let assignments = env_vars
+            .iter()
+            .map(|(name, value)| format!("set \"{name}={}\"", escape_windows_batch_value(value)))
+            .collect::<Vec<_>>()
+            .join("\r\n");
+        let change_dir = build_windows_cwd_command(cwd);
+        let resume = resume_session_id
+            .map(|id| format!(" resume \"{id}\""))
+            .unwrap_or_default();
+        format!("{assignments}\r\n{change_dir}\r\ncodex{resume}")
+    };
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    return Err("不支持的操作系统".to_string());
+
+    launch_terminal_running(&command, &format!("codex_instance_{instance_id}"))
+}
+
+pub(crate) fn launch_codex_instance_session(
+    db: &crate::database::Database,
+    instance_id: &str,
+    session_id: &str,
+    cwd: Option<&Path>,
+) -> Result<(), String> {
+    let instance = db
+        .get_agent_instance(instance_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("实例 {instance_id} 不存在"))?;
+    if instance.app_type != "codex" {
+        return Err(format!("实例 {instance_id} 不属于 Codex"));
+    }
+    let api_key =
+        crate::services::credential_isolation::CredentialIsolationService::resolve_api_key(
+            db,
+            instance_id,
+        )
+        .map_err(|error| error.to_string())?;
+    let codex_home = instance
+        .codex_home
+        .ok_or_else(|| format!("Codex 实例 {instance_id} 缺少 CODEX_HOME"))?;
+    let env_vars = vec![
+        ("STACKFERRY_INSTANCE_API_KEY".to_string(), api_key),
+        ("CODEX_HOME".to_string(), codex_home.clone()),
+        ("CODEX_SQLITE_HOME".to_string(), codex_home),
+    ];
+    launch_codex_terminal_with_env(&env_vars, instance_id, cwd, Some(session_id))
 }
 
 /// 写入 claude 配置文件

@@ -397,6 +397,7 @@ export function SessionManagerPage() {
   } = useSessionMessagesQuery(
     selectedSession?.providerId,
     selectedSession?.sourcePath,
+    selectedSession?.instanceId,
   );
   const messages = useMemo(
     () => messagePages?.pages.flatMap((page) => page.items) ?? [],
@@ -421,11 +422,18 @@ export function SessionManagerPage() {
           message.contentCursor,
         ],
         queryFn: () =>
-          sessionsApi.getMessageContent(
-            selectedSession.providerId,
-            selectedSession.sourcePath!,
-            message.contentCursor!,
-          ),
+          selectedSession.instanceId
+            ? sessionsApi.getMessageContent(
+                selectedSession.providerId,
+                selectedSession.sourcePath!,
+                message.contentCursor!,
+                selectedSession.instanceId,
+              )
+            : sessionsApi.getMessageContent(
+                selectedSession.providerId,
+                selectedSession.sourcePath!,
+                message.contentCursor!,
+              ),
         staleTime: 5 * 60 * 1000,
       });
     },
@@ -585,6 +593,9 @@ export function SessionManagerPage() {
       await sessionsApi.launchTerminal({
         command: selectedSession.resumeCommand,
         cwd: selectedSession.projectDir ?? undefined,
+        providerId: selectedSession.providerId,
+        instanceId: selectedSession.instanceId,
+        sessionId: selectedSession.sessionId,
       });
       toast.success(t("sessionManager.terminalLaunched"));
     } catch (error) {
@@ -627,6 +638,7 @@ export function SessionManagerPage() {
         targets.map((session) => ({
           providerId: session.providerId,
           sessionId: session.sessionId,
+          instanceId: session.instanceId,
           sourcePath: session.sourcePath!,
         })),
       );
@@ -635,7 +647,7 @@ export function SessionManagerPage() {
         .filter((result) => result.success)
         .map(
           (result) =>
-            `${result.providerId}:${result.sessionId}:${result.sourcePath ?? ""}`,
+            `${result.providerId}:${result.instanceId ?? ""}:${result.sessionId}:${result.sourcePath ?? ""}`,
         );
 
       const failedErrors = results
@@ -657,7 +669,12 @@ export function SessionManagerPage() {
         .filter((result) => result.success)
         .forEach((result) => {
           queryClient.removeQueries({
-            queryKey: ["sessionMessages", result.providerId, result.sourcePath],
+            queryKey: [
+              "sessionMessages",
+              result.providerId,
+              result.instanceId,
+              result.sourcePath,
+            ],
           });
         });
 

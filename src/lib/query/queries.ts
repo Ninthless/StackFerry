@@ -331,12 +331,20 @@ export const useSessionsQuery = (providerId: SessionProviderId) => {
 export const useSessionMessagesQuery = (
   providerId?: string,
   sourcePath?: string,
+  instanceId?: string,
 ) => {
   const query = useInfiniteQuery<SessionMessagePage>({
-    queryKey: ["sessionMessages", providerId, sourcePath],
+    queryKey: ["sessionMessages", providerId, instanceId, sourcePath],
     queryFn: async ({ pageParam }) => {
       const cursor = typeof pageParam === "string" ? pageParam : undefined;
-      return sessionsApi.getMessagePage(providerId!, sourcePath!, cursor);
+      return instanceId
+        ? sessionsApi.getMessagePage(
+            providerId!,
+            sourcePath!,
+            cursor,
+            instanceId,
+          )
+        : sessionsApi.getMessagePage(providerId!, sourcePath!, cursor);
     },
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) =>
