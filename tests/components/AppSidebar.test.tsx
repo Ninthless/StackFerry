@@ -18,6 +18,7 @@ vi.mock("@/contexts/AnnouncementContext", () => ({
 
 import { AppSidebar } from "@/components/shell/AppSidebar";
 import type { VisibleApps } from "@/types";
+import { supportsCapability } from "@/config/appConfig";
 
 const precedes = (before: Element, after: Element) =>
   Boolean(
@@ -68,10 +69,22 @@ describe("AppSidebar", () => {
     (activeApp) => {
       const { unmount } = renderSidebar(activeApp);
 
-      expect(screen.getByText("Skills")).toBeInTheDocument();
-      expect(screen.getByText("Prompts")).toBeInTheDocument();
+      if (supportsCapability(activeApp, "skills")) {
+        expect(screen.getByText("Skills")).toBeInTheDocument();
+      } else {
+        expect(screen.queryByText("Skills")).not.toBeInTheDocument();
+      }
+      if (supportsCapability(activeApp, "prompts")) {
+        expect(screen.getByText("Prompts")).toBeInTheDocument();
+      } else {
+        expect(screen.queryByText("Prompts")).not.toBeInTheDocument();
+      }
       expect(screen.getByText("Sessions")).toBeInTheDocument();
-      expect(screen.getByText("MCP servers")).toBeInTheDocument();
+      if (supportsCapability(activeApp, "mcp")) {
+        expect(screen.getByText("MCP servers")).toBeInTheDocument();
+      } else {
+        expect(screen.queryByText("MCP servers")).not.toBeInTheDocument();
+      }
       expect(screen.getByText("announcements.title")).toBeInTheDocument();
       expect(
         screen.getByRole("button", { name: "Routing activity" }),

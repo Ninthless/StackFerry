@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { UpdateBadge } from "@/components/UpdateBadge";
 import { AppSwitcher } from "@/components/AppSwitcher";
 import type { AppView } from "@/components/shell/types";
+import { supportsCapability } from "@/config/appConfig";
 import type { VisibleApps } from "@/types";
 import { useAnnouncements } from "@/contexts/AnnouncementContext";
 
@@ -163,7 +164,17 @@ export function AppSidebar({
         : activeApp === "pi"
           ? piItems
           : [];
-  const featureItems = [...globalFeatureItems, ...routeSpecificItems];
+  const featureItems = [
+    ...globalFeatureItems.filter((item) => {
+      if (item.key === "mcp") return supportsCapability(activeApp, "mcp");
+      if (item.key === "skills") return supportsCapability(activeApp, "skills");
+      if (item.key === "prompts") {
+        return supportsCapability(activeApp, "prompts");
+      }
+      return true;
+    }),
+    ...routeSpecificItems,
+  ];
 
   const renderNavItem = (item: NavItem) => {
     const Icon = item.icon;
