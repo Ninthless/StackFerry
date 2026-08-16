@@ -88,6 +88,25 @@ export interface CcSwitchApplyResult {
 
 export interface OpenTerminalOptions {
   cwd?: string;
+  instanceId?: string;
+}
+
+export interface AgentInstance {
+  id: string;
+  providerId: string;
+  appType: AppId;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SessionCredentialBinding {
+  appType: AppId;
+  sessionId: string;
+  providerId: string;
+  instanceId: string;
+  createdAt: number;
+  lastUsedAt: number;
 }
 
 export interface ClaudeDesktopStatus {
@@ -142,6 +161,35 @@ export const providersApi = {
 
   async delete(id: string, appId: AppId): Promise<boolean> {
     return await invoke("delete_provider", { id, app: appId });
+  },
+
+  async createAgentInstance(input: {
+    providerId: string;
+    appType: AppId;
+    name: string;
+    apiKey: string;
+  }): Promise<AgentInstance> {
+    return await invoke("create_agent_instance", { request: input });
+  },
+
+  async getAgentInstances(
+    providerId: string,
+    appType: AppId,
+  ): Promise<AgentInstance[]> {
+    return await invoke("get_agent_instances", { providerId, appType });
+  },
+
+  async deleteAgentInstance(id: string): Promise<boolean> {
+    return await invoke("delete_agent_instance", { id });
+  },
+
+  async bindSessionCredential(input: {
+    appType: AppId;
+    sessionId: string;
+    providerId: string;
+    instanceId: string;
+  }): Promise<SessionCredentialBinding> {
+    return await invoke("bind_session_credential", { request: input });
   },
 
   /**
@@ -240,11 +288,12 @@ export const providersApi = {
     appId: AppId,
     options?: OpenTerminalOptions,
   ): Promise<boolean> {
-    const { cwd } = options ?? {};
+    const { cwd, instanceId } = options ?? {};
     return await invoke("open_provider_terminal", {
       providerId,
       app: appId,
       cwd,
+      instanceId,
     });
   },
 

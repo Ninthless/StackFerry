@@ -39,6 +39,7 @@ import { isTextEditableTarget } from "@/utils/domUtils";
 import { deepClone } from "@/utils/deepClone";
 import { ProfileSwitcher } from "@/components/profiles/ProfileSwitcher";
 import { ProviderList } from "@/components/providers/ProviderList";
+import { AgentInstancesDialog } from "@/components/providers/AgentInstancesDialog";
 import { CcSwitchImportButton } from "@/components/providers/CcSwitchImportButton";
 import { AddProviderDialog } from "@/components/providers/AddProviderDialog";
 import { EditProviderDialog } from "@/components/providers/EditProviderDialog";
@@ -273,6 +274,7 @@ function App() {
 
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [usageProvider, setUsageProvider] = useState<Provider | null>(null);
+  const [instanceProvider, setInstanceProvider] = useState<Provider | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     provider: Provider;
     action: "remove" | "delete";
@@ -789,32 +791,6 @@ function App() {
     await addProvider(duplicatedProvider);
   };
 
-  const handleOpenTerminal = async (provider: Provider) => {
-    try {
-      const selectedDir = await settingsApi.pickDirectory();
-      if (!selectedDir) {
-        return;
-      }
-
-      await providersApi.openTerminal(provider.id, activeApp, {
-        cwd: selectedDir,
-      });
-      toast.success(
-        t("provider.terminalOpened", {
-          defaultValue: "终端已打开",
-        }),
-      );
-    } catch (error) {
-      console.error("[App] Failed to open terminal", error);
-      const errorMessage = extractErrorMessage(error);
-      toast.error(
-        t("provider.terminalOpenFailed", {
-          defaultValue: "打开终端失败",
-        }) + (errorMessage ? `: ${errorMessage}` : ""),
-      );
-    }
-  };
-
   const handleImportSuccess = async () => {
     try {
       await invalidateDatabaseState(queryClient);
@@ -1251,7 +1227,9 @@ function App() {
                       onConfigureUsage={setUsageProvider}
                       onOpenWebsite={handleOpenWebsite}
                       onOpenTerminal={
-                        activeApp === "claude" ? handleOpenTerminal : undefined
+                        activeApp === "claude" || activeApp === "codex"
+                          ? setInstanceProvider
+                          : undefined
                       }
                       onCreate={() => setIsAddOpen(true)}
                       onSetAsDefault={
@@ -1404,6 +1382,15 @@ function App() {
         onSubmit={handleEditProvider}
         appId={activeApp}
         isProxyTakeover={isCurrentAppTakeoverActive}
+      />
+
+      <AgentInstancesDialog
+        open={Boolean(instanceProvider)}
+        appId={activeApp}
+        provider={instanceProvider}
+        onOpenChange={(open) => {
+          if (!open) setInstanceProvider(null);
+        }}
       />
 
       {effectiveUsageProvider && (
