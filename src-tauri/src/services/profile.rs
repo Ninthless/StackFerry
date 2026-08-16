@@ -190,9 +190,72 @@ fn plan_toggles(
     (toggles, dangling)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ApplyPlan {
+    provider: Option<String>,
+    mcp_toggles: Vec<(String, bool)>,
+    skill_toggles: Vec<(String, bool)>,
+    prompt: Option<String>,
+    warnings: Vec<String>,
+}
+
 pub struct ProfileService;
 
 impl ProfileService {
+    fn build_apply_plan(
+        state: &AppState,
+        payload: &ProfilePayload,
+        app: &AppType,
+    ) -> Result<ApplyPlan, AppError> {
+        let app_str = app.as_str();
+        let provider = payload.providers.get(app).cloned().flatten();
+        let mut warnings = Vec::new();
+
+        let mcp_toggles = if let Some(Some(target_ids)) = payload.mcp.get(app) {
+            let servers = state.db.get_all_mcp_servers()?;
+            let current = servers
+                .values()
+                .map(|server| (server.id.clone(), server.apps.is_enabled_for(app)))
+                .collect::<Vec<_>>();
+            let (toggles, dangling) = plan_toggles(&current, target_ids);
+            warnings.extend(
+                dangling
+                    .into_iter()
+                    .map(|id| format!("[{app_str}] MCP '{id}' no longer exists, skipped")),
+            );
+            toggles
+        } else {
+            Vec::new()
+        };
+
+        let skill_toggles = if let Some(Some(target_ids)) = payload.skills.get(app) {
+            let skills = state.db.get_all_installed_skills()?;
+            let current = skills
+                .values()
+                .map(|skill| (skill.id.clone(), skill.apps.is_enabled_for(app)))
+                .collect::<Vec<_>>();
+            let (toggles, dangling) = plan_toggles(&current, target_ids);
+            warnings.extend(
+                dangling
+                    .into_iter()
+                    .map(|id| format!("[{app_str}] skill '{id}' no longer exists, skipped")),
+            );
+            toggles
+        } else {
+            Vec::new()
+        };
+
+        let prompt = payload.prompts.get(app).cloned().flatten();
+
+        Ok(ApplyPlan {
+            provider,
+            mcp_toggles,
+            skill_toggles,
+            prompt,
+            warnings,
+        })
+    }
+
     /// 抓取分组内应用的当前配置状态生成快照（组外槽位保持默认值）
     pub fn snapshot_current(
         state: &AppState,
@@ -371,8 +434,10 @@ impl ProfileService {
                 ));
             }
 
-            // 2. 供应商
-            if let Some(Some(target_pid)) = payload.providers.get(app) {
+            let plan = Self::build_apply_plan(state, &payload, app)?;
+            warnings.extend(plan.warnings);
+
+            if let Some(target_pid) = plan.provider.as_deref() {
                 let providers = state.db.get_all_providers(app_str)?;
                 if !providers.contains_key(target_pid) {
                     warnings.push(format!(
@@ -380,7 +445,7 @@ impl ProfileService {
                     ));
                 } else {
                     let current = crate::settings::get_effective_current_provider(&state.db, app)?;
-                    if current.as_deref() != Some(target_pid.as_str()) {
+                    if current.as_deref() != Some(target_pid) {
                         match ProviderService::switch(state, app.clone(), target_pid) {
                             Ok(result) => warnings.extend(result.warnings),
                             Err(e) => warnings.push(format!(
@@ -392,49 +457,25 @@ impl ProfileService {
             }
 
             // 3. MCP diff（最小 toggle：仅动目标态≠当前态的条目；None = 该侧未拍过，不动）
-            if let Some(Some(target_ids)) = payload.mcp.get(app) {
-                let servers = state.db.get_all_mcp_servers()?;
-                let current: Vec<(String, bool)> = servers
-                    .values()
-                    .map(|s| (s.id.clone(), s.apps.is_enabled_for(app)))
-                    .collect();
-                let (toggles, dangling) = plan_toggles(&current, target_ids);
-                for id in dangling {
-                    warnings.push(format!("[{app_str}] MCP '{id}' no longer exists, skipped"));
-                }
-                for (id, enabled) in toggles {
-                    if let Err(e) = McpService::toggle_app(state, &id, app.clone(), enabled) {
-                        warnings.push(format!(
-                            "[{app_str}] toggle MCP '{id}' -> {enabled} failed: {e}"
-                        ));
-                    }
+            for (id, enabled) in plan.mcp_toggles {
+                if let Err(e) = McpService::toggle_app(state, &id, app.clone(), enabled) {
+                    warnings.push(format!(
+                        "[{app_str}] toggle MCP '{id}' -> {enabled} failed: {e}"
+                    ));
                 }
             }
 
             // 4. Skills diff（SkillService 返回 anyhow::Result，收进 warning）
-            if let Some(Some(target_ids)) = payload.skills.get(app) {
-                let skills = state.db.get_all_installed_skills()?;
-                let current: Vec<(String, bool)> = skills
-                    .values()
-                    .map(|s| (s.id.clone(), s.apps.is_enabled_for(app)))
-                    .collect();
-                let (toggles, dangling) = plan_toggles(&current, target_ids);
-                for id in dangling {
+            for (id, enabled) in plan.skill_toggles {
+                if let Err(e) = SkillService::toggle_app(&state.db, &id, app, enabled) {
                     warnings.push(format!(
-                        "[{app_str}] skill '{id}' no longer exists, skipped"
+                        "[{app_str}] toggle skill '{id}' -> {enabled} failed: {e}"
                     ));
-                }
-                for (id, enabled) in toggles {
-                    if let Err(e) = SkillService::toggle_app(&state.db, &id, app, enabled) {
-                        warnings.push(format!(
-                            "[{app_str}] toggle skill '{id}' -> {enabled} failed: {e}"
-                        ));
-                    }
                 }
             }
 
             // 5. Prompt（None = 不动；已激活则幂等跳过，避免无谓的文件写与备份）
-            if let Some(Some(target_prompt)) = payload.prompts.get(app) {
+            if let Some(target_prompt) = plan.prompt.as_deref() {
                 let prompts = state.db.get_prompts(app_str)?;
                 match prompts.get(target_prompt) {
                     None => warnings.push(format!(

@@ -685,41 +685,25 @@ impl AppSettings {
 }
 
 fn save_settings_file(settings: &AppSettings) -> Result<(), AppError> {
-    let mut normalized = settings.clone();
-    normalized.normalize_paths();
     let Some(path) = AppSettings::settings_path() else {
         return Err(AppError::Config("无法获取用户主目录".to_string()));
     };
+    save_settings_file_to_path(settings, &path, crate::config::atomic_write)
+}
 
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
-    }
-
+fn save_settings_file_to_path<F>(
+    settings: &AppSettings,
+    path: &std::path::Path,
+    writer: F,
+) -> Result<(), AppError>
+where
+    F: FnOnce(&std::path::Path, &[u8]) -> Result<(), AppError>,
+{
+    let mut normalized = settings.clone();
+    normalized.normalize_paths();
     let json = serde_json::to_string_pretty(&normalized)
         .map_err(|e| AppError::JsonSerialize { source: e })?;
-    #[cfg(unix)]
-    {
-        use std::fs::OpenOptions;
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&path)
-            .map_err(|e| AppError::io(&path, e))?;
-        file.write_all(json.as_bytes())
-            .map_err(|e| AppError::io(&path, e))?;
-    }
-
-    #[cfg(not(unix))]
-    {
-        fs::write(&path, json).map_err(|e| AppError::io(&path, e))?;
-    }
-
-    Ok(())
+    writer(path, json.as_bytes())
 }
 
 static SETTINGS_STORE: OnceLock<RwLock<AppSettings>> = OnceLock::new();
@@ -779,14 +763,26 @@ fn mutate_settings<F>(mutator: F) -> Result<(), AppError>
 where
     F: FnOnce(&mut AppSettings),
 {
-    let mut guard = settings_store().write().unwrap_or_else(|e| {
+    mutate_settings_store(settings_store(), mutator, save_settings_file)
+}
+
+fn mutate_settings_store<F, S>(
+    store: &RwLock<AppSettings>,
+    mutator: F,
+    save: S,
+) -> Result<(), AppError>
+where
+    F: FnOnce(&mut AppSettings),
+    S: FnOnce(&AppSettings) -> Result<(), AppError>,
+{
+    let mut guard = store.write().unwrap_or_else(|e| {
         log::warn!("设置锁已毒化，使用恢复值: {e}");
         e.into_inner()
     });
     let mut next = guard.clone();
     mutator(&mut next);
     next.normalize_paths();
-    save_settings_file(&next)?;
+    save(&next)?;
     *guard = next;
     Ok(())
 }
@@ -1193,6 +1189,9 @@ pub fn update_s3_sync_status(status: WebDavSyncStatus) -> Result<(), AppError> {
 mod tests {
     use super::*;
     use crate::app_config::AppType;
+    use std::sync::Arc;
+    use std::thread;
+    use tempfile::tempdir;
 
     #[test]
     fn visible_apps_old_settings_default_claude_desktop_visible() {
@@ -1260,5 +1259,84 @@ mod tests {
             settings.recent_pi_project_dir.as_deref(),
             Some("C:\\workspace\\project")
         );
+    }
+
+    #[test]
+    fn settings_atomic_write_replaces_existing_file() {
+        let temp = tempdir().expect("temp dir");
+        let path = temp.path().join("settings.json");
+        fs::write(&path, b"{\"showInTray\":false}").expect("seed settings");
+        let settings = AppSettings {
+            show_in_tray: true,
+            language: Some(" zh ".to_string()),
+            ..AppSettings::default()
+        };
+
+        save_settings_file_to_path(&settings, &path, crate::config::atomic_write)
+            .expect("write settings");
+
+        let text = fs::read_to_string(&path).expect("read settings");
+        let saved: AppSettings = serde_json::from_str(&text).expect("parse settings");
+        assert!(saved.show_in_tray);
+        assert_eq!(saved.language.as_deref(), Some("zh"));
+    }
+
+    #[test]
+    fn settings_write_failure_preserves_file_and_memory() {
+        let temp = tempdir().expect("temp dir");
+        let path = temp.path().join("settings.json");
+        let original = b"{\"showInTray\":false}";
+        fs::write(&path, original).expect("seed settings");
+        let store = RwLock::new(AppSettings {
+            show_in_tray: false,
+            ..AppSettings::default()
+        });
+
+        let error = mutate_settings_store(
+            &store,
+            |settings| settings.show_in_tray = true,
+            |next| {
+                save_settings_file_to_path(next, &path, |_path, _data| {
+                    Err(AppError::Config("injected write failure".to_string()))
+                })
+            },
+        )
+        .expect_err("write must fail");
+
+        assert!(error.to_string().contains("injected write failure"));
+        assert!(!store.read().expect("read store").show_in_tray);
+        assert_eq!(fs::read(&path).expect("read original"), original);
+    }
+
+    #[test]
+    fn concurrent_settings_mutations_do_not_lose_updates() {
+        let store = Arc::new(RwLock::new(AppSettings::default()));
+        let first = Arc::clone(&store);
+        let second = Arc::clone(&store);
+
+        let first = thread::spawn(move || {
+            mutate_settings_store(
+                first.as_ref(),
+                |settings| settings.show_in_tray = false,
+                |_| Ok(()),
+            )
+        });
+        let second = thread::spawn(move || {
+            mutate_settings_store(
+                second.as_ref(),
+                |settings| settings.language = Some("ja".to_string()),
+                |_| Ok(()),
+            )
+        });
+
+        first.join().expect("first thread").expect("first mutation");
+        second
+            .join()
+            .expect("second thread")
+            .expect("second mutation");
+
+        let saved = store.read().expect("read store");
+        assert!(!saved.show_in_tray);
+        assert_eq!(saved.language.as_deref(), Some("ja"));
     }
 }

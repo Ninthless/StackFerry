@@ -1,0 +1,12 @@
+{
+  "apiFormat": "anthropic",
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "fixture-key",
+    "ANTHROPIC_BASE_URL": "https://fixture.example"
+  },
+  "futureSetting": {
+    "enabled": true,
+    "mode": "preserve"
+  },
+  "openrouterCompatMode": true
+}
