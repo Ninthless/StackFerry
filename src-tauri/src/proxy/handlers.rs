@@ -2030,6 +2030,7 @@ fn codex_proxy_error_code(error: &ProxyError) -> &'static str {
         ProxyError::TransformError(_) => "stackferry_transform_error",
         ProxyError::InvalidRequest(_) => "stackferry_invalid_request",
         ProxyError::AuthError(_) => "stackferry_auth_error",
+        ProxyError::SessionCredentialConflict(_) => "stackferry_session_credential_conflict",
         ProxyError::UpstreamError { .. } => "stackferry_upstream_error",
         ProxyError::DatabaseError(_) => "stackferry_database_error",
         ProxyError::Internal(_) => "stackferry_internal_error",

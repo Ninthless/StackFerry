@@ -81,6 +81,25 @@ pub struct ForwardError {
     pub provider: Option<Provider>,
 }
 
+fn should_bypass_circuit_breaker(provider_count: usize, session_credential_bound: bool) -> bool {
+    provider_count == 1 && !session_credential_bound
+}
+
+fn is_stackferry_private_header(name: &str) -> bool {
+    name.eq_ignore_ascii_case(crate::proxy::session::INSTANCE_ID_HEADER)
+}
+
+fn is_instance_scoped_credential_error(error: &ProxyError) -> bool {
+    matches!(
+        error,
+        ProxyError::AuthError(_)
+            | ProxyError::UpstreamError {
+                status: 401 | 403 | 429,
+                ..
+            }
+    )
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RouteAttempt {
@@ -205,6 +224,7 @@ pub struct RequestForwarder {
     current_providers: Arc<RwLock<std::collections::HashMap<String, (String, String)>>>,
     gemini_shadow: Arc<GeminiShadowStore>,
     codex_chat_history: Arc<CodexChatHistoryStore>,
+    db: Arc<crate::database::Database>,
     /// 故障转移切换管理器
     failover_manager: Arc<FailoverSwitchManager>,
     /// AppHandle，用于发射事件和更新托盘
@@ -215,6 +235,8 @@ pub struct RequestForwarder {
     session_id: String,
     /// Session ID 是否由客户端提供；生成值不能作为上游缓存身份。
     session_client_provided: bool,
+    session_credential_bound: bool,
+    instance_id: Option<String>,
     /// 整流器配置
     rectifier_config: RectifierConfig,
     /// 优化器配置
@@ -328,11 +350,14 @@ impl RequestForwarder {
         current_providers: Arc<RwLock<std::collections::HashMap<String, (String, String)>>>,
         gemini_shadow: Arc<GeminiShadowStore>,
         codex_chat_history: Arc<CodexChatHistoryStore>,
+        db: Arc<crate::database::Database>,
         failover_manager: Arc<FailoverSwitchManager>,
         app_handle: Option<tauri::AppHandle>,
         current_provider_id_at_start: String,
         session_id: String,
         session_client_provided: bool,
+        session_credential_bound: bool,
+        instance_id: Option<String>,
         streaming_first_byte_timeout: u64,
         _streaming_idle_timeout: u64,
         rectifier_config: RectifierConfig,
@@ -351,11 +376,14 @@ impl RequestForwarder {
             current_providers,
             gemini_shadow,
             codex_chat_history,
+            db,
             failover_manager,
             app_handle,
             current_provider_id_at_start,
             session_id,
             session_client_provided,
+            session_credential_bound,
+            instance_id,
             rectifier_config,
             optimizer_config,
             copilot_optimizer_config,
@@ -622,7 +650,8 @@ impl RequestForwarder {
         let retry_capacity_on_same_provider = providers.len() == 1;
 
         // 单 Provider 场景下跳过熔断器检查（故障转移关闭时）
-        let bypass_circuit_breaker = providers.len() == 1;
+        let bypass_circuit_breaker =
+            should_bypass_circuit_breaker(providers.len(), self.session_credential_bound);
 
         // 依次尝试每个供应商
         for provider in providers.iter() {
@@ -735,7 +764,7 @@ impl RequestForwarder {
                     }
 
                     // 更新当前应用类型使用的 provider
-                    if !request_kind.is_codex_auxiliary() {
+                    if !request_kind.is_codex_auxiliary() && !self.session_credential_bound {
                         let mut current_providers = self.current_providers.write().await;
                         current_providers.insert(
                             app_type_str.to_string(),
@@ -749,6 +778,7 @@ impl RequestForwarder {
                         status.success_requests += 1;
                         status.last_error = None;
                         let should_switch = !request_kind.is_codex_auxiliary()
+                            && !self.session_credential_bound
                             && self.current_provider_id_at_start.as_str() != provider.id.as_str();
                         if should_switch {
                             status.failover_count += 1;
@@ -1295,7 +1325,13 @@ impl RequestForwarder {
                         continue;
                     }
 
-                    let category = self.categorize_proxy_error(&e, provider);
+                    let category = if self.session_credential_bound
+                        && is_instance_scoped_credential_error(&e)
+                    {
+                        ErrorCategory::NonRetryable
+                    } else {
+                        self.categorize_proxy_error(&e, provider)
+                    };
 
                     match category {
                         ErrorCategory::Retryable => {
@@ -1538,6 +1574,44 @@ impl RequestForwarder {
             None
         };
         let provider = resolved_pi_provider.as_ref().unwrap_or(provider);
+        let isolated_api_key = if self.session_credential_bound {
+            let instance_id = self.instance_id.as_deref().ok_or_else(|| {
+                ProxyError::SessionCredentialConflict(
+                    "会话已标记为实例隔离，但缺少实例身份".to_string(),
+                )
+            })?;
+            let binding = self
+                .db
+                .get_session_credential_binding(
+                    app_type.as_str(),
+                    &self.session_id,
+                    Some(instance_id),
+                )
+                .map_err(|error| ProxyError::SessionCredentialConflict(error.to_string()))?
+                .ok_or_else(|| {
+                    ProxyError::SessionCredentialConflict(format!(
+                        "会话 {} 的实例凭据绑定已失效，禁止回退到 Provider 凭据",
+                        self.session_id
+                    ))
+                })?;
+            if binding.provider_id != provider.id {
+                return Err(ProxyError::SessionCredentialConflict(format!(
+                    "会话 {} 已固定到供应商 {}，禁止故障转移到 {}",
+                    self.session_id, binding.provider_id, provider.id
+                )));
+            }
+            Some(
+                crate::services::credential_isolation::CredentialIsolationService::resolve_session_api_key(
+                    &self.db,
+                    app_type.as_str(),
+                    &self.session_id,
+                    &provider.id,
+                )
+                .map_err(|error| ProxyError::SessionCredentialConflict(error.to_string()))?,
+            )
+        } else {
+            None
+        };
         // 使用适配器提取 base_url
         let mut base_url = adapter.extract_base_url(provider)?;
 
@@ -2055,6 +2129,16 @@ impl RequestForwarder {
         // 精确认证材料。实际日志永远不输出这些值。
         let mut log_secrets: Vec<String> = Vec::new();
         let mut auth_headers = if let Some(mut auth) = adapter.extract_auth(provider) {
+            if let Some(api_key) = isolated_api_key.as_ref() {
+                if provider.uses_managed_account_auth() {
+                    return Err(ProxyError::SessionCredentialConflict(format!(
+                        "供应商 {} 使用托管账号认证，不支持实例 API Key",
+                        provider.id
+                    )));
+                }
+                auth.api_key.clone_from(api_key);
+                auth.access_token = None;
+            }
             // GitHub Copilot 特殊处理：从 CopilotAuthManager 获取真实 token
             if auth.strategy == AuthStrategy::GitHubCopilot {
                 if let Some(app_handle) = &self.app_handle {
@@ -2204,6 +2288,11 @@ impl RequestForwarder {
             }
 
             adapter.get_auth_headers(&auth)?
+        } else if isolated_api_key.is_some() {
+            return Err(ProxyError::SessionCredentialConflict(format!(
+                "供应商 {} 不支持实例 API Key 认证，禁止回退到原认证",
+                provider.id
+            )));
         } else {
             Vec::new()
         };
@@ -2366,6 +2455,9 @@ impl RequestForwarder {
 
         for (key, value) in headers {
             let key_str = key.as_str();
+            if is_stackferry_private_header(key_str) {
+                continue;
+            }
 
             if let Some(metadata) = pi_metadata {
                 if metadata.is_source_configured_header(key) {
@@ -3173,6 +3265,7 @@ impl RequestForwarder {
             ProxyError::ConfigError(_) => ErrorCategory::Retryable,
             ProxyError::TransformError(_) => ErrorCategory::Retryable,
             ProxyError::AuthError(_) => ErrorCategory::Retryable,
+            ProxyError::SessionCredentialConflict(_) => ErrorCategory::NonRetryable,
             ProxyError::StreamIdleTimeout(_) => ErrorCategory::Retryable,
             // 无可用供应商：所有供应商都试过了，无法重试
             ProxyError::NoAvailableProvider => ErrorCategory::NonRetryable,
@@ -3405,6 +3498,7 @@ pub fn failure_kind(error: &ProxyError) -> &'static str {
             }
         }
         ProxyError::AuthError(_) => "authentication",
+        ProxyError::SessionCredentialConflict(_) => "session_credential_conflict",
         ProxyError::ConfigError(_) => "configuration",
         ProxyError::InvalidRequest(_) => "invalid_request",
         ProxyError::TransformError(message) => {
@@ -4308,11 +4402,14 @@ mod tests {
             current_providers: Arc::new(RwLock::new(HashMap::new())),
             gemini_shadow: Arc::new(GeminiShadowStore::new()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
+            db: db.clone(),
             failover_manager: Arc::new(FailoverSwitchManager::new(db)),
             app_handle: None,
             current_provider_id_at_start: String::new(),
             session_id: String::new(),
             session_client_provided: false,
+            session_credential_bound: false,
+            instance_id: None,
             rectifier_config: RectifierConfig::default(),
             optimizer_config: OptimizerConfig::default(),
             copilot_optimizer_config: CopilotOptimizerConfig::default(),
@@ -4351,6 +4448,72 @@ mod tests {
         assert_eq!(code, log_fwd::PROVIDER_FAILED_RETRY);
         assert!(message.contains("继续尝试下一个 (1/3)"));
         assert!(message.contains("请求超时"));
+    }
+
+    #[test]
+    fn bound_instance_keeps_circuit_breaker_enforced_for_single_provider() {
+        assert!(!should_bypass_circuit_breaker(1, true));
+        assert!(should_bypass_circuit_breaker(1, false));
+        assert!(!should_bypass_circuit_breaker(2, false));
+    }
+
+    #[test]
+    fn session_credential_conflict_is_non_retryable_and_health_neutral() {
+        let forwarder = test_forwarder(Duration::from_secs(1), Duration::from_secs(1));
+        let provider = test_provider_with_type(Some("openai"));
+        let error = ProxyError::SessionCredentialConflict(
+            "session is bound to another instance".to_string(),
+        );
+
+        assert_eq!(
+            forwarder.categorize_proxy_error(&error, &provider),
+            ErrorCategory::NonRetryable
+        );
+        assert_eq!(
+            crate::proxy::error_mapper::map_proxy_error_to_status(&error),
+            409
+        );
+        assert_eq!(failure_kind(&error), "session_credential_conflict");
+    }
+
+    #[test]
+    fn instance_id_header_is_private() {
+        assert!(is_stackferry_private_header(
+            crate::proxy::session::INSTANCE_ID_HEADER
+        ));
+        assert!(is_stackferry_private_header("X-StackFerry-Instance-Id"));
+        assert!(!is_stackferry_private_header("x-request-id"));
+    }
+
+    #[test]
+    fn instance_credential_errors_are_health_neutral() {
+        assert!(is_instance_scoped_credential_error(&ProxyError::AuthError(
+            "invalid instance key".to_string()
+        )));
+        assert!(is_instance_scoped_credential_error(
+            &ProxyError::UpstreamError {
+                status: 401,
+                body: None,
+            }
+        ));
+        assert!(is_instance_scoped_credential_error(
+            &ProxyError::UpstreamError {
+                status: 403,
+                body: None,
+            }
+        ));
+        assert!(is_instance_scoped_credential_error(
+            &ProxyError::UpstreamError {
+                status: 429,
+                body: None,
+            }
+        ));
+        assert!(!is_instance_scoped_credential_error(
+            &ProxyError::UpstreamError {
+                status: 503,
+                body: None,
+            }
+        ));
     }
 
     #[test]

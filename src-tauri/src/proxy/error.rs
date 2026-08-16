@@ -74,6 +74,9 @@ pub enum ProxyError {
     #[error("认证失败: {0}")]
     AuthError(String),
 
+    #[error("会话凭据绑定冲突: {0}")]
+    SessionCredentialConflict(String),
+
     #[allow(dead_code)]
     #[error("内部错误: {0}")]
     Internal(String),
@@ -159,6 +162,9 @@ impl IntoResponse for ProxyError {
                         (StatusCode::GATEWAY_TIMEOUT, self.to_string())
                     }
                     ProxyError::AuthError(_) => (StatusCode::UNAUTHORIZED, self.to_string()),
+                    ProxyError::SessionCredentialConflict(_) => {
+                        (StatusCode::CONFLICT, self.to_string())
+                    }
                     ProxyError::Internal(_) => {
                         (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
                     }

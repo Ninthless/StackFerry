@@ -5,7 +5,7 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::proxy::{
-    extract_session_id,
+    extract_instance_id, extract_session_id,
     forwarder::{CodexAuxiliaryEndpoint, RequestForwarder, RouteTrace},
     providers::PiApi,
     server::ProxyState,
@@ -69,6 +69,8 @@ pub struct RequestContext {
     pub input_token_semantics: i64,
     /// Session ID（从客户端请求提取或新生成）
     pub session_id: String,
+    session_credential_bound: bool,
+    instance_id: Option<String>,
     /// Session ID 是否由客户端提供。生成的 UUID 不能作为上游缓存 key，否则每个请求都会换 key。
     pub session_client_provided: bool,
     /// 整流器配置
@@ -164,23 +166,71 @@ impl RequestContext {
             .provider_router
             .select_pi_providers(source_provider_id, body, endpoint)
             .await?;
-        let provider = selection
-            .providers
-            .first()
-            .cloned()
-            .ok_or(ProxyError::NoAvailableProvider)?;
         let request_model = selection
             .request_model
             .clone()
             .unwrap_or_else(|| "unknown".to_string());
         let thinking_effort = crate::proxy::thinking_effort::extract_thinking_effort(body);
         let session_result = extract_session_id(headers, body, "pi");
+        let session_id = session_result.session_id.clone();
+        let requested_instance_id = extract_instance_id(headers);
+        let binding = state
+            .db
+            .get_session_credential_binding("pi", &session_id, requested_instance_id.as_deref())
+            .map_err(|error| ProxyError::SessionCredentialConflict(error.to_string()))?;
+        let binding = match (binding, requested_instance_id) {
+            (Some(binding), Some(instance_id)) if binding.instance_id != instance_id => {
+                return Err(ProxyError::SessionCredentialConflict(format!(
+                    "会话 {session_id} 已绑定到实例 {}，禁止切换到 {instance_id}",
+                    binding.instance_id
+                )));
+            }
+            (Some(binding), _) => Some(binding),
+            (None, Some(instance_id)) => {
+                let instance = state
+                    .db
+                    .get_agent_instance(&instance_id)
+                    .map_err(|error| ProxyError::DatabaseError(error.to_string()))?
+                    .ok_or_else(|| {
+                        ProxyError::SessionCredentialConflict(format!(
+                            "实例 {instance_id} 不存在，禁止回退到 Provider 凭据"
+                        ))
+                    })?;
+                Some(
+                    crate::services::credential_isolation::CredentialIsolationService::bind_session(
+                        &state.db,
+                        "pi",
+                        &session_id,
+                        &instance.provider_id,
+                        &instance_id,
+                    )
+                    .map_err(|error| {
+                        ProxyError::SessionCredentialConflict(error.to_string())
+                    })?,
+                )
+            }
+            (None, None) => None,
+        };
+        let providers = match binding.as_ref() {
+            Some(binding) => selection
+                .providers
+                .into_iter()
+                .filter(|provider| provider.id == binding.provider_id)
+                .collect(),
+            None => selection.providers,
+        };
+        let provider = providers
+            .first()
+            .cloned()
+            .ok_or(ProxyError::NoAvailableProvider)?;
+        let session_credential_bound = binding.is_some();
+        let instance_id = binding.map(|binding| binding.instance_id);
 
         let context = Self {
             start_time,
             app_config,
             provider,
-            providers: selection.providers,
+            providers,
             current_provider_id: source_provider_id.to_string(),
             request_model,
             thinking_effort,
@@ -190,7 +240,9 @@ impl RequestContext {
             app_type: AppType::Pi,
             api_type: selection.api.as_str().to_string(),
             input_token_semantics: selection.api.input_token_semantics(),
-            session_id: session_result.session_id,
+            session_id,
+            session_credential_bound,
+            instance_id,
             session_client_provided: session_result.client_provided,
             rectifier_config,
             optimizer_config,
@@ -286,6 +338,58 @@ impl RequestContext {
                     _ => ProxyError::DatabaseError(error.to_string()),
                 })?,
         };
+        let requested_instance_id = extract_instance_id(headers);
+        let binding = state
+            .db
+            .get_session_credential_binding(
+                app_type_str,
+                &session_id,
+                requested_instance_id.as_deref(),
+            )
+            .map_err(|error| ProxyError::SessionCredentialConflict(error.to_string()))?;
+        let binding = match (binding, requested_instance_id) {
+            (Some(binding), Some(instance_id)) if binding.instance_id != instance_id => {
+                return Err(ProxyError::SessionCredentialConflict(format!(
+                    "会话 {session_id} 已绑定到实例 {}，禁止切换到 {instance_id}",
+                    binding.instance_id
+                )));
+            }
+            (Some(binding), _) => Some(binding),
+            (None, Some(instance_id)) => {
+                let provider_id = state
+                    .db
+                    .get_agent_instance(&instance_id)
+                    .map_err(|error| ProxyError::DatabaseError(error.to_string()))?
+                    .ok_or_else(|| {
+                        ProxyError::SessionCredentialConflict(format!(
+                            "实例 {instance_id} 不存在，禁止回退到 Provider 凭据"
+                        ))
+                    })?
+                    .provider_id;
+                Some(
+                    crate::services::credential_isolation::CredentialIsolationService::bind_session(
+                        &state.db,
+                        app_type_str,
+                        &session_id,
+                        &provider_id,
+                        &instance_id,
+                    )
+                    .map_err(|error| {
+                        ProxyError::SessionCredentialConflict(error.to_string())
+                    })?,
+                )
+            }
+            (None, None) => None,
+        };
+        let providers = match binding {
+            Some(ref binding) => providers
+                .into_iter()
+                .filter(|provider| provider.id == binding.provider_id)
+                .collect(),
+            None => providers,
+        };
+        let session_credential_bound = binding.is_some();
+        let instance_id = binding.as_ref().map(|binding| binding.instance_id.clone());
 
         let provider = providers
             .first()
@@ -318,6 +422,8 @@ impl RequestContext {
                 app_type_str,
             ),
             session_id,
+            session_credential_bound,
+            instance_id,
             session_client_provided: session_result.client_provided,
             rectifier_config,
             optimizer_config,
@@ -380,11 +486,14 @@ impl RequestContext {
             state.current_providers.clone(),
             state.gemini_shadow.clone(),
             state.codex_chat_history.clone(),
+            state.db.clone(),
             state.failover_manager.clone(),
             state.app_handle.clone(),
             self.current_provider_id.clone(),
             self.session_id.clone(),
             self.session_client_provided,
+            self.session_credential_bound,
+            self.instance_id.clone(),
             first_byte_timeout,
             idle_timeout,
             self.rectifier_config.clone(),
