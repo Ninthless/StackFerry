@@ -75,6 +75,8 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "provider_health",
     "proxy_live_backup",
     "usage_daily_rollups",
+    "agent_instances",
+    "session_credential_bindings",
 ];
 
 /// Tables whose local data is preserved (restored from local snapshot) during WebDAV import.
@@ -84,6 +86,8 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "stream_check_logs",
     "proxy_live_backup",
     "usage_daily_rollups",
+    "agent_instances",
+    "session_credential_bindings",
 ];
 
 /// A database backup entry for the UI

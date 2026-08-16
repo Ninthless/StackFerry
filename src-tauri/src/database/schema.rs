@@ -461,6 +461,8 @@ impl Database {
             .map_err(|e| AppError::Database(format!("创建供应商来源索引失败: {e}")))?;
         }
 
+        Self::create_credential_isolation_tables(conn)?;
+
         Ok(())
     }
 
@@ -614,6 +616,11 @@ impl Database {
                         log::info!("迁移数据库从 v24 到 v25（记录请求思考强度）");
                         Self::migrate_v24_to_v25(conn)?;
                         Self::set_user_version(conn, 25)?;
+                    }
+                    25 => {
+                        log::info!("迁移数据库从 v25 到 v26（实例凭据与会话绑定隔离）");
+                        Self::migrate_v25_to_v26(conn)?;
+                        Self::set_user_version(conn, 26)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1900,6 +1907,44 @@ impl Database {
         Self::add_column_if_missing(conn, "proxy_request_logs", "thinking_effort", "TEXT")?;
         Self::add_column_if_missing(conn, "proxy_request_logs", "thinking_effort_source", "TEXT")?;
         Ok(())
+    }
+
+    fn migrate_v25_to_v26(conn: &Connection) -> Result<(), AppError> {
+        Self::create_credential_isolation_tables(conn)
+    }
+
+    fn create_credential_isolation_tables(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS agent_instances (
+                id TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                credential_ref TEXT NOT NULL UNIQUE,
+                codex_home TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                UNIQUE (id, provider_id, app_type),
+                FOREIGN KEY (provider_id, app_type) REFERENCES providers(id, app_type) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_agent_instances_provider
+                ON agent_instances(provider_id, app_type);
+            CREATE TABLE IF NOT EXISTS session_credential_bindings (
+                app_type TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                instance_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                last_used_at INTEGER NOT NULL,
+                PRIMARY KEY (app_type, instance_id, session_id),
+                FOREIGN KEY (provider_id, app_type) REFERENCES providers(id, app_type) ON DELETE CASCADE,
+                FOREIGN KEY (instance_id, provider_id, app_type)
+                    REFERENCES agent_instances(id, provider_id, app_type) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_session_credential_bindings_instance
+                ON session_credential_bindings(instance_id);",
+        )
+        .map_err(|e| AppError::Database(format!("创建实例凭据隔离表失败: {e}")))
     }
 
     /// 插入默认模型定价数据
@@ -3844,6 +3889,31 @@ mod tests {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         assert_eq!(values, (None, None));
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v25_to_v26_adds_instance_credential_isolation_tables() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE providers (
+                id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                settings_config TEXT NOT NULL,
+                PRIMARY KEY (id, app_type)
+            );",
+        )?;
+        Database::set_user_version(&conn, 25)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert!(Database::table_exists(&conn, "agent_instances")?);
+        assert!(Database::table_exists(
+            &conn,
+            "session_credential_bindings"
+        )?);
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
         Ok(())
     }
 }

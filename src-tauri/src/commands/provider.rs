@@ -12,6 +12,71 @@ use crate::services::{
 use crate::store::AppState;
 use std::str::FromStr;
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAgentInstanceRequest {
+    pub provider_id: String,
+    pub app_type: String,
+    pub name: String,
+    pub api_key: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BindSessionCredentialRequest {
+    pub app_type: String,
+    pub session_id: String,
+    pub provider_id: String,
+    pub instance_id: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentInstanceResponse {
+    pub id: String,
+    pub provider_id: String,
+    pub app_type: String,
+    pub name: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+impl From<crate::database::AgentInstance> for AgentInstanceResponse {
+    fn from(instance: crate::database::AgentInstance) -> Self {
+        Self {
+            id: instance.id,
+            provider_id: instance.provider_id,
+            app_type: instance.app_type,
+            name: instance.name,
+            created_at: instance.created_at,
+            updated_at: instance.updated_at,
+        }
+    }
+}
+
+#[cfg(test)]
+mod agent_instance_response_tests {
+    use super::AgentInstanceResponse;
+
+    #[test]
+    fn serialization_excludes_credential_reference_and_codex_home() {
+        let response = AgentInstanceResponse {
+            id: "instance-a".to_string(),
+            provider_id: "provider-a".to_string(),
+            app_type: "codex".to_string(),
+            name: "Work".to_string(),
+            created_at: 1,
+            updated_at: 2,
+        };
+        let value = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(value["id"], "instance-a");
+        assert_eq!(value["providerId"], "provider-a");
+        assert!(value.get("credentialRef").is_none());
+        assert!(value.get("codexHome").is_none());
+    }
+}
+
 // 常量定义
 const TEMPLATE_TYPE_GITHUB_COPILOT: &str = "github_copilot";
 const TEMPLATE_TYPE_TOKEN_PLAN: &str = "token_plan";
@@ -45,6 +110,60 @@ pub async fn import_ccswitch_codex_providers(
         .map_err(|error| error.to_string())
     })
     .await
+}
+
+#[tauri::command]
+pub fn create_agent_instance(
+    state: State<'_, AppState>,
+    request: CreateAgentInstanceRequest,
+) -> Result<AgentInstanceResponse, String> {
+    crate::services::credential_isolation::CredentialIsolationService::create_instance(
+        &state.db,
+        &request.provider_id,
+        &request.app_type,
+        &request.name,
+        &request.api_key,
+    )
+    .map(Into::into)
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn get_agent_instances(
+    state: State<'_, AppState>,
+    provider_id: String,
+    app_type: String,
+) -> Result<Vec<AgentInstanceResponse>, String> {
+    crate::services::credential_isolation::CredentialIsolationService::list_instances(
+        &state.db,
+        &provider_id,
+        &app_type,
+    )
+    .map(|instances| instances.into_iter().map(Into::into).collect())
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn delete_agent_instance(state: State<'_, AppState>, id: String) -> Result<bool, String> {
+    crate::services::credential_isolation::CredentialIsolationService::delete_instance(
+        &state.db, &id,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn bind_session_credential(
+    state: State<'_, AppState>,
+    request: BindSessionCredentialRequest,
+) -> Result<crate::database::SessionCredentialBinding, String> {
+    crate::services::credential_isolation::CredentialIsolationService::bind_session(
+        &state.db,
+        &request.app_type,
+        &request.session_id,
+        &request.provider_id,
+        &request.instance_id,
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
