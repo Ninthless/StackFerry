@@ -70,7 +70,8 @@ pub(crate) use pi::{
     parser_config as pi_parser_config, plan_provider as plan_pi_provider,
     prepare_bedrock_headers as pi_prepare_bedrock_headers, resolve_provider as resolve_pi_provider,
     resolve_usage_credentials as resolve_pi_usage_credentials,
-    resolved_headers as pi_resolved_headers, target_headers as pi_target_headers, PiAdapter, PiApi,
+    resolved_headers as pi_resolved_headers, target_headers as pi_target_headers,
+    target_headers_with_api_key as pi_target_headers_with_api_key, PiAdapter, PiApi,
     PiProviderSelection, PiRequestMetadata,
 };
 

@@ -1,14 +1,18 @@
 #![allow(non_snake_case)]
 
 use crate::session_manager;
+use tauri::State;
 
 #[tauri::command]
 pub async fn list_sessions(
+    state: State<'_, crate::store::AppState>,
     providerId: String,
+    instanceId: Option<String>,
     forceRefresh: bool,
 ) -> Result<Vec<session_manager::SessionMeta>, String> {
+    let db = state.db.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        session_manager::scan_sessions(&providerId, forceRefresh)
+        session_manager::scan_sessions_scoped(&db, &providerId, instanceId.as_deref(), forceRefresh)
     })
     .await
     .map_err(|e| format!("Failed to scan sessions: {e}"))?
@@ -30,12 +34,21 @@ pub async fn get_session_messages(
 
 #[tauri::command]
 pub async fn get_session_message_page(
+    state: State<'_, crate::store::AppState>,
     providerId: String,
+    instanceId: Option<String>,
     sourcePath: String,
     cursor: Option<String>,
 ) -> Result<session_manager::SessionMessagePage, String> {
+    let db = state.db.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        session_manager::load_message_page(&providerId, &sourcePath, cursor.as_deref())
+        session_manager::load_message_page_scoped(
+            &db,
+            &providerId,
+            instanceId.as_deref(),
+            &sourcePath,
+            cursor.as_deref(),
+        )
     })
     .await
     .map_err(|error| format!("Failed to load session message page: {error}"))?
@@ -43,12 +56,21 @@ pub async fn get_session_message_page(
 
 #[tauri::command]
 pub async fn get_session_message_content(
+    state: State<'_, crate::store::AppState>,
     providerId: String,
+    instanceId: Option<String>,
     sourcePath: String,
     contentCursor: String,
 ) -> Result<String, String> {
+    let db = state.db.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        session_manager::load_message_content(&providerId, &sourcePath, &contentCursor)
+        session_manager::load_message_content_scoped(
+            &db,
+            &providerId,
+            instanceId.as_deref(),
+            &sourcePath,
+            &contentCursor,
+        )
     })
     .await
     .map_err(|error| format!("Failed to load session message content: {error}"))?
@@ -90,10 +112,32 @@ pub async fn get_session_message_content(
 /// `session_manager::terminal::shell_escape` 里做了完整的单引号转义。
 #[tauri::command]
 pub async fn launch_session_terminal(
+    state: State<'_, crate::store::AppState>,
     command: String,
     cwd: Option<String>,
     custom_config: Option<String>,
+    providerId: Option<String>,
+    instanceId: Option<String>,
+    sessionId: Option<String>,
 ) -> Result<bool, String> {
+    if providerId.as_deref() == Some("codex") {
+        if let Some(instance_id) = instanceId {
+            let session_id =
+                sessionId.ok_or_else(|| "恢复 Codex 实例会话需要 sessionId".to_string())?;
+            let db = state.db.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                crate::commands::misc::launch_codex_instance_session(
+                    &db,
+                    &instance_id,
+                    &session_id,
+                    cwd.as_deref().map(std::path::Path::new),
+                )
+            })
+            .await
+            .map_err(|e| format!("Failed to launch instance session: {e}"))??;
+            return Ok(true);
+        }
+    }
     let command = command.clone();
     let cwd = cwd.clone();
     let custom_config = custom_config.clone();
@@ -124,7 +168,9 @@ pub async fn launch_session_terminal(
 
 #[tauri::command]
 pub async fn delete_session(
+    state: State<'_, crate::store::AppState>,
     providerId: String,
+    instanceId: Option<String>,
     sessionId: String,
     sourcePath: String,
 ) -> Result<bool, String> {
@@ -132,8 +178,15 @@ pub async fn delete_session(
     let session_id = sessionId.clone();
     let source_path = sourcePath.clone();
 
+    let db = state.db.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        session_manager::delete_session(&provider_id, &session_id, &source_path)
+        session_manager::delete_session_scoped(
+            &db,
+            &provider_id,
+            instanceId.as_deref(),
+            &session_id,
+            &source_path,
+        )
     })
     .await
     .map_err(|e| format!("Failed to delete session: {e}"))?
@@ -141,9 +194,13 @@ pub async fn delete_session(
 
 #[tauri::command]
 pub async fn delete_sessions(
+    state: State<'_, crate::store::AppState>,
     items: Vec<session_manager::DeleteSessionRequest>,
 ) -> Result<Vec<session_manager::DeleteSessionOutcome>, String> {
-    tauri::async_runtime::spawn_blocking(move || session_manager::delete_sessions(&items))
-        .await
-        .map_err(|e| format!("Failed to delete sessions: {e}"))
+    let db = state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        session_manager::delete_sessions_scoped(&db, &items)
+    })
+    .await
+    .map_err(|e| format!("Failed to delete sessions: {e}"))
 }

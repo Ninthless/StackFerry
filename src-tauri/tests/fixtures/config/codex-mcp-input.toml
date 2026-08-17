@@ -1,0 +1,9 @@
+# fixture-top-comment
+model = "gpt-5.6"
+custom_future_key = "preserve-me"
+
+[profile]
+mode = "fixture"
+
+[custom.future]
+enabled = true

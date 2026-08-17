@@ -1,6 +1,10 @@
 use super::forwarder::ActiveConnectionGuard;
-use super::providers::{pi_target_headers, resolve_pi_provider, PiAdapter, ProviderAdapter};
+use super::providers::{
+    pi_target_headers, pi_target_headers_with_api_key, resolve_pi_provider, PiAdapter,
+    ProviderAdapter,
+};
 use super::server::ProxyState;
+use super::session::{extract_instance_id, extract_session_id};
 use super::usage::{logger::UsageLogger, parser::TokenUsage};
 use super::ProxyError;
 use crate::database::PRICING_SOURCE_REQUEST;
@@ -314,6 +318,88 @@ pub(crate) async fn proxy(
             return;
         }
     };
+    let session = extract_session_id(&client_headers, &body, "pi");
+    let requested_instance_id = extract_instance_id(&client_headers);
+    let binding = match state.db.get_session_credential_binding(
+        "pi",
+        &session.session_id,
+        requested_instance_id.as_deref(),
+    ) {
+        Ok(binding) => binding,
+        Err(error) => {
+            close_with_error(&mut client, &error.to_string()).await;
+            record_terminal_failure(&state, &error.to_string()).await;
+            return;
+        }
+    };
+    let binding = match (binding, requested_instance_id) {
+        (Some(binding), Some(instance_id)) if binding.instance_id != instance_id => {
+            let error = format!(
+                "会话 {} 已绑定到实例 {}，禁止切换到 {instance_id}",
+                session.session_id, binding.instance_id
+            );
+            close_with_error(&mut client, &error).await;
+            record_terminal_failure(&state, &error).await;
+            return;
+        }
+        (Some(binding), _) => Some(binding),
+        (None, Some(instance_id)) => {
+            let instance = match state.db.get_agent_instance(&instance_id) {
+                Ok(Some(instance)) => instance,
+                Ok(None) => {
+                    let error = format!("实例 {instance_id} 不存在，禁止回退到 Provider 凭据");
+                    close_with_error(&mut client, &error).await;
+                    record_terminal_failure(&state, &error).await;
+                    return;
+                }
+                Err(error) => {
+                    close_with_error(&mut client, &error.to_string()).await;
+                    record_terminal_failure(&state, &error.to_string()).await;
+                    return;
+                }
+            };
+            match crate::services::credential_isolation::CredentialIsolationService::bind_session(
+                &state.db,
+                "pi",
+                &session.session_id,
+                &instance.provider_id,
+                &instance_id,
+            ) {
+                Ok(binding) => Some(binding),
+                Err(error) => {
+                    close_with_error(&mut client, &error.to_string()).await;
+                    record_terminal_failure(&state, &error.to_string()).await;
+                    return;
+                }
+            }
+        }
+        (None, None) => None,
+    };
+    let mut providers = selection.providers;
+    if let Some(binding) = binding.as_ref() {
+        providers.retain(|provider| provider.id == binding.provider_id);
+    }
+    if providers.is_empty() {
+        let error = "绑定实例所属 Pi Provider 当前不可用";
+        close_with_error(&mut client, error).await;
+        record_terminal_failure(&state, error).await;
+        return;
+    }
+    let isolated_api_key = if let Some(binding) = binding.as_ref() {
+        match crate::services::credential_isolation::CredentialIsolationService::resolve_api_key(
+            &state.db,
+            &binding.instance_id,
+        ) {
+            Ok(api_key) => Some(api_key),
+            Err(error) => {
+                close_with_error(&mut client, &error.to_string()).await;
+                record_terminal_failure(&state, &error.to_string()).await;
+                return;
+            }
+        }
+    } else {
+        None
+    };
     let mut usage_observer =
         PiWebSocketUsageObserver::new(selection.api, selection.request_model.clone());
     usage_observer.begin_request(&first_client_message);
@@ -321,11 +407,11 @@ pub(crate) async fn proxy(
     let max_attempts = usize::try_from(app_config.max_retries)
         .unwrap_or(usize::MAX)
         .saturating_add(1);
-    let bypass_circuit_breaker = selection.providers.len() == 1;
+    let bypass_circuit_breaker = providers.len() == 1 && binding.is_none();
     let mut last_error = "No Pi WebSocket provider was available".to_string();
     let mut last_provider = None;
 
-    for provider in selection.providers.iter().take(max_attempts) {
+    for provider in providers.iter().take(max_attempts) {
         last_provider = Some(provider.clone());
         let permit = if bypass_circuit_breaker {
             None
@@ -354,6 +440,7 @@ pub(crate) async fn proxy(
             &client_headers,
             &selection.source_header_names,
             &source_provider_id,
+            isolated_api_key.as_deref(),
         ) {
             Ok(request) => request,
             Err(error) => {
@@ -417,7 +504,7 @@ pub(crate) async fn proxy(
             .observe_upstream(&state, provider, &first_upstream)
             .await;
 
-        {
+        if binding.is_none() {
             state.current_providers.write().await.insert(
                 "pi".to_string(),
                 (provider.id.clone(), provider.name.clone()),
@@ -427,7 +514,7 @@ pub(crate) async fn proxy(
             status.current_provider = Some(provider.name.clone());
             status.current_provider_id = Some(provider.id.clone());
         }
-        if provider.id != source_provider_id {
+        if binding.is_none() && provider.id != source_provider_id {
             let manager = state.failover_manager.clone();
             let app_handle = state.app_handle.clone();
             let provider_id = provider.id.clone();
@@ -561,6 +648,7 @@ fn upstream_request(
     client_headers: &HeaderMap,
     source_header_names: &HashSet<HeaderName>,
     source_provider_id: &str,
+    isolated_api_key: Option<&str>,
 ) -> Result<http::Request<()>, ProxyError> {
     let adapter = PiAdapter::new();
     let base_url = adapter.extract_base_url(provider)?;
@@ -577,9 +665,18 @@ fn upstream_request(
     let mut request = target_url.as_str().into_client_request().map_err(|error| {
         ProxyError::ConfigError(format!("Invalid Pi WebSocket request: {error}"))
     })?;
-    let target_headers = pi_target_headers(provider)?;
+    let target_headers = match isolated_api_key {
+        Some(api_key) => pi_target_headers_with_api_key(provider, api_key)?,
+        None => pi_target_headers(provider)?,
+    };
     for (name, value) in client_headers {
         if is_websocket_handshake_header(name) {
+            continue;
+        }
+        if name
+            .as_str()
+            .eq_ignore_ascii_case(crate::proxy::session::INSTANCE_ID_HEADER)
+        {
             continue;
         }
         if source_header_names.contains(name) {

@@ -24,6 +24,7 @@ export const isSessionProviderId = (
 export interface DeleteSessionOptions {
   providerId: string;
   sessionId: string;
+  instanceId?: string;
   sourcePath: string;
 }
 
@@ -36,8 +37,13 @@ export const sessionsApi = {
   async list(
     providerId: SessionProviderId,
     forceRefresh = false,
+    instanceId?: string,
   ): Promise<SessionMeta[]> {
-    return await invoke("list_sessions", { providerId, forceRefresh });
+    return await invoke("list_sessions", {
+      providerId,
+      instanceId,
+      forceRefresh,
+    });
   },
 
   async getMessages(
@@ -51,9 +57,11 @@ export const sessionsApi = {
     providerId: string,
     sourcePath: string,
     cursor?: string,
+    instanceId?: string,
   ): Promise<SessionMessagePage> {
     return await invoke("get_session_message_page", {
       providerId,
+      instanceId,
       sourcePath,
       cursor,
     });
@@ -63,19 +71,22 @@ export const sessionsApi = {
     providerId: string,
     sourcePath: string,
     contentCursor: string,
+    instanceId?: string,
   ): Promise<string> {
     return await invoke("get_session_message_content", {
       providerId,
+      instanceId,
       sourcePath,
       contentCursor,
     });
   },
 
   async delete(options: DeleteSessionOptions): Promise<boolean> {
-    const { providerId, sessionId, sourcePath } = options;
+    const { providerId, sessionId, instanceId, sourcePath } = options;
     return await invoke("delete_session", {
       providerId,
       sessionId,
+      instanceId,
       sourcePath,
     });
   },
@@ -90,12 +101,25 @@ export const sessionsApi = {
     command: string;
     cwd?: string | null;
     customConfig?: string | null;
+    providerId?: string;
+    instanceId?: string;
+    sessionId?: string;
   }): Promise<boolean> {
-    const { command, cwd, customConfig } = options;
+    const {
+      command,
+      cwd,
+      customConfig,
+      providerId,
+      instanceId,
+      sessionId,
+    } = options;
     return await invoke("launch_session_terminal", {
       command,
       cwd,
       customConfig,
+      providerId,
+      instanceId,
+      sessionId,
     });
   },
 };

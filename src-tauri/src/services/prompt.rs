@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
 use crate::app_config::AppType;
-use crate::config::write_text_file;
+use crate::config::{delete_file, write_text_file};
 use crate::error::AppError;
 use crate::prompt::Prompt;
 use crate::prompt_files::prompt_file_path;
@@ -71,8 +71,19 @@ impl PromptService {
     }
 
     pub fn enable_prompt(state: &AppState, app: AppType, id: &str) -> Result<(), AppError> {
-        // 回填当前 live 文件内容到已启用的提示词，或创建备份
         let target_path = prompt_file_path(&app)?;
+        let previous_prompts = state.db.get_prompts(app.as_str())?;
+        let target_content = previous_prompts
+            .get(id)
+            .ok_or_else(|| AppError::InvalidInput(format!("提示词 {id} 不存在")))?
+            .content
+            .clone();
+        let previous_content = if target_path.exists() {
+            Some(std::fs::read_to_string(&target_path).map_err(|e| AppError::io(&target_path, e))?)
+        } else {
+            None
+        };
+
         if target_path.exists() {
             if let Ok(live_content) = std::fs::read_to_string(&target_path) {
                 if !live_content.trim().is_empty() {
@@ -120,27 +131,50 @@ impl PromptService {
             }
         }
 
-        // 启用目标提示词并写入文件
         let mut prompts = state.db.get_prompts(app.as_str())?;
 
         for prompt in prompts.values_mut() {
             prompt.enabled = false;
         }
 
-        if let Some(prompt) = prompts.get_mut(id) {
-            prompt.enabled = true;
-            write_text_file(&target_path, &prompt.content)?; // 原子写入
-            state.db.save_prompt(app.as_str(), prompt)?;
-        } else {
-            return Err(AppError::InvalidInput(format!("提示词 {id} 不存在")));
-        }
-
-        // Save all prompts to disable others
-        for (_, prompt) in prompts.iter() {
-            state.db.save_prompt(app.as_str(), prompt)?;
+        prompts
+            .get_mut(id)
+            .expect("prompt was checked above")
+            .enabled = true;
+        write_text_file(&target_path, &target_content)?;
+        if let Err(error) = prompts
+            .values()
+            .try_for_each(|prompt| state.db.save_prompt(app.as_str(), prompt))
+        {
+            let live_rollback = match previous_content {
+                Some(content) => write_text_file(&target_path, &content),
+                None if target_path.exists() => delete_file(&target_path),
+                None => Ok(()),
+            };
+            let db_rollback = Self::restore_prompt_snapshot(state, &app, &previous_prompts);
+            return match (live_rollback, db_rollback) {
+                (Ok(()), Ok(())) => Err(error),
+                (live_result, db_result) => Err(AppError::Message(format!(
+                    "提示词投影失败 ({error}); 回滚结果: live={live_result:?}, db={db_result:?}"
+                ))),
+            };
         }
 
         Ok(())
+    }
+
+    fn restore_prompt_snapshot(
+        state: &AppState,
+        app: &AppType,
+        snapshot: &IndexMap<String, Prompt>,
+    ) -> Result<(), AppError> {
+        let current = state.db.get_prompts(app.as_str())?;
+        for id in current.keys().filter(|id| !snapshot.contains_key(*id)) {
+            state.db.delete_prompt(app.as_str(), id)?;
+        }
+        snapshot
+            .values()
+            .try_for_each(|prompt| state.db.save_prompt(app.as_str(), prompt))
     }
 
     pub fn import_from_file(state: &AppState, app: AppType) -> Result<String, AppError> {

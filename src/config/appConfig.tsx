@@ -27,31 +27,40 @@ export const APP_IDS: AppId[] = [
   "hermes",
 ];
 
-export const PROMPT_APP_IDS: AppId[] = APP_IDS.filter(
-  (app) => app !== "claude-desktop",
+export type AppCapability = "providers" | "mcp" | "skills" | "prompts";
+
+const CAPABILITIES: Record<AppId, readonly AppCapability[]> = {
+  claude: ["providers", "mcp", "skills", "prompts"],
+  "claude-desktop": ["providers"],
+  codex: ["providers", "mcp", "skills", "prompts"],
+  pi: ["providers", "mcp", "skills", "prompts"],
+  gemini: ["providers", "mcp", "skills", "prompts"],
+  grokbuild: ["providers", "mcp", "skills", "prompts"],
+  opencode: ["providers", "mcp", "skills", "prompts"],
+  openclaw: ["providers"],
+  hermes: ["providers", "mcp", "skills", "prompts"],
+};
+
+export function supportsCapability(
+  app: AppId,
+  capability: AppCapability,
+): boolean {
+  return CAPABILITIES[app].includes(capability);
+}
+
+export const PROMPT_APP_IDS = APP_IDS.filter((app) =>
+  supportsCapability(app, "prompts"),
 );
 
 /** App IDs shown in Skills panels (excludes OpenClaw — it doesn't support Skills) */
-export const SKILLS_APP_IDS: AppId[] = [
-  "claude",
-  "codex",
-  "pi",
-  "gemini",
-  "grokbuild",
-  "opencode",
-  "hermes",
-];
+export const SKILLS_APP_IDS = APP_IDS.filter((app) =>
+  supportsCapability(app, "skills"),
+);
 
 /** App IDs shown in MCP panels (excludes OpenClaw) */
-export const MCP_APP_IDS: AppId[] = [
-  "claude",
-  "codex",
-  "pi",
-  "gemini",
-  "grokbuild",
-  "opencode",
-  "hermes",
-];
+export const MCP_APP_IDS = APP_IDS.filter((app) =>
+  supportsCapability(app, "mcp"),
+);
 
 const APP_BADGE_CLASS =
   "border border-border bg-muted text-foreground hover:bg-accent gap-1.5";

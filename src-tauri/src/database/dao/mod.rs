@@ -2,6 +2,7 @@
 //!
 //! Database access operations for each domain
 
+pub mod credential_instances;
 pub mod failover;
 pub mod mcp;
 pub mod profiles;

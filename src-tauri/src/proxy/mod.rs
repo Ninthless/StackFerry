@@ -52,7 +52,8 @@ pub use provider_router::ProviderRouter;
 pub use response_handler::{NonStreamHandler, ResponseType, StreamHandler};
 #[allow(unused_imports)]
 pub use session::{
-    extract_session_id, ClientFormat, ProxySession, SessionIdResult, SessionIdSource,
+    extract_instance_id, extract_session_id, ClientFormat, ProxySession, SessionIdResult,
+    SessionIdSource,
 };
 #[allow(unused_imports)]
 pub use types::{ProxyConfig, ProxyServerInfo, ProxyStatus};

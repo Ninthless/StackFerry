@@ -5,9 +5,12 @@
 pub(crate) mod ccswitch_import;
 pub(crate) mod ccswitch_reconcile;
 pub mod ccswitch_transfer;
+mod claude_live;
+mod codex_live;
 mod endpoints;
 mod gemini_auth;
 mod live;
+mod live_snapshot;
 mod usage;
 
 use indexmap::IndexMap;
@@ -32,7 +35,7 @@ pub use live::{
 };
 
 // Internal re-exports (pub(crate))
-pub(crate) use live::sanitize_claude_settings_for_live;
+pub(crate) use claude_live::sanitize_settings_for_live as sanitize_claude_settings_for_live;
 pub(crate) use live::{
     build_effective_settings_with_common_config, normalize_provider_common_config_for_storage,
     provider_exists_in_live_config, strip_common_config_from_live_settings,
@@ -3273,6 +3276,15 @@ impl ProviderService {
             }
         }
 
+        if matches!(app_type, AppType::Codex) {
+            for instance in state.db.get_agent_instances(&provider.id, "codex")? {
+                crate::services::credential_isolation::CredentialIsolationService::refresh_codex_instance_config(
+                    state.db.as_ref(),
+                    &instance.id,
+                )?;
+            }
+        }
+
         Ok(true)
     }
 
@@ -3281,6 +3293,15 @@ impl ProviderService {
     /// 同时检查本地 settings 和数据库的当前供应商，防止删除任一端正在使用的供应商。
     /// 对于累加模式应用（OpenCode, OpenClaw），可以随时删除任意供应商，同时从 live 配置中移除。
     pub fn delete(state: &AppState, app_type: AppType, id: &str) -> Result<(), AppError> {
+        if !state
+            .db
+            .get_agent_instances(id, app_type.as_str())?
+            .is_empty()
+        {
+            return Err(AppError::InvalidInput(
+                "该供应商仍有隔离实例，请先删除实例".to_string(),
+            ));
+        }
         // Additive mode apps - no current provider concept
         if app_type.is_additive_mode() {
             // Single DB read shared across all additive-mode sub-paths below.

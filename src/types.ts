@@ -467,6 +467,7 @@ export interface Settings {
 export interface SessionMeta {
   providerId: string;
   sessionId: string;
+  instanceId?: string;
   title?: string;
   summary?: string;
   projectDir?: string | null;

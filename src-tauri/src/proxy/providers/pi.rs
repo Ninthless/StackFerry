@@ -795,6 +795,31 @@ pub(crate) fn target_headers(provider: &Provider) -> Result<HeaderMap, ProxyErro
     Ok(headers)
 }
 
+pub(crate) fn target_headers_with_api_key(
+    provider: &Provider,
+    api_key: &str,
+) -> Result<HeaderMap, ProxyError> {
+    let mut provider = provider.clone();
+    let settings = provider.settings_config.as_object_mut().ok_or_else(|| {
+        ProxyError::ConfigError(format!(
+            "Pi provider '{}' resolved configuration must be an object",
+            provider.id
+        ))
+    })?;
+    settings.insert("apiKey".to_string(), Value::String(api_key.to_string()));
+    settings.insert("authHeader".to_string(), Value::Bool(true));
+    settings.remove(RESOLVED_CREDENTIAL_TYPE_FIELD);
+    let mut headers = target_headers(&provider)?;
+    headers.remove("x-api-key");
+    headers.remove("x-goog-api-key");
+    headers.remove("api-key");
+    headers.insert(
+        http::header::AUTHORIZATION,
+        auth_header_value(&format!("Bearer {api_key}"))?,
+    );
+    Ok(headers)
+}
+
 pub(crate) fn prepare_bedrock_headers(
     provider: &Provider,
     target_url: &str,

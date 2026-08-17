@@ -13,6 +13,17 @@ use axum::http::HeaderMap;
 use std::time::Instant;
 use uuid::Uuid;
 
+pub const INSTANCE_ID_HEADER: &str = "x-stackferry-instance-id";
+
+pub fn extract_instance_id(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(INSTANCE_ID_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
 /// 客户端请求格式
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -455,6 +466,17 @@ mod tests {
         let session1 = ProxySession::from_request("POST", "/v1/messages", None, None);
         let session2 = ProxySession::from_request("POST", "/v1/messages", None, None);
         assert_ne!(session1.session_id, session2.session_id);
+    }
+
+    #[test]
+    fn instance_id_requires_explicit_non_empty_header() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(extract_instance_id(&headers), None);
+        headers.insert(
+            INSTANCE_ID_HEADER,
+            axum::http::HeaderValue::from_static(" instance-a "),
+        );
+        assert_eq!(extract_instance_id(&headers).as_deref(), Some("instance-a"));
     }
 
     #[test]

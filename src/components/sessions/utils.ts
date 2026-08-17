@@ -67,7 +67,7 @@ const extractCodexPromptFromIdeContext = (content: string) => {
 };
 
 export const getSessionKey = (session: SessionMeta) =>
-  `${session.providerId}:${session.sessionId}:${session.sourcePath ?? ""}`;
+  `${session.providerId}:${session.instanceId ?? ""}:${session.sessionId}:${session.sourcePath ?? ""}`;
 
 export const getSessionDirectoryGroupKey = (
   providerId: string,
