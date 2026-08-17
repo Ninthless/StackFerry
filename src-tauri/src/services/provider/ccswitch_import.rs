@@ -890,7 +890,7 @@ mod tests {
         let missing = temp.path().join("explicit.db");
         let error = resolve_existing_ccswitch_db(
             Some(missing.to_str().expect("UTF-8 path")),
-            &[first.clone()],
+            std::slice::from_ref(&first),
         )
         .expect_err("missing database should fail")
         .to_string();
