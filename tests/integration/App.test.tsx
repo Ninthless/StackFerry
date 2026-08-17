@@ -10,6 +10,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { providersApi } from "@/lib/api/providers";
+import { supportsCapability } from "@/config/appConfig";
 import {
   resetProviderState,
   setCurrentProviderId,
@@ -484,8 +485,21 @@ describe("App integration with MSW", () => {
         ).toBeInTheDocument(),
       );
 
+      const sidebar = within(screen.getByRole("complementary"));
+      if (
+        !supportsCapability(
+          app as Parameters<typeof supportsCapability>[0],
+          "mcp",
+        )
+      ) {
+        expect(
+          sidebar.queryByRole("button", { name: "MCP servers" }),
+        ).not.toBeInTheDocument();
+        continue;
+      }
+
       fireEvent.click(
-        within(screen.getByRole("complementary")).getByRole("button", {
+        sidebar.getByRole("button", {
           name: "MCP servers",
         }),
       );
