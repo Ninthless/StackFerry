@@ -23,7 +23,7 @@ export {
   SESSION_PROVIDER_IDS,
   isSessionProviderId,
 } from "./sessions";
-export type { SessionProviderId } from "./sessions";
+export type { SessionProviderId, SessionScope } from "./sessions";
 export { workspaceApi } from "./workspace";
 export { piExtensionsApi } from "./piExtensions";
 export type {

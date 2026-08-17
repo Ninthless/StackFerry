@@ -1,4 +1,4 @@
-import { Clock, FolderOpen } from "lucide-react";
+import { Clock, FolderOpen, Monitor } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -91,6 +91,27 @@ export function SessionItem({
         </div>
 
         <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+          <span className="flex min-w-0 items-center gap-1">
+            <Monitor className="size-3 shrink-0" />
+            <span className="truncate">
+              {searchQuery
+                ? highlightText(
+                    session.instanceName ??
+                      (session.instanceId
+                        ? session.instanceId
+                        : t("sessionManager.defaultEnvironment", {
+                            defaultValue: "默认环境",
+                          })),
+                    searchQuery,
+                  )
+                : (session.instanceName ??
+                  (session.instanceId
+                    ? session.instanceId
+                    : t("sessionManager.defaultEnvironment", {
+                        defaultValue: "默认环境",
+                      })))}
+            </span>
+          </span>
           <span className="flex min-w-0 items-center gap-1">
             <FolderOpen className="size-3 shrink-0" />
             <span className="truncate">

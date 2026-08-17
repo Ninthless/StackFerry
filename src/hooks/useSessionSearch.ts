@@ -54,6 +54,8 @@ export function useSessionSearch({
             session.summary,
             session.projectDir,
             session.sourcePath,
+            session.instanceId,
+            session.instanceName,
           ]
             .filter(Boolean)
             .join(" ");

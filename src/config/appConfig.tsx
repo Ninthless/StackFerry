@@ -27,12 +27,17 @@ export const APP_IDS: AppId[] = [
   "hermes",
 ];
 
-export type AppCapability = "providers" | "mcp" | "skills" | "prompts";
+export type AppCapability =
+  | "providers"
+  | "mcp"
+  | "skills"
+  | "prompts"
+  | "runtimeEnvironments";
 
 const CAPABILITIES: Record<AppId, readonly AppCapability[]> = {
-  claude: ["providers", "mcp", "skills", "prompts"],
+  claude: ["providers", "mcp", "skills", "prompts", "runtimeEnvironments"],
   "claude-desktop": ["providers"],
-  codex: ["providers", "mcp", "skills", "prompts"],
+  codex: ["providers", "mcp", "skills", "prompts", "runtimeEnvironments"],
   pi: ["providers", "mcp", "skills", "prompts"],
   gemini: ["providers", "mcp", "skills", "prompts"],
   grokbuild: ["providers", "mcp", "skills", "prompts"],

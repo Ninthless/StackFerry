@@ -12,6 +12,7 @@ import {
   sessionsApi,
   type AppId,
   type SessionProviderId,
+  type SessionScope,
 } from "@/lib/api";
 import type {
   Provider,
@@ -308,11 +309,21 @@ export const useUsageQuery = (
   };
 };
 
-export const useSessionsQuery = (providerId: SessionProviderId) => {
+export const sessionKeys = {
+  lists: (providerId: SessionProviderId) => ["sessions", providerId] as const,
+  list: (providerId: SessionProviderId, scope: SessionScope) =>
+    ["sessions", providerId, scope] as const,
+};
+
+export const useSessionsQuery = (
+  providerId: SessionProviderId,
+  scope: SessionScope = { type: "default" },
+) => {
   const forceRefreshRef = useRef(false);
   const query = useQuery<SessionMeta[]>({
-    queryKey: ["sessions", providerId],
-    queryFn: async () => sessionsApi.list(providerId, forceRefreshRef.current),
+    queryKey: sessionKeys.list(providerId, scope),
+    queryFn: async () =>
+      sessionsApi.list(providerId, scope, forceRefreshRef.current),
     staleTime: 30 * 1000,
   });
 
@@ -337,14 +348,12 @@ export const useSessionMessagesQuery = (
     queryKey: ["sessionMessages", providerId, instanceId, sourcePath],
     queryFn: async ({ pageParam }) => {
       const cursor = typeof pageParam === "string" ? pageParam : undefined;
-      return instanceId
-        ? sessionsApi.getMessagePage(
-            providerId!,
-            sourcePath!,
-            cursor,
-            instanceId,
-          )
-        : sessionsApi.getMessagePage(providerId!, sourcePath!, cursor);
+      return sessionsApi.getMessagePage(
+        providerId!,
+        sourcePath!,
+        cursor,
+        instanceId,
+      );
     },
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) =>

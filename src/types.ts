@@ -468,6 +468,7 @@ export interface SessionMeta {
   providerId: string;
   sessionId: string;
   instanceId?: string;
+  instanceName?: string;
   title?: string;
   summary?: string;
   projectDir?: string | null;

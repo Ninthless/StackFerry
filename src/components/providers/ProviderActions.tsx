@@ -12,6 +12,7 @@ import {
   Terminal,
   Trash2,
   Zap,
+  Boxes,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -48,6 +49,7 @@ interface ProviderActionsProps {
   onRemoveFromConfig?: () => void;
   onDisableOmo?: () => void;
   onOpenTerminal?: () => void;
+  onManageRuntimeEnvironments?: () => void;
   isAutoFailoverEnabled?: boolean;
   isInFailoverQueue?: boolean;
   isFailoverMutationPending?: boolean;
@@ -83,6 +85,7 @@ export function ProviderActions({
   onRemoveFromConfig,
   onDisableOmo,
   onOpenTerminal,
+  onManageRuntimeEnvironments,
   isAutoFailoverEnabled = false,
   isInFailoverQueue = false,
   isFailoverMutationPending = false,
@@ -362,7 +365,13 @@ export function ProviderActions({
             {onOpenTerminal && (
               <DropdownMenuItem onSelect={onOpenTerminal}>
                 <Terminal className="h-4 w-4" />
-                {t("provider.openTerminal")}
+                {t("provider.launchDirect")}
+              </DropdownMenuItem>
+            )}
+            {onManageRuntimeEnvironments && (
+              <DropdownMenuItem onSelect={onManageRuntimeEnvironments}>
+                <Boxes className="h-4 w-4" />
+                {t("provider.manageRuntimeEnvironments")}
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />

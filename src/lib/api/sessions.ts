@@ -14,6 +14,13 @@ export const SESSION_PROVIDER_IDS = [
 
 export type SessionProviderId = (typeof SESSION_PROVIDER_IDS)[number];
 
+export type SessionScope =
+  | { type: "all" }
+  | { type: "default" }
+  | { type: "instance"; instanceId: string };
+
+export const DEFAULT_SESSION_SCOPE: SessionScope = { type: "default" };
+
 export const isSessionProviderId = (
   value: string | null | undefined,
 ): value is SessionProviderId =>
@@ -36,12 +43,16 @@ export interface DeleteSessionResult extends DeleteSessionOptions {
 export const sessionsApi = {
   async list(
     providerId: SessionProviderId,
+    scope: SessionScope = DEFAULT_SESSION_SCOPE,
     forceRefresh = false,
-    instanceId?: string,
   ): Promise<SessionMeta[]> {
-    return await invoke("list_sessions", {
+    const backendScope =
+      scope.type === "instance"
+        ? { type: "instance", instanceId: scope.instanceId }
+        : { type: scope.type };
+    return await invoke<SessionMeta[]>("list_sessions", {
       providerId,
-      instanceId,
+      scope: backendScope,
       forceRefresh,
     });
   },
@@ -49,8 +60,13 @@ export const sessionsApi = {
   async getMessages(
     providerId: string,
     sourcePath: string,
+    instanceId?: string,
   ): Promise<SessionMessage[]> {
-    return await invoke("get_session_messages", { providerId, sourcePath });
+    return await invoke("get_session_messages", {
+      providerId,
+      instanceId,
+      sourcePath,
+    });
   },
 
   async getMessagePage(
@@ -104,9 +120,17 @@ export const sessionsApi = {
     providerId?: string;
     instanceId?: string;
     sessionId?: string;
+    sourcePath?: string;
   }): Promise<boolean> {
-    const { command, cwd, customConfig, providerId, instanceId, sessionId } =
-      options;
+    const {
+      command,
+      cwd,
+      customConfig,
+      providerId,
+      instanceId,
+      sessionId,
+      sourcePath,
+    } = options;
     return await invoke("launch_session_terminal", {
       command,
       cwd,
@@ -114,6 +138,7 @@ export const sessionsApi = {
       providerId,
       instanceId,
       sessionId,
+      sourcePath,
     });
   },
 };

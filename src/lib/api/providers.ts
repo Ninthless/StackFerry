@@ -91,14 +91,21 @@ export interface OpenTerminalOptions {
   instanceId?: string;
 }
 
-export interface AgentInstance {
+export type RuntimeEnvironmentStatus = "ready" | "running" | "unknown";
+
+export interface RuntimeEnvironment {
   id: string;
   providerId: string;
   appType: AppId;
   name: string;
+  runtimeStatus?: RuntimeEnvironmentStatus;
+  recentProjectDir?: string | null;
+  lastLaunchedAt?: number | null;
   createdAt: number;
   updatedAt: number;
 }
+
+export type AgentInstance = RuntimeEnvironment;
 
 export interface SessionCredentialBinding {
   appType: AppId;
@@ -168,19 +175,46 @@ export const providersApi = {
     appType: AppId;
     name: string;
     apiKey: string;
-  }): Promise<AgentInstance> {
+  }): Promise<RuntimeEnvironment> {
     return await invoke("create_agent_instance", { request: input });
   },
 
   async getAgentInstances(
     providerId: string,
     appType: AppId,
-  ): Promise<AgentInstance[]> {
+  ): Promise<RuntimeEnvironment[]> {
     return await invoke("get_agent_instances", { providerId, appType });
   },
 
-  async deleteAgentInstance(id: string): Promise<boolean> {
-    return await invoke("delete_agent_instance", { id });
+  async renameAgentInstance(
+    id: string,
+    name: string,
+  ): Promise<RuntimeEnvironment> {
+    return await invoke("rename_agent_instance", { id, name });
+  },
+
+  async rotateAgentInstanceKey(
+    id: string,
+    apiKey: string,
+  ): Promise<RuntimeEnvironment> {
+    return await invoke("rotate_agent_instance_key", { id, apiKey });
+  },
+
+  async setAgentInstanceRecentProject(
+    id: string,
+    recentProjectDir: string | null,
+  ): Promise<RuntimeEnvironment> {
+    return await invoke("set_agent_instance_recent_project", {
+      id,
+      recentProjectDir,
+    });
+  },
+
+  async deleteAgentInstance(
+    id: string,
+    deleteSessions: boolean,
+  ): Promise<boolean> {
+    return await invoke("delete_agent_instance", { id, deleteSessions });
   },
 
   async bindSessionCredential(input: {

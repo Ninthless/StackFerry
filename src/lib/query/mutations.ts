@@ -379,20 +379,30 @@ export const useDeleteSessionMutation = () => {
       return input;
     },
     onSuccess: async (input) => {
-      queryClient.setQueryData<SessionMeta[]>(
-        ["sessions", input.providerId],
-        (current) =>
-          (current ?? []).filter(
-            (session) =>
-              !(
-                session.providerId === input.providerId &&
-                session.sessionId === input.sessionId &&
-                session.sourcePath === input.sourcePath
-              ),
-          ),
-      );
+      queryClient
+        .getQueriesData<SessionMeta[]>({
+          queryKey: ["sessions", input.providerId],
+        })
+        .forEach(([queryKey]) => {
+          queryClient.setQueryData<SessionMeta[]>(queryKey, (current) =>
+            (current ?? []).filter(
+              (session) =>
+                !(
+                  session.providerId === input.providerId &&
+                  session.sessionId === input.sessionId &&
+                  session.instanceId === input.instanceId &&
+                  session.sourcePath === input.sourcePath
+                ),
+            ),
+          );
+        });
       queryClient.removeQueries({
-        queryKey: ["sessionMessages", input.providerId, input.sourcePath],
+        queryKey: [
+          "sessionMessages",
+          input.providerId,
+          input.instanceId,
+          input.sourcePath,
+        ],
       });
 
       await queryClient.invalidateQueries({

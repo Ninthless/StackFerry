@@ -84,7 +84,11 @@ import {
   type PageHeaderOverflowAction,
 } from "@/components/shell/PageHeader";
 import type { AppView } from "@/components/shell/types";
-import { PROMPT_APP_IDS, SKILLS_APP_IDS } from "@/config/appConfig";
+import {
+  PROMPT_APP_IDS,
+  SKILLS_APP_IDS,
+  supportsCapability,
+} from "@/config/appConfig";
 import { invalidateDatabaseState } from "@/lib/query/invalidateDatabaseState";
 import { AnnouncementCenter } from "@/components/announcements/AnnouncementCenter";
 import { AnnouncementBanner } from "@/components/announcements/AnnouncementBanner";
@@ -274,7 +278,11 @@ function App() {
 
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [usageProvider, setUsageProvider] = useState<Provider | null>(null);
-  const [instanceProvider, setInstanceProvider] = useState<Provider | null>(
+  const [runtimeEnvironmentTarget, setRuntimeEnvironmentTarget] = useState<{
+    appId: AppId;
+    provider: Provider;
+  } | null>(null);
+  const [sessionInstanceId, setSessionInstanceId] = useState<string | null>(
     null,
   );
   const [confirmAction, setConfirmAction] = useState<{
@@ -620,6 +628,19 @@ function App() {
           defaultValue: "链接打开失败",
         });
       toast.error(detail);
+    }
+  };
+
+  const handleLaunchProvider = async (provider: Provider) => {
+    try {
+      const cwd = await settingsApi.pickDirectory();
+      if (!cwd) return;
+      await providersApi.openTerminal(provider.id, activeApp, { cwd });
+      toast.success(t("provider.terminalOpened"));
+    } catch (error) {
+      toast.error(
+        extractErrorMessage(error) || t("provider.terminalOpenFailed"),
+      );
     }
   };
 
@@ -1169,7 +1190,12 @@ function App() {
           return <UnifiedMcpPanel ref={mcpPanelRef} activeApp={activeApp} />;
 
         case "sessions":
-          return <SessionManagerPage />;
+          return (
+            <SessionManagerPage
+              initialInstanceId={sessionInstanceId}
+              onInitialInstanceApplied={() => setSessionInstanceId(null)}
+            />
+          );
         case "workspace":
           return <WorkspaceFilesPanel />;
         case "openclawEnv":
@@ -1229,8 +1255,17 @@ function App() {
                       onConfigureUsage={setUsageProvider}
                       onOpenWebsite={handleOpenWebsite}
                       onOpenTerminal={
-                        activeApp === "claude" || activeApp === "codex"
-                          ? setInstanceProvider
+                        supportsCapability(activeApp, "runtimeEnvironments")
+                          ? handleLaunchProvider
+                          : undefined
+                      }
+                      onManageRuntimeEnvironments={
+                        supportsCapability(activeApp, "runtimeEnvironments")
+                          ? (provider) =>
+                              setRuntimeEnvironmentTarget({
+                                appId: activeApp,
+                                provider,
+                              })
                           : undefined
                       }
                       onCreate={() => setIsAddOpen(true)}
@@ -1387,11 +1422,17 @@ function App() {
       />
 
       <AgentInstancesDialog
-        open={Boolean(instanceProvider)}
-        appId={activeApp}
-        provider={instanceProvider}
+        open={Boolean(runtimeEnvironmentTarget)}
+        appId={runtimeEnvironmentTarget?.appId ?? activeApp}
+        provider={runtimeEnvironmentTarget?.provider ?? null}
         onOpenChange={(open) => {
-          if (!open) setInstanceProvider(null);
+          if (!open) setRuntimeEnvironmentTarget(null);
+        }}
+        onViewSessions={(appId, instanceId) => {
+          localStorage.setItem("stackferry.sessions.providerFilter", appId);
+          setSessionInstanceId(instanceId);
+          setRuntimeEnvironmentTarget(null);
+          setCurrentView("sessions");
         }}
       />
 

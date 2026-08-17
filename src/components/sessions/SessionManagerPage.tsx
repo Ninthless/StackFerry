@@ -40,8 +40,10 @@ import {
   isSessionProviderId,
   SESSION_PROVIDER_IDS,
   sessionsApi,
+  type SessionScope,
   type SessionProviderId,
 } from "@/lib/api";
+import { providersApi, type AgentInstance } from "@/lib/api/providers";
 import type { SessionMessage, SessionMeta } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -96,6 +98,9 @@ const SESSION_LIST_VIEW_MODE_STORAGE_KEY =
 const SESSION_GROUP_EXPANSION_STORAGE_KEY =
   "stackferry.sessionManager.groupExpansionState";
 const SESSION_PROVIDER_STORAGE_KEY = "stackferry.sessions.providerFilter";
+const SESSION_SCOPE_STORAGE_KEY = "stackferry.sessions.scopeFilter";
+const ALL_ENVIRONMENTS_VALUE = "__all_environments__";
+const DEFAULT_ENVIRONMENT_VALUE = "__default_environment__";
 const SESSION_LIST_ROW_ESTIMATE = 68;
 const SESSION_LIST_FALLBACK_RECT = { width: 320, height: 640 };
 const MESSAGE_LIST_FALLBACK_RECT = { width: 640, height: 640 };
@@ -134,6 +139,16 @@ const readInitialSessionProvider = (): SessionProviderId => {
   if (typeof window === "undefined") return "codex";
   const stored = window.localStorage.getItem(SESSION_PROVIDER_STORAGE_KEY);
   return isSessionProviderId(stored) ? stored : "codex";
+};
+
+const readInitialSessionScope = (): SessionScope => {
+  if (typeof window === "undefined") return { type: "all" };
+  const stored = window.localStorage.getItem(SESSION_SCOPE_STORAGE_KEY);
+  if (!stored || stored === ALL_ENVIRONMENTS_VALUE) {
+    return { type: "all" };
+  }
+  if (stored === DEFAULT_ENVIRONMENT_VALUE) return { type: "default" };
+  return { type: "instance", instanceId: stored };
 };
 
 const readInitialSessionListViewMode = (): SessionListViewMode => {
@@ -218,7 +233,17 @@ const filterSetToAllowedValues = (
   return changed ? next : current;
 };
 
-export function SessionManagerPage() {
+interface SessionManagerPageProps {
+  initialScope?: SessionScope;
+  initialInstanceId?: string | null;
+  onInitialInstanceApplied?: () => void;
+}
+
+export function SessionManagerPage({
+  initialScope,
+  initialInstanceId,
+  onInitialInstanceApplied,
+}: SessionManagerPageProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const detailRef = useRef<HTMLDivElement | null>(null);
@@ -243,9 +268,37 @@ export function SessionManagerPage() {
   const [sessionProvider, setSessionProvider] = useState<SessionProviderId>(
     readInitialSessionProvider,
   );
-  const { data, isLoading, refreshSessions } =
-    useSessionsQuery(sessionProvider);
-  const sessions = data ?? [];
+  const [instances, setInstances] = useState<AgentInstance[]>([]);
+  const [sessionScope, setSessionScope] = useState<SessionScope>(
+    () =>
+      initialScope ??
+      (initialInstanceId
+        ? { type: "instance", instanceId: initialInstanceId }
+        : readInitialSessionScope()),
+  );
+  const scopedSessionScope = useMemo<SessionScope>(() => {
+    return sessionProvider === "codex" || sessionProvider === "claude"
+      ? sessionScope
+      : { type: "default" };
+  }, [sessionProvider, sessionScope]);
+  const { data, isLoading, refreshSessions } = useSessionsQuery(
+    sessionProvider,
+    scopedSessionScope,
+  );
+  const instanceNames = useMemo(
+    () => new Map(instances.map((instance) => [instance.id, instance.name])),
+    [instances],
+  );
+  const sessions = useMemo(
+    () =>
+      (data ?? []).map((session) => ({
+        ...session,
+        instanceName: session.instanceId
+          ? instanceNames.get(session.instanceId)
+          : undefined,
+      })),
+    [data, instanceNames],
+  );
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [listViewMode, setListViewMode] = useState<SessionListViewMode>(
     readInitialSessionListViewMode,
@@ -309,8 +362,61 @@ export function SessionManagerPage() {
   }, [listViewMode, sessions]);
 
   useEffect(() => {
+    if (!initialInstanceId) return;
+    setSessionScope({ type: "instance", instanceId: initialInstanceId });
+    onInitialInstanceApplied?.();
+  }, [initialInstanceId, onInitialInstanceApplied]);
+
+  useEffect(() => {
     window.localStorage.setItem(SESSION_PROVIDER_STORAGE_KEY, sessionProvider);
   }, [sessionProvider]);
+
+  useEffect(() => {
+    if (sessionProvider !== "codex" && sessionProvider !== "claude") {
+      setInstances([]);
+      return;
+    }
+    let cancelled = false;
+    void providersApi
+      .getAll(sessionProvider)
+      .then((providers) =>
+        Promise.all(
+          Object.keys(providers).map((providerId) =>
+            providersApi.getAgentInstances(providerId, sessionProvider),
+          ),
+        ),
+      )
+      .then((instanceGroups) => instanceGroups.flat())
+      .then((nextInstances) => {
+        if (!cancelled) setInstances(nextInstances);
+      })
+      .catch(() => {
+        if (!cancelled) setInstances([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionProvider]);
+
+  useEffect(() => {
+    const value =
+      sessionScope.type === "all"
+        ? ALL_ENVIRONMENTS_VALUE
+        : sessionScope.type === "default"
+          ? DEFAULT_ENVIRONMENT_VALUE
+          : sessionScope.instanceId;
+    window.localStorage.setItem(SESSION_SCOPE_STORAGE_KEY, value);
+  }, [sessionScope]);
+
+  useEffect(() => {
+    if (
+      sessionScope.type === "instance" &&
+      instances.length > 0 &&
+      !instances.some((instance) => instance.id === sessionScope.instanceId)
+    ) {
+      setSessionScope({ type: "all" });
+    }
+  }, [instances, sessionScope]);
 
   const handleSessionProviderChange = (value: string) => {
     if (!isSessionProviderId(value) || value === sessionProvider) return;
@@ -418,6 +524,7 @@ export function SessionManagerPage() {
         queryKey: [
           "sessionMessageContent",
           selectedSession.providerId,
+          selectedSession.instanceId,
           selectedSession.sourcePath,
           message.contentCursor,
         ],
@@ -596,6 +703,7 @@ export function SessionManagerPage() {
         providerId: selectedSession.providerId,
         instanceId: selectedSession.instanceId,
         sessionId: selectedSession.sessionId,
+        sourcePath: selectedSession.sourcePath,
       });
       toast.success(t("sessionManager.terminalLaunched"));
     } catch (error) {
@@ -622,6 +730,7 @@ export function SessionManagerPage() {
       await deleteSessionMutation.mutateAsync({
         providerId: target.providerId,
         sessionId: target.sessionId,
+        instanceId: target.instanceId,
         sourcePath: target.sourcePath!,
       });
       setSelectedSessionKeys((current) => {
@@ -656,13 +765,17 @@ export function SessionManagerPage() {
 
       if (deletedKeys.length > 0) {
         const deletedKeySet = new Set(deletedKeys);
-        queryClient.setQueryData<SessionMeta[]>(
-          ["sessions", sessionProvider],
-          (current) =>
-            (current ?? []).filter(
-              (session) => !deletedKeySet.has(getSessionKey(session)),
-            ),
-        );
+        queryClient
+          .getQueriesData<SessionMeta[]>({
+            queryKey: ["sessions", sessionProvider],
+          })
+          .forEach(([queryKey]) => {
+            queryClient.setQueryData<SessionMeta[]>(queryKey, (current) =>
+              (current ?? []).filter(
+                (session) => !deletedKeySet.has(getSessionKey(session)),
+              ),
+            );
+          });
       }
 
       results
@@ -972,42 +1085,103 @@ export function SessionManagerPage() {
                 </div>
               }
               primaryFilters={
-                <Select
-                  value={sessionProvider}
-                  onValueChange={handleSessionProviderChange}
-                >
-                  <SelectTrigger
-                    className="h-8 w-36"
-                    aria-label={t("sessionManager.providerFilterTooltip", {
-                      defaultValue: "会话供应商",
-                    })}
+                <>
+                  <Select
+                    value={sessionProvider}
+                    onValueChange={handleSessionProviderChange}
                   >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <ProviderIcon
-                        icon={getProviderIconName(sessionProvider)}
-                        name={sessionProvider}
-                        size={14}
-                      />
-                      <span className="truncate">
-                        {getProviderLabel(sessionProvider, t)}
-                      </span>
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SESSION_PROVIDER_IDS.map((providerId) => (
-                      <SelectItem key={providerId} value={providerId}>
-                        <div className="flex items-center gap-2">
-                          <ProviderIcon
-                            icon={getProviderIconName(providerId)}
-                            name={providerId}
-                            size={14}
-                          />
-                          <span>{getProviderLabel(providerId, t)}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                    <SelectTrigger
+                      className="h-8 w-36"
+                      aria-label={t("sessionManager.providerFilterTooltip", {
+                        defaultValue: "会话供应商",
+                      })}
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <ProviderIcon
+                          icon={getProviderIconName(sessionProvider)}
+                          name={sessionProvider}
+                          size={14}
+                        />
+                        <span className="truncate">
+                          {getProviderLabel(sessionProvider, t)}
+                        </span>
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SESSION_PROVIDER_IDS.map((providerId) => (
+                        <SelectItem key={providerId} value={providerId}>
+                          <div className="flex items-center gap-2">
+                            <ProviderIcon
+                              icon={getProviderIconName(providerId)}
+                              name={providerId}
+                              size={14}
+                            />
+                            <span>{getProviderLabel(providerId, t)}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {(sessionProvider === "codex" ||
+                    sessionProvider === "claude") && (
+                    <Select
+                      value={
+                        sessionScope.type === "all"
+                          ? ALL_ENVIRONMENTS_VALUE
+                          : sessionScope.type === "default"
+                            ? DEFAULT_ENVIRONMENT_VALUE
+                            : sessionScope.instanceId
+                      }
+                      onValueChange={(value) => {
+                        setSelectedKey(null);
+                        setSessionScope(
+                          value === ALL_ENVIRONMENTS_VALUE
+                            ? { type: "all" }
+                            : value === DEFAULT_ENVIRONMENT_VALUE
+                              ? { type: "default" }
+                              : { type: "instance", instanceId: value },
+                        );
+                      }}
+                    >
+                      <SelectTrigger
+                        className="h-8 w-40"
+                        aria-label={t("sessionManager.environmentFilter", {
+                          defaultValue: "运行环境",
+                        })}
+                      >
+                        <span className="truncate">
+                          {sessionScope.type === "all"
+                            ? t("sessionManager.allEnvironments", {
+                                defaultValue: "全部环境",
+                              })
+                            : sessionScope.type === "default"
+                              ? t("sessionManager.defaultEnvironment", {
+                                  defaultValue: "默认环境",
+                                })
+                              : (instanceNames.get(sessionScope.instanceId) ??
+                                sessionScope.instanceId)}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ALL_ENVIRONMENTS_VALUE}>
+                          {t("sessionManager.allEnvironments", {
+                            defaultValue: "全部环境",
+                          })}
+                        </SelectItem>
+                        <SelectItem value={DEFAULT_ENVIRONMENT_VALUE}>
+                          {t("sessionManager.defaultEnvironment", {
+                            defaultValue: "默认环境",
+                          })}
+                        </SelectItem>
+                        {instances.map((instance) => (
+                          <SelectItem key={instance.id} value={instance.id}>
+                            {instance.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </>
               }
               secondaryFilters={
                 <Select
