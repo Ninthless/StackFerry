@@ -99,6 +99,8 @@ export const handlers = [
     return success(getCurrentProviderId(app));
   }),
 
+  http.post(`${TAURI_ENDPOINT}/get_agent_instances`, () => success([])),
+
   http.post(
     `${TAURI_ENDPOINT}/update_providers_sort_order`,
     async ({ request }) => {
@@ -177,11 +179,15 @@ export const handlers = [
   http.post(`${TAURI_ENDPOINT}/open_external`, () => success(true)),
 
   http.post(`${TAURI_ENDPOINT}/list_sessions`, async ({ request }) => {
-    const { providerId } = await withJson<{
+    const { providerId, scope } = await withJson<{
       providerId: string;
+      scope?: {
+        type: "all" | "default" | "instance";
+        instanceId?: string;
+      };
       forceRefresh?: boolean;
     }>(request);
-    return success(listSessions(providerId));
+    return success(listSessions(providerId, scope));
   }),
 
   http.post(`${TAURI_ENDPOINT}/get_session_messages`, async ({ request }) => {
@@ -195,36 +201,49 @@ export const handlers = [
   http.post(
     `${TAURI_ENDPOINT}/get_session_message_page`,
     async ({ request }) => {
-      const { providerId, sourcePath, cursor } = await withJson<{
+      const { providerId, instanceId, sourcePath, cursor } = await withJson<{
         providerId: string;
+        instanceId?: string;
         sourcePath: string;
         cursor?: string;
       }>(request);
-      return success(getSessionMessagePage(providerId, sourcePath, cursor));
+      return success(
+        getSessionMessagePage(providerId, sourcePath, cursor, instanceId),
+      );
     },
   ),
 
   http.post(
     `${TAURI_ENDPOINT}/get_session_message_content`,
     async ({ request }) => {
-      const { providerId, sourcePath, contentCursor } = await withJson<{
-        providerId: string;
-        sourcePath: string;
-        contentCursor: string;
-      }>(request);
+      const { providerId, instanceId, sourcePath, contentCursor } =
+        await withJson<{
+          providerId: string;
+          instanceId?: string;
+          sourcePath: string;
+          contentCursor: string;
+        }>(request);
       return success(
-        getSessionMessageContent(providerId, sourcePath, contentCursor),
+        getSessionMessageContent(
+          providerId,
+          sourcePath,
+          contentCursor,
+          instanceId,
+        ),
       );
     },
   ),
 
   http.post(`${TAURI_ENDPOINT}/delete_session`, async ({ request }) => {
-    const { providerId, sessionId, sourcePath } = await withJson<{
+    const { providerId, sessionId, instanceId, sourcePath } = await withJson<{
       providerId: string;
       sessionId: string;
+      instanceId?: string;
       sourcePath: string;
     }>(request);
-    return success(deleteSession(providerId, sessionId, sourcePath));
+    return success(
+      deleteSession(providerId, sessionId, sourcePath, instanceId),
+    );
   }),
 
   http.post(`${TAURI_ENDPOINT}/delete_sessions`, async ({ request }) => {
@@ -232,6 +251,7 @@ export const handlers = [
       items?: {
         providerId: string;
         sessionId: string;
+        instanceId?: string;
         sourcePath: string;
       }[];
     }>(request);
@@ -240,11 +260,13 @@ export const handlers = [
       items.map((item) => ({
         providerId: item.providerId,
         sessionId: item.sessionId,
+        instanceId: item.instanceId,
         sourcePath: item.sourcePath,
         success: deleteSession(
           item.providerId,
           item.sessionId,
           item.sourcePath,
+          item.instanceId,
         ),
       })),
     );

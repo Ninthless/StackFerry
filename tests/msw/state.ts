@@ -106,8 +106,23 @@ let settingsState: Settings = {
   language: "zh",
 };
 let appConfigDirOverride: string | null = null;
-const sessionMessageKey = (providerId: string, sourcePath: string) =>
+const sessionMessageKey = (
+  providerId: string,
+  sourcePath: string,
+  instanceId?: string,
+) => `${providerId}:${instanceId ?? ""}:${sourcePath}`;
+
+const legacySessionMessageKey = (providerId: string, sourcePath: string) =>
   `${providerId}:${sourcePath}`;
+
+const readSessionMessages = (
+  providerId: string,
+  sourcePath: string,
+  instanceId?: string,
+) =>
+  sessionMessagesState[sessionMessageKey(providerId, sourcePath, instanceId)] ??
+  sessionMessagesState[legacySessionMessageKey(providerId, sourcePath)] ??
+  [];
 
 const createDefaultSessions = (): SessionMeta[] => {
   const now = Date.now();
@@ -412,14 +427,30 @@ export const deleteMcpServer = (appType: AppId, id: string) => {
   delete mcpConfigs[appType][id];
 };
 
-export const listSessions = (providerId: string) =>
+export const listSessions = (
+  providerId: string,
+  scope: { type: "all" | "default" | "instance"; instanceId?: string } = {
+    type: "default",
+  },
+) =>
   deepClone(
-    sessionsState.filter((session) => session.providerId === providerId),
+    sessionsState.filter(
+      (session) =>
+        session.providerId === providerId &&
+        (scope.type === "all" ||
+          (scope.type === "default" && !session.instanceId) ||
+          (scope.type === "instance" &&
+            session.instanceId === scope.instanceId)),
+    ),
   ) as SessionMeta[];
 
-export const getSessionMessages = (providerId: string, sourcePath: string) =>
+export const getSessionMessages = (
+  providerId: string,
+  sourcePath: string,
+  instanceId?: string,
+) =>
   deepClone(
-    sessionMessagesState[sessionMessageKey(providerId, sourcePath)] ?? [],
+    readSessionMessages(providerId, sourcePath, instanceId),
   ) as SessionMessage[];
 
 const SESSION_MESSAGE_PAGE_MAX_ITEMS = 50;
@@ -439,8 +470,9 @@ export const getSessionMessagePage = (
   providerId: string,
   sourcePath: string,
   cursor?: string,
+  instanceId?: string,
 ): SessionMessagePage => {
-  const messages = getSessionMessages(providerId, sourcePath);
+  const messages = getSessionMessages(providerId, sourcePath, instanceId);
   const start = cursor ? Number(cursor.replace(/^(?:index|fixture):/, "")) : 0;
   if (!Number.isInteger(start) || start < 0) {
     throw new Error("Invalid session message cursor");
@@ -490,9 +522,10 @@ export const getSessionMessageContent = (
   providerId: string,
   sourcePath: string,
   cursor: string,
+  instanceId?: string,
 ) => {
   const index = Number(cursor.replace(/^(?:index|fixture):/, ""));
-  const messages = getSessionMessages(providerId, sourcePath);
+  const messages = getSessionMessages(providerId, sourcePath, instanceId);
   if (!Number.isInteger(index) || index < 0 || index >= messages.length) {
     throw new Error("Invalid session message content cursor");
   }
@@ -503,16 +536,25 @@ export const deleteSession = (
   providerId: string,
   sessionId: string,
   sourcePath: string,
+  instanceId?: string,
 ) => {
   sessionsState = sessionsState.filter(
     (session) =>
       !(
         session.providerId === providerId &&
         session.sessionId === sessionId &&
+        session.instanceId === instanceId &&
         session.sourcePath === sourcePath
       ),
   );
-  delete sessionMessagesState[sessionMessageKey(providerId, sourcePath)];
+  delete sessionMessagesState[
+    sessionMessageKey(providerId, sourcePath, instanceId)
+  ];
+  if (!instanceId) {
+    delete sessionMessagesState[
+      legacySessionMessageKey(providerId, sourcePath)
+    ];
+  }
   return true;
 };
 

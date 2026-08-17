@@ -19,6 +19,7 @@ const toastErrorMock = vi.fn();
 const GROUP_EXPANSION_STORAGE_KEY =
   "stackferry.sessionManager.groupExpansionState";
 const PROVIDER_STORAGE_KEY = "stackferry.sessions.providerFilter";
+const SCOPE_STORAGE_KEY = "stackferry.sessions.scopeFilter";
 
 vi.mock("sonner", () => ({
   toast: {
@@ -142,6 +143,7 @@ describe("SessionManagerPage", () => {
     window.localStorage.removeItem("stackferry.sessionManager.listViewMode");
     window.localStorage.removeItem(GROUP_EXPANSION_STORAGE_KEY);
     window.localStorage.removeItem(PROVIDER_STORAGE_KEY);
+    window.localStorage.removeItem(SCOPE_STORAGE_KEY);
 
     const sessions: SessionMeta[] = [
       {
@@ -263,6 +265,43 @@ describe("SessionManagerPage", () => {
       "placeholder",
       "搜索标题、摘要、项目、路径或 ID",
     );
+  });
+
+  it("filters default and named runtime environments explicitly", async () => {
+    setSessionFixtures(
+      [
+        {
+          providerId: "codex",
+          sessionId: "default-session",
+          title: "Default Session",
+          sourcePath: "/mock/default.jsonl",
+        },
+        {
+          providerId: "codex",
+          sessionId: "isolated-session",
+          instanceId: "instance-1",
+          title: "Isolated Session",
+          sourcePath: "/mock/isolated.jsonl",
+        },
+      ],
+      {},
+    );
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Default Session").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Isolated Session").length).toBeGreaterThan(0);
+    });
+
+    await userEvent.click(screen.getByRole("combobox", { name: /运行环境/i }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: /默认环境/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Default Session").length).toBeGreaterThan(0);
+      expect(screen.queryByText("Isolated Session")).not.toBeInTheDocument();
+    });
   });
 
   it("does not expose resume controls for OpenClaw sessions", async () => {
@@ -411,6 +450,43 @@ describe("SessionManagerPage", () => {
     expect(screen.queryByText("Alpha Session")).not.toBeInTheDocument();
     expect(toastErrorMock).not.toHaveBeenCalled();
     expect(toastSuccessMock).toHaveBeenCalled();
+  });
+
+  it("passes the instance id when deleting one isolated session", async () => {
+    setSessionFixtures(
+      [
+        {
+          providerId: "codex",
+          sessionId: "isolated-session",
+          instanceId: "instance-1",
+          title: "Isolated Session",
+          sourcePath: "/mock/isolated.jsonl",
+        },
+      ],
+      {},
+    );
+    const deleteSpy = vi.spyOn(sessionsApi, "delete");
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByText("Isolated Session")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /删除会话/i }));
+    fireEvent.click(
+      within(screen.getByTestId("confirm-dialog")).getByRole("button", {
+        name: /删除会话/i,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(deleteSpy).toHaveBeenCalledWith({
+        providerId: "codex",
+        sessionId: "isolated-session",
+        instanceId: "instance-1",
+        sourcePath: "/mock/isolated.jsonl",
+      }),
+    );
+    deleteSpy.mockRestore();
   });
 
   it("removes a deleted session from filtered search results", async () => {
@@ -603,7 +679,9 @@ describe("SessionManagerPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /刷新/i }));
 
-    await waitFor(() => expect(listSpy).toHaveBeenCalledWith("codex", true));
+    await waitFor(() =>
+      expect(listSpy).toHaveBeenCalledWith("codex", { type: "all" }, true),
+    );
     listSpy.mockRestore();
   });
 
@@ -664,6 +742,7 @@ describe("SessionManagerPage", () => {
       "codex",
       "/mock/codex/paged.jsonl",
       undefined,
+      undefined,
     );
 
     await userEvent.click(
@@ -679,6 +758,7 @@ describe("SessionManagerPage", () => {
       "codex",
       "/mock/codex/paged.jsonl",
       "index:50",
+      undefined,
     );
     pageSpy.mockRestore();
   });
