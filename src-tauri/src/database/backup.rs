@@ -1034,6 +1034,36 @@ mod tests {
     }
 
     #[test]
+    fn sync_export_skips_runtime_environment_rows() -> Result<(), AppError> {
+        let db = Database::memory()?;
+        {
+            let conn = crate::database::lock_conn!(db.conn);
+            conn.execute(
+                "INSERT INTO providers (id, app_type, name, settings_config, meta)
+                 VALUES ('provider-a', 'codex', 'Provider A', '{}', '{}')",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO agent_instances (
+                    id, provider_id, app_type, name, credential_ref, runtime_home,
+                    runtime_config, created_at, updated_at
+                 ) VALUES (
+                    'instance-a', 'provider-a', 'codex', 'Work', 'credential-a',
+                    '/tmp/instance-a', 'config.toml', 1, 1
+                 )",
+                [],
+            )?;
+        }
+
+        let exported = db.export_sql_string_for_sync()?;
+
+        assert!(exported.contains("CREATE TABLE agent_instances"));
+        assert!(!exported.contains("credential-a"));
+        assert!(!exported.contains("/tmp/instance-a"));
+        Ok(())
+    }
+
+    #[test]
     #[serial]
     fn periodic_maintenance_runs_even_when_auto_backup_disabled() -> Result<(), AppError> {
         let old_test_home = std::env::var_os("STACKFERRY_TEST_HOME");

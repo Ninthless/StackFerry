@@ -15,13 +15,22 @@ use super::utils::{
 const PROVIDER_ID: &str = "claude";
 
 pub fn scan_sessions() -> Vec<SessionMeta> {
-    let root = get_claude_config_dir().join("projects");
+    scan_sessions_in_home(&get_claude_config_dir(), None)
+}
+
+pub fn session_roots_for_home(config_dir: &Path) -> Vec<PathBuf> {
+    vec![config_dir.join("projects")]
+}
+
+pub fn scan_sessions_in_home(config_dir: &Path, instance_id: Option<&str>) -> Vec<SessionMeta> {
+    let root = config_dir.join("projects");
     let mut files = Vec::new();
     collect_jsonl_files(&root, &mut files);
 
     let mut sessions = Vec::new();
     for path in files {
-        if let Some(meta) = parse_session(&path) {
+        if let Some(mut meta) = parse_session(&path) {
+            meta.instance_id = instance_id.map(str::to_string);
             sessions.push(meta);
         }
     }
@@ -128,6 +137,10 @@ pub fn delete_session(_root: &Path, path: &Path, session_id: &str) -> Result<boo
     })?;
 
     Ok(true)
+}
+
+pub fn session_id(path: &Path) -> Option<String> {
+    parse_session(path).map(|session| session.session_id)
 }
 
 fn parse_session(path: &Path) -> Option<SessionMeta> {

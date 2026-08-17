@@ -173,7 +173,8 @@ impl RequestContext {
         let thinking_effort = crate::proxy::thinking_effort::extract_thinking_effort(body);
         let session_result = extract_session_id(headers, body, "pi");
         let session_id = session_result.session_id.clone();
-        let requested_instance_id = extract_instance_id(headers);
+        let requested_instance_id =
+            extract_instance_id(headers).map_err(ProxyError::SessionCredentialConflict)?;
         let binding = state
             .db
             .get_session_credential_binding("pi", &session_id, requested_instance_id.as_deref())
@@ -338,7 +339,8 @@ impl RequestContext {
                     _ => ProxyError::DatabaseError(error.to_string()),
                 })?,
         };
-        let requested_instance_id = extract_instance_id(headers);
+        let requested_instance_id =
+            extract_instance_id(headers).map_err(ProxyError::SessionCredentialConflict)?;
         let binding = state
             .db
             .get_session_credential_binding(

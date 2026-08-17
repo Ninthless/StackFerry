@@ -37,6 +37,9 @@ pub struct AgentInstanceResponse {
     pub provider_id: String,
     pub app_type: String,
     pub name: String,
+    pub recent_project_dir: Option<String>,
+    pub last_launched_at: Option<i64>,
+    pub runtime_status: String,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -48,6 +51,9 @@ impl From<crate::database::AgentInstance> for AgentInstanceResponse {
             provider_id: instance.provider_id,
             app_type: instance.app_type,
             name: instance.name,
+            recent_project_dir: instance.recent_project_dir,
+            last_launched_at: instance.last_launched_at,
+            runtime_status: "ready".to_string(),
             created_at: instance.created_at,
             updated_at: instance.updated_at,
         }
@@ -65,6 +71,9 @@ mod agent_instance_response_tests {
             provider_id: "provider-a".to_string(),
             app_type: "codex".to_string(),
             name: "Work".to_string(),
+            recent_project_dir: Some("/tmp/project".to_string()),
+            last_launched_at: Some(3),
+            runtime_status: "ready".to_string(),
             created_at: 1,
             updated_at: 2,
         };
@@ -74,6 +83,10 @@ mod agent_instance_response_tests {
         assert_eq!(value["providerId"], "provider-a");
         assert!(value.get("credentialRef").is_none());
         assert!(value.get("codexHome").is_none());
+        assert!(value.get("runtimeHome").is_none());
+        assert_eq!(value["recentProjectDir"], "/tmp/project");
+        assert_eq!(value["lastLaunchedAt"], 3);
+        assert_eq!(value["runtimeStatus"], "ready");
     }
 }
 
@@ -144,11 +157,106 @@ pub fn get_agent_instances(
 }
 
 #[tauri::command]
-pub fn delete_agent_instance(state: State<'_, AppState>, id: String) -> Result<bool, String> {
+pub fn delete_agent_instance(
+    state: State<'_, AppState>,
+    id: String,
+    #[allow(non_snake_case)] deleteSessions: bool,
+) -> Result<bool, String> {
+    if deleteSessions {
+        let instance = state
+            .db
+            .get_agent_instance(&id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("实例 {id} 不存在"))?;
+        let sessions = crate::session_manager::scan_sessions_scoped(
+            &state.db,
+            &instance.app_type,
+            crate::session_manager::SessionScope::Instance {
+                instance_id: id.clone(),
+            },
+            true,
+        )?;
+        let requests = sessions
+            .into_iter()
+            .filter_map(|session| {
+                session.source_path.map(|source_path| {
+                    crate::session_manager::DeleteSessionRequest {
+                        provider_id: instance.app_type.clone(),
+                        session_id: session.session_id,
+                        instance_id: Some(id.clone()),
+                        source_path,
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        let failures = crate::session_manager::delete_sessions_scoped(&state.db, &requests)
+            .into_iter()
+            .filter(|outcome| !outcome.success)
+            .collect::<Vec<_>>();
+        if !failures.is_empty() {
+            return Err(format!("删除实例会话失败: {} 项", failures.len()));
+        }
+    }
     crate::services::credential_isolation::CredentialIsolationService::delete_instance(
         &state.db, &id,
     )
     .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn rename_agent_instance(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+) -> Result<AgentInstanceResponse, String> {
+    crate::services::credential_isolation::CredentialIsolationService::rename_instance(
+        &state.db, &id, &name,
+    )
+    .map(Into::into)
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn rotate_agent_instance_key(
+    state: State<'_, AppState>,
+    id: String,
+    #[allow(non_snake_case)] apiKey: String,
+) -> Result<AgentInstanceResponse, String> {
+    crate::services::credential_isolation::CredentialIsolationService::replace_api_key(
+        &state.db, &id, &apiKey,
+    )
+    .and_then(|_| {
+        state
+            .db
+            .get_agent_instance(&id)?
+            .ok_or_else(|| AppError::InvalidInput(format!("实例 {id} 不存在")))
+    })
+    .map(Into::into)
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn set_agent_instance_recent_project(
+    state: State<'_, AppState>,
+    id: String,
+    #[allow(non_snake_case)] recentProjectDir: Option<String>,
+) -> Result<AgentInstanceResponse, String> {
+    crate::services::credential_isolation::CredentialIsolationService::set_recent_project(
+        &state.db,
+        &id,
+        recentProjectDir.as_deref(),
+    )
+    .map(Into::into)
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn get_agent_instance_status(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<crate::services::credential_isolation::AgentInstanceStatus, String> {
+    crate::services::credential_isolation::CredentialIsolationService::status(&state.db, &id)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

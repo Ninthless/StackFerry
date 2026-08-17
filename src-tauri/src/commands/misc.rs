@@ -2749,7 +2749,10 @@ pub async fn open_provider_terminal(
 
     let config = &provider.settings_config;
     let mut env_vars = extract_env_vars_from_config(config, &app_type);
+    let launching_instance = instanceId.is_some();
     let launch_id = if let Some(instance_id) = instanceId {
+        validate_canonical_instance_id(&instance_id)?;
+        ensure_agent_identity_cli_support(&app_type)?;
         let instance = state
             .db
             .get_agent_instance(&instance_id)
@@ -2766,9 +2769,18 @@ pub async fn open_provider_terminal(
             .map_err(|error| error.to_string())?;
         remove_api_key_env_vars(&mut env_vars);
         env_vars.push((instance_api_key_env_name(&app_type).to_string(), api_key));
-        if let Some(codex_home) = instance.codex_home {
-            env_vars.push(("CODEX_HOME".to_string(), codex_home.clone()));
-            env_vars.push(("CODEX_SQLITE_HOME".to_string(), codex_home));
+        inject_agent_instance_identity(&mut env_vars, config, &app_type, &instance_id)?;
+        if let Some(runtime_home) = instance.runtime_home.or(instance.codex_home) {
+            match app_type {
+                AppType::Codex => {
+                    env_vars.push(("CODEX_HOME".to_string(), runtime_home.clone()));
+                    env_vars.push(("CODEX_SQLITE_HOME".to_string(), runtime_home));
+                }
+                AppType::Claude | AppType::ClaudeDesktop => {
+                    env_vars.push(("CLAUDE_CONFIG_DIR".to_string(), runtime_home));
+                }
+                _ => {}
+            }
         }
         instance_id
     } else {
@@ -2777,8 +2789,140 @@ pub async fn open_provider_terminal(
 
     launch_terminal_with_env(env_vars, &launch_id, &app_type, launch_cwd.as_deref())
         .map_err(|e| format!("启动终端失败: {e}"))?;
+    if launching_instance {
+        let project_dir = launch_cwd
+            .as_deref()
+            .map(|path| path.to_string_lossy().into_owned());
+        crate::services::credential_isolation::CredentialIsolationService::mark_launched(
+            &state.db,
+            &launch_id,
+            project_dir.as_deref(),
+        )
+        .map_err(|error| error.to_string())?;
+    }
 
     Ok(true)
+}
+
+fn validate_canonical_instance_id(instance_id: &str) -> Result<(), String> {
+    let parsed = uuid::Uuid::parse_str(instance_id)
+        .map_err(|_| "代理实例 ID 必须是规范 UUID".to_string())?;
+    if parsed.to_string() != instance_id {
+        return Err("代理实例 ID 必须是规范 UUID".to_string());
+    }
+    Ok(())
+}
+
+fn ensure_agent_identity_cli_support(app_type: &AppType) -> Result<(), String> {
+    let (tool, minimum) = match app_type {
+        AppType::Claude | AppType::ClaudeDesktop => ("claude", "2.1.227"),
+        AppType::Codex => ("codex", "0.3.0"),
+        _ => return Ok(()),
+    };
+    #[cfg(target_os = "windows")]
+    let probe = match wsl_distro_for_tool(tool) {
+        Some(distro) => try_get_version_wsl(tool, &distro, None, None),
+        None => scan_cli_version(tool),
+    };
+    #[cfg(not(target_os = "windows"))]
+    let probe = {
+        match try_get_version(tool) {
+            ShellProbe::NotFound(_) => scan_cli_version(tool),
+            found => found,
+        }
+    };
+    let version = match probe {
+        ShellProbe::Found(version) => version,
+        ShellProbe::FoundButFailed(error) | ShellProbe::NotFound(error) => {
+            return Err(format!(
+                "无法确认 {tool} CLI 是否支持代理身份头：{error}。请升级 {tool} CLI 后重试"
+            ))
+        }
+    };
+    match compare_semver(&version, minimum) {
+        Some(std::cmp::Ordering::Equal | std::cmp::Ordering::Greater) => Ok(()),
+        Some(std::cmp::Ordering::Less) => Err(format!(
+            "{tool} CLI {version} 不支持代理身份头，请升级到 {minimum} 或更高版本"
+        )),
+        None => Err(format!(
+            "无法解析 {tool} CLI 版本 {version}，请升级 {tool} CLI 后重试"
+        )),
+    }
+}
+
+fn inject_agent_instance_identity(
+    env_vars: &mut Vec<(String, String)>,
+    config: &serde_json::Value,
+    app_type: &AppType,
+    instance_id: &str,
+) -> Result<(), String> {
+    match app_type {
+        AppType::Claude | AppType::ClaudeDesktop => {
+            let existing = env_vars
+                .iter()
+                .find(|(name, _)| name == "ANTHROPIC_CUSTOM_HEADERS")
+                .map(|(_, value)| value.as_str())
+                .unwrap_or_default();
+            let mut headers = existing
+                .lines()
+                .filter(|line| {
+                    !line
+                        .split_once(':')
+                        .map(|(name, _)| {
+                            name.trim()
+                                .to_ascii_lowercase()
+                                .starts_with("x-stackferry-")
+                        })
+                        .unwrap_or(false)
+                })
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            if agent_endpoint_is_loopback(config, app_type) {
+                headers.push(format!(
+                    "{}: {instance_id}",
+                    crate::proxy::session::INSTANCE_ID_HEADER
+                ));
+            }
+            env_vars.retain(|(name, _)| name != "ANTHROPIC_CUSTOM_HEADERS");
+            if !headers.is_empty() {
+                env_vars.push(("ANTHROPIC_CUSTOM_HEADERS".to_string(), headers.join("\n")));
+            }
+        }
+        AppType::Codex if agent_endpoint_is_loopback(config, app_type) => {
+            env_vars.push((
+                "STACKFERRY_INSTANCE_ID".to_string(),
+                instance_id.to_string(),
+            ));
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn agent_endpoint_is_loopback(config: &serde_json::Value, app_type: &AppType) -> bool {
+    let base_url = match app_type {
+        AppType::Claude | AppType::ClaudeDesktop => config
+            .pointer("/env/ANTHROPIC_BASE_URL")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
+        AppType::Codex => config
+            .get("config")
+            .and_then(serde_json::Value::as_str)
+            .and_then(crate::codex_config::extract_codex_base_url),
+        _ => None,
+    };
+    let Some(base_url) = base_url else {
+        return false;
+    };
+    let Ok(url) = url::Url::parse(&base_url) else {
+        return false;
+    };
+    url.host_str().is_some_and(|host| {
+        host.eq_ignore_ascii_case("localhost")
+            || host
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|address| address.is_loopback())
+    })
 }
 
 fn remove_api_key_env_vars(env_vars: &mut Vec<(String, String)>) {
@@ -2987,34 +3131,125 @@ fn launch_codex_terminal_with_env(
     launch_terminal_running(&command, &format!("codex_instance_{instance_id}"))
 }
 
-pub(crate) fn launch_codex_instance_session(
+pub(crate) fn launch_instance_session(
     db: &crate::database::Database,
+    provider_id: &str,
     instance_id: &str,
     session_id: &str,
+    source_path: &str,
     cwd: Option<&Path>,
 ) -> Result<(), String> {
+    validate_canonical_instance_id(instance_id)?;
+    let app_type = match provider_id {
+        "codex" => AppType::Codex,
+        "claude" => AppType::Claude,
+        _ => return Err("只有 Claude 和 Codex 会话支持运行环境恢复".to_string()),
+    };
+    ensure_agent_identity_cli_support(&app_type)?;
     let instance = db
         .get_agent_instance(instance_id)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| format!("实例 {instance_id} 不存在"))?;
-    if instance.app_type != "codex" {
-        return Err(format!("实例 {instance_id} 不属于 Codex"));
+    if instance.app_type != provider_id {
+        return Err(format!("实例 {instance_id} 不属于 {provider_id}"));
     }
+    crate::session_manager::validate_session_source(
+        db,
+        provider_id,
+        Some(instance_id),
+        session_id,
+        source_path,
+    )?;
     let api_key =
         crate::services::credential_isolation::CredentialIsolationService::resolve_api_key(
             db,
             instance_id,
         )
         .map_err(|error| error.to_string())?;
-    let codex_home = instance
-        .codex_home
-        .ok_or_else(|| format!("Codex 实例 {instance_id} 缺少 CODEX_HOME"))?;
-    let env_vars = vec![
+    let runtime_home = instance
+        .runtime_home
+        .or(instance.codex_home)
+        .ok_or_else(|| format!("实例 {instance_id} 缺少运行目录"))?;
+    if provider_id == "claude" {
+        let provider = db
+            .get_provider_by_id(&instance.provider_id, "claude")
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("供应商 {} 不存在", instance.provider_id))?;
+        let mut env_vars = extract_env_vars_from_config(&provider.settings_config, &app_type);
+        remove_api_key_env_vars(&mut env_vars);
+        env_vars.push(("ANTHROPIC_AUTH_TOKEN".to_string(), api_key));
+        env_vars.push(("CLAUDE_CONFIG_DIR".to_string(), runtime_home));
+        inject_agent_instance_identity(
+            &mut env_vars,
+            &provider.settings_config,
+            &app_type,
+            instance_id,
+        )?;
+        return launch_claude_instance_session(&env_vars, instance_id, session_id, cwd);
+    }
+    let mut env_vars = vec![
         ("STACKFERRY_INSTANCE_API_KEY".to_string(), api_key),
-        ("CODEX_HOME".to_string(), codex_home.clone()),
-        ("CODEX_SQLITE_HOME".to_string(), codex_home),
+        ("CODEX_HOME".to_string(), runtime_home.clone()),
+        ("CODEX_SQLITE_HOME".to_string(), runtime_home.clone()),
     ];
+    let config = std::fs::read_to_string(Path::new(&runtime_home).join("config.toml"))
+        .map_err(|error| format!("读取 Codex 实例配置失败: {error}"))?;
+    inject_agent_instance_identity(
+        &mut env_vars,
+        &serde_json::json!({ "config": config }),
+        &AppType::Codex,
+        instance_id,
+    )?;
     launch_codex_terminal_with_env(&env_vars, instance_id, cwd, Some(session_id))
+}
+
+fn launch_claude_instance_session(
+    env_vars: &[(String, String)],
+    instance_id: &str,
+    session_id: &str,
+    cwd: Option<&Path>,
+) -> Result<(), String> {
+    if session_id.is_empty()
+        || !session_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+    {
+        return Err("Claude 会话 ID 格式无效".to_string());
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let command = {
+        let exports = env_vars
+            .iter()
+            .map(|(name, value)| format!("export {name}={}", shell_single_quote(value)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let change_dir = cwd
+            .map(|path| {
+                format!(
+                    "cd {} || exit 1\n",
+                    shell_single_quote(&path.to_string_lossy())
+                )
+            })
+            .unwrap_or_default();
+        format!(
+            "{exports}\n{change_dir}exec claude --resume {}",
+            shell_single_quote(session_id)
+        )
+    };
+    #[cfg(target_os = "windows")]
+    let command = {
+        let assignments = env_vars
+            .iter()
+            .map(|(name, value)| format!("set \"{name}={}\"", escape_windows_batch_value(value)))
+            .collect::<Vec<_>>()
+            .join("\r\n");
+        let change_dir = build_windows_cwd_command(cwd);
+        format!("{assignments}\r\n{change_dir}\r\nclaude --resume \"{session_id}\"")
+    };
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    return Err("不支持的操作系统".to_string());
+
+    launch_terminal_running(&command, &format!("claude_instance_{instance_id}"))
 }
 
 /// 写入 claude 配置文件

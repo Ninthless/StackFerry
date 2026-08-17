@@ -7,12 +7,17 @@ use tauri::State;
 pub async fn list_sessions(
     state: State<'_, crate::store::AppState>,
     providerId: String,
+    scope: Option<session_manager::SessionScope>,
     instanceId: Option<String>,
     forceRefresh: bool,
 ) -> Result<Vec<session_manager::SessionMeta>, String> {
+    let scope = scope.unwrap_or(match instanceId {
+        Some(instance_id) => session_manager::SessionScope::Instance { instance_id },
+        None => session_manager::SessionScope::Default,
+    });
     let db = state.db.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        session_manager::scan_sessions_scoped(&db, &providerId, instanceId.as_deref(), forceRefresh)
+        session_manager::scan_sessions_scoped(&db, &providerId, scope, forceRefresh)
     })
     .await
     .map_err(|e| format!("Failed to scan sessions: {e}"))?
@@ -20,13 +25,14 @@ pub async fn list_sessions(
 
 #[tauri::command]
 pub async fn get_session_messages(
+    state: State<'_, crate::store::AppState>,
     providerId: String,
+    instanceId: Option<String>,
     sourcePath: String,
 ) -> Result<Vec<session_manager::SessionMessage>, String> {
-    let provider_id = providerId.clone();
-    let source_path = sourcePath.clone();
+    let db = state.db.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        session_manager::load_messages(&provider_id, &source_path)
+        session_manager::load_messages_scoped(&db, &providerId, instanceId.as_deref(), &sourcePath)
     })
     .await
     .map_err(|e| format!("Failed to load session messages: {e}"))?
@@ -111,6 +117,7 @@ pub async fn get_session_message_content(
 /// 就可能含 `$(...)`，与 renderer 是否可信无关，因此在
 /// `session_manager::terminal::shell_escape` 里做了完整的单引号转义。
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn launch_session_terminal(
     state: State<'_, crate::store::AppState>,
     command: String,
@@ -119,24 +126,27 @@ pub async fn launch_session_terminal(
     providerId: Option<String>,
     instanceId: Option<String>,
     sessionId: Option<String>,
+    sourcePath: Option<String>,
 ) -> Result<bool, String> {
-    if providerId.as_deref() == Some("codex") {
-        if let Some(instance_id) = instanceId {
-            let session_id =
-                sessionId.ok_or_else(|| "恢复 Codex 实例会话需要 sessionId".to_string())?;
-            let db = state.db.clone();
-            tauri::async_runtime::spawn_blocking(move || {
-                crate::commands::misc::launch_codex_instance_session(
-                    &db,
-                    &instance_id,
-                    &session_id,
-                    cwd.as_deref().map(std::path::Path::new),
-                )
-            })
-            .await
-            .map_err(|e| format!("Failed to launch instance session: {e}"))??;
-            return Ok(true);
-        }
+    if let (Some(provider_id), Some(instance_id)) = (providerId.as_deref(), instanceId) {
+        let session_id = sessionId.ok_or_else(|| "恢复运行环境会话需要 sessionId".to_string())?;
+        let source_path =
+            sourcePath.ok_or_else(|| "恢复运行环境会话需要 sourcePath".to_string())?;
+        let db = state.db.clone();
+        let provider_id = provider_id.to_string();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::commands::misc::launch_instance_session(
+                &db,
+                &provider_id,
+                &instance_id,
+                &session_id,
+                &source_path,
+                cwd.as_deref().map(std::path::Path::new),
+            )
+        })
+        .await
+        .map_err(|e| format!("Failed to launch instance session: {e}"))??;
+        return Ok(true);
     }
     let command = command.clone();
     let cwd = cwd.clone();

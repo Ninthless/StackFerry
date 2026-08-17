@@ -320,6 +320,10 @@ pub fn delete_session(_root: &Path, path: &Path, session_id: &str) -> Result<boo
     Ok(true)
 }
 
+pub fn session_id(path: &Path) -> Option<String> {
+    parse_session(path).map(|session| session.session_id)
+}
+
 fn parse_session(path: &Path) -> Option<SessionMeta> {
     parse_session_with_titles(path, &HashMap::new())
 }

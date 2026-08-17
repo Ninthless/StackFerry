@@ -622,6 +622,11 @@ impl Database {
                         Self::migrate_v25_to_v26(conn)?;
                         Self::set_user_version(conn, 26)?;
                     }
+                    26 => {
+                        log::info!("迁移数据库从 v26 到 v27（实例运行目录与状态）");
+                        Self::migrate_v26_to_v27(conn)?;
+                        Self::set_user_version(conn, 27)?;
+                    }
                     _ => {
                         return Err(AppError::Database(format!(
                             "未知的数据库版本 {version}，无法迁移到 {SCHEMA_VERSION}"
@@ -1913,6 +1918,24 @@ impl Database {
         Self::create_credential_isolation_tables(conn)
     }
 
+    fn migrate_v26_to_v27(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "agent_instances")? {
+            Self::create_credential_isolation_tables(conn)?;
+        }
+        Self::add_column_if_missing(conn, "agent_instances", "runtime_home", "TEXT")?;
+        Self::add_column_if_missing(conn, "agent_instances", "recent_project_dir", "TEXT")?;
+        Self::add_column_if_missing(conn, "agent_instances", "last_launched_at", "INTEGER")?;
+        Self::add_column_if_missing(conn, "agent_instances", "runtime_config", "TEXT")?;
+        conn.execute(
+            "UPDATE agent_instances
+             SET runtime_home = codex_home
+             WHERE runtime_home IS NULL AND codex_home IS NOT NULL",
+            [],
+        )
+        .map_err(|e| AppError::Database(format!("迁移实例运行目录失败: {e}")))?;
+        Ok(())
+    }
+
     fn create_credential_isolation_tables(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS agent_instances (
@@ -1922,6 +1945,10 @@ impl Database {
                 name TEXT NOT NULL,
                 credential_ref TEXT NOT NULL UNIQUE,
                 codex_home TEXT,
+                runtime_home TEXT,
+                recent_project_dir TEXT,
+                last_launched_at INTEGER,
+                runtime_config TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
                 UNIQUE (id, provider_id, app_type),
@@ -3913,6 +3940,47 @@ mod tests {
             &conn,
             "session_credential_bindings"
         )?);
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v26_to_v27_adds_runtime_state_and_backfills_codex_home() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE agent_instances (
+                id TEXT PRIMARY KEY,
+                provider_id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                credential_ref TEXT NOT NULL UNIQUE,
+                codex_home TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            INSERT INTO agent_instances VALUES (
+                'instance-a', 'provider-a', 'codex', 'Work', 'credential-a',
+                '/tmp/codex-a', 1, 1
+            );",
+        )?;
+        Database::set_user_version(&conn, 26)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        for column in [
+            "runtime_home",
+            "recent_project_dir",
+            "last_launched_at",
+            "runtime_config",
+        ] {
+            assert!(Database::has_column(&conn, "agent_instances", column)?);
+        }
+        let runtime_home: Option<String> = conn.query_row(
+            "SELECT runtime_home FROM agent_instances WHERE id = 'instance-a'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(runtime_home.as_deref(), Some("/tmp/codex-a"));
         assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
         Ok(())
     }

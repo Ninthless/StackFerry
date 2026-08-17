@@ -127,7 +127,7 @@ mod tests {
     #[cfg(any(target_os = "macos", windows))]
     use crate::claude_desktop_config::PROFILE_ID;
     use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
-    use crate::database::Database;
+    use crate::database::{AgentInstance, Database};
     #[cfg(any(target_os = "macos", windows))]
     use crate::provider::{ClaudeDesktopMode, ClaudeDesktopModelRoute};
     use crate::provider::{ProviderMeta, UsageScript};
@@ -295,6 +295,28 @@ mod tests {
             }),
             None,
         )
+    }
+
+    fn runtime_instance(home: &Path, id: &str, provider_id: &str, app_type: &str) -> AgentInstance {
+        let config_name = if app_type == "codex" {
+            "config.toml"
+        } else {
+            "settings.json"
+        };
+        AgentInstance {
+            id: id.to_string(),
+            provider_id: provider_id.to_string(),
+            app_type: app_type.to_string(),
+            name: id.to_string(),
+            credential_ref: format!("credential:{id}"),
+            codex_home: (app_type == "codex").then(|| home.to_string_lossy().into_owned()),
+            runtime_home: Some(home.to_string_lossy().into_owned()),
+            recent_project_dir: None,
+            last_launched_at: None,
+            runtime_config: Some(config_name.to_string()),
+            created_at: 1,
+            updated_at: 1,
+        }
     }
 
     fn usage_script_with_credentials(
@@ -560,6 +582,107 @@ mod tests {
             );
             crate::settings::set_current_provider(&AppType::Claude, None)
                 .expect("clear local current");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn update_refreshes_all_claude_instance_settings_without_provider_secrets() {
+        with_test_home(|state, home| {
+            let previous = claude_provider("claude-instances", "old-key");
+            state
+                .db
+                .save_provider(AppType::Claude.as_str(), &previous)
+                .expect("save previous provider");
+            for id in ["instance-a", "instance-b"] {
+                let runtime_home = home.join("instances").join(id);
+                fs::create_dir_all(&runtime_home).expect("create runtime home");
+                fs::write(runtime_home.join("settings.json"), r#"{"old":true}"#)
+                    .expect("write old runtime config");
+                state
+                    .db
+                    .save_agent_instance(&runtime_instance(
+                        &runtime_home,
+                        id,
+                        &previous.id,
+                        "claude",
+                    ))
+                    .expect("save instance");
+            }
+
+            let mut updated = claude_provider("claude-instances", "new-key");
+            updated.settings_config["permissions"] = json!({"allow": ["Read"]});
+            ProviderService::update(state, AppType::Claude, None, updated)
+                .expect("update provider");
+
+            for id in ["instance-a", "instance-b"] {
+                let settings: Value = serde_json::from_str(
+                    &fs::read_to_string(home.join("instances").join(id).join("settings.json"))
+                        .expect("read runtime config"),
+                )
+                .expect("parse runtime config");
+                assert_eq!(settings["permissions"]["allow"][0], json!("Read"));
+                assert!(settings["env"].get("ANTHROPIC_AUTH_TOKEN").is_none());
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn update_rolls_back_provider_and_instance_configs_when_instance_commit_fails() {
+        with_test_home(|state, home| {
+            let previous = Provider::with_id(
+                "codex-instances".to_string(),
+                "Codex Instances".to_string(),
+                codex_settings("https://old.example/v1", "old-key"),
+                None,
+            );
+            state
+                .db
+                .save_provider(AppType::Codex.as_str(), &previous)
+                .expect("save previous provider");
+            let mut old_configs = Vec::new();
+            for id in ["instance-a", "instance-b"] {
+                let runtime_home = home.join("instances").join(id);
+                fs::create_dir_all(&runtime_home).expect("create runtime home");
+                let old = format!("old-{id}");
+                fs::write(runtime_home.join("config.toml"), &old)
+                    .expect("write old runtime config");
+                old_configs.push((runtime_home.clone(), old));
+                state
+                    .db
+                    .save_agent_instance(&runtime_instance(
+                        &runtime_home,
+                        id,
+                        &previous.id,
+                        "codex",
+                    ))
+                    .expect("save instance");
+            }
+
+            crate::services::credential_isolation::fail_runtime_config_write_at(1);
+            let updated = Provider::with_id(
+                previous.id.clone(),
+                previous.name.clone(),
+                codex_settings("https://new.example/v1", "new-key"),
+                None,
+            );
+            ProviderService::update(state, AppType::Codex, None, updated)
+                .expect_err("instance config commit should fail");
+
+            let saved = state
+                .db
+                .get_provider_by_id(&previous.id, AppType::Codex.as_str())
+                .expect("query provider")
+                .expect("provider should remain");
+            assert_eq!(saved.settings_config, previous.settings_config);
+            for (runtime_home, old) in old_configs {
+                assert_eq!(
+                    fs::read_to_string(runtime_home.join("config.toml"))
+                        .expect("read rolled back runtime config"),
+                    old
+                );
+            }
         });
     }
 
@@ -3182,6 +3305,13 @@ impl ProviderService {
         let effective_current =
             crate::settings::get_effective_current_provider(&state.db, &app_type)?;
         let is_current = effective_current.as_deref() == Some(provider.id.as_str());
+        let instance_config_refresh =
+            crate::services::credential_isolation::RuntimeConfigRefreshBatch::prepare_for_provider(
+                state.db.as_ref(),
+                app_type.as_str(),
+                &provider.id,
+                &provider.settings_config,
+            )?;
 
         // Save to database
         state.db.save_provider(app_type.as_str(), &provider)?;
@@ -3274,15 +3404,34 @@ impl ProviderService {
                 }
                 return Err(Self::rollback_error(error, rollback_errors));
             }
-        }
-
-        if matches!(app_type, AppType::Codex) {
-            for instance in state.db.get_agent_instances(&provider.id, "codex")? {
-                crate::services::credential_isolation::CredentialIsolationService::refresh_codex_instance_config(
-                    state.db.as_ref(),
-                    &instance.id,
-                )?;
+            if let Err(error) = instance_config_refresh.commit() {
+                let mut rollback_errors = Vec::new();
+                if let Err(rollback_error) = Self::restore_provider_record(
+                    state,
+                    &app_type,
+                    &provider.id,
+                    existing_provider.as_ref(),
+                ) {
+                    rollback_errors.push(format!("database: {rollback_error}"));
+                }
+                if let Some(previous) = existing_provider.as_ref() {
+                    if let Err(rollback_error) = sync_provider(previous) {
+                        rollback_errors.push(format!("live config: {rollback_error}"));
+                    }
+                }
+                return Err(Self::rollback_error(error, rollback_errors));
             }
+        } else if let Err(error) = instance_config_refresh.commit() {
+            let rollback_errors = Self::restore_provider_record(
+                state,
+                &app_type,
+                &provider.id,
+                existing_provider.as_ref(),
+            )
+            .err()
+            .map(|rollback_error| vec![format!("database: {rollback_error}")])
+            .unwrap_or_default();
+            return Err(Self::rollback_error(error, rollback_errors));
         }
 
         Ok(true)

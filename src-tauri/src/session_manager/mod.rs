@@ -54,6 +54,14 @@ pub struct DeleteSessionRequest {
     pub source_path: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum SessionScope {
+    Default,
+    Instance { instance_id: String },
+    All,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteSessionOutcome {
@@ -287,52 +295,135 @@ where
     Ok(sessions)
 }
 
-fn codex_instance_home(
+fn instance_runtime_home(
     db: &crate::database::Database,
+    provider: SessionProvider,
     instance_id: &str,
 ) -> Result<PathBuf, String> {
     let instance = db
         .get_agent_instance(instance_id)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| format!("实例 {instance_id} 不存在"))?;
-    if instance.app_type != "codex" {
-        return Err(format!("实例 {instance_id} 不属于 Codex"));
+    let app_type = match provider {
+        SessionProvider::Codex => "codex",
+        SessionProvider::Claude => "claude",
+        _ => return Err("只有 Claude 和 Codex 会话支持运行环境作用域".to_string()),
+    };
+    if instance.app_type != app_type {
+        return Err(format!("实例 {instance_id} 不属于 {app_type}"));
     }
     instance
-        .codex_home
+        .runtime_home
+        .or(instance.codex_home)
         .map(PathBuf::from)
-        .ok_or_else(|| format!("Codex 实例 {instance_id} 缺少 CODEX_HOME"))
+        .ok_or_else(|| format!("{app_type} 实例 {instance_id} 缺少运行目录"))
+}
+
+type InstanceScanner = Box<dyn FnOnce() -> Vec<SessionMeta>>;
+
+fn instance_scan(
+    db: &crate::database::Database,
+    provider: SessionProvider,
+    instance_id: &str,
+) -> Result<(Vec<PathBuf>, InstanceScanner), String> {
+    let home = instance_runtime_home(db, provider, instance_id)?;
+    let instance_id = instance_id.to_string();
+    match provider {
+        SessionProvider::Codex => {
+            let mut roots = codex::session_roots_for_home(&home);
+            roots.push(home.join("session_index.jsonl"));
+            Ok((
+                roots,
+                Box::new(move || codex::scan_sessions_in_home(&home, Some(&instance_id))),
+            ))
+        }
+        SessionProvider::Claude => {
+            let roots = claude::session_roots_for_home(&home);
+            Ok((
+                roots,
+                Box::new(move || claude::scan_sessions_in_home(&home, Some(&instance_id))),
+            ))
+        }
+        _ => Err("只有 Claude 和 Codex 会话支持运行环境作用域".to_string()),
+    }
+}
+
+fn list_provider_instances(
+    db: &crate::database::Database,
+    provider: SessionProvider,
+) -> Result<Vec<crate::database::AgentInstance>, String> {
+    let app_type = match provider {
+        SessionProvider::Codex => "codex",
+        SessionProvider::Claude => "claude",
+        _ => return Ok(Vec::new()),
+    };
+    db.get_agent_instances_for_app(app_type)
+        .map_err(|error| error.to_string())
 }
 
 pub fn scan_sessions_scoped(
     db: &crate::database::Database,
     provider_id: &str,
-    instance_id: Option<&str>,
+    scope: SessionScope,
     force_refresh: bool,
 ) -> Result<Vec<SessionMeta>, String> {
     let provider = SessionProvider::parse(provider_id)?;
-    if provider != SessionProvider::Codex && instance_id.is_some() {
-        return Err("只有 Codex 会话支持实例作用域".to_string());
-    }
-    let scope = instance_id.map(str::to_string);
-    let (roots, scan): (Vec<PathBuf>, Box<dyn FnOnce() -> Vec<SessionMeta>>) =
-        if let Some(instance_id) = instance_id {
-            let home = codex_instance_home(db, instance_id)?;
-            let mut roots = codex::session_roots_for_home(&home);
-            roots.push(home.join("session_index.jsonl"));
-            let instance_id = instance_id.to_string();
-            (
-                roots,
-                Box::new(move || codex::scan_sessions_in_home(&home, Some(&instance_id))),
-            )
-        } else {
-            let roots = scan_roots(provider);
-            (roots, Box::new(move || scan_provider(provider)))
-        };
     let cache = SESSION_SCAN_CACHE.get_or_init(SessionScanCache::default);
-    let mut sessions = cache.get_or_scan(provider, scope, &roots, force_refresh, scan);
+    let mut sessions = match scope {
+        SessionScope::Default => {
+            let roots = scan_roots(provider);
+            cache.get_or_scan(provider, None, &roots, force_refresh, move || {
+                scan_provider(provider)
+            })
+        }
+        SessionScope::Instance { instance_id } => {
+            let (roots, scan) = instance_scan(db, provider, &instance_id)?;
+            cache.get_or_scan(provider, Some(instance_id), &roots, force_refresh, scan)
+        }
+        SessionScope::All => {
+            let roots = scan_roots(provider);
+            let mut sessions =
+                cache.get_or_scan(provider, None, &roots, force_refresh, move || {
+                    scan_provider(provider)
+                });
+            for instance in list_provider_instances(db, provider)? {
+                let instance_id = instance.id;
+                let (roots, scan) = instance_scan(db, provider, &instance_id)?;
+                sessions.extend(cache.get_or_scan(
+                    provider,
+                    Some(instance_id),
+                    &roots,
+                    force_refresh,
+                    scan,
+                ));
+            }
+            sessions
+        }
+    };
     sort_sessions(&mut sessions);
     Ok(sessions)
+}
+
+pub fn validate_session_source(
+    db: &crate::database::Database,
+    provider_id: &str,
+    instance_id: Option<&str>,
+    session_id: &str,
+    source_path: &str,
+) -> Result<PathBuf, String> {
+    let source = validate_scoped_source(db, provider_id, instance_id, source_path)?;
+    let parsed = match provider_id {
+        "codex" => codex::session_id(&source),
+        "claude" => claude::session_id(&source),
+        _ => return Err("只有 Claude 和 Codex 会话支持安全恢复".to_string()),
+    }
+    .ok_or_else(|| format!("无法读取会话元数据: {}", source.display()))?;
+    if parsed != session_id {
+        return Err(format!(
+            "会话 ID 不匹配: expected {session_id}, found {parsed}"
+        ));
+    }
+    Ok(source)
 }
 
 pub fn load_messages(provider_id: &str, source_path: &str) -> Result<Vec<SessionMessage>, String> {
@@ -358,6 +449,16 @@ pub fn load_messages(provider_id: &str, source_path: &str) -> Result<Vec<Session
     }
 }
 
+pub fn load_messages_scoped(
+    db: &crate::database::Database,
+    provider_id: &str,
+    instance_id: Option<&str>,
+    source_path: &str,
+) -> Result<Vec<SessionMessage>, String> {
+    let source = validate_scoped_source(db, provider_id, instance_id, source_path)?;
+    load_messages(provider_id, &source.to_string_lossy())
+}
+
 fn validate_scoped_source(
     db: &crate::database::Database,
     provider_id: &str,
@@ -366,14 +467,25 @@ fn validate_scoped_source(
 ) -> Result<PathBuf, String> {
     let roots = if provider_id == "codex" {
         match instance_id {
-            Some(instance_id) => {
-                codex::session_roots_for_home(&codex_instance_home(db, instance_id)?)
-            }
+            Some(instance_id) => codex::session_roots_for_home(&instance_runtime_home(
+                db,
+                SessionProvider::Codex,
+                instance_id,
+            )?),
             None => codex::session_roots(),
+        }
+    } else if provider_id == "claude" {
+        match instance_id {
+            Some(instance_id) => claude::session_roots_for_home(&instance_runtime_home(
+                db,
+                SessionProvider::Claude,
+                instance_id,
+            )?),
+            None => claude::session_roots_for_home(&crate::config::get_claude_config_dir()),
         }
     } else {
         if instance_id.is_some() {
-            return Err("只有 Codex 会话支持实例作用域".to_string());
+            return Err("只有 Claude 和 Codex 会话支持运行环境作用域".to_string());
         }
         provider_roots(provider_id)?
     };
@@ -487,16 +599,17 @@ pub fn delete_session_scoped(
     session_id: &str,
     source_path: &str,
 ) -> Result<bool, String> {
-    if provider_id != "codex" || instance_id.is_none() {
+    let Some(instance_id) = instance_id else {
         return delete_session(provider_id, session_id, source_path);
-    }
-    let home = codex_instance_home(db, instance_id.expect("checked above"))?;
-    delete_session_with_roots(
-        provider_id,
-        session_id,
-        Path::new(source_path),
-        &codex::session_roots_for_home(&home),
-    )
+    };
+    let provider = SessionProvider::parse(provider_id)?;
+    let home = instance_runtime_home(db, provider, instance_id)?;
+    let roots = match provider {
+        SessionProvider::Codex => codex::session_roots_for_home(&home),
+        SessionProvider::Claude => claude::session_roots_for_home(&home),
+        _ => return Err("只有 Claude 和 Codex 会话支持运行环境作用域".to_string()),
+    };
+    delete_session_with_roots(provider_id, session_id, Path::new(source_path), &roots)
 }
 
 pub fn delete_sessions_scoped(
@@ -819,5 +932,48 @@ mod tests {
             outcomes[2].error.as_deref(),
             Some("Session was not deleted")
         );
+    }
+
+    #[test]
+    fn claude_instance_scopes_keep_duplicate_session_ids_independent() {
+        let first = tempdir().expect("first runtime");
+        let second = tempdir().expect("second runtime");
+        let first_projects = first.path().join("projects/project-a");
+        let second_projects = second.path().join("projects/project-b");
+        std::fs::create_dir_all(&first_projects).expect("first projects");
+        std::fs::create_dir_all(&second_projects).expect("second projects");
+        let first_source = first_projects.join("shared.jsonl");
+        let second_source = second_projects.join("shared.jsonl");
+        let write = |path: &Path, title: &str| {
+            std::fs::write(
+                path,
+                format!(
+                    "{{\"sessionId\":\"shared\",\"cwd\":\"/tmp/project\",\"timestamp\":\"2026-03-06T10:00:00Z\"}}\n\
+                     {{\"type\":\"user\",\"message\":{{\"role\":\"user\",\"content\":\"{title}\"}},\"sessionId\":\"shared\",\"timestamp\":\"2026-03-06T10:01:00Z\"}}\n"
+                ),
+            )
+            .expect("write session");
+        };
+        write(&first_source, "first");
+        write(&second_source, "second");
+
+        let first_sessions = claude::scan_sessions_in_home(first.path(), Some("instance-a"));
+        let second_sessions = claude::scan_sessions_in_home(second.path(), Some("instance-b"));
+
+        assert_eq!(first_sessions[0].session_id, second_sessions[0].session_id);
+        assert_eq!(first_sessions[0].instance_id.as_deref(), Some("instance-a"));
+        assert_eq!(
+            second_sessions[0].instance_id.as_deref(),
+            Some("instance-b")
+        );
+        delete_session_with_roots(
+            "claude",
+            "shared",
+            &first_source,
+            &claude::session_roots_for_home(first.path()),
+        )
+        .expect("delete first");
+        assert!(!first_source.exists());
+        assert!(second_source.exists());
     }
 }

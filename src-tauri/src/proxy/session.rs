@@ -15,13 +15,27 @@ use uuid::Uuid;
 
 pub const INSTANCE_ID_HEADER: &str = "x-stackferry-instance-id";
 
-pub fn extract_instance_id(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get(INSTANCE_ID_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
+pub fn extract_instance_id(headers: &HeaderMap) -> Result<Option<String>, String> {
+    let values = headers.get_all(INSTANCE_ID_HEADER);
+    let mut values = values.iter();
+    let Some(value) = values.next() else {
+        return Ok(None);
+    };
+    if values.next().is_some() {
+        return Err(format!("{INSTANCE_ID_HEADER} 只能出现一次"));
+    }
+    let value = value
+        .to_str()
+        .map_err(|_| format!("{INSTANCE_ID_HEADER} 不是有效的 HTTP 头值"))?;
+    if value != value.trim() {
+        return Err(format!("{INSTANCE_ID_HEADER} 必须是规范 UUID"));
+    }
+    let parsed =
+        Uuid::parse_str(value).map_err(|_| format!("{INSTANCE_ID_HEADER} 必须是规范 UUID"))?;
+    if parsed.to_string() != value {
+        return Err(format!("{INSTANCE_ID_HEADER} 必须是规范 UUID"));
+    }
+    Ok(Some(value.to_string()))
 }
 
 /// 客户端请求格式
@@ -469,14 +483,38 @@ mod tests {
     }
 
     #[test]
-    fn instance_id_requires_explicit_non_empty_header() {
+    fn instance_id_requires_unique_canonical_uuid() {
         let mut headers = HeaderMap::new();
-        assert_eq!(extract_instance_id(&headers), None);
+        assert_eq!(extract_instance_id(&headers).unwrap(), None);
         headers.insert(
             INSTANCE_ID_HEADER,
-            axum::http::HeaderValue::from_static(" instance-a "),
+            axum::http::HeaderValue::from_static("019cc369-bd7c-7891-b371-7b20b4fe0b18"),
         );
-        assert_eq!(extract_instance_id(&headers).as_deref(), Some("instance-a"));
+        assert_eq!(
+            extract_instance_id(&headers).unwrap().as_deref(),
+            Some("019cc369-bd7c-7891-b371-7b20b4fe0b18")
+        );
+    }
+
+    #[test]
+    fn instance_id_rejects_invalid_and_duplicate_values() {
+        let mut invalid = HeaderMap::new();
+        invalid.insert(
+            INSTANCE_ID_HEADER,
+            axum::http::HeaderValue::from_static("instance-a"),
+        );
+        assert!(extract_instance_id(&invalid).is_err());
+
+        let mut duplicate = HeaderMap::new();
+        duplicate.append(
+            INSTANCE_ID_HEADER,
+            axum::http::HeaderValue::from_static("019cc369-bd7c-7891-b371-7b20b4fe0b18"),
+        );
+        duplicate.append(
+            INSTANCE_ID_HEADER,
+            axum::http::HeaderValue::from_static("119cc369-bd7c-7891-b371-7b20b4fe0b18"),
+        );
+        assert!(extract_instance_id(&duplicate).is_err());
     }
 
     #[test]

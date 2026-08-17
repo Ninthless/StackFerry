@@ -319,7 +319,14 @@ pub(crate) async fn proxy(
         }
     };
     let session = extract_session_id(&client_headers, &body, "pi");
-    let requested_instance_id = extract_instance_id(&client_headers);
+    let requested_instance_id = match extract_instance_id(&client_headers) {
+        Ok(instance_id) => instance_id,
+        Err(error) => {
+            close_with_error(&mut client, &error).await;
+            record_terminal_failure(&state, &error).await;
+            return;
+        }
+    };
     let binding = match state.db.get_session_credential_binding(
         "pi",
         &session.session_id,
@@ -673,10 +680,7 @@ fn upstream_request(
         if is_websocket_handshake_header(name) {
             continue;
         }
-        if name
-            .as_str()
-            .eq_ignore_ascii_case(crate::proxy::session::INSTANCE_ID_HEADER)
-        {
+        if is_stackferry_private_header(name) {
             continue;
         }
         if source_header_names.contains(name) {
@@ -880,6 +884,12 @@ fn is_auth_header(name: &HeaderName) -> bool {
         name.as_str(),
         "authorization" | "api-key" | "x-api-key" | "x-goog-api-key"
     )
+}
+
+fn is_stackferry_private_header(name: &HeaderName) -> bool {
+    name.as_str()
+        .to_ascii_lowercase()
+        .starts_with("x-stackferry-")
 }
 
 fn is_non_retryable_handshake(error: &WebSocketError) -> bool {
@@ -1110,5 +1120,18 @@ mod tests {
             terminal.usage.message_id.as_deref(),
             Some("binary-response")
         );
+    }
+
+    #[test]
+    fn strips_all_stackferry_private_headers() {
+        assert!(is_stackferry_private_header(&HeaderName::from_static(
+            "x-stackferry-instance-id"
+        )));
+        assert!(is_stackferry_private_header(&HeaderName::from_static(
+            "x-stackferry-future"
+        )));
+        assert!(!is_stackferry_private_header(&HeaderName::from_static(
+            "x-request-id"
+        )));
     }
 }

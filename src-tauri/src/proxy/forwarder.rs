@@ -86,7 +86,7 @@ fn should_bypass_circuit_breaker(provider_count: usize, session_credential_bound
 }
 
 fn is_stackferry_private_header(name: &str) -> bool {
-    name.eq_ignore_ascii_case(crate::proxy::session::INSTANCE_ID_HEADER)
+    name.to_ascii_lowercase().starts_with("x-stackferry-")
 }
 
 fn is_instance_scoped_credential_error(error: &ProxyError) -> bool {
@@ -4482,6 +4482,7 @@ mod tests {
             crate::proxy::session::INSTANCE_ID_HEADER
         ));
         assert!(is_stackferry_private_header("X-StackFerry-Instance-Id"));
+        assert!(is_stackferry_private_header("x-stackferry-future"));
         assert!(!is_stackferry_private_header("x-request-id"));
     }
 
