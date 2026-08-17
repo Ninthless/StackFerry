@@ -10,7 +10,9 @@ use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::codex_config::{get_codex_config_dir, read_codex_config_text};
+use crate::codex_config::get_codex_config_dir;
+#[cfg(test)]
+use crate::codex_config::read_codex_config_text;
 use crate::codex_state_db::codex_state_db_paths;
 use crate::session_manager::{pagination, SessionMessage, SessionMessagePage, SessionMeta};
 
@@ -66,6 +68,7 @@ pub fn scan_sessions_in_home(config_dir: &Path, instance_id: Option<&str>) -> Ve
     sessions
 }
 
+#[cfg(test)]
 fn scan_sessions_in_roots(roots: &[PathBuf]) -> Vec<SessionMeta> {
     let thread_titles = load_thread_titles();
     scan_sessions_in_roots_with_titles(roots, &thread_titles)
@@ -90,6 +93,7 @@ fn scan_sessions_in_roots_with_titles(
     sessions
 }
 
+#[cfg(test)]
 fn load_thread_titles() -> HashMap<String, String> {
     let config_dir = get_codex_config_dir();
     let config_text = read_codex_config_text().unwrap_or_default();

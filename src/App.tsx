@@ -274,7 +274,9 @@ function App() {
 
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [usageProvider, setUsageProvider] = useState<Provider | null>(null);
-  const [instanceProvider, setInstanceProvider] = useState<Provider | null>(null);
+  const [instanceProvider, setInstanceProvider] = useState<Provider | null>(
+    null,
+  );
   const [confirmAction, setConfirmAction] = useState<{
     provider: Provider;
     action: "remove" | "delete";

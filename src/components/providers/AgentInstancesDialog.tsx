@@ -2,10 +2,7 @@ import { useEffect, useState } from "react";
 import { KeyRound, Play, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { settingsApi, type AppId } from "@/lib/api";
-import {
-  providersApi,
-  type AgentInstance,
-} from "@/lib/api/providers";
+import { providersApi, type AgentInstance } from "@/lib/api/providers";
 import type { Provider } from "@/types";
 import { extractErrorMessage } from "@/utils/errorUtils";
 import { Button } from "@/components/ui/button";

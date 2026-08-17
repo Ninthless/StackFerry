@@ -105,14 +105,8 @@ export const sessionsApi = {
     instanceId?: string;
     sessionId?: string;
   }): Promise<boolean> {
-    const {
-      command,
-      cwd,
-      customConfig,
-      providerId,
-      instanceId,
-      sessionId,
-    } = options;
+    const { command, cwd, customConfig, providerId, instanceId, sessionId } =
+      options;
     return await invoke("launch_session_terminal", {
       command,
       cwd,

@@ -335,17 +335,6 @@ pub fn scan_sessions_scoped(
     Ok(sessions)
 }
 
-pub fn scan_sessions(provider_id: &str, force_refresh: bool) -> Result<Vec<SessionMeta>, String> {
-    let provider = SessionProvider::parse(provider_id)?;
-    let roots = scan_roots(provider);
-    let cache = SESSION_SCAN_CACHE.get_or_init(SessionScanCache::default);
-    let mut sessions = cache.get_or_scan(provider, None, &roots, force_refresh, || {
-        scan_provider(provider)
-    });
-    sort_sessions(&mut sessions);
-    Ok(sessions)
-}
-
 pub fn load_messages(provider_id: &str, source_path: &str) -> Result<Vec<SessionMessage>, String> {
     // SQLite sessions use a "sqlite:" prefixed source_path
     if provider_id == "opencode" && source_path.starts_with("sqlite:") {
@@ -519,16 +508,6 @@ pub fn delete_sessions_scoped(
             db,
             &request.provider_id,
             request.instance_id.as_deref(),
-            &request.session_id,
-            &request.source_path,
-        )
-    })
-}
-
-pub fn delete_sessions(requests: &[DeleteSessionRequest]) -> Vec<DeleteSessionOutcome> {
-    collect_delete_session_outcomes(requests, |request| {
-        delete_session(
-            &request.provider_id,
             &request.session_id,
             &request.source_path,
         )
