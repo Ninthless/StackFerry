@@ -1,7 +1,53 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-12T14:00:00Z",
+  "generatedAt": "2026-08-19T01:42:00Z",
   "announcements": [
+    {
+      "id": "2026-08-stackferry-0-1-20",
+      "category": "release",
+      "severity": "important",
+      "publishedAt": "2026-08-19T01:42:00Z",
+      "expiresAt": null,
+      "minAppVersion": null,
+      "maxAppVersion": null,
+      "platforms": ["windows", "macos", "linux"],
+      "channels": ["stable"],
+      "relatedVersion": "0.1.20",
+      "locales": {
+        "zh": {
+          "title": "StackFerry v0.1.20 已发布",
+          "summary": "新增 Claude Code 与 Codex 独立运行环境，完整隔离 API Key、配置和会话。",
+          "body": "本次更新为 Claude Code 与 Codex 新增独立运行环境。你可以在同一个 Provider 下创建多套环境，并分别管理名称、API Key、最近项目、配置目录和启动入口。\n\n运行环境的 API Key 保存在系统凭据管理器中。Claude Code 与 Codex 会分别使用独立配置和会话目录；代理会将实例会话严格绑定到指定 Provider 和凭据，缺少凭据时不会回退到全局 Key 或其他 Provider。\n\n会话管理器现在可以查看默认环境、全部环境或指定运行环境中的会话，并支持在正确的环境中读取、搜索、删除和恢复会话。本次更新还增强了配置原子写入、失败回滚、MCP 隔离和应用能力导航。"
+        },
+        "en": {
+          "title": "StackFerry v0.1.20 is available",
+          "summary": "Adds isolated Claude Code and Codex runtime environments with separate API keys, configuration, and sessions.",
+          "body": "This release adds isolated runtime environments for Claude Code and Codex. You can create multiple environments under one provider and manage their names, API keys, recent projects, configuration directories, and launch actions independently.\n\nRuntime API keys are stored in the operating system credential manager. Claude Code and Codex use separate configuration and session homes, while proxy sessions are strictly bound to the selected provider and credential without falling back to a global key or another provider.\n\nThe session manager can now browse the default environment, all environments, or one selected environment and read, search, delete, or resume sessions in the correct context. This release also improves atomic configuration writes, rollback behavior, MCP isolation, and capability-aware navigation."
+        },
+        "zh-TW": {
+          "title": "StackFerry v0.1.20 已發佈",
+          "summary": "新增 Claude Code 與 Codex 獨立執行環境，完整隔離 API Key、設定和工作階段。",
+          "body": "本次更新為 Claude Code 與 Codex 新增獨立執行環境。你可以在同一個 Provider 下建立多套環境，並分別管理名稱、API Key、最近專案、設定目錄和啟動入口。\n\n執行環境的 API Key 會儲存在系統憑證管理器中。Claude Code 與 Codex 會分別使用獨立的設定和工作階段目錄；代理會將執行個體工作階段嚴格綁定到指定 Provider 和憑證，缺少憑證時不會回退到全域 Key 或其他 Provider。\n\n工作階段管理器現在可以檢視預設環境、全部環境或指定執行環境中的工作階段，並在正確環境中讀取、搜尋、刪除和恢復工作階段。本次更新也強化了設定原子寫入、失敗回復、MCP 隔離和應用程式能力導覽。"
+        },
+        "ja": {
+          "title": "StackFerry v0.1.20 をリリースしました",
+          "summary": "Claude Code と Codex の独立した実行環境を追加し、API キー、設定、セッションを分離しました。",
+          "body": "この更新では、Claude Code と Codex 向けの独立した実行環境を追加しました。1 つの Provider に複数の環境を作成し、名前、API キー、最近のプロジェクト、設定ディレクトリ、起動操作を個別に管理できます。\n\n実行環境の API キーは OS の資格情報マネージャーに保存されます。Claude Code と Codex は個別の設定およびセッションディレクトリを使用し、プロキシセッションは選択した Provider と資格情報に厳密に固定されます。グローバルキーや別の Provider へフォールバックすることはありません。\n\nセッションマネージャーでは、既定環境、すべての環境、または選択した実行環境を切り替え、正しい環境でセッションの読み込み、検索、削除、再開ができます。設定のアトミック書き込み、失敗時のロールバック、MCP 分離、機能対応ナビゲーションも改善しました。"
+        }
+      },
+      "actions": [
+        {
+          "type": "external",
+          "url": "https://github.com/Ninthless/StackFerry/releases/tag/v0.1.20",
+          "label": {
+            "zh": "查看发行说明",
+            "en": "View release notes",
+            "zh-TW": "查看發行說明",
+            "ja": "リリースノートを見る"
+          }
+        }
+      ]
+    },
     {
       "id": "2026-08-stackferry-0-1-19",
       "category": "release",
@@ -9,7 +55,7 @@
       "publishedAt": "2026-08-12T14:00:00Z",
       "expiresAt": null,
       "minAppVersion": null,
-      "maxAppVersion": null,
+      "maxAppVersion": "0.1.19",
       "platforms": ["windows", "macos", "linux"],
       "channels": ["stable"],
       "relatedVersion": "0.1.19",
