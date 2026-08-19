@@ -4515,6 +4515,7 @@ exit 0
 
     #[cfg(unix)]
     #[test]
+    #[serial_test::serial]
     fn fake_cli_receives_env_and_source_and_detects_no_change() {
         let temp = tempdir().unwrap();
         let cli_path = temp.path().join("pi");
@@ -4545,6 +4546,7 @@ exit 0
 
     #[cfg(unix)]
     #[test]
+    #[serial_test::serial]
     fn fake_cli_timeout_and_output_limit_are_enforced() {
         let temp = tempdir().unwrap();
         let cli_path = temp.path().join("pi");
