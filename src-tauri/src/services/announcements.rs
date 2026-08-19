@@ -612,7 +612,7 @@ mod tests {
 
         let visible = visible_records(&manifest);
         assert_eq!(visible.len(), 1);
-        assert_eq!(visible[0].id, "2026-08-stackferry-0-1-19");
+        assert_eq!(visible[0].id, "2026-08-stackferry-0-1-20");
     }
 
     #[test]
@@ -621,7 +621,7 @@ mod tests {
         let feed = build_feed(&AnnouncementStore::default(), &manifest, "fr", None, false);
         assert_eq!(
             feed.announcements[0].title,
-            "StackFerry v0.1.19 is available"
+            "StackFerry v0.1.20 is available"
         );
     }
 
