@@ -342,7 +342,15 @@ mod tests {
             ..WebDavSyncSettings::default()
         };
         let segs = remote_dir_segments(&settings, RemoteLayout::Current);
-        assert_eq!(segs, vec!["stackferry-sync", "v2", "db-v6", "default"]);
+        assert_eq!(
+            segs,
+            vec![
+                "stackferry-sync".to_string(),
+                format!("v{PROTOCOL_VERSION}"),
+                "db-v6".to_string(),
+                "default".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -353,6 +361,13 @@ mod tests {
             ..WebDavSyncSettings::default()
         };
         let segs = remote_dir_segments(&settings, RemoteLayout::Legacy);
-        assert_eq!(segs, vec!["stackferry-sync", "v2", "default"]);
+        assert_eq!(
+            segs,
+            vec![
+                "stackferry-sync".to_string(),
+                format!("v{PROTOCOL_VERSION}"),
+                "default".to_string()
+            ]
+        );
     }
 }

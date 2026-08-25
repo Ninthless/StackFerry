@@ -3,32 +3,61 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{OnceLock, RwLock};
 
+#[cfg(not(test))]
 const SYNC_CREDENTIAL_SERVICE: &str = "StackFerry.Sync";
 const WEBDAV_CREDENTIAL_ACCOUNT: &str = "webdav-password";
 const S3_CREDENTIAL_ACCOUNT: &str = "s3-secret-access-key";
 
+#[cfg(not(test))]
 fn sync_credential_entry(account: &str) -> Result<keyring::Entry, AppError> {
     keyring::Entry::new(SYNC_CREDENTIAL_SERVICE, account)
         .map_err(|e| AppError::Config(format!("初始化同步凭据存储失败: {e}")))
 }
 
+#[cfg(test)]
+fn test_sync_credentials() -> &'static RwLock<std::collections::HashMap<String, String>> {
+    static CREDENTIALS: OnceLock<RwLock<std::collections::HashMap<String, String>>> =
+        OnceLock::new();
+    CREDENTIALS.get_or_init(|| RwLock::new(std::collections::HashMap::new()))
+}
+
 fn load_sync_credential(account: &str) -> Option<String> {
+    #[cfg(test)]
+    {
+        return test_sync_credentials().read().ok()?.get(account).cloned();
+    }
+    #[cfg(not(test))]
     sync_credential_entry(account)
         .ok()
         .and_then(|entry| entry.get_password().ok())
 }
 
 fn save_sync_credential(account: &str, value: &str) -> Result<(), AppError> {
-    let entry = sync_credential_entry(account)?;
-    if value.is_empty() {
-        match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(AppError::Config(format!("删除同步凭据失败: {e}"))),
+    #[cfg(test)]
+    {
+        let mut credentials = test_sync_credentials()
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        if value.is_empty() {
+            credentials.remove(account);
+        } else {
+            credentials.insert(account.to_string(), value.to_string());
         }
-    } else {
-        entry
-            .set_password(value)
-            .map_err(|e| AppError::Config(format!("保存同步凭据失败: {e}")))
+        Ok(())
+    }
+    #[cfg(not(test))]
+    {
+        let entry = sync_credential_entry(account)?;
+        if value.is_empty() {
+            match entry.delete_credential() {
+                Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                Err(e) => Err(AppError::Config(format!("删除同步凭据失败: {e}"))),
+            }
+        } else {
+            entry
+                .set_password(value)
+                .map_err(|e| AppError::Config(format!("保存同步凭据失败: {e}")))
+        }
     }
 }
 

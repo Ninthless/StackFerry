@@ -284,10 +284,13 @@ mod tests {
     }
 
     #[test]
-    fn s3_key_uses_v2_and_correct_format() {
+    fn s3_key_uses_current_protocol_and_correct_format() {
         let settings = test_settings();
         let key = s3_key(&settings, "manifest.json");
-        assert_eq!(key, "stackferry-sync/v2/db-v6/default/manifest.json");
+        assert_eq!(
+            key,
+            format!("stackferry-sync/v{PROTOCOL_VERSION}/db-v6/default/manifest.json")
+        );
     }
 
     #[test]
@@ -297,18 +300,20 @@ mod tests {
             profile: "work".to_string(),
             ..S3SyncSettings::default()
         };
-        assert_eq!(s3_key(&settings, "db.sql"), "my-root/v2/db-v6/work/db.sql");
+        assert_eq!(
+            s3_key(&settings, "db.sql"),
+            format!("my-root/v{PROTOCOL_VERSION}/db-v6/work/db.sql")
+        );
     }
 
     #[test]
     fn s3_key_matches_expected_pattern() {
         let settings = test_settings();
         let key = s3_key(&settings, "skills.zip");
-        // Should follow {remote_root}/v{version}/db-v{db}/{profile}/{artifact}
         let parts: Vec<&str> = key.splitn(5, '/').collect();
         assert_eq!(parts.len(), 5);
         assert_eq!(parts[0], "stackferry-sync");
-        assert_eq!(parts[1], "v2");
+        assert_eq!(parts[1], format!("v{PROTOCOL_VERSION}"));
         assert_eq!(parts[2], "db-v6");
         assert_eq!(parts[3], "default");
         assert_eq!(parts[4], "skills.zip");
