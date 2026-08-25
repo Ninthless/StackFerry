@@ -16,9 +16,10 @@ use crate::settings::{update_s3_sync_status, S3SyncSettings, WebDavSyncStatus};
 
 use super::sync_protocol::{
     apply_snapshot, build_local_snapshot, localized, persist_sync_success_best_effort, sha256_hex,
-    validate_artifact_size_limit, validate_manifest_compat, verify_artifact, ArtifactMeta,
-    RemoteLayout, SyncManifest, DB_COMPAT_VERSION, MAX_MANIFEST_BYTES, MAX_SYNC_ARTIFACT_BYTES,
-    PROTOCOL_VERSION, REMOTE_DB_SQL, REMOTE_MANIFEST, REMOTE_SKILLS_ZIP,
+    validate_artifact_size_limit, validate_manifest_compat, verify_artifact,
+    verify_manifest_authentication, ArtifactMeta, RemoteLayout, SyncManifest, DB_COMPAT_VERSION,
+    MAX_MANIFEST_BYTES, MAX_SYNC_ARTIFACT_BYTES, PROTOCOL_VERSION, REMOTE_DB_SQL, REMOTE_MANIFEST,
+    REMOTE_MANIFEST_AUTH, REMOTE_SKILLS_ZIP,
 };
 
 // ─── Sync lock ───────────────────────────────────────────────
@@ -53,7 +54,7 @@ pub async fn upload(
     settings.validate()?;
     let creds = creds_for(settings);
 
-    let snapshot = build_local_snapshot(db)?;
+    let snapshot = build_local_snapshot(db, settings.secret_access_key.as_bytes())?;
 
     // Upload order: artifacts first, manifest last (best-effort consistency)
     let db_key = s3_key(settings, REMOTE_DB_SQL);
@@ -68,6 +69,14 @@ pub async fn upload(
         &manifest_key,
         snapshot.manifest_bytes,
         "application/json",
+    )
+    .await?;
+    let auth_key = s3_key(settings, REMOTE_MANIFEST_AUTH);
+    s3::put_object(
+        &creds,
+        &auth_key,
+        snapshot.manifest_auth,
+        "application/octet-stream",
     )
     .await?;
 
@@ -113,6 +122,22 @@ pub async fn download(
             path: REMOTE_MANIFEST.to_string(),
             source: e,
         })?;
+    let auth_key = s3_key(settings, REMOTE_MANIFEST_AUTH);
+    let manifest_auth = s3::get_object(&creds, &auth_key, 64)
+        .await?
+        .ok_or_else(|| {
+            localized(
+                "s3.sync.manifest_auth_missing",
+                "远端缺少同步快照认证文件",
+                "Remote sync snapshot authentication file is missing.",
+            )
+        })?
+        .0;
+    verify_manifest_authentication(
+        &manifest_bytes,
+        &manifest_auth,
+        settings.secret_access_key.as_bytes(),
+    )?;
 
     validate_manifest_compat(&manifest, RemoteLayout::Current)?;
 

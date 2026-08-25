@@ -20,9 +20,9 @@ use crate::settings::{update_webdav_sync_status, WebDavSyncSettings, WebDavSyncS
 use super::sync_protocol::{
     apply_snapshot, build_local_snapshot, effective_db_compat_version, localized,
     persist_sync_success_best_effort, sha256_hex, validate_artifact_size_limit,
-    validate_manifest_compat, verify_artifact, ArtifactMeta, RemoteLayout, SyncManifest,
-    DB_COMPAT_VERSION, MAX_MANIFEST_BYTES, MAX_SYNC_ARTIFACT_BYTES, PROTOCOL_VERSION,
-    REMOTE_DB_SQL, REMOTE_MANIFEST, REMOTE_SKILLS_ZIP,
+    validate_manifest_compat, verify_artifact, verify_manifest_authentication, ArtifactMeta,
+    RemoteLayout, SyncManifest, DB_COMPAT_VERSION, MAX_MANIFEST_BYTES, MAX_SYNC_ARTIFACT_BYTES,
+    PROTOCOL_VERSION, REMOTE_DB_SQL, REMOTE_MANIFEST, REMOTE_MANIFEST_AUTH, REMOTE_SKILLS_ZIP,
 };
 
 pub(crate) mod archive;
@@ -70,7 +70,7 @@ pub async fn upload(
     let dir_segs = remote_dir_segments(settings, RemoteLayout::Current);
     ensure_remote_directories(&settings.base_url, &dir_segs, &auth).await?;
 
-    let snapshot = build_local_snapshot(db)?;
+    let snapshot = build_local_snapshot(db, settings.password.as_bytes())?;
 
     // Upload order: artifacts first, manifest last (best-effort consistency)
     let db_url = remote_file_url(settings, RemoteLayout::Current, REMOTE_DB_SQL)?;
@@ -85,6 +85,14 @@ pub async fn upload(
         &auth,
         snapshot.manifest_bytes,
         "application/json",
+    )
+    .await?;
+    let manifest_auth_url = remote_file_url(settings, RemoteLayout::Current, REMOTE_MANIFEST_AUTH)?;
+    put_bytes(
+        &manifest_auth_url,
+        &auth,
+        snapshot.manifest_auth,
+        "application/octet-stream",
     )
     .await?;
 
@@ -232,6 +240,21 @@ async fn fetch_remote_snapshot(
             path: REMOTE_MANIFEST.to_string(),
             source: e,
         })?;
+    let manifest_auth_url = remote_file_url(settings, layout, REMOTE_MANIFEST_AUTH)?;
+    let (manifest_auth, _) = get_bytes(&manifest_auth_url, auth, 64)
+        .await?
+        .ok_or_else(|| {
+            localized(
+                "webdav.sync.manifest_auth_missing",
+                "远端缺少同步快照认证文件",
+                "Remote sync snapshot authentication file is missing.",
+            )
+        })?;
+    verify_manifest_authentication(
+        &manifest_bytes,
+        &manifest_auth,
+        settings.password.as_bytes(),
+    )?;
 
     Ok(Some(RemoteSnapshot {
         layout,

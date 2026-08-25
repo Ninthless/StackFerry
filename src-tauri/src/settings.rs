@@ -3,6 +3,35 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{OnceLock, RwLock};
 
+const SYNC_CREDENTIAL_SERVICE: &str = "StackFerry.Sync";
+const WEBDAV_CREDENTIAL_ACCOUNT: &str = "webdav-password";
+const S3_CREDENTIAL_ACCOUNT: &str = "s3-secret-access-key";
+
+fn sync_credential_entry(account: &str) -> Result<keyring::Entry, AppError> {
+    keyring::Entry::new(SYNC_CREDENTIAL_SERVICE, account)
+        .map_err(|e| AppError::Config(format!("初始化同步凭据存储失败: {e}")))
+}
+
+fn load_sync_credential(account: &str) -> Option<String> {
+    sync_credential_entry(account)
+        .ok()
+        .and_then(|entry| entry.get_password().ok())
+}
+
+fn save_sync_credential(account: &str, value: &str) -> Result<(), AppError> {
+    let entry = sync_credential_entry(account)?;
+    if value.is_empty() {
+        match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(AppError::Config(format!("删除同步凭据失败: {e}"))),
+        }
+    } else {
+        entry
+            .set_password(value)
+            .map_err(|e| AppError::Config(format!("保存同步凭据失败: {e}")))
+    }
+}
+
 use crate::app_config::AppType;
 use crate::error::AppError;
 use crate::services::skill::{SkillStorageLocation, SyncMethod};
@@ -255,6 +284,18 @@ impl S3SyncSettings {
                 "S3 Secret Access Key 不能为空",
                 "S3 Secret Access Key is required.",
             ));
+        }
+        if !self.endpoint.trim().is_empty() {
+            let endpoint = self.endpoint.trim();
+            if endpoint.starts_with("http://")
+                && !crate::services::s3::is_local_endpoint_for_settings(endpoint)
+            {
+                return Err(crate::error::AppError::localized(
+                    "s3.endpoint.insecure",
+                    "远程 S3 同步必须使用 HTTPS；HTTP 仅允许本机回环地址",
+                    "Remote S3 sync must use HTTPS; HTTP is only allowed for loopback endpoints.",
+                ));
+            }
         }
         Ok(())
     }
@@ -666,7 +707,45 @@ impl AppSettings {
         if let Ok(content) = fs::read_to_string(&path) {
             match serde_json::from_str::<AppSettings>(&content) {
                 Ok(mut settings) => {
+                    let legacy_webdav_password = settings
+                        .webdav_sync
+                        .as_ref()
+                        .map(|sync| sync.password.clone())
+                        .filter(|value| !value.is_empty());
+                    let legacy_s3_secret = settings
+                        .s3_sync
+                        .as_ref()
+                        .map(|sync| sync.secret_access_key.clone())
+                        .filter(|value| !value.is_empty());
+                    let mut credentials_migrated = false;
+                    if let Some(password) = legacy_webdav_password.as_deref() {
+                        match save_sync_credential(WEBDAV_CREDENTIAL_ACCOUNT, password) {
+                            Ok(()) => credentials_migrated = true,
+                            Err(error) => {
+                                log::warn!("迁移 WebDAV 凭据到系统存储失败: {error}")
+                            }
+                        }
+                    }
+                    if let Some(secret) = legacy_s3_secret.as_deref() {
+                        match save_sync_credential(S3_CREDENTIAL_ACCOUNT, secret) {
+                            Ok(()) => credentials_migrated = true,
+                            Err(error) => log::warn!("迁移 S3 凭据到系统存储失败: {error}"),
+                        }
+                    }
+                    if let Some(sync) = settings.webdav_sync.as_mut() {
+                        sync.password =
+                            load_sync_credential(WEBDAV_CREDENTIAL_ACCOUNT).unwrap_or_default();
+                    }
+                    if let Some(s3) = settings.s3_sync.as_mut() {
+                        s3.secret_access_key =
+                            load_sync_credential(S3_CREDENTIAL_ACCOUNT).unwrap_or_default();
+                    }
                     settings.normalize_paths();
+                    if credentials_migrated {
+                        if let Err(error) = save_settings_file(&settings) {
+                            log::warn!("清理设置文件中的旧同步凭据失败: {error}");
+                        }
+                    }
                     settings
                 }
                 Err(err) => {
@@ -701,6 +780,12 @@ where
 {
     let mut normalized = settings.clone();
     normalized.normalize_paths();
+    if let Some(sync) = normalized.webdav_sync.as_mut() {
+        sync.password.clear();
+    }
+    if let Some(s3) = normalized.s3_sync.as_mut() {
+        s3.secret_access_key.clear();
+    }
     let json = serde_json::to_string_pretty(&normalized)
         .map_err(|e| AppError::JsonSerialize { source: e })?;
     writer(path, json.as_bytes())
@@ -749,6 +834,12 @@ pub fn get_settings_for_frontend() -> AppSettings {
 
 pub fn update_settings(mut new_settings: AppSettings) -> Result<(), AppError> {
     new_settings.normalize_paths();
+    if let Some(sync) = &new_settings.webdav_sync {
+        save_sync_credential(WEBDAV_CREDENTIAL_ACCOUNT, &sync.password)?;
+    }
+    if let Some(s3) = &new_settings.s3_sync {
+        save_sync_credential(S3_CREDENTIAL_ACCOUNT, &s3.secret_access_key)?;
+    }
     save_settings_file(&new_settings)?;
 
     let mut guard = settings_store().write().unwrap_or_else(|e| {
@@ -1151,6 +1242,13 @@ pub fn get_webdav_sync_settings() -> Option<WebDavSyncSettings> {
 
 /// 保存 WebDAV 同步设置
 pub fn set_webdav_sync_settings(settings: Option<WebDavSyncSettings>) -> Result<(), AppError> {
+    save_sync_credential(
+        WEBDAV_CREDENTIAL_ACCOUNT,
+        settings
+            .as_ref()
+            .map(|sync| sync.password.as_str())
+            .unwrap_or_default(),
+    )?;
     mutate_settings(|current| {
         current.webdav_sync = settings;
     })
@@ -1172,6 +1270,13 @@ pub fn get_s3_sync_settings() -> Option<S3SyncSettings> {
 }
 
 pub fn set_s3_sync_settings(settings: Option<S3SyncSettings>) -> Result<(), AppError> {
+    save_sync_credential(
+        S3_CREDENTIAL_ACCOUNT,
+        settings
+            .as_ref()
+            .map(|s3| s3.secret_access_key.as_str())
+            .unwrap_or_default(),
+    )?;
     mutate_settings(|current| {
         current.s3_sync = settings;
     })

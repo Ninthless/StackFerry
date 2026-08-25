@@ -57,6 +57,17 @@ fn split_scheme_host(endpoint: &str) -> (&str, &str) {
     }
 }
 
+fn is_local_endpoint(endpoint: &str) -> bool {
+    let (_, host) = split_scheme_host(endpoint);
+    let host = host.split('/').next().unwrap_or(host);
+    let host = host.split(':').next().unwrap_or(host);
+    host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" || host == "::1"
+}
+
+pub(crate) fn is_local_endpoint_for_settings(endpoint: &str) -> bool {
+    is_local_endpoint(endpoint)
+}
+
 /// Build the full URL for an S3 object.
 ///
 /// - AWS endpoints use virtual-hosted style: `https://{bucket}.s3.{region}.amazonaws.com/{key}`

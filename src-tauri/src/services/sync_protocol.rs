@@ -7,6 +7,7 @@ use std::fs;
 use std::process::Command;
 
 use chrono::Utc;
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
@@ -23,12 +24,13 @@ pub(crate) use super::webdav_sync::archive::{
 /// Wire-format identifier stored in remote manifests.
 /// Retains historic "webdav" naming for backward compatibility with existing remotes.
 pub(crate) const PROTOCOL_FORMAT: &str = "stackferry-sync";
-pub(crate) const PROTOCOL_VERSION: u32 = 2;
+pub(crate) const PROTOCOL_VERSION: u32 = 3;
 pub(crate) const DB_COMPAT_VERSION: u32 = 6;
 pub(crate) const LEGACY_DB_COMPAT_VERSION: u32 = 5;
 pub(crate) const REMOTE_DB_SQL: &str = "db.sql";
 pub(crate) const REMOTE_SKILLS_ZIP: &str = "skills.zip";
 pub(crate) const REMOTE_MANIFEST: &str = "manifest.json";
+pub(crate) const REMOTE_MANIFEST_AUTH: &str = "manifest.hmac";
 pub(crate) const MAX_DEVICE_NAME_LEN: usize = 64;
 pub(crate) const MAX_MANIFEST_BYTES: usize = 1024 * 1024;
 pub(crate) const MAX_SYNC_ARTIFACT_BYTES: u64 = 512 * 1024 * 1024;
@@ -83,6 +85,7 @@ pub(crate) struct LocalSnapshot {
     pub skills_zip: Vec<u8>,
     pub manifest_bytes: Vec<u8>,
     pub manifest_hash: String,
+    pub manifest_auth: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,6 +107,7 @@ impl RemoteLayout {
 
 pub(crate) fn build_local_snapshot(
     db: &crate::database::Database,
+    authentication_key: &[u8],
 ) -> Result<LocalSnapshot, AppError> {
     // Export database to SQL string
     let sql_string = db.export_sql_string_for_sync()?;
@@ -152,12 +156,14 @@ pub(crate) fn build_local_snapshot(
     let manifest_bytes =
         serde_json::to_vec_pretty(&manifest).map_err(|e| AppError::JsonSerialize { source: e })?;
     let manifest_hash = sha256_hex(&manifest_bytes);
+    let manifest_auth = authenticate_manifest(&manifest_bytes, authentication_key)?;
 
     Ok(LocalSnapshot {
         db_sql,
         skills_zip,
         manifest_bytes,
         manifest_hash,
+        manifest_auth,
     })
 }
 
@@ -345,6 +351,33 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{:x}", hasher.finalize())
+}
+
+pub(crate) fn authenticate_manifest(
+    manifest_bytes: &[u8],
+    authentication_key: &[u8],
+) -> Result<Vec<u8>, AppError> {
+    let mut mac = Hmac::<Sha256>::new_from_slice(authentication_key)
+        .map_err(|e| AppError::Config(format!("初始化同步认证失败: {e}")))?;
+    mac.update(manifest_bytes);
+    Ok(mac.finalize().into_bytes().to_vec())
+}
+
+pub(crate) fn verify_manifest_authentication(
+    manifest_bytes: &[u8],
+    authentication: &[u8],
+    authentication_key: &[u8],
+) -> Result<(), AppError> {
+    let mut mac = Hmac::<Sha256>::new_from_slice(authentication_key)
+        .map_err(|e| AppError::Config(format!("初始化同步认证失败: {e}")))?;
+    mac.update(manifest_bytes);
+    mac.verify_slice(authentication).map_err(|_| {
+        localized(
+            "sync.manifest_authentication_failed",
+            "远程同步快照认证失败，内容可能已被篡改或来自其他凭据",
+            "Remote sync snapshot authentication failed; the content may be tampered with or belong to different credentials.",
+        )
+    })
 }
 
 pub(crate) fn detect_system_device_name() -> Option<String> {

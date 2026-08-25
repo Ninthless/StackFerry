@@ -47,12 +47,27 @@ pub fn parse_base_url(raw: &str) -> Result<Url, AppError> {
         )
     })?;
     match url.scheme() {
-        "http" | "https" => Ok(url),
+        "https" => Ok(url),
+        "http" if is_loopback_host(&url) => Ok(url),
+        "http" => Err(AppError::localized(
+            "webdav.base_url.insecure",
+            "远程 WebDAV 同步必须使用 HTTPS；HTTP 仅允许本机回环地址",
+            "Remote WebDAV sync must use HTTPS; HTTP is only allowed for loopback addresses.",
+        )),
         _ => Err(AppError::localized(
             "webdav.base_url.scheme_invalid",
-            "WebDAV 仅支持 http/https 地址",
-            "WebDAV URL must use http or https.",
+            "WebDAV 仅支持 HTTPS 地址，本机回环地址可使用 HTTP",
+            "WebDAV URL must use HTTPS; loopback addresses may use HTTP.",
         )),
+    }
+}
+
+fn is_loopback_host(url: &Url) -> bool {
+    match url.host() {
+        Some(url::Host::Ipv4(address)) => address.is_loopback(),
+        Some(url::Host::Ipv6(address)) => address.is_loopback(),
+        Some(url::Host::Domain(domain)) => domain.eq_ignore_ascii_case("localhost"),
+        None => false,
     }
 }
 
