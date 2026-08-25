@@ -1,73 +1,47 @@
-# StackFerry v0.1.20
+# StackFerry v0.1.21
 
-> 自 v0.1.19 发布以来的更新。
+> 自 v0.1.20 发布以来的更新。
 
 ## 简体中文
 
-### Claude Code 与 Codex 运行环境
+### 同步安全
 
-- 新增独立运行环境，可为同一 Provider 创建多套 Claude Code 或 Codex 环境，并分别维护名称、最近项目和启动入口。
-- Claude Code 使用独立 `CLAUDE_CONFIG_DIR`，Codex 使用独立 `CODEX_HOME` 与 `CODEX_SQLITE_HOME`，配置、历史记录和本地状态不再混用。
-- 运行环境 API Key 保存到系统凭据管理器，数据库仅记录引用；创建、换 Key、删除和 Provider 更新均提供失败补偿与回滚。
-- Provider 菜单区分“直接启动”和“管理运行环境”，运行环境管理器支持创建、改名、换 Key、更新最近项目、启动和删除。
-- Provider 更新会重新生成关联运行环境的配置，删除仍有关联运行环境的 Provider 时会阻止操作，避免留下失效环境。
+- WebDAV 密码和 S3 Secret Access Key 迁移到系统凭据管理器，旧版 `settings.json` 中的明文凭据会在迁移成功后清除。
+- 远程 WebDAV 与自定义 S3 端点必须使用 HTTPS；HTTP 仅允许本机回环地址。
+- 同步协议升级到 v3，并使用 HMAC-SHA256 对远程快照清单进行来源认证，避免远端文件与哈希同时被替换后仍通过校验。
 
-### 会话、代理与凭据隔离
+### 配置恢复与一致性
 
-- Claude Code 与 Codex 会话支持按默认环境、全部环境或指定运行环境扫描，并显示运行环境身份。
-- 会话读取、分页、搜索、删除、批量删除和恢复均携带运行环境维度，避免不同环境中相同会话 ID 发生冲突。
-- 代理通过受校验的实例身份将会话固定到指定 Provider 和 API Key；缺少或冲突的凭据会严格失败，不回退到全局 Key 或其他 Provider。
-- 实例绑定请求仍保留普通故障路由的既有语义，但凭据错误不会污染 Provider 健康状态。
-- HTTP 与 Pi WebSocket 转发会移除 StackFerry 私有身份头，防止内部实例标识泄漏到上游。
-- 运行环境启动会检查 Claude Code 与 Codex CLI 是否支持自定义请求头；版本过低时会给出升级提示，而不是静默失去身份隔离。
+- 数据库备份恢复、SQL 导入以及 WebDAV/S3 快照下载后会重新投影当前 Provider 到各工具的 live 配置。
+- 后置投影失败不会撤销已成功的数据库恢复，但会返回明确警告，方便用户重新同步。
+- Provider 切换前读取 live 配置失败时会记录错误，同时保持既有 Profile 警告契约和切换流程。
 
-### 配置可靠性与 MCP
+### 发布与质量保障
 
-- 配置和设置写入改为原子持久化，并为跨数据库与 live 配置的更新增加快照、补偿和回滚。
-- 拆分 Claude、Codex 和代理的 live 配置适配器，缩小共享热点并明确各应用的配置所有权。
-- 新增 Claude 与 Codex 配置黄金夹具，覆盖未知字段保留、内部字段清理和无效 TOML 处理。
-- Profile 应用流程拆分为计划与执行阶段，可继续处理部分失败并返回更准确的警告。
-- Codex 导入会忽略临时托管的运行时 MCP Server，并清理历史错误分配，避免把 StackFerry 运行时条目写回用户配置。
-
-### 界面与质量保障
-
-- 集中维护应用能力注册表，侧边栏只为当前应用显示实际支持的 Provider、MCP、Skills 和 Prompts。
-- 运行环境和会话范围界面已完成简体中文、繁体中文、英文和日文翻译。
-- 新增运行环境生命周期、实例会话范围、代理凭据约束和配置回滚测试。
-- 修复能力过滤后的导航测试、前端格式问题和严格 Rust Clippy 警告，保持跨平台 CI 通过。
+- macOS 正式发布流程改为 Developer ID 签名、Apple 公证、staple 和 Gatekeeper 校验。
+- CI 新增 renderer 生产构建和前后端 IPC 契约检查，并在 Linux、macOS、Windows 上继续执行 Rustfmt、Clippy 和完整测试。
+- 发布版本校验现在同时检查 `package.json`、Tauri 配置、`Cargo.toml` 与 `Cargo.lock`。
+- 统一 Node.js、pnpm 与 Rust 开发和发布工具链说明，并修正支持工具能力矩阵。
 
 ## English
 
-> Changes since the v0.1.19 release.
+> Changes since the v0.1.20 release.
 
-### Claude Code and Codex Runtime Environments
+### Synchronization Security
 
-- Added isolated runtime environments so one provider can have multiple Claude Code or Codex environments with independent names, recent projects, and launch actions.
-- Isolated Claude Code through `CLAUDE_CONFIG_DIR` and Codex through `CODEX_HOME` and `CODEX_SQLITE_HOME`, separating configuration, history, and local state.
-- Stored runtime API keys in the operating system credential manager while keeping only references in SQLite; creation, rotation, deletion, and provider updates include compensation and rollback.
-- Split provider actions into direct launch and runtime-environment management, with controls for creation, rename, key rotation, recent projects, launch, and deletion.
-- Regenerated associated runtime configuration after provider updates and prevented deletion of providers that still own runtime environments.
+- Moved WebDAV passwords and S3 secret access keys into the operating system credential manager and removed legacy plaintext values from `settings.json` after a successful migration.
+- Required HTTPS for remote WebDAV and custom S3 endpoints, while allowing HTTP only for loopback addresses.
+- Upgraded the synchronization protocol to v3 and added HMAC-SHA256 authentication for remote snapshot manifests so replacing both artifacts and hashes no longer bypasses verification.
 
-### Sessions, Proxy, and Credential Isolation
+### Restore and Live-State Consistency
 
-- Added default, all-environment, and selected-environment scopes for Claude Code and Codex sessions, including runtime identity in session metadata.
-- Made session reads, pagination, search, deletion, bulk deletion, and resume environment-aware so identical session IDs cannot collide across environments.
-- Bound proxy sessions to a validated runtime identity and its exact provider credential; missing or conflicting credentials now fail closed without falling back to a global key or another provider.
-- Preserved existing failover behavior for ordinary routing while keeping instance credential failures neutral to provider health.
-- Stripped StackFerry private identity headers from HTTP and Pi WebSocket upstream requests.
-- Added minimum-version checks for Claude Code and Codex custom-header support so unsupported CLI versions produce an upgrade prompt instead of silently losing isolation.
+- Reprojected current providers into each tool's live configuration after database backup restore, SQL import, and WebDAV or S3 snapshot download.
+- Kept successful database restores intact when post-restore projection fails while returning an explicit warning for manual resynchronization.
+- Logged live-configuration read failures before provider switches without changing the established profile warning contract.
 
-### Configuration Reliability and MCP
+### Release and Quality
 
-- Moved settings and configuration writes to atomic persistence and added snapshots, compensation, and rollback around database and live-config projections.
-- Split Claude, Codex, and proxy live adapters to reduce shared hotspots and clarify configuration ownership.
-- Added Claude and Codex golden fixtures covering unknown-field preservation, internal-field removal, and invalid TOML handling.
-- Separated profile apply planning from execution so partial failures can continue with more accurate warnings.
-- Excluded transient managed Codex runtime MCP servers during import and cleaned historical assignments to prevent StackFerry runtime entries from being written back to user configuration.
-
-### Interface and Quality
-
-- Centralized the application capability registry so the sidebar exposes only the Provider, MCP, Skills, and Prompts features supported by the active application.
-- Localized runtime-environment and session-scope interfaces in Simplified Chinese, Traditional Chinese, English, and Japanese.
-- Added coverage for runtime lifecycle operations, instance-scoped sessions, proxy credential constraints, and configuration rollback.
-- Fixed capability-aware navigation tests, frontend formatting, and strict Rust Clippy warnings to keep cross-platform CI green.
+- Added Developer ID signing, Apple notarization, stapling, and Gatekeeper verification to the official macOS release workflow.
+- Added production renderer builds and frontend-to-Tauri IPC contract validation to CI while retaining cross-platform Rustfmt, Clippy, and full test coverage.
+- Extended release version validation to cover `package.json`, Tauri configuration, `Cargo.toml`, and `Cargo.lock`.
+- Aligned Node.js, pnpm, and Rust development and release requirements and corrected the supported-tool capability matrix.
