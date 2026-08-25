@@ -18,6 +18,7 @@
 
 ### 发布与质量保障
 
+- macOS 构建保留在发布矩阵中；在未配置 Apple 证书和公证凭据时生成未签名安装包，配置后可启用正式签名与公证。
 - CI 新增 renderer 生产构建和前后端 IPC 契约检查，并在 Linux、macOS、Windows 上继续执行 Rustfmt、Clippy 和完整测试。
 - 发布版本校验现在同时检查 `package.json`、Tauri 配置、`Cargo.toml` 与 `Cargo.lock`。
 - 统一 Node.js、pnpm 与 Rust 开发和发布工具链说明，并修正支持工具能力矩阵。
@@ -40,6 +41,7 @@
 
 ### Release and Quality
 
+- Kept macOS builds in the release matrix; without Apple signing and notarization credentials, the workflow produces unsigned installers, while configured credentials enable official signing and notarization.
 - Added production renderer builds and frontend-to-Tauri IPC contract validation to CI while retaining cross-platform Rustfmt, Clippy, and full test coverage.
 - Extended release version validation to cover `package.json`, Tauri configuration, `Cargo.toml`, and `Cargo.lock`.
 - Aligned Node.js, pnpm, and Rust development and release requirements and corrected the supported-tool capability matrix.

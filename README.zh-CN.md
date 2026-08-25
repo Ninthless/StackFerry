@@ -46,9 +46,9 @@ StackFerry 是一个基于 Tauri 的桌面应用，用于统一管理 AI 编程�
 
 ## 下载与安装
 
-请从 [GitHub 最新版本](https://github.com/Ninthless/StackFerry/releases/latest) 下载适合当前系统的软件包。自动发布资产当前覆盖 Windows 和 Linux，具体安装格式与架构以各版本发布页面为准；Windows 版本在可用时也会提供便携版压缩包。
+请从 [GitHub 最新版本](https://github.com/Ninthless/StackFerry/releases/latest) 下载适合当前系统的软件包。Release 资产覆盖 Windows、macOS 和 Linux，具体安装格式与架构以各版本发布页面为准；Windows 版本在可用时也会提供便携版压缩包。
 
-StackFerry 会发布带签名的应用内更新资产。自动发布流程当前构建 Windows 和 Linux 安装包。平台相关注意事项请查看对应版本的发布说明。
+StackFerry 会发布带签名的应用内更新资产。平台相关注意事项请查看对应版本的发布说明。
 
 ## 快速开始
 

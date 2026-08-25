@@ -74,6 +74,8 @@ jobs:
           - os: ubuntu-22.04-arm
             arch: arm64
             rust-target: aarch64-unknown-linux-gnu
+          - os: macos-14
+            rust-target: universal-apple-darwin
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -193,41 +195,14 @@ jobs:
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
-      - name: Import Apple signing certificate
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          set -euo pipefail
-          CERTIFICATE_PATH="$RUNNER_TEMP/apple-certificate.p12"
-          KEYCHAIN_PATH="$RUNNER_TEMP/stackferry-signing.keychain-db"
-          KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
-          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          rm -f "$CERTIFICATE_PATH"
-
-      - name: Build, sign and notarize Tauri App (macOS)
+      - name: Build Tauri App (macOS)
         if: runner.os == 'macOS'
         shell: bash
         timeout-minutes: 60
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey_${{ secrets.APPLE_API_KEY }}.p8
-          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
         run: |
           set -euo pipefail
-          printf '%s' "$APPLE_API_KEY_CONTENT" > "$APPLE_API_KEY_PATH"
-          chmod 600 "$APPLE_API_KEY_PATH"
           pnpm tauri build --target universal-apple-darwin
 
       - name: Build Tauri App (Windows)
@@ -279,9 +254,6 @@ jobs:
       - name: Prepare macOS Assets
         if: runner.os == 'macOS'
         shell: bash
-        env:
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
           set -euxo pipefail
           mkdir -p release-assets
@@ -338,16 +310,8 @@ jobs:
             "release-assets/$NEW_DMG" \
             "$DMG_STAGE_DIR"
 
-          APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
-          xcrun notarytool submit "release-assets/$NEW_DMG" \
-            --issuer "$APPLE_API_ISSUER" \
-            --key-id "$APPLE_API_KEY" \
-            --key "$APPLE_API_KEY_PATH" \
-            --wait
-          xcrun stapler staple "release-assets/$NEW_DMG"
-          rm -f "$APPLE_API_KEY_PATH"
           rm -rf "$DMG_STAGE_DIR"
-          echo "✅ Styled DMG created: $NEW_DMG"
+          echo "✅ Unsigned styled DMG created: $NEW_DMG"
 
       - name: Verify macOS artifacts
         if: runner.os == 'macOS'
@@ -371,16 +335,13 @@ jobs:
             exit 1
           fi
           echo "=== Verifying .app: $APP_PATH ==="
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-          spctl --assess --type execute --verbose=4 "$APP_PATH"
-          echo "✅ codesign verification passed"
+          test -d "$APP_PATH/Contents"
+          echo "✅ macOS app bundle verified"
 
           DMG_PATH=$(find release-assets -maxdepth 1 -name "*.dmg" -type f | head -1 || true)
           if [ -n "$DMG_PATH" ]; then
             echo "=== Verifying .dmg: $DMG_PATH ==="
             hdiutil verify "$DMG_PATH"
-            xcrun stapler validate "$DMG_PATH"
-            spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG_PATH"
             echo "✅ .dmg integrity verification passed"
           else
             echo "❌ No .dmg found for verification" >&2
