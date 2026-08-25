@@ -3755,9 +3755,6 @@ impl ProviderService {
                                 "Unable to read live configuration before switching {}: {error}",
                                 app_type.as_str()
                             );
-                            result
-                                .warnings
-                                .push(format!("live_read_failed:{}", app_type.as_str()));
                         }
                     }
                 }
