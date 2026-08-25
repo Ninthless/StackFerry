@@ -33,14 +33,14 @@ StackFerry 是一个基于 Tauri 的桌面应用，用于统一管理 AI 编程�
 | 工具           | 供应商路由 | Prompt | Skills | MCP | 会话 |
 | -------------- | :--------: | :----: | :----: | :-: | :--: |
 | Claude Code    |     是     |   是   |   是   | 是  |  是  |
-| Claude Desktop |     是     |   -    |   -    | 是  |  -   |
+| Claude Desktop |     是     |   -    |   -    |  -  |  -   |
 | Codex          |     是     |   是   |   是   | 是  |  是  |
 | Pi             |     是     |   是   |   是   | 是  |  是  |
 | Gemini CLI     |     是     |   是   |   是   | 是  |  是  |
-| Grok Build     |     是     |   -    |   是   | 是  |  是  |
-| OpenCode       |     是     |   -    |   是   | 是  |  是  |
+| Grok Build     |     是     |   是   |   是   | 是  |  是  |
+| OpenCode       |     是     |   是   |   是   | 是  |  是  |
 | OpenClaw       |     是     |   -    |   -    |  -  |  是  |
-| Hermes         |     是     |   -    |   是   | 是  |  是  |
+| Hermes         |     是     |   是   |   是   | 是  |  是  |
 
 各工具的原生配置格式不同，因此具体功能范围有所差异。OpenClaw 还提供工作区、环境变量、工具权限和 Agent 默认配置页面；Hermes 提供记忆管理和打开控制面板的入口。
 
@@ -48,7 +48,7 @@ StackFerry 是一个基于 Tauri 的桌面应用，用于统一管理 AI 编程�
 
 请从 [GitHub 最新版本](https://github.com/Ninthless/StackFerry/releases/latest) 下载适合当前系统的软件包。Release 资产覆盖 Windows、macOS 和 Linux，具体安装格式与架构以各版本发布页面为准；Windows 版本在可用时也会提供便携版压缩包。
 
-StackFerry 会发布带签名的应用内更新资产。macOS 软件包目前采用临时签名而非 Apple 公证，首次启动时可能需要在“系统设置”中手动允许。平台相关注意事项请查看对应版本的发布说明。
+StackFerry 会发布带签名的应用内更新资产。macOS 正式发布包使用 Developer ID 签名并通过 Apple 公证；本地构建的包不用于公开分发。平台相关注意事项请查看对应版本的发布说明。
 
 ## 快速开始
 
@@ -79,9 +79,9 @@ Skills 可从已配置的 Git 仓库发现，也可通过 skills.sh 搜索。Sta
 
 ### 环境要求
 
-- Node.js 20 或更高版本
-- pnpm 10（CI 当前使用 10.12.3）
-- Rust 1.85 或更高版本
+- Node.js 22.12.0 或更高版本
+- pnpm 10.12.3
+- Rust 1.95.0（受支持的开发与发布工具链）
 - 当前操作系统对应的 [Tauri 2 前置依赖](https://v2.tauri.app/start/prerequisites/)
 
 仓库已将 Tauri CLI 2 声明为开发依赖，无需单独全局安装 Tauri CLI。

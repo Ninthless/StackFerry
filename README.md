@@ -33,14 +33,14 @@ StackFerry is a Tauri desktop application for managing providers, credentials, m
 | Tool           | Provider routing | Prompts | Skills | MCP | Sessions |
 | -------------- | :--------------: | :-----: | :----: | :-: | :------: |
 | Claude Code    |       Yes        |   Yes   |  Yes   | Yes |   Yes    |
-| Claude Desktop |       Yes        |    -    |   -    | Yes |    -     |
+| Claude Desktop |       Yes        |    -    |   -    |  -  |    -     |
 | Codex          |       Yes        |   Yes   |  Yes   | Yes |   Yes    |
 | Pi             |       Yes        |   Yes   |  Yes   | Yes |   Yes    |
 | Gemini CLI     |       Yes        |   Yes   |  Yes   | Yes |   Yes    |
-| Grok Build     |       Yes        |    -    |  Yes   | Yes |   Yes    |
-| OpenCode       |       Yes        |    -    |  Yes   | Yes |   Yes    |
+| Grok Build     |       Yes        |   Yes   |  Yes   | Yes |   Yes    |
+| OpenCode       |       Yes        |   Yes   |  Yes   | Yes |   Yes    |
 | OpenClaw       |       Yes        |    -    |   -    |  -  |   Yes    |
-| Hermes         |       Yes        |    -    |  Yes   | Yes |   Yes    |
+| Hermes         |       Yes        |   Yes   |  Yes   | Yes |   Yes    |
 
 Availability varies because each tool has a different native configuration format. OpenClaw also has workspace, environment, tool-access, and agent-default views. Hermes includes memory management and a shortcut to its dashboard.
 
@@ -48,7 +48,7 @@ Availability varies because each tool has a different native configuration forma
 
 Download the appropriate package from the [latest GitHub Release](https://github.com/Ninthless/StackFerry/releases/latest). Release assets cover Windows, macOS, and Linux; the exact installers and architectures are listed on each release page. Windows releases also provide portable archives when available.
 
-StackFerry publishes signed updater artifacts for in-app updates. macOS packages currently use ad-hoc signing rather than Apple notarization, so the first launch may require approval in System Settings. Check the release notes for platform-specific instructions.
+StackFerry publishes signed updater artifacts for in-app updates. Release builds for macOS use Developer ID signing and Apple notarization; locally built packages are not intended for public distribution. Check the release notes for platform-specific instructions.
 
 ## Getting Started
 
@@ -79,9 +79,9 @@ The `stackferry://` deep-link scheme can import supported provider, prompt, MCP,
 
 ### Requirements
 
-- Node.js 20 or later
-- pnpm 10 (CI currently uses 10.12.3)
-- Rust 1.85 or later
+- Node.js 22.12.0 or later
+- pnpm 10.12.3
+- Rust 1.95.0 for the supported development and release toolchain
 - Native [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system
 
 The repository includes Tauri CLI 2 as a development dependency; a separate global Tauri installation is not required.
