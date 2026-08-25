@@ -3,6 +3,11 @@
   "version": "0.1.20",
   "description": "Provider and configuration manager for AI coding tools",
   "type": "module",
+  "packageManager": "pnpm@10.12.3",
+  "engines": {
+    "node": ">=22.12.0",
+    "pnpm": ">=10.12.3 <11"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "pnpm tauri build",
@@ -13,6 +18,7 @@
     "build:renderer": "vite build",
     "typecheck": "tsc --noEmit",
     "release:validate": "node scripts/validate-release-version.mjs",
+    "ipc:validate": "node scripts/validate-ipc-contract.mjs",
     "announcements:validate": "node scripts/validate-announcements.mjs",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx,css,json}\"",

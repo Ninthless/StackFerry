@@ -27,7 +27,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version-file: ".node-version"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@master
@@ -44,6 +44,7 @@ jobs:
           scripts/generate-updater-manifest.node.mjs
           scripts/build-fast.node.mjs
           scripts/verify-bundle-marker.node.mjs
+          scripts/validate-ipc-contract.node.mjs
 
       - name: Validate updater signing secret
         shell: bash
@@ -148,7 +149,7 @@ jobs:
         if: runner.os == 'Windows' && matrix.arch == 'arm64'
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version-file: ".node-version"
 
       - name: Setup pnpm (Windows ARM64)
         if: runner.os == 'Windows' && matrix.arch == 'arm64'
@@ -164,7 +165,7 @@ jobs:
         if: runner.os != 'Windows' || matrix.arch != 'arm64'
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version-file: ".node-version"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -172,7 +173,7 @@ jobs:
         if: runner.os == 'Windows' && matrix.arch == 'arm64'
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version-file: ".node-version"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -193,13 +194,42 @@ jobs:
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
-      - name: Build Tauri App (macOS, ad-hoc signed)
+      - name: Import Apple signing certificate
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERTIFICATE_PATH="$RUNNER_TEMP/apple-certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/stackferry-signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm -f "$CERTIFICATE_PATH"
+
+      - name: Build, sign and notarize Tauri App (macOS)
         if: runner.os == 'macOS'
         shell: bash
         timeout-minutes: 60
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: pnpm tauri build --target universal-apple-darwin
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey_${{ secrets.APPLE_API_KEY }}.p8
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$APPLE_API_KEY_CONTENT" > "$APPLE_API_KEY_PATH"
+          chmod 600 "$APPLE_API_KEY_PATH"
+          pnpm tauri build --target universal-apple-darwin
 
       - name: Build Tauri App (Windows)
         if: runner.os == 'Windows'
@@ -250,6 +280,9 @@ jobs:
       - name: Prepare macOS Assets
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
           set -euxo pipefail
           mkdir -p release-assets
@@ -306,6 +339,14 @@ jobs:
             "release-assets/$NEW_DMG" \
             "$DMG_STAGE_DIR"
 
+          APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          xcrun notarytool submit "release-assets/$NEW_DMG" \
+            --issuer "$APPLE_API_ISSUER" \
+            --key-id "$APPLE_API_KEY" \
+            --key "$APPLE_API_KEY_PATH" \
+            --wait
+          xcrun stapler staple "release-assets/$NEW_DMG"
+          rm -f "$APPLE_API_KEY_PATH"
           rm -rf "$DMG_STAGE_DIR"
           echo "✅ Styled DMG created: $NEW_DMG"
 
@@ -332,12 +373,15 @@ jobs:
           fi
           echo "=== Verifying .app: $APP_PATH ==="
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          spctl --assess --type execute --verbose=4 "$APP_PATH"
           echo "✅ codesign verification passed"
 
           DMG_PATH=$(find release-assets -maxdepth 1 -name "*.dmg" -type f | head -1 || true)
           if [ -n "$DMG_PATH" ]; then
             echo "=== Verifying .dmg: $DMG_PATH ==="
             hdiutil verify "$DMG_PATH"
+            xcrun stapler validate "$DMG_PATH"
+            spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG_PATH"
             echo "✅ .dmg integrity verification passed"
           else
             echo "❌ No .dmg found for verification" >&2
@@ -506,7 +550,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version-file: ".node-version"
 
       - name: Download built release artifacts
         uses: actions/download-artifact@v8

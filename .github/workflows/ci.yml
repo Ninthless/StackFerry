@@ -28,7 +28,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version-file: ".node-version"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -44,8 +44,14 @@ jobs:
       - name: Unit tests
         run: pnpm exec vitest run --maxWorkers=1 --minWorkers=1
 
+      - name: Build renderer
+        run: pnpm build:renderer
+
+      - name: Validate IPC contract
+        run: pnpm ipc:validate
+
       - name: Test Node scripts
-        run: node --test scripts/dev.node.mjs scripts/generate-updater-manifest.node.mjs scripts/build-fast.node.mjs
+        run: node --test scripts/dev.node.mjs scripts/generate-updater-manifest.node.mjs scripts/build-fast.node.mjs scripts/validate-ipc-contract.node.mjs
 
   backend:
     name: Backend Checks
