@@ -378,7 +378,9 @@ export const backupsApi = {
     return await invoke("list_db_backups");
   },
 
-  async restoreDbBackup(filename: string): Promise<string> {
+  async restoreDbBackup(
+    filename: string,
+  ): Promise<{ backupId: string; warning?: string }> {
     return await invoke("restore_db_backup", { filename });
   },
 
