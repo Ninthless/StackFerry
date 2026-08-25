@@ -62,23 +62,23 @@
       "locales": {
         "zh": {
           "title": "StackFerry v0.1.21 已发布",
-          "summary": "强化远程同步安全、恢复后配置一致性，并完善 macOS 正式签名与发布校验。",
-          "body": "本次更新将 WebDAV 密码和 S3 Secret Access Key 迁移到系统凭据管理器，并在迁移成功后清理设置文件中的旧明文凭据。远程 WebDAV 和自定义 S3 端点现在必须使用 HTTPS，本机回环地址仍可使用 HTTP。\n\n同步协议升级到 v3，远程快照清单新增 HMAC-SHA256 来源认证。数据库备份恢复、SQL 导入以及 WebDAV/S3 快照下载后，StackFerry 会重新投影当前 Provider 到各工具的 live 配置；投影失败时会保留已恢复的数据并给出警告。\n\n发布流程现已加入 macOS Developer ID 签名、Apple 公证和 Gatekeeper 校验。CI 还新增 renderer 生产构建、前后端 IPC 契约检查和更完整的版本一致性校验。"
+          "summary": "强化远程同步安全、恢复后配置一致性，并完善构建与发布校验。",
+          "body": "本次更新将 WebDAV 密码和 S3 Secret Access Key 迁移到系统凭据管理器，并在迁移成功后清理设置文件中的旧明文凭据。远程 WebDAV 和自定义 S3 端点现在必须使用 HTTPS，本机回环地址仍可使用 HTTP。\n\n同步协议升级到 v3，远程快照清单新增 HMAC-SHA256 来源认证。数据库备份恢复、SQL 导入以及 WebDAV/S3 快照下载后，StackFerry 会重新投影当前 Provider 到各工具的 live 配置；投影失败时会保留已恢复的数据并给出警告。\n\nCI 新增 renderer 生产构建、前后端 IPC 契约检查和更完整的版本一致性校验。"
         },
         "en": {
           "title": "StackFerry v0.1.21 is available",
-          "summary": "Hardens remote synchronization, restores live configuration consistency, and completes macOS signing and release checks.",
-          "body": "This release moves WebDAV passwords and S3 secret access keys into the operating system credential manager and removes legacy plaintext values from the settings file after migration. Remote WebDAV and custom S3 endpoints now require HTTPS, while loopback addresses may still use HTTP.\n\nThe synchronization protocol is upgraded to v3 with HMAC-SHA256 authentication for remote snapshot manifests. After database backup restore, SQL import, or WebDAV/S3 snapshot download, StackFerry reprojects the current provider into each tool's live configuration. If reprojection fails, restored data is preserved and a warning is returned.\n\nThe release workflow now includes macOS Developer ID signing, Apple notarization, and Gatekeeper verification. CI also adds production renderer builds, frontend-to-Tauri IPC contract checks, and broader release-version consistency validation."
+          "summary": "Hardens remote synchronization, restores live configuration consistency, and strengthens build and release checks.",
+          "body": "This release moves WebDAV passwords and S3 secret access keys into the operating system credential manager and removes legacy plaintext values from the settings file after migration. Remote WebDAV and custom S3 endpoints now require HTTPS, while loopback addresses may still use HTTP.\n\nThe synchronization protocol is upgraded to v3 with HMAC-SHA256 authentication for remote snapshot manifests. After database backup restore, SQL import, or WebDAV/S3 snapshot download, StackFerry reprojects the current provider into each tool's live configuration. If reprojection fails, restored data is preserved and a warning is returned.\n\nCI adds production renderer builds, frontend-to-Tauri IPC contract checks, and broader release-version consistency validation."
         },
         "zh-TW": {
           "title": "StackFerry v0.1.21 已發佈",
-          "summary": "強化遠端同步安全、還原後設定一致性，並完善 macOS 正式簽署與發佈檢查。",
-          "body": "本次更新將 WebDAV 密碼和 S3 Secret Access Key 移至系統憑證管理器，並在遷移成功後清除設定檔中的舊明文憑證。遠端 WebDAV 和自訂 S3 端點現在必須使用 HTTPS，本機回環位址仍可使用 HTTP。\n\n同步協定升級到 v3，遠端快照清單新增 HMAC-SHA256 來源驗證。資料庫備份還原、SQL 匯入以及 WebDAV/S3 快照下載後，StackFerry 會重新投影目前的 Provider 到各工具的 live 設定；投影失敗時會保留已還原的資料並顯示警告。\n\n發佈流程現在包含 macOS Developer ID 簽署、Apple 公證和 Gatekeeper 驗證。CI 也新增 renderer 正式建置、前後端 IPC 契約檢查，以及更完整的版本一致性驗證。"
+          "summary": "強化遠端同步安全、還原後設定一致性，並完善建置與發佈檢查。",
+          "body": "本次更新將 WebDAV 密碼和 S3 Secret Access Key 移至系統憑證管理器，並在遷移成功後清除設定檔中的舊明文憑證。遠端 WebDAV 和自訂 S3 端點現在必須使用 HTTPS，本機回環位址仍可使用 HTTP。\n\n同步協定升級到 v3，遠端快照清單新增 HMAC-SHA256 來源驗證。資料庫備份還原、SQL 匯入以及 WebDAV/S3 快照下載後，StackFerry 會重新投影目前的 Provider 到各工具的 live 設定；投影失敗時會保留已還原的資料並顯示警告。\n\nCI 新增 renderer 正式建置、前後端 IPC 契約檢查，以及更完整的版本一致性驗證。"
         },
         "ja": {
           "title": "StackFerry v0.1.21 をリリースしました",
-          "summary": "リモート同期の安全性、復元後の設定整合性、macOS の正式な署名とリリース検証を強化しました。",
-          "body": "この更新では、WebDAV パスワードと S3 Secret Access Key を OS の資格情報マネージャーへ移行し、移行成功後に設定ファイル内の旧平文資格情報を削除します。リモート WebDAV とカスタム S3 エンドポイントには HTTPS が必須となり、ループバックアドレスのみ HTTP を使用できます。\n\n同期プロトコルを v3 に更新し、リモートスナップショットのマニフェストに HMAC-SHA256 の送信元認証を追加しました。データベースバックアップの復元、SQL インポート、WebDAV/S3 スナップショットのダウンロード後には、現在の Provider を各ツールの live 設定へ再反映します。再反映に失敗した場合も復元済みデータを保持し、警告を表示します。\n\nリリースフローには macOS Developer ID 署名、Apple 公証、Gatekeeper 検証を追加しました。CI では renderer の本番ビルド、フロントエンドと Tauri 間の IPC 契約検証、リリースバージョンの整合性検証も強化しています。"
+          "summary": "リモート同期の安全性、復元後の設定整合性、ビルドとリリースの検証を強化しました。",
+          "body": "この更新では、WebDAV パスワードと S3 Secret Access Key を OS の資格情報マネージャーへ移行し、移行成功後に設定ファイル内の旧平文資格情報を削除します。リモート WebDAV とカスタム S3 エンドポイントには HTTPS が必須となり、ループバックアドレスのみ HTTP を使用できます。\n\n同期プロトコルを v3 に更新し、リモートスナップショットのマニフェストに HMAC-SHA256 の送信元認証を追加しました。データベースバックアップの復元、SQL インポート、WebDAV/S3 スナップショットのダウンロード後には、現在の Provider を各ツールの live 設定へ再反映します。再反映に失敗した場合も復元済みデータを保持し、警告を表示します。\n\nCI では renderer の本番ビルド、フロントエンドと Tauri 間の IPC 契約検証、リリースバージョンの整合性検証を強化しています。"
         }
       },
       "actions": [

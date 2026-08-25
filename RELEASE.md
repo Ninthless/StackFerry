@@ -18,7 +18,6 @@
 
 ### 发布与质量保障
 
-- macOS 正式发布流程改为 Developer ID 签名、Apple 公证、staple 和 Gatekeeper 校验。
 - CI 新增 renderer 生产构建和前后端 IPC 契约检查，并在 Linux、macOS、Windows 上继续执行 Rustfmt、Clippy 和完整测试。
 - 发布版本校验现在同时检查 `package.json`、Tauri 配置、`Cargo.toml` 与 `Cargo.lock`。
 - 统一 Node.js、pnpm 与 Rust 开发和发布工具链说明，并修正支持工具能力矩阵。
@@ -41,7 +40,6 @@
 
 ### Release and Quality
 
-- Added Developer ID signing, Apple notarization, stapling, and Gatekeeper verification to the official macOS release workflow.
 - Added production renderer builds and frontend-to-Tauri IPC contract validation to CI while retaining cross-platform Rustfmt, Clippy, and full test coverage.
 - Extended release version validation to cover `package.json`, Tauri configuration, `Cargo.toml`, and `Cargo.lock`.
 - Aligned Node.js, pnpm, and Rust development and release requirements and corrected the supported-tool capability matrix.

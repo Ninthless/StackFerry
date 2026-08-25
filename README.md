@@ -46,9 +46,9 @@ Availability varies because each tool has a different native configuration forma
 
 ## Download and Install
 
-Download the appropriate package from the [latest GitHub Release](https://github.com/Ninthless/StackFerry/releases/latest). Release assets cover Windows, macOS, and Linux; the exact installers and architectures are listed on each release page. Windows releases also provide portable archives when available.
+Download the appropriate package from the [latest GitHub Release](https://github.com/Ninthless/StackFerry/releases/latest). Automated release assets cover Windows and Linux; the exact installers and architectures are listed on each release page. Windows releases also provide portable archives when available.
 
-StackFerry publishes signed updater artifacts for in-app updates. Release builds for macOS use Developer ID signing and Apple notarization; locally built packages are not intended for public distribution. Check the release notes for platform-specific instructions.
+StackFerry publishes signed updater artifacts for in-app updates. Automated releases currently build Windows and Linux packages. Check the release notes for platform-specific instructions.
 
 ## Getting Started
 
