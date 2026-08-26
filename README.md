@@ -17,6 +17,35 @@ Desktop configuration and routing manager for AI coding tools
 
 StackFerry is a Tauri desktop application for managing providers, credentials, models, and active routes across AI coding tools. It combines configuration management with local request routing, failover, reusable prompts and skills, MCP configuration, session inspection, usage statistics, and remote backup.
 
+## Product Preview
+
+<p align="center">
+  <img src="./docs/images/provider-routes.png" alt="StackFerry provider routes" width="100%">
+</p>
+
+<p align="center">
+  Manage providers, credentials, models, prompts, skills, MCP servers, and coding sessions from one desktop workspace.
+</p>
+
+<p align="center">
+  <img src="./docs/images/provider-editor.png" alt="StackFerry provider editor" width="49%">
+  <img src="./docs/images/skills-management.png" alt="StackFerry skills management" width="49%">
+</p>
+
+<p align="center">
+  <img src="./docs/images/mcp-management.png" alt="StackFerry MCP server management" width="49%">
+  <img src="./docs/images/session-manager.png" alt="StackFerry session manager" width="49%">
+</p>
+
+<details>
+<summary>More screenshots</summary>
+
+<p align="center">
+  <img src="./docs/images/prompts.png" alt="StackFerry prompts management" width="100%">
+</p>
+
+</details>
+
 ## Core Capabilities
 
 - **Provider management:** Keep multiple API providers and model configurations for each supported tool, then switch the active configuration without manually editing tool files.

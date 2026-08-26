@@ -17,6 +17,35 @@ AI 编程工具的桌面配置与路由管理器
 
 StackFerry 是一个基于 Tauri 的桌面应用，用于统一管理 AI 编程工具的供应商、凭据、模型和当前路由。它同时提供本地请求路由、故障转移、Prompt 与 Skills 管理、MCP 配置、会话查看、用量统计和远程备份能力。
 
+## 产品预览
+
+<p align="center">
+  <img src="./docs/images/provider-routes.png" alt="StackFerry 供应商路由" width="100%">
+</p>
+
+<p align="center">
+  在一个桌面工作区中管理供应商、凭据、模型、Prompt、Skills、MCP 服务和编程会话。
+</p>
+
+<p align="center">
+  <img src="./docs/images/provider-editor.png" alt="StackFerry 供应商编辑" width="49%">
+  <img src="./docs/images/skills-management.png" alt="StackFerry Skills 管理" width="49%">
+</p>
+
+<p align="center">
+  <img src="./docs/images/mcp-management.png" alt="StackFerry MCP 服务管理" width="49%">
+  <img src="./docs/images/session-manager.png" alt="StackFerry 会话管理" width="49%">
+</p>
+
+<details>
+<summary>查看更多截图</summary>
+
+<p align="center">
+  <img src="./docs/images/prompts.png" alt="StackFerry Prompt 管理" width="100%">
+</p>
+
+</details>
+
 ## 核心能力
 
 - **供应商管理：** 为每个受支持工具保存多组 API 供应商和模型配置，无需手动修改配置文件即可切换当前配置。
