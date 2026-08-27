@@ -1956,6 +1956,16 @@ fn codex_proxy_error_json(
             model = request_model,
             endpoint = endpoint,
         )
+    } else if let Some(status) = upstream_status {
+        let upstream_message = error_obj
+            .get("message")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string)
+            .filter(|message| !message.trim().is_empty())
+            .unwrap_or_else(|| get_error_message(error));
+        format!(
+            "Upstream provider returned HTTP {status} while handling Codex endpoint {endpoint}. Provider: {provider_name}; model: {request_model}; upstream message: {upstream_message}"
+        )
     } else {
         let cause = error_obj
             .get("message")
@@ -1963,11 +1973,8 @@ fn codex_proxy_error_json(
             .map(ToString::to_string)
             .filter(|message| !message.trim().is_empty())
             .unwrap_or_else(|| get_error_message(error));
-        let status_fragment = upstream_status
-            .map(|status| format!("; upstream_status: HTTP {status}"))
-            .unwrap_or_default();
         format!(
-            "StackFerry local proxy failed while handling Codex endpoint {endpoint}. Provider: {provider_name}; model: {request_model}{status_fragment}; cause: {cause}"
+            "StackFerry local proxy failed while handling Codex endpoint {endpoint}. Provider: {provider_name}; model: {request_model}; cause: {cause}"
         )
     };
 
@@ -3614,10 +3621,26 @@ data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\"}}\n
         let body = codex_proxy_error_json("MiniMax", "abab6.5s", "/responses", &error);
 
         let message = body["error"]["message"].as_str().unwrap();
-        assert!(message.contains("upstream_status: HTTP 502"));
+        assert!(message.contains("Upstream provider returned HTTP 502"));
+        assert!(!message.contains("StackFerry local proxy failed"));
         assert!(message.contains("upstream gateway failed"));
         assert_eq!(body["error"]["code"], 2013);
         assert_eq!(body["error"]["upstream_status"], 502);
+    }
+
+    #[test]
+    fn codex_proxy_403_preserves_upstream_message_without_local_blame() {
+        let error = ProxyError::UpstreamError {
+            status: 403,
+            body: Some(r#"{"error":{"message":"Insufficient account balance"}}"#.to_string()),
+        };
+        let body = codex_proxy_error_json("Relay", "gpt-5.6", "/responses", &error);
+
+        let message = body["error"]["message"].as_str().unwrap();
+        assert!(message.contains("Upstream provider returned HTTP 403"));
+        assert!(message.contains("Insufficient account balance"));
+        assert!(!message.contains("StackFerry local proxy failed"));
+        assert_eq!(body["error"]["upstream_status"], 403);
     }
 
     #[test]

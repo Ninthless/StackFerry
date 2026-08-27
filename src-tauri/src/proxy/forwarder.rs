@@ -763,8 +763,15 @@ impl RequestForwarder {
                         .await;
                     }
 
-                    // 更新当前应用类型使用的 provider
-                    if !request_kind.is_codex_auxiliary() && !self.session_credential_bound {
+                    let should_persist_failover_switch = !request_kind.is_codex_auxiliary()
+                        && !self.session_credential_bound
+                        && !matches!(app_type, AppType::Codex)
+                        && self.current_provider_id_at_start.as_str() != provider.id.as_str();
+
+                    if !request_kind.is_codex_auxiliary()
+                        && !self.session_credential_bound
+                        && !matches!(app_type, AppType::Codex)
+                    {
                         let mut current_providers = self.current_providers.write().await;
                         current_providers.insert(
                             app_type_str.to_string(),
@@ -777,10 +784,7 @@ impl RequestForwarder {
                         let mut status = self.status.write().await;
                         status.success_requests += 1;
                         status.last_error = None;
-                        let should_switch = !request_kind.is_codex_auxiliary()
-                            && !self.session_credential_bound
-                            && self.current_provider_id_at_start.as_str() != provider.id.as_str();
-                        if should_switch {
+                        if should_persist_failover_switch {
                             status.failover_count += 1;
 
                             // 异步触发供应商切换，更新 UI/托盘，并把“当前供应商”同步为实际使用的 provider
@@ -793,6 +797,11 @@ impl RequestForwarder {
                             tokio::spawn(async move {
                                 let _ = fm.try_switch(ah.as_ref(), &at, &pid, &pname).await;
                             });
+                        } else if !request_kind.is_codex_auxiliary()
+                            && !self.session_credential_bound
+                            && self.current_provider_id_at_start.as_str() != provider.id.as_str()
+                        {
+                            status.failover_count += 1;
                         }
                         // 重新计算成功率
                         if status.total_requests > 0 {
@@ -873,7 +882,7 @@ impl RequestForwarder {
                                     )
                                     .await;
 
-                                    {
+                                    if !matches!(app_type, AppType::Codex) {
                                         let mut current_providers =
                                             self.current_providers.write().await;
                                         current_providers.insert(
@@ -886,22 +895,24 @@ impl RequestForwarder {
                                         let mut status = self.status.write().await;
                                         status.success_requests += 1;
                                         status.last_error = None;
-                                        let should_switch =
+                                        let switched_provider =
                                             self.current_provider_id_at_start.as_str()
                                                 != provider.id.as_str();
-                                        if should_switch {
+                                        if switched_provider {
                                             status.failover_count += 1;
-                                            let fm = self.failover_manager.clone();
-                                            let ah = self.app_handle.clone();
-                                            let pid = provider.id.clone();
-                                            let pname = provider.name.clone();
-                                            let at = app_type_str.to_string();
+                                            if !matches!(app_type, AppType::Codex) {
+                                                let fm = self.failover_manager.clone();
+                                                let ah = self.app_handle.clone();
+                                                let pid = provider.id.clone();
+                                                let pname = provider.name.clone();
+                                                let at = app_type_str.to_string();
 
-                                            tokio::spawn(async move {
-                                                let _ = fm
-                                                    .try_switch(ah.as_ref(), &at, &pid, &pname)
-                                                    .await;
-                                            });
+                                                tokio::spawn(async move {
+                                                    let _ = fm
+                                                        .try_switch(ah.as_ref(), &at, &pid, &pname)
+                                                        .await;
+                                                });
+                                            }
                                         }
                                         if status.total_requests > 0 {
                                             status.success_rate = (status.success_requests as f32
@@ -1019,8 +1030,7 @@ impl RequestForwarder {
                                         )
                                         .await;
 
-                                        // 更新当前应用类型使用的 provider
-                                        {
+                                        if !matches!(app_type, AppType::Codex) {
                                             let mut current_providers =
                                                 self.current_providers.write().await;
                                             current_providers.insert(
@@ -1034,24 +1044,30 @@ impl RequestForwarder {
                                             let mut status = self.status.write().await;
                                             status.success_requests += 1;
                                             status.last_error = None;
-                                            let should_switch =
+                                            let switched_provider =
                                                 self.current_provider_id_at_start.as_str()
                                                     != provider.id.as_str();
-                                            if should_switch {
+                                            if switched_provider {
                                                 status.failover_count += 1;
 
-                                                // 异步触发供应商切换，更新 UI/托盘
-                                                let fm = self.failover_manager.clone();
-                                                let ah = self.app_handle.clone();
-                                                let pid = provider.id.clone();
-                                                let pname = provider.name.clone();
-                                                let at = app_type_str.to_string();
+                                                if !matches!(app_type, AppType::Codex) {
+                                                    let fm = self.failover_manager.clone();
+                                                    let ah = self.app_handle.clone();
+                                                    let pid = provider.id.clone();
+                                                    let pname = provider.name.clone();
+                                                    let at = app_type_str.to_string();
 
-                                                tokio::spawn(async move {
-                                                    let _ = fm
-                                                        .try_switch(ah.as_ref(), &at, &pid, &pname)
-                                                        .await;
-                                                });
+                                                    tokio::spawn(async move {
+                                                        let _ = fm
+                                                            .try_switch(
+                                                                ah.as_ref(),
+                                                                &at,
+                                                                &pid,
+                                                                &pname,
+                                                            )
+                                                            .await;
+                                                    });
+                                                }
                                             }
                                             if status.total_requests > 0 {
                                                 status.success_rate = (status.success_requests
@@ -1187,7 +1203,7 @@ impl RequestForwarder {
                                     )
                                     .await;
 
-                                    {
+                                    if !matches!(app_type, AppType::Codex) {
                                         let mut current_providers =
                                             self.current_providers.write().await;
                                         current_providers.insert(
@@ -1200,21 +1216,23 @@ impl RequestForwarder {
                                         let mut status = self.status.write().await;
                                         status.success_requests += 1;
                                         status.last_error = None;
-                                        let should_switch =
+                                        let switched_provider =
                                             self.current_provider_id_at_start.as_str()
                                                 != provider.id.as_str();
-                                        if should_switch {
+                                        if switched_provider {
                                             status.failover_count += 1;
-                                            let fm = self.failover_manager.clone();
-                                            let ah = self.app_handle.clone();
-                                            let pid = provider.id.clone();
-                                            let pname = provider.name.clone();
-                                            let at = app_type_str.to_string();
-                                            tokio::spawn(async move {
-                                                let _ = fm
-                                                    .try_switch(ah.as_ref(), &at, &pid, &pname)
-                                                    .await;
-                                            });
+                                            if !matches!(app_type, AppType::Codex) {
+                                                let fm = self.failover_manager.clone();
+                                                let ah = self.app_handle.clone();
+                                                let pid = provider.id.clone();
+                                                let pname = provider.name.clone();
+                                                let at = app_type_str.to_string();
+                                                tokio::spawn(async move {
+                                                    let _ = fm
+                                                        .try_switch(ah.as_ref(), &at, &pid, &pname)
+                                                        .await;
+                                                });
+                                            }
                                         }
                                         if status.total_requests > 0 {
                                             status.success_rate = (status.success_requests as f32

@@ -669,7 +669,27 @@ impl CodexAdapter {
 
     /// 从 Provider 配置中提取 API Key
     fn extract_key(&self, provider: &Provider) -> Option<String> {
-        // 1. 尝试从 env 中获取
+        if let Some(auth) = provider.settings_config.get("auth") {
+            if let Some(key) = crate::codex_config::extract_codex_auth_api_key(auth) {
+                return Some(key.to_string());
+            }
+        }
+
+        if let Some(config_str) = provider
+            .settings_config
+            .get("config")
+            .and_then(|v| v.as_str())
+        {
+            if let Some(key) =
+                crate::codex_config::extract_codex_experimental_bearer_token(config_str)
+            {
+                return Some(key);
+            }
+            if let Some((_, key)) = crate::grok_config::extract_credentials(config_str) {
+                return Some(key);
+            }
+        }
+
         if let Some(env) = provider.settings_config.get("env") {
             if let Some(key) = env
                 .get("OPENAI_API_KEY")
@@ -681,14 +701,6 @@ impl CodexAdapter {
             }
         }
 
-        // 2. 尝试从 auth 中获取 (Codex CLI 格式)
-        if let Some(auth) = provider.settings_config.get("auth") {
-            if let Some(key) = crate::codex_config::extract_codex_auth_api_key(auth) {
-                return Some(key.to_string());
-            }
-        }
-
-        // 3. 尝试直接获取
         if let Some(key) = provider
             .settings_config
             .get("apiKey")
@@ -700,7 +712,6 @@ impl CodexAdapter {
             return Some(key.to_string());
         }
 
-        // 4. 尝试从 config 对象中获取
         if let Some(config) = provider.settings_config.get("config") {
             if let Some(key) = config
                 .get("api_key")
@@ -710,17 +721,6 @@ impl CodexAdapter {
                 .filter(|key| !key.is_empty())
             {
                 return Some(key.to_string());
-            }
-
-            if let Some(config_str) = config.as_str() {
-                if let Some((_, key)) = crate::grok_config::extract_credentials(config_str) {
-                    return Some(key);
-                }
-                if let Some(key) =
-                    crate::codex_config::extract_codex_experimental_bearer_token(config_str)
-                {
-                    return Some(key);
-                }
             }
         }
 
@@ -750,7 +750,21 @@ impl ProviderAdapter for CodexAdapter {
             return Ok(super::XAI_API_BASE_URL.to_string());
         }
 
-        // 1. 尝试直接获取 base_url 字段
+        if let Some(config) = provider.settings_config.get("config") {
+            if let Some(config_str) = config.as_str() {
+                if let Some(url) = extract_codex_base_url_from_toml(config_str) {
+                    return Ok(url.trim_end_matches('/').to_string());
+                }
+                if let Some(url) = crate::grok_config::extract_base_url(config_str) {
+                    return Ok(url.trim_end_matches('/').to_string());
+                }
+            }
+
+            if let Some(url) = config.get("base_url").and_then(|v| v.as_str()) {
+                return Ok(url.trim_end_matches('/').to_string());
+            }
+        }
+
         if let Some(url) = provider
             .settings_config
             .get("base_url")
@@ -759,39 +773,12 @@ impl ProviderAdapter for CodexAdapter {
             return Ok(url.trim_end_matches('/').to_string());
         }
 
-        // 2. 尝试 baseURL
         if let Some(url) = provider
             .settings_config
             .get("baseURL")
             .and_then(|v| v.as_str())
         {
             return Ok(url.trim_end_matches('/').to_string());
-        }
-
-        // 3. 尝试从 config 对象中获取
-        if let Some(config) = provider.settings_config.get("config") {
-            if let Some(url) = config.get("base_url").and_then(|v| v.as_str()) {
-                return Ok(url.trim_end_matches('/').to_string());
-            }
-
-            // 尝试解析 TOML 字符串格式
-            if let Some(config_str) = config.as_str() {
-                if let Some(url) = crate::grok_config::extract_base_url(config_str) {
-                    return Ok(url.trim_end_matches('/').to_string());
-                }
-                if let Some(start) = config_str.find("base_url = \"") {
-                    let rest = &config_str[start + 12..];
-                    if let Some(end) = rest.find('"') {
-                        return Ok(rest[..end].trim_end_matches('/').to_string());
-                    }
-                }
-                if let Some(start) = config_str.find("base_url = '") {
-                    let rest = &config_str[start + 12..];
-                    if let Some(end) = rest.find('\'') {
-                        return Ok(rest[..end].trim_end_matches('/').to_string());
-                    }
-                }
-            }
         }
 
         Err(ProxyError::ConfigError(
@@ -961,6 +948,36 @@ context_window = 500000
                 "/responses/compact"
             ),
             "https://chatgpt.com/backend-api/codex/responses/compact"
+        );
+    }
+
+    #[test]
+    fn canonical_codex_auth_and_config_override_legacy_fields() {
+        let adapter = CodexAdapter::new();
+        let provider = create_provider(json!({
+            "auth": {
+                "OPENAI_API_KEY": "canonical-key"
+            },
+            "config": r#"
+model_provider = "custom"
+[model_providers.custom]
+base_url = "https://canonical.example/v1"
+wire_api = "responses"
+"#,
+            "env": {
+                "OPENAI_API_KEY": "legacy-env-key"
+            },
+            "apiKey": "legacy-direct-key",
+            "base_url": "https://legacy.example/v1"
+        }));
+
+        assert_eq!(
+            adapter.extract_auth(&provider).map(|auth| auth.api_key),
+            Some("canonical-key".to_string())
+        );
+        assert_eq!(
+            adapter.extract_base_url(&provider).unwrap(),
+            "https://canonical.example/v1"
         );
     }
 
