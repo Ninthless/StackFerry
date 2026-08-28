@@ -3194,6 +3194,8 @@
       "timeout": "恢復等待時間（秒）",
       "timeoutHint": "斷路器打開後，等待多久後嘗試恢復（建議：30-120）",
       "circuitBreakerSettings": "斷路器設定",
+      "autoRecovery": "自動恢復熔斷",
+      "autoRecoveryHint": "開啟後會等待指定時間，並透過半開探測自動恢復；關閉後會維持熔斷，需在供應商卡片上手動恢復。",
       "successThreshold": "恢復成功閾值",
       "successThresholdHint": "半開狀態下成功多少次後關閉斷路器",
       "errorRate": "錯誤率閾值 (%)",

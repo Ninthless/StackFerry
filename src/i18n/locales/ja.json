@@ -3201,6 +3201,8 @@
       "timeout": "回復待ち時間（秒）",
       "timeoutHint": "サーキットが開いた後、回復を試みるまでの待ち時間（推奨: 30-120）",
       "circuitBreakerSettings": "サーキットブレーカー設定",
+      "autoRecovery": "サーキットブレーカーの自動回復",
+      "autoRecoveryHint": "有効にすると、待機後に半開プローブで自動回復します。無効にすると開いたままになり、プロバイダーカードから手動で回復する必要があります。",
       "successThreshold": "回復成功しきい値",
       "successThresholdHint": "半開状態でこの回数成功するとサーキットブレーカーが閉じます",
       "errorRate": "エラー率しきい値 (%)",

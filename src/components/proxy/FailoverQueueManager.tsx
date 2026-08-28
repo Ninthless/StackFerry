@@ -13,6 +13,7 @@ import { Plus, Trash2, Loader2, Info, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ProviderHealthBadge } from "@/components/providers/ProviderHealthBadge";
 import {
   Select,
   SelectContent,
@@ -30,6 +31,8 @@ import {
   useRemoveFromFailoverQueue,
   useAutoFailoverEnabled,
   useSetAutoFailoverEnabled,
+  useProviderHealth,
+  useResetCircuitBreaker,
 } from "@/lib/query/failover";
 
 interface FailoverQueueManagerProps {
@@ -229,6 +232,7 @@ export function FailoverQueueManager({
             <QueueItem
               key={item.providerId}
               item={item}
+              appType={appType}
               disabled={disabled}
               onRemove={handleRemoveProvider}
               isRemoving={removeFromQueue.isPending}
@@ -252,13 +256,25 @@ export function FailoverQueueManager({
 
 interface QueueItemProps {
   item: FailoverQueueItem;
+  appType: AppId;
   disabled: boolean;
   onRemove: (providerId: string) => void;
   isRemoving: boolean;
 }
 
-function QueueItem({ item, disabled, onRemove, isRemoving }: QueueItemProps) {
+function QueueItem({
+  item,
+  appType,
+  disabled,
+  onRemove,
+  isRemoving,
+}: QueueItemProps) {
   const { t } = useTranslation();
+  const { data: health } = useProviderHealth(item.providerId, appType);
+  const resetCircuitBreaker = useResetCircuitBreaker();
+  const isRecovering =
+    resetCircuitBreaker.isPending &&
+    resetCircuitBreaker.variables?.providerId === item.providerId;
 
   return (
     <div
@@ -282,6 +298,20 @@ function QueueItem({ item, disabled, onRemove, isRemoving }: QueueItemProps) {
           )}
         </span>
       </div>
+
+      {health && (
+        <ProviderHealthBadge
+          consecutiveFailures={health.consecutive_failures}
+          isHealthy={health.is_healthy}
+          isRecovering={isRecovering}
+          onRecover={() =>
+            resetCircuitBreaker.mutate({
+              appType,
+              providerId: item.providerId,
+            })
+          }
+        />
+      )}
 
       {/* 删除按钮 */}
       <Button

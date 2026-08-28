@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Save, Loader2, Info } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +25,7 @@ export function AutoFailoverConfigPanel({
   // 使用字符串状态以支持完全清空数字输入框
   const [formData, setFormData] = useState({
     autoFailoverEnabled: false,
+    circuitAutoRecoveryEnabled: true,
     maxRetries: "3",
     streamingFirstByteTimeout: "60",
     streamingIdleTimeout: "120",
@@ -39,6 +41,7 @@ export function AutoFailoverConfigPanel({
     if (config) {
       setFormData({
         autoFailoverEnabled: config.autoFailoverEnabled,
+        circuitAutoRecoveryEnabled: config.circuitAutoRecoveryEnabled,
         maxRetries: String(config.maxRetries),
         streamingFirstByteTimeout: String(config.streamingFirstByteTimeout),
         streamingIdleTimeout: String(config.streamingIdleTimeout),
@@ -163,6 +166,7 @@ export function AutoFailoverConfigPanel({
         appType,
         enabled: config.enabled,
         autoFailoverEnabled: formData.autoFailoverEnabled,
+        circuitAutoRecoveryEnabled: formData.circuitAutoRecoveryEnabled,
         maxRetries: raw.maxRetries,
         streamingFirstByteTimeout: raw.streamingFirstByteTimeout,
         streamingIdleTimeout: raw.streamingIdleTimeout,
@@ -188,6 +192,7 @@ export function AutoFailoverConfigPanel({
     if (config) {
       setFormData({
         autoFailoverEnabled: config.autoFailoverEnabled,
+        circuitAutoRecoveryEnabled: config.circuitAutoRecoveryEnabled,
         maxRetries: String(config.maxRetries),
         streamingFirstByteTimeout: String(config.streamingFirstByteTimeout),
         streamingIdleTimeout: String(config.streamingIdleTimeout),
@@ -386,6 +391,31 @@ export function AutoFailoverConfigPanel({
             {t("proxy.autoFailover.circuitBreakerSettings", "熔断器配置")}
           </h4>
 
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-background/60 p-3">
+            <div className="space-y-1">
+              <Label htmlFor={`autoRecovery-${appType}`}>
+                {t("proxy.autoFailover.autoRecovery", "自动恢复熔断")}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  "proxy.autoFailover.autoRecoveryHint",
+                  "开启后等待指定时间并通过半开探测自动恢复；关闭后保持熔断，需在供应商卡片上手动恢复。",
+                )}
+              </p>
+            </div>
+            <Switch
+              id={`autoRecovery-${appType}`}
+              checked={formData.circuitAutoRecoveryEnabled}
+              onCheckedChange={(checked) =>
+                setFormData({
+                  ...formData,
+                  circuitAutoRecoveryEnabled: checked,
+                })
+              }
+              disabled={isDisabled}
+            />
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label htmlFor={`successThreshold-${appType}`}>
@@ -403,7 +433,7 @@ export function AutoFailoverConfigPanel({
                     circuitSuccessThreshold: e.target.value,
                   })
                 }
-                disabled={isDisabled}
+                disabled={isDisabled || !formData.circuitAutoRecoveryEnabled}
               />
               <p className="text-xs text-muted-foreground">
                 {t(
@@ -429,7 +459,7 @@ export function AutoFailoverConfigPanel({
                     circuitTimeoutSeconds: e.target.value,
                   })
                 }
-                disabled={isDisabled}
+                disabled={isDisabled || !formData.circuitAutoRecoveryEnabled}
               />
               <p className="text-xs text-muted-foreground">
                 {t(

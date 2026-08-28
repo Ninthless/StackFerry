@@ -555,6 +555,7 @@ impl ProviderRouter {
                 failure_threshold: app_config.circuit_failure_threshold,
                 success_threshold: app_config.circuit_success_threshold,
                 timeout_seconds: app_config.circuit_timeout_seconds as u64,
+                auto_recovery_enabled: app_config.circuit_auto_recovery_enabled,
                 error_rate_threshold: app_config.circuit_error_rate_threshold,
                 min_requests: app_config.circuit_min_requests,
             },

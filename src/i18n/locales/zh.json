@@ -3223,6 +3223,8 @@
       "timeout": "恢复等待时间（秒）",
       "timeoutHint": "熔断器打开后，等待多久后尝试恢复（建议: 30-120）",
       "circuitBreakerSettings": "熔断器设置",
+      "autoRecovery": "自动恢复熔断",
+      "autoRecoveryHint": "开启后等待指定时间并通过半开探测自动恢复；关闭后保持熔断，需在供应商卡片上手动恢复。",
       "successThreshold": "恢复成功阈值",
       "successThresholdHint": "半开状态下成功多少次后关闭熔断器",
       "errorRate": "错误率阈值 (%)",

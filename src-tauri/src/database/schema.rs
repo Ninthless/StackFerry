@@ -134,6 +134,7 @@ impl Database {
             proxy_enabled INTEGER NOT NULL DEFAULT 0, listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
             listen_port INTEGER NOT NULL DEFAULT 15721, enable_logging INTEGER NOT NULL DEFAULT 1,
             enabled INTEGER NOT NULL DEFAULT 0, auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
+            circuit_auto_recovery_enabled INTEGER NOT NULL DEFAULT 1,
             max_retries INTEGER NOT NULL DEFAULT 3, streaming_first_byte_timeout INTEGER NOT NULL DEFAULT 60,
             streaming_idle_timeout INTEGER NOT NULL DEFAULT 120, non_streaming_timeout INTEGER NOT NULL DEFAULT 600,
             circuit_failure_threshold INTEGER NOT NULL DEFAULT 4, circuit_success_threshold INTEGER NOT NULL DEFAULT 2,
@@ -626,6 +627,11 @@ impl Database {
                         log::info!("迁移数据库从 v26 到 v27（实例运行目录与状态）");
                         Self::migrate_v26_to_v27(conn)?;
                         Self::set_user_version(conn, 27)?;
+                    }
+                    27 => {
+                        log::info!("迁移数据库从 v27 到 v28（添加熔断手动恢复模式）");
+                        Self::migrate_v27_to_v28(conn)?;
+                        Self::set_user_version(conn, 28)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1933,6 +1939,16 @@ impl Database {
             [],
         )
         .map_err(|e| AppError::Database(format!("迁移实例运行目录失败: {e}")))?;
+        Ok(())
+    }
+
+    fn migrate_v27_to_v28(conn: &Connection) -> Result<(), AppError> {
+        Self::add_column_if_missing(
+            conn,
+            "proxy_config",
+            "circuit_auto_recovery_enabled",
+            "INTEGER NOT NULL DEFAULT 1",
+        )?;
         Ok(())
     }
 
@@ -3981,6 +3997,35 @@ mod tests {
             |row| row.get(0),
         )?;
         assert_eq!(runtime_home.as_deref(), Some("/tmp/codex-a"));
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v27_to_v28_enables_automatic_circuit_recovery() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE proxy_config (
+                app_type TEXT PRIMARY KEY,
+                auto_failover_enabled INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT INTO proxy_config (app_type) VALUES ('codex');",
+        )?;
+        Database::set_user_version(&conn, 27)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert!(Database::has_column(
+            &conn,
+            "proxy_config",
+            "circuit_auto_recovery_enabled",
+        )?);
+        let enabled: i64 = conn.query_row(
+            "SELECT circuit_auto_recovery_enabled FROM proxy_config WHERE app_type = 'codex'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(enabled, 1);
         assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
         Ok(())
     }

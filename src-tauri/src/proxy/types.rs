@@ -176,6 +176,8 @@ pub struct AppProxyConfig {
     pub enabled: bool,
     /// 该 app 自动故障转移开关
     pub auto_failover_enabled: bool,
+    /// 熔断后是否自动进入半开探测
+    pub circuit_auto_recovery_enabled: bool,
     /// 最大重试次数
     pub max_retries: u32,
     /// 流式首字超时（秒）

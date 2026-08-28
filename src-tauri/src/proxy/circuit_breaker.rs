@@ -42,6 +42,8 @@ pub struct CircuitBreakerConfig {
     pub success_threshold: u32,
     /// 超时时间 - 熔断器打开后多久尝试半开（秒）
     pub timeout_seconds: u64,
+    /// 是否允许熔断器超时后自动进入半开探测
+    pub auto_recovery_enabled: bool,
     /// 错误率阈值 - 错误率超过此值时打开熔断器 (0.0-1.0)
     pub error_rate_threshold: f64,
     /// 最小请求数 - 计算错误率前的最小请求数
@@ -54,6 +56,7 @@ impl From<&AppProxyConfig> for CircuitBreakerConfig {
             failure_threshold: config.circuit_failure_threshold,
             success_threshold: config.circuit_success_threshold,
             timeout_seconds: config.circuit_timeout_seconds as u64,
+            auto_recovery_enabled: config.circuit_auto_recovery_enabled,
             error_rate_threshold: config.circuit_error_rate_threshold,
             min_requests: config.circuit_min_requests,
         }
@@ -66,6 +69,7 @@ impl Default for CircuitBreakerConfig {
             failure_threshold: 4,
             success_threshold: 2,
             timeout_seconds: 60,
+            auto_recovery_enabled: true,
             error_rate_threshold: 0.6,
             min_requests: 10,
         }
@@ -130,7 +134,11 @@ impl CircuitBreaker {
 
     /// 更新熔断器配置（热更新，不重置状态）
     pub async fn update_config(&self, new_config: CircuitBreakerConfig) {
+        let disable_auto_recovery = !new_config.auto_recovery_enabled;
         *self.config.write().await = new_config;
+        if disable_auto_recovery && *self.state.read().await == CircuitState::HalfOpen {
+            self.transition_to_open().await;
+        }
     }
 
     /// 判断当前 Provider 是否“可被纳入候选链路”
@@ -148,6 +156,9 @@ impl CircuitBreaker {
         match state {
             CircuitState::Closed | CircuitState::HalfOpen => true,
             CircuitState::Open => {
+                if !config.auto_recovery_enabled {
+                    return false;
+                }
                 if let Some(opened_at) = *self.last_opened_at.read().await {
                     if opened_at.elapsed().as_secs() >= config.timeout_seconds {
                         drop(config); // 释放读锁再转换状态
@@ -175,6 +186,12 @@ impl CircuitBreaker {
             },
             CircuitState::Open => {
                 let config = self.config.read().await;
+                if !config.auto_recovery_enabled {
+                    return AllowResult {
+                        allowed: false,
+                        used_half_open_permit: false,
+                    };
+                }
                 // 检查是否应该尝试半开
                 if let Some(opened_at) = *self.last_opened_at.read().await {
                     if opened_at.elapsed().as_secs() >= config.timeout_seconds {
@@ -502,5 +519,50 @@ mod tests {
         breaker.reset().await;
         assert_eq!(breaker.get_state().await, CircuitState::Closed);
         assert!(breaker.allow_request().await.allowed);
+    }
+
+    #[tokio::test]
+    async fn manual_recovery_keeps_open_circuit_blocked_after_timeout() {
+        let config = CircuitBreakerConfig {
+            failure_threshold: 1,
+            timeout_seconds: 0,
+            auto_recovery_enabled: false,
+            ..Default::default()
+        };
+        let breaker = CircuitBreaker::new(config);
+
+        breaker.record_failure(false).await;
+
+        assert_eq!(breaker.get_state().await, CircuitState::Open);
+        assert!(!breaker.is_available().await);
+        assert!(!breaker.allow_request().await.allowed);
+
+        breaker.reset().await;
+
+        assert_eq!(breaker.get_state().await, CircuitState::Closed);
+        assert!(breaker.allow_request().await.allowed);
+    }
+
+    #[tokio::test]
+    async fn disabling_auto_recovery_moves_half_open_circuit_back_to_open() {
+        let config = CircuitBreakerConfig {
+            timeout_seconds: 0,
+            ..Default::default()
+        };
+        let breaker = CircuitBreaker::new(config);
+
+        breaker.transition_to_open().await;
+        assert!(breaker.is_available().await);
+        assert_eq!(breaker.get_state().await, CircuitState::HalfOpen);
+
+        breaker
+            .update_config(CircuitBreakerConfig {
+                auto_recovery_enabled: false,
+                ..Default::default()
+            })
+            .await;
+
+        assert_eq!(breaker.get_state().await, CircuitState::Open);
+        assert!(!breaker.allow_request().await.allowed);
     }
 }

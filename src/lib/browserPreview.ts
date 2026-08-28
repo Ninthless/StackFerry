@@ -107,6 +107,7 @@ const appProxyConfig = (appType: string) => ({
   appType,
   enabled: false,
   autoFailoverEnabled: false,
+  circuitAutoRecoveryEnabled: true,
   maxRetries: 3,
   streamingFirstByteTimeout: 30,
   streamingIdleTimeout: 60,
