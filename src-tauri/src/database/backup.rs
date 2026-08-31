@@ -5,10 +5,12 @@
 use super::{lock_conn, Database};
 use crate::config::get_app_config_dir;
 use crate::error::AppError;
+use crate::services::credential_cleanup::CredentialCleanupService;
 use chrono::{Local, Utc};
 use rusqlite::backup::Backup;
 use rusqlite::types::ValueRef;
 use rusqlite::Connection;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
@@ -77,6 +79,7 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "usage_daily_rollups",
     "agent_instances",
     "session_credential_bindings",
+    "instance_resource_operations",
 ];
 
 /// Tables whose local data is preserved (restored from local snapshot) during WebDAV import.
@@ -88,6 +91,7 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "usage_daily_rollups",
     "agent_instances",
     "session_credential_bindings",
+    "instance_resource_operations",
 ];
 
 /// A database backup entry for the UI
@@ -155,6 +159,7 @@ impl Database {
     ) -> Result<String, AppError> {
         let sql_content = sql_raw.trim_start_matches('\u{feff}');
         Self::validate_stackferry_sql_export(sql_content)?;
+        let before_instances = CredentialCleanupService::snapshot_instances(self)?;
 
         // 导入前备份现有数据库
         let backup_path = self.backup_database_file()?;
@@ -201,6 +206,13 @@ impl Database {
                 .step(-1)
                 .map_err(|e| AppError::Database(e.to_string()))?;
         }
+        let after_instances = CredentialCleanupService::snapshot_instances(self)?;
+        let after_ids = after_instances
+            .iter()
+            .map(|instance| instance.id.clone())
+            .collect::<HashSet<_>>();
+        CredentialCleanupService::schedule_orphan_cleanup(self, &before_instances, &after_ids)?;
+        crate::services::credential_isolation::CredentialIsolationService::resume_pending_resource_operations(self)?;
 
         let backup_id = backup_path
             .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
@@ -666,6 +678,7 @@ impl Database {
                 "Backup file not found: {filename}"
             )));
         }
+        let before_instances = CredentialCleanupService::snapshot_instances(self)?;
 
         // Step 1: Create safety backup of current database
         let safety_backup = self.backup_database_file()?;
@@ -690,6 +703,13 @@ impl Database {
         self.create_tables()?;
         self.apply_schema_migrations()?;
         self.ensure_model_pricing_seeded()?;
+        let after_instances = CredentialCleanupService::snapshot_instances(self)?;
+        let after_ids = after_instances
+            .iter()
+            .map(|instance| instance.id.clone())
+            .collect::<HashSet<_>>();
+        CredentialCleanupService::schedule_orphan_cleanup(self, &before_instances, &after_ids)?;
+        crate::services::credential_isolation::CredentialIsolationService::resume_pending_resource_operations(self)?;
 
         log::info!("Database restored from backup: {filename}, safety backup: {safety_id}");
         Ok(safety_id)
@@ -990,6 +1010,16 @@ mod tests {
                 ) VALUES ('local-provider', 'Local Provider', 'claude', 'operational', 1, 'ok', 42, 200, 'claude-3', 0, 1000)",
                 [],
             )?;
+            conn.execute(
+                "INSERT INTO instance_resource_operations (
+                    id, operation_type, phase, instance_id, provider_id, app_type,
+                    credential_ref, retry_count, created_at, updated_at
+                 ) VALUES (
+                    'operation-a', 'delete_instance', 'db_deleted', 'instance-a',
+                    'local-provider', 'claude', 'credential-a', 0, 1, 1
+                 )",
+                [],
+            )?;
         }
 
         local_db.import_sql_string_for_sync(&remote_sql)?;
@@ -1007,7 +1037,7 @@ mod tests {
             "remote config should be imported"
         );
 
-        let (request_logs, rollups, stream_logs): (i64, i64, i64) = {
+        let (request_logs, rollups, stream_logs, resource_operations): (i64, i64, i64, i64) = {
             let conn = crate::database::lock_conn!(local_db.conn);
             let request_logs =
                 conn.query_row("SELECT COUNT(*) FROM proxy_request_logs", [], |row| {
@@ -1021,7 +1051,12 @@ mod tests {
                 conn.query_row("SELECT COUNT(*) FROM stream_check_logs", [], |row| {
                     row.get(0)
                 })?;
-            (request_logs, rollups, stream_logs)
+            let resource_operations = conn.query_row(
+                "SELECT COUNT(*) FROM instance_resource_operations",
+                [],
+                |row| row.get(0),
+            )?;
+            (request_logs, rollups, stream_logs, resource_operations)
         };
         assert_eq!(request_logs, 1, "local request logs should be preserved");
         assert_eq!(rollups, 1, "local rollups should be preserved");
@@ -1029,6 +1064,7 @@ mod tests {
             stream_logs, 1,
             "local stream check logs should be preserved"
         );
+        assert_eq!(resource_operations, 1);
 
         Ok(())
     }
@@ -1053,13 +1089,25 @@ mod tests {
                  )",
                 [],
             )?;
+            conn.execute(
+                "INSERT INTO instance_resource_operations (
+                    id, operation_type, phase, instance_id, provider_id, app_type,
+                    credential_ref, retry_count, created_at, updated_at
+                 ) VALUES (
+                    'operation-a', 'delete_instance', 'db_deleted', 'instance-a',
+                    'provider-a', 'codex', 'credential-a', 0, 1, 1
+                 )",
+                [],
+            )?;
         }
 
         let exported = db.export_sql_string_for_sync()?;
 
         assert!(exported.contains("CREATE TABLE agent_instances"));
+        assert!(exported.contains("CREATE TABLE instance_resource_operations"));
         assert!(!exported.contains("credential-a"));
         assert!(!exported.contains("/tmp/instance-a"));
+        assert!(!exported.contains("operation-a"));
         Ok(())
     }
 

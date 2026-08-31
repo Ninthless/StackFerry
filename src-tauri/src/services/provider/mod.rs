@@ -3148,6 +3148,16 @@ impl ProviderService {
         Self::normalize_provider_if_claude(&app_type, &mut provider);
         Self::normalize_provider_if_pi(&app_type, &mut provider)?;
         Self::validate_provider_settings(&app_type, &provider)?;
+        if provider_id_changed
+            && !state
+                .db
+                .get_agent_instances(&original_id, app_type.as_str())?
+                .is_empty()
+        {
+            return Err(AppError::InvalidInput(
+                "该供应商仍有隔离实例，不能修改供应商 ID".to_string(),
+            ));
+        }
         normalize_provider_common_config_for_storage(state.db.as_ref(), &app_type, &mut provider)?;
         Self::normalize_usage_script_credential_overrides(&app_type, &mut provider);
 
@@ -5393,7 +5403,7 @@ impl ProviderService {
         let provider = state.db.get_universal_provider(id)?;
 
         if provider.is_some() {
-            for app in [
+            let generated = [
                 "claude",
                 "claude-desktop",
                 "codex",
@@ -5403,8 +5413,18 @@ impl ProviderService {
                 "opencode",
                 "openclaw",
                 "hermes",
-            ] {
-                let generated_id = format!("universal-{app}-{id}");
+            ]
+            .into_iter()
+            .map(|app| (app, format!("universal-{app}-{id}")))
+            .collect::<Vec<_>>();
+            for (app, generated_id) in &generated {
+                if !state.db.get_agent_instances(generated_id, app)?.is_empty() {
+                    return Err(AppError::InvalidInput(format!(
+                        "统一供应商生成的 {app} 供应商仍有隔离实例，请先删除实例"
+                    )));
+                }
+            }
+            for (app, generated_id) in generated {
                 let app_type = app.parse::<AppType>()?;
                 if app_type.is_additive_mode() {
                     Self::remove_additive_provider_from_live(&app_type, &generated_id)?;
@@ -5437,6 +5457,11 @@ impl ProviderService {
                 state.db.save_provider(app, &generated)?;
             }
         } else {
+            if !state.db.get_agent_instances(&generated_id, app)?.is_empty() {
+                return Err(AppError::InvalidInput(
+                    "该供应商仍有隔离实例，不能移除生成供应商".to_string(),
+                ));
+            }
             if app_type.is_additive_mode() {
                 Self::remove_additive_provider_from_live(&app_type, &generated_id)?;
             }

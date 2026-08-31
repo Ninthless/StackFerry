@@ -218,6 +218,19 @@ export function AgentInstancesDialog({
     }
   };
 
+  const rebuildConfig = async (environment: RuntimeEnvironment) => {
+    setOperation(`rebuild:${environment.id}`);
+    try {
+      await providersApi.rebuildAgentInstanceConfig(environment.id);
+      await environmentsQuery.refetch();
+      toast.success(t("runtimeEnvironments.rebuildConfigSuccess"));
+    } catch (error) {
+      toast.error(extractErrorMessage(error));
+    } finally {
+      setOperation(null);
+    }
+  };
+
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && busy) return;
     onOpenChange(nextOpen);
@@ -297,6 +310,9 @@ export function AgentInstancesDialog({
                 </h3>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {t("runtimeEnvironments.credentialHint")}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t("runtimeEnvironments.sessionKeyHint")}
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_auto] sm:items-end">
@@ -428,7 +444,7 @@ export function AgentInstancesDialog({
                             <span className="truncate text-sm font-medium">
                               {environment.name}
                             </span>
-                            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                               {t(
                                 `runtimeEnvironments.status.${environment.runtimeStatus ?? "ready"}`,
                               )}
@@ -473,7 +489,15 @@ export function AgentInstancesDialog({
                           disabled={busy}
                         >
                           <FolderOpen className="h-4 w-4" />
-                          {t("runtimeEnvironments.chooseDirectory")}
+                          {t(
+                            environment.recentProjectDir
+                              ? "runtimeEnvironments.chooseDirectory"
+                              : "runtimeEnvironments.chooseProjectAndLaunch",
+                            {
+                              cli:
+                                appId === "claude" ? "Claude CLI" : "Codex CLI",
+                            },
+                          )}
                         </Button>
                         <Button
                           size="icon"
@@ -511,6 +535,29 @@ export function AgentInstancesDialog({
                         >
                           <RotateCw className="h-4 w-4" />
                         </Button>
+                        {[
+                          "runtimeHomeMissing",
+                          "runtimeConfigMissing",
+                          "runtimeConfigInvalid",
+                        ].includes(environment.runtimeStatus ?? "") ? (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => void rebuildConfig(environment)}
+                            disabled={busy}
+                            aria-label={t(
+                              "runtimeEnvironments.rebuildConfigAria",
+                              { name: environment.name },
+                            )}
+                            title={t("runtimeEnvironments.rebuildConfig")}
+                          >
+                            {operation === `rebuild:${environment.id}` ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <ShieldCheck className="h-4 w-4" />
+                            )}
+                          </Button>
+                        ) : null}
                         {onViewSessions ? (
                           <Button
                             size="icon"
@@ -581,8 +628,9 @@ export function AgentInstancesDialog({
             <DialogDescription>
               {t(
                 editor?.kind === "rotate"
-                  ? "runtimeEnvironments.rotateKeyDescription"
+                  ? "runtimeEnvironments.rotateKeyImpactDescription"
                   : "runtimeEnvironments.renameDescription",
+                { name: editor?.environment.name ?? "" },
               )}
             </DialogDescription>
           </DialogHeader>

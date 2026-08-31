@@ -15,6 +15,8 @@ const translations: Record<string, string> = {
   "runtimeEnvironments.directIsolation": "直连 · 独立凭据与数据",
   "runtimeEnvironments.createTitle": "创建运行环境",
   "runtimeEnvironments.credentialHint": "凭据提示",
+  "runtimeEnvironments.sessionKeyHint":
+    "同一环境内的所有会话共享当前 Key；更换 Key 会影响该环境的全部会话。",
   "runtimeEnvironments.name": "环境名称",
   "runtimeEnvironments.namePlaceholder": "环境名称",
   "runtimeEnvironments.apiKeyPlaceholder": "API Key",
@@ -27,6 +29,7 @@ const translations: Record<string, string> = {
   "runtimeEnvironments.status.ready": "就绪",
   "runtimeEnvironments.noRecentProject": "尚未选择项目目录",
   "runtimeEnvironments.chooseDirectory": "选择其他目录",
+  "runtimeEnvironments.chooseProjectAndLaunch": "选择项目并启动 Codex CLI",
   "runtimeEnvironments.renameAria": "重命名运行环境 {{name}}",
   "runtimeEnvironments.rotateKeyAria": "更换运行环境 {{name}} 的 API Key",
   "runtimeEnvironments.deleteAria": "删除运行环境 {{name}}",
@@ -141,6 +144,43 @@ describe("AgentInstancesDialog", () => {
     });
     expect(screen.getByLabelText("环境名称")).toHaveValue("");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
+  });
+
+  it("首次启动明确选择项目并说明 Key 影响范围", async () => {
+    const user = userEvent.setup();
+    apiMocks.getAgentInstances.mockResolvedValue([
+      {
+        id: "instance-1",
+        providerId: "provider-1",
+        appType: "codex",
+        name: "工作账号",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+
+    renderDialog();
+
+    expect(
+      screen.getByText(/同一环境内的所有会话共享当前 Key/),
+    ).toBeInTheDocument();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "选择项目并启动 Codex CLI",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.openTerminal).toHaveBeenCalledWith(
+        "provider-1",
+        "codex",
+        {
+          cwd: "C:\\workspace",
+          instanceId: "instance-1",
+        },
+      );
+    });
   });
 
   it("删除实例前要求明确确认", async () => {

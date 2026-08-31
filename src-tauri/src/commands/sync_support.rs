@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::database::Database;
 use crate::error::AppError;
+use crate::services::credential_cleanup::CredentialCleanupService;
 use crate::services::provider::ProviderService;
 use crate::settings;
 use crate::store::AppState;
@@ -40,6 +41,20 @@ pub(crate) fn attach_warning(mut value: Value, warning: Option<String>) -> Value
         }
     }
     value
+}
+
+pub(crate) fn restoration_warning(db: &Database) -> Option<String> {
+    let warnings = CredentialCleanupService::restoration_warnings(db);
+    (!warnings.is_empty()).then(|| warnings.join("；"))
+}
+
+pub(crate) fn combine_warnings(first: Option<String>, second: Option<String>) -> Option<String> {
+    match (first, second) {
+        (Some(first), Some(second)) => Some(format!("{first}；{second}")),
+        (Some(first), None) => Some(first),
+        (None, Some(second)) => Some(second),
+        (None, None) => None,
+    }
 }
 
 pub(crate) fn success_payload_with_warning(backup_id: String, warning: Option<String>) -> Value {

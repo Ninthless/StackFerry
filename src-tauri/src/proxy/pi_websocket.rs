@@ -393,9 +393,12 @@ pub(crate) async fn proxy(
         return;
     }
     let isolated_api_key = if let Some(binding) = binding.as_ref() {
-        match crate::services::credential_isolation::CredentialIsolationService::resolve_api_key(
+        match crate::services::credential_isolation::CredentialIsolationService::resolve_session_api_key(
             &state.db,
+            "pi",
             &binding.instance_id,
+            &session.session_id,
+            &binding.provider_id,
         ) {
             Ok(api_key) => Some(api_key),
             Err(error) => {

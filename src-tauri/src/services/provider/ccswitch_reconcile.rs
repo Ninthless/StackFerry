@@ -440,9 +440,32 @@ fn has_custom_endpoints(connection: &Connection, provider_id: &str) -> Result<bo
         .is_some())
 }
 
-fn consolidate_legacy_ghosts(connection: &Connection) -> Result<usize, AppError> {
+struct LegacyGhostCleanup {
+    removed: usize,
+    retained_instances: usize,
+    warnings: Vec<String>,
+}
+
+fn has_agent_instances(connection: &Connection, provider_id: &str) -> Result<bool, AppError> {
+    Ok(connection
+        .query_row(
+            "SELECT 1 FROM agent_instances
+             WHERE provider_id = ?1 AND app_type = ?2 LIMIT 1",
+            params![provider_id, APP_TYPE],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
+}
+
+fn consolidate_legacy_ghosts(connection: &Connection) -> Result<LegacyGhostCleanup, AppError> {
     let stored = stored_codex_providers(connection)?;
     let mut remove = Vec::new();
+    let mut cleanup = LegacyGhostCleanup {
+        removed: 0,
+        retained_instances: 0,
+        warnings: Vec::new(),
+    };
     for ghost in stored.iter().filter(|row| {
         row.source == MANUAL_SOURCE
             && row.source_id.is_none()
@@ -459,6 +482,14 @@ fn consolidate_legacy_ghosts(connection: &Connection) -> Result<usize, AppError>
         if has_custom_endpoints(connection, &ghost.provider.id)? {
             continue;
         }
+        if has_agent_instances(connection, &ghost.provider.id)? {
+            cleanup.retained_instances += 1;
+            cleanup.warnings.push(format!(
+                "保留旧版供应商 {}：仍有关联隔离实例",
+                ghost.provider.name
+            ));
+            continue;
+        }
         let mut matches = stored.iter().filter(|candidate| {
             !is_historical_custom_id(&candidate.provider.id)
                 && compatible_provider(&ghost.provider, &candidate.provider)
@@ -473,7 +504,8 @@ fn consolidate_legacy_ghosts(connection: &Connection) -> Result<usize, AppError>
             params![id, APP_TYPE],
         )?;
     }
-    Ok(remove.len())
+    cleanup.removed = remove.len();
+    Ok(cleanup)
 }
 
 fn codex_providers_with_endpoints(connection: &Connection) -> Result<Vec<Provider>, AppError> {
@@ -536,7 +568,10 @@ fn reconcile_parsed(
             return Err(AppError::Database("cc-switch import rollback test".into()));
         }
     }
-    result.merged += consolidate_legacy_ghosts(&transaction)?;
+    let cleanup = consolidate_legacy_ghosts(&transaction)?;
+    result.merged += cleanup.removed;
+    result.skipped += cleanup.retained_instances;
+    result.warnings.extend(cleanup.warnings);
     result.providers = codex_providers_with_endpoints(&transaction)?;
     transaction
         .commit()
@@ -906,6 +941,44 @@ mod tests {
         assert!(database
             .get_provider_by_id("custom-2", APP_TYPE)
             .expect("custom-2")
+            .is_some());
+    }
+
+    #[test]
+    fn legacy_ghost_cleanup_retains_provider_with_instance_and_warns() {
+        let database = Database::memory().expect("database");
+        for provider in [
+            provider("custom", "Relay", "https://relay.example/v1", Some("same")),
+            provider("relay", "Relay", "https://relay.example/v1", Some("same")),
+        ] {
+            database
+                .save_provider(APP_TYPE, &provider)
+                .expect("save fixture");
+        }
+        {
+            let connection = database.conn.lock().expect("database lock");
+            connection
+                .execute(
+                    "INSERT INTO agent_instances (
+                        id, provider_id, app_type, name, credential_ref,
+                        runtime_home, runtime_config, created_at, updated_at
+                     ) VALUES (
+                        'instance-a', 'custom', 'codex', 'Work', 'credential-a',
+                        '/tmp/instance-a', 'config.toml', 1, 1
+                     )",
+                    [],
+                )
+                .expect("save instance");
+        }
+
+        let result = reconcile_parsed(&database, parsed(Vec::new()), None).expect("cleanup");
+
+        assert_eq!(result.merged, 0);
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.warnings.len(), 1);
+        assert!(database
+            .get_provider_by_id("custom", APP_TYPE)
+            .expect("custom")
             .is_some());
     }
 

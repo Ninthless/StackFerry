@@ -258,6 +258,17 @@ export function ProviderActions({
 
   return (
     <div className="flex items-center gap-1.5">
+      {onManageRuntimeEnvironments && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onManageRuntimeEnvironments}
+          className="w-fit px-2.5"
+        >
+          <Boxes className="h-4 w-4" />
+          {t("provider.manageRuntimeEnvironments")}
+        </Button>
+      )}
       {(appId === "openclaw" || appId === "hermes" || appId === "pi") &&
         isInConfig &&
         onSetAsDefault &&
@@ -366,12 +377,6 @@ export function ProviderActions({
               <DropdownMenuItem onSelect={onOpenTerminal}>
                 <Terminal className="h-4 w-4" />
                 {t("provider.launchDirect")}
-              </DropdownMenuItem>
-            )}
-            {onManageRuntimeEnvironments && (
-              <DropdownMenuItem onSelect={onManageRuntimeEnvironments}>
-                <Boxes className="h-4 w-4" />
-                {t("provider.manageRuntimeEnvironments")}
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />

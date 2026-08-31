@@ -463,6 +463,7 @@ impl Database {
         }
 
         Self::create_credential_isolation_tables(conn)?;
+        Self::create_resource_operations_table(conn)?;
 
         Ok(())
     }
@@ -632,6 +633,11 @@ impl Database {
                         log::info!("迁移数据库从 v27 到 v28（添加熔断手动恢复模式）");
                         Self::migrate_v27_to_v28(conn)?;
                         Self::set_user_version(conn, 28)?;
+                    }
+                    28 => {
+                        log::info!("迁移数据库从 v28 到 v29（添加实例资源操作日志）");
+                        Self::migrate_v28_to_v29(conn)?;
+                        Self::set_user_version(conn, 29)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1954,6 +1960,10 @@ impl Database {
         Ok(())
     }
 
+    fn migrate_v28_to_v29(conn: &Connection) -> Result<(), AppError> {
+        Self::create_resource_operations_table(conn)
+    }
+
     fn create_credential_isolation_tables(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS agent_instances (
@@ -1990,6 +2000,54 @@ impl Database {
                 ON session_credential_bindings(instance_id);",
         )
         .map_err(|e| AppError::Database(format!("创建实例凭据隔离表失败: {e}")))
+    }
+
+    fn create_resource_operations_table(conn: &Connection) -> Result<(), AppError> {
+        if !Self::table_exists(conn, "instance_resource_operations")? {
+            conn.execute_batch(
+                "CREATE TABLE instance_resource_operations (
+                id TEXT PRIMARY KEY,
+                operation_type TEXT NOT NULL,
+                phase TEXT NOT NULL,
+                instance_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                credential_ref TEXT NOT NULL,
+                original_dir TEXT,
+                quarantine_dir TEXT,
+                error TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                completed_at INTEGER
+            );",
+            )
+            .map_err(|error| AppError::Database(format!("创建实例资源操作表失败: {error}")))?;
+        }
+        for (column, definition) in [
+            ("operation_type", "TEXT NOT NULL DEFAULT ''"),
+            ("phase", "TEXT NOT NULL DEFAULT ''"),
+            ("instance_id", "TEXT NOT NULL DEFAULT ''"),
+            ("provider_id", "TEXT NOT NULL DEFAULT ''"),
+            ("app_type", "TEXT NOT NULL DEFAULT ''"),
+            ("credential_ref", "TEXT NOT NULL DEFAULT ''"),
+            ("original_dir", "TEXT"),
+            ("quarantine_dir", "TEXT"),
+            ("error", "TEXT"),
+            ("retry_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("created_at", "INTEGER NOT NULL DEFAULT 0"),
+            ("updated_at", "INTEGER NOT NULL DEFAULT 0"),
+            ("completed_at", "INTEGER"),
+        ] {
+            Self::add_column_if_missing(conn, "instance_resource_operations", column, definition)?;
+        }
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_instance_resource_operations_pending
+             ON instance_resource_operations(completed_at, operation_type, created_at)",
+            [],
+        )
+        .map_err(|error| AppError::Database(format!("创建实例资源操作索引失败: {error}")))?;
+        Ok(())
     }
 
     /// 插入默认模型定价数据
@@ -4042,6 +4100,75 @@ mod tests {
 
         assert!(!Database::table_exists(&conn, "proxy_config")?);
         assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v28_to_v29_creates_resource_operations_for_partial_schema() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        Database::set_user_version(&conn, 28)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert!(Database::table_exists(
+            &conn,
+            "instance_resource_operations"
+        )?);
+        for column in [
+            "operation_type",
+            "phase",
+            "instance_id",
+            "provider_id",
+            "app_type",
+            "credential_ref",
+            "original_dir",
+            "quarantine_dir",
+            "error",
+            "retry_count",
+            "created_at",
+            "updated_at",
+            "completed_at",
+        ] {
+            assert!(Database::has_column(
+                &conn,
+                "instance_resource_operations",
+                column
+            )?);
+        }
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        Ok(())
+    }
+
+    #[test]
+    fn create_tables_repairs_partial_resource_operations_schema() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute(
+            "CREATE TABLE instance_resource_operations (id TEXT PRIMARY KEY)",
+            [],
+        )?;
+        Database::create_tables_on_conn(&conn)?;
+
+        for column in [
+            "operation_type",
+            "phase",
+            "instance_id",
+            "provider_id",
+            "app_type",
+            "credential_ref",
+            "original_dir",
+            "quarantine_dir",
+            "error",
+            "retry_count",
+            "created_at",
+            "updated_at",
+            "completed_at",
+        ] {
+            assert!(Database::has_column(
+                &conn,
+                "instance_resource_operations",
+                column
+            )?);
+        }
         Ok(())
     }
 }

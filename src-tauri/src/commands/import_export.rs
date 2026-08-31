@@ -6,7 +6,8 @@ use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::commands::sync_support::{
-    post_sync_warning_from_result, run_post_import_sync, success_payload_with_warning,
+    combine_warnings, post_sync_warning_from_result, restoration_warning, run_post_import_sync,
+    success_payload_with_warning,
 };
 use crate::database::backup::BackupEntry;
 use crate::database::Database;
@@ -48,7 +49,11 @@ pub async fn import_config_from_file(
     tauri::async_runtime::spawn_blocking(move || {
         let path_buf = PathBuf::from(&filePath);
         let backup_id = db.import_sql(&path_buf)?;
-        let warning = post_sync_warning_from_result(Ok(run_post_import_sync(db_for_sync)));
+        let local_warning = restoration_warning(db.as_ref());
+        let warning = combine_warnings(
+            local_warning,
+            post_sync_warning_from_result(Ok(run_post_import_sync(db_for_sync))),
+        );
         if let Some(msg) = warning.as_ref() {
             log::warn!("[Import] post-import sync warning: {msg}");
         }
@@ -157,7 +162,11 @@ pub async fn restore_db_backup(
     let db_for_sync = db.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let backup_id = db.restore_from_backup(&filename)?;
-        let warning = post_sync_warning_from_result(Ok(run_post_import_sync(db_for_sync)));
+        let local_warning = restoration_warning(db.as_ref());
+        let warning = combine_warnings(
+            local_warning,
+            post_sync_warning_from_result(Ok(run_post_import_sync(db_for_sync))),
+        );
         if let Some(msg) = warning.as_ref() {
             log::warn!("[Backup] post-restore sync warning: {msg}");
         }

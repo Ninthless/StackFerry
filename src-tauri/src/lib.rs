@@ -46,7 +46,7 @@ pub use codex_config::{get_codex_auth_path, get_codex_config_path, write_codex_l
 pub use commands::open_provider_terminal;
 pub use commands::*;
 pub use config::{get_claude_mcp_path, get_claude_settings_path, read_json_file};
-pub use database::{Database, Profile};
+pub use database::{AgentInstance, Database, Profile};
 pub use deeplink::{import_provider_from_deeplink, parse_deeplink_url, DeepLinkImportRequest};
 pub use error::AppError;
 pub use grok_config::get_grok_config_path;
@@ -1264,6 +1264,10 @@ pub fn run() {
 
                 initialize_common_config_snippets(&state);
 
+                if let Err(e) = crate::services::credential_isolation::CredentialIsolationService::resume_pending_resource_operations(&state.db) {
+                    log::warn!("恢复未完成实例资源操作失败: {e}");
+                }
+
                 // 检查 settings 表中的代理状态，自动恢复代理服务
                 restore_proxy_state_on_startup(&state).await;
 
@@ -1282,6 +1286,9 @@ pub fn run() {
                     interval.tick().await; // skip immediate first tick (already checked above)
                     loop {
                         interval.tick().await;
+                        if let Err(e) = crate::services::credential_isolation::CredentialIsolationService::resume_pending_resource_operations(&db_for_timer) {
+                            log::warn!("周期恢复实例资源操作失败: {e}");
+                        }
                         if let Err(e) = db_for_timer.periodic_backup_if_needed() {
                             log::warn!("Periodic maintenance timer failed: {e}");
                         }
@@ -1407,6 +1414,7 @@ pub fn run() {
             commands::rotate_agent_instance_key,
             commands::set_agent_instance_recent_project,
             commands::get_agent_instance_status,
+            commands::rebuild_agent_instance_config,
             commands::bind_session_credential,
             commands::import_default_config,
             commands::import_ccswitch_codex_providers,

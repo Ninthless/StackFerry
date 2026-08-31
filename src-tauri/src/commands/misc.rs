@@ -2753,6 +2753,21 @@ pub async fn open_provider_terminal(
     let launch_id = if let Some(instance_id) = instanceId {
         validate_canonical_instance_id(&instance_id)?;
         ensure_agent_identity_cli_support(&app_type)?;
+        let status = crate::services::credential_isolation::CredentialIsolationService::status(
+            &state.db,
+            &instance_id,
+        )
+        .map_err(|error| error.to_string())?;
+        if !matches!(
+            status.kind,
+            crate::services::credential_isolation::AgentInstanceStatusKind::Ready
+        ) {
+            crate::services::credential_isolation::CredentialIsolationService::refresh_instance_config(
+                &state.db,
+                &instance_id,
+            )
+            .map_err(|error| format!("运行环境配置不可用，自动重建失败: {error}"))?;
+        }
         let instance = state
             .db
             .get_agent_instance(&instance_id)
@@ -3043,40 +3058,12 @@ fn launch_terminal_with_env(
     app_type: &AppType,
     cwd: Option<&Path>,
 ) -> Result<(), String> {
-    if *app_type == AppType::Codex {
-        return launch_codex_terminal_with_env(&env_vars, provider_id, cwd, None);
-    }
-
-    let temp_dir = std::env::temp_dir();
-    let config_file = temp_dir.join(format!(
-        "claude_{}_{}.json",
-        provider_id,
-        std::process::id()
-    ));
-
-    // 创建并写入配置文件
-    write_claude_config(&config_file, &env_vars)?;
-
-    #[cfg(target_os = "macos")]
-    {
-        launch_macos_terminal(&config_file, cwd)?;
-        Ok(())
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        launch_linux_terminal(&config_file, cwd)?;
-        Ok(())
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        launch_windows_terminal(&temp_dir, &config_file, cwd)?;
-        Ok(())
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    Err("不支持的操作系统".to_string())
+    let tool = if *app_type == AppType::Codex {
+        "codex"
+    } else {
+        "claude"
+    };
+    launch_secure_terminal(tool, &[], &env_vars, &format!("{tool}_{provider_id}"), cwd)
 }
 
 fn launch_codex_terminal_with_env(
@@ -3090,45 +3077,16 @@ fn launch_codex_terminal_with_env(
     }) {
         return Err("Codex 会话 ID 格式无效".to_string());
     }
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    let command = {
-        let exports = env_vars
-            .iter()
-            .map(|(name, value)| format!("export {name}={}", shell_single_quote(value)))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let change_dir = cwd
-            .map(|path| {
-                format!(
-                    "cd {} || exit 1\n",
-                    shell_single_quote(&path.to_string_lossy())
-                )
-            })
-            .unwrap_or_default();
-        let resume = resume_session_id
-            .map(|id| format!(" resume {}", shell_single_quote(id)))
-            .unwrap_or_default();
-        format!("{exports}\n{change_dir}exec codex{resume}")
-    };
-
-    #[cfg(target_os = "windows")]
-    let command = {
-        let assignments = env_vars
-            .iter()
-            .map(|(name, value)| format!("set \"{name}={}\"", escape_windows_batch_value(value)))
-            .collect::<Vec<_>>()
-            .join("\r\n");
-        let change_dir = build_windows_cwd_command(cwd);
-        let resume = resume_session_id
-            .map(|id| format!(" resume \"{id}\""))
-            .unwrap_or_default();
-        format!("{assignments}\r\n{change_dir}\r\ncodex{resume}")
-    };
-
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    return Err("不支持的操作系统".to_string());
-
-    launch_terminal_running(&command, &format!("codex_instance_{instance_id}"))
+    let args = resume_session_id
+        .map(|id| vec!["resume".to_string(), id.to_string()])
+        .unwrap_or_default();
+    launch_secure_terminal(
+        "codex",
+        &args,
+        env_vars,
+        &format!("codex_instance_{instance_id}"),
+        cwd,
+    )
 }
 
 pub(crate) fn launch_instance_session(
@@ -3216,127 +3174,330 @@ fn launch_claude_instance_session(
     {
         return Err("Claude 会话 ID 格式无效".to_string());
     }
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    let command = {
-        let exports = env_vars
-            .iter()
-            .map(|(name, value)| format!("export {name}={}", shell_single_quote(value)))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let change_dir = cwd
-            .map(|path| {
-                format!(
-                    "cd {} || exit 1\n",
-                    shell_single_quote(&path.to_string_lossy())
-                )
-            })
-            .unwrap_or_default();
-        format!(
-            "{exports}\n{change_dir}exec claude --resume {}",
-            shell_single_quote(session_id)
-        )
-    };
-    #[cfg(target_os = "windows")]
-    let command = {
-        let assignments = env_vars
-            .iter()
-            .map(|(name, value)| format!("set \"{name}={}\"", escape_windows_batch_value(value)))
-            .collect::<Vec<_>>()
-            .join("\r\n");
-        let change_dir = build_windows_cwd_command(cwd);
-        format!("{assignments}\r\n{change_dir}\r\nclaude --resume \"{session_id}\"")
-    };
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    return Err("不支持的操作系统".to_string());
-
-    launch_terminal_running(&command, &format!("claude_instance_{instance_id}"))
+    launch_secure_terminal(
+        "claude",
+        &["--resume".to_string(), session_id.to_string()],
+        env_vars,
+        &format!("claude_instance_{instance_id}"),
+        cwd,
+    )
 }
 
-/// 写入 claude 配置文件
-fn write_claude_config(
-    config_file: &std::path::Path,
-    env_vars: &[(String, String)],
-) -> Result<(), String> {
-    let mut config_obj = serde_json::Map::new();
-    let mut env_obj = serde_json::Map::new();
+fn secure_shell_command(tool: &str, args: &[String], cwd: Option<&Path>) -> String {
+    let command = std::iter::once(tool.to_string())
+        .chain(args.iter().map(|arg| shell_single_quote(arg)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    match cwd {
+        Some(path) => format!(
+            "cd {} || exit 1; exec {command}",
+            shell_single_quote(&path.to_string_lossy())
+        ),
+        None => format!("exec {command}"),
+    }
+}
 
-    for (key, value) in env_vars {
-        env_obj.insert(key.clone(), serde_json::Value::String(value.clone()));
+#[cfg(target_os = "windows")]
+fn wsl_path_for_distro(path: &Path, distro: &str) -> String {
+    let raw = path.to_string_lossy();
+    let normalized = raw.replace('/', "\\");
+    for prefix in [
+        format!(r"\\wsl$\{distro}"),
+        format!(r"\\wsl.localhost\{distro}"),
+    ] {
+        if normalized
+            .get(..prefix.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(&prefix))
+        {
+            let suffix = normalized[prefix.len()..].trim_start_matches('\\');
+            return format!("/{}", suffix.replace('\\', "/"));
+        }
+    }
+    raw.into_owned()
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_wsl_path(path: &Path, distro: &str) -> Result<String, String> {
+    let direct = wsl_path_for_distro(path, distro);
+    if direct.starts_with('/') {
+        return Ok(direct);
+    }
+    let output = std::process::Command::new("wsl.exe")
+        .args(["-d", distro, "--", "wslpath", "-a"])
+        .arg(path)
+        .env_remove("TERM")
+        .output()
+        .map_err(|error| format!("转换 WSL 路径失败: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "转换 WSL 路径失败: {}",
+            decode_command_output(&output.stderr)
+        ));
+    }
+    let converted = decode_command_output(&output.stdout).trim().to_string();
+    if converted.is_empty() {
+        return Err(format!("WSL 路径转换结果为空: {}", path.display()));
+    }
+    Ok(converted)
+}
+
+#[cfg(target_os = "windows")]
+fn wsl_launch_env(
+    env_vars: &[(String, String)],
+    distro: &str,
+) -> Result<Vec<(String, String)>, String> {
+    env_vars
+        .iter()
+        .map(|(name, value)| {
+            let value = if matches!(
+                name.as_str(),
+                "CLAUDE_CONFIG_DIR" | "CODEX_HOME" | "CODEX_SQLITE_HOME"
+            ) {
+                resolve_wsl_path(Path::new(value), distro)?
+            } else {
+                value.clone()
+            };
+            Ok((name.clone(), value))
+        })
+        .collect()
+}
+
+#[cfg(target_os = "windows")]
+fn wsl_env_bridge(env_vars: &[(String, String)]) -> String {
+    let mut names = std::env::var("WSLENV")
+        .unwrap_or_default()
+        .split(':')
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    for (name, _) in env_vars {
+        if !names.iter().any(|existing| {
+            existing
+                .split_once('/')
+                .map(|(base, _)| base)
+                .unwrap_or(existing)
+                .eq_ignore_ascii_case(name)
+        }) {
+            names.push(name.clone());
+        }
+    }
+    names.join(":")
+}
+
+#[cfg(target_os = "windows")]
+fn launch_secure_terminal(
+    tool: &str,
+    args: &[String],
+    env_vars: &[(String, String)],
+    _label: &str,
+    cwd: Option<&Path>,
+) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+    let preferred = crate::settings::get_preferred_terminal();
+    let terminal = preferred.as_deref().unwrap_or("cmd");
+    let mut command;
+
+    if let Some(distro) = wsl_distro_for_tool(tool) {
+        let wsl_env = wsl_launch_env(env_vars, &distro)?;
+        let wsl_cwd = cwd
+            .map(|path| resolve_wsl_path(path, &distro).map(PathBuf::from))
+            .transpose()?;
+        let shell_command = secure_shell_command(tool, args, wsl_cwd.as_deref());
+        let wsl_args = [
+            "-d".to_string(),
+            distro,
+            "--".to_string(),
+            "sh".to_string(),
+            "-lc".to_string(),
+            shell_command,
+        ];
+        command = windows_terminal_command(terminal, "wsl.exe", &wsl_args);
+        command.envs(wsl_env.iter().map(|(name, value)| (name, value)));
+        command.env("WSLENV", wsl_env_bridge(&wsl_env));
+    } else {
+        command = windows_terminal_command(terminal, tool, args);
+        command.envs(env_vars.iter().map(|(name, value)| (name, value)));
+        if let Some(path) = cwd {
+            command.current_dir(path);
+        }
     }
 
-    config_obj.insert("env".to_string(), serde_json::Value::Object(env_obj));
-
-    let config_json =
-        serde_json::to_string_pretty(&config_obj).map_err(|e| format!("序列化配置失败: {e}"))?;
-
-    std::fs::write(config_file, config_json).map_err(|e| format!("写入配置文件失败: {e}"))
+    command.env_remove("TERM");
+    if terminal != "wt" {
+        command.creation_flags(CREATE_NEW_CONSOLE);
+    }
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("启动安全终端失败: {error}"))
 }
 
-/// macOS: 根据用户首选终端启动
-#[cfg(target_os = "macos")]
-fn launch_macos_terminal(config_file: &std::path::Path, cwd: Option<&Path>) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
+#[cfg(target_os = "windows")]
+fn windows_terminal_command(terminal: &str, tool: &str, args: &[String]) -> std::process::Command {
+    let mut command = match terminal {
+        "powershell" => {
+            let mut command = std::process::Command::new("powershell");
+            command.args(["-NoExit", "-Command", tool]);
+            command
+        }
+        "wt" => {
+            let mut command = std::process::Command::new("wt");
+            command.args(["cmd", "/K", tool]);
+            command
+        }
+        _ => {
+            let mut command = std::process::Command::new("cmd");
+            command.args(["/K", tool]);
+            command
+        }
+    };
+    command.args(args);
+    command
+}
+
+#[cfg(target_os = "linux")]
+fn launch_secure_terminal(
+    tool: &str,
+    args: &[String],
+    env_vars: &[(String, String)],
+    _label: &str,
+    cwd: Option<&Path>,
+) -> Result<(), String> {
+    use std::process::Command;
 
     let preferred = crate::settings::get_preferred_terminal();
-    let terminal = preferred.as_deref().unwrap_or("terminal");
-
-    let shell = get_user_shell();
-    let exec_line = build_exec_line(&shell, cwd);
-    let final_cd_command = build_final_shell_cd_command(&shell, cwd);
-
-    let temp_dir = std::env::temp_dir();
-    let script_file = temp_dir.join(format!("stackferry_launcher_{}.sh", std::process::id()));
-    let config_path = config_file.to_string_lossy();
-    let provider_command = build_provider_command_line(&shell, &config_path, cwd);
-
-    // Write the shell script to a temp file
-    // 脚本使用 POSIX sh 语法确保可移植性，exec 行切换到用户交互式 shell
-    let script_content = format!(
-        r#"#!/usr/bin/env sh
-trap 'rm -f "{config_path}" "{script_file}"' EXIT
-echo "Using provider-specific claude config:"
-echo "{config_path}"
-{provider_command}
-{final_cd_command}
-{exec_line}
-"#,
-        config_path = config_path,
-        script_file = script_file.display(),
-        provider_command = provider_command,
-        final_cd_command = final_cd_command,
-        exec_line = exec_line,
+    let default_terminals = [
+        ("gnome-terminal", "--"),
+        ("konsole", "-e"),
+        ("xfce4-terminal", "-e"),
+        ("mate-terminal", "--"),
+        ("lxterminal", "-e"),
+        ("alacritty", "-e"),
+        ("kitty", "-e"),
+        ("ghostty", "-e"),
+    ];
+    let mut terminals = preferred
+        .as_deref()
+        .map(|name| {
+            let flag = default_terminals
+                .iter()
+                .find(|(candidate, _)| *candidate == name)
+                .map(|(_, flag)| *flag)
+                .unwrap_or("-e");
+            vec![(name, flag)]
+        })
+        .unwrap_or_default();
+    terminals.extend(
+        default_terminals
+            .iter()
+            .copied()
+            .filter(|(name, _)| preferred.as_deref() != Some(*name)),
     );
+    let shell_command = secure_shell_command(tool, args, None);
+    let mut last_error = "未找到可用的终端".to_string();
 
-    std::fs::write(&script_file, &script_content).map_err(|e| format!("写入启动脚本失败: {e}"))?;
-
-    // Make script executable
-    std::fs::set_permissions(&script_file, std::fs::Permissions::from_mode(0o755))
-        .map_err(|e| format!("设置脚本权限失败: {e}"))?;
-
-    // Try the preferred terminal first, fall back to Terminal.app if it fails
-    // Note: Kitty doesn't need the -e flag, others do
-    let result = match terminal {
-        "iterm2" => launch_macos_iterm2(&script_file),
-        "warp" => launch_macos_warp(&script_file),
-        "alacritty" => launch_macos_open_app("Alacritty", &script_file, true),
-        "kitty" => launch_macos_open_app("kitty", &script_file, false),
-        "ghostty" => launch_macos_ghostty(&script_file),
-        "wezterm" => launch_macos_open_app("WezTerm", &script_file, true),
-        "kaku" => launch_macos_open_app("Kaku", &script_file, true),
-        _ => launch_macos_terminal_app(&script_file),
-    };
-
-    // If preferred terminal fails and it's not the default, try Terminal.app as fallback
-    if result.is_err() && terminal != "terminal" {
-        log::warn!(
-            "首选终端 {} 启动失败，回退到 Terminal.app: {:?}",
-            terminal,
-            result.as_ref().err()
-        );
-        return launch_macos_terminal_app(&script_file);
+    for (terminal, flag) in terminals {
+        if !which_command(terminal) {
+            continue;
+        }
+        let mut command = Command::new(terminal);
+        command
+            .arg(flag)
+            .arg("sh")
+            .arg("-lc")
+            .arg(&shell_command)
+            .env_remove("TERM")
+            .envs(env_vars.iter().map(|(name, value)| (name, value)));
+        if let Some(path) = cwd {
+            command.current_dir(path);
+        }
+        match command.spawn() {
+            Ok(_) => return Ok(()),
+            Err(error) => last_error = format!("执行 {terminal} 失败: {error}"),
+        }
     }
 
-    result
+    Err(last_error)
+}
+
+#[cfg(target_os = "macos")]
+fn launch_secure_terminal(
+    tool: &str,
+    args: &[String],
+    env_vars: &[(String, String)],
+    label: &str,
+    cwd: Option<&Path>,
+) -> Result<(), String> {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let mut launcher = tempfile::Builder::new()
+        .prefix(&format!("stackferry_{label}_"))
+        .suffix(".command")
+        .disable_cleanup(true)
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempfile()
+        .map_err(|error| format!("创建启动文件失败: {error}"))?;
+    let launcher_path = launcher.path().to_path_buf();
+    let command = secure_shell_command(tool, args, cwd);
+    writeln!(
+        launcher,
+        "#!/usr/bin/env sh\nrm -f {}\n{command}",
+        shell_single_quote(&launcher_path.to_string_lossy())
+    )
+    .map_err(|error| format!("写入启动文件失败: {error}"))?;
+    launcher
+        .flush()
+        .map_err(|error| format!("刷新启动文件失败: {error}"))?;
+    let preferred = crate::settings::get_preferred_terminal();
+    let (app_name, executable) = match preferred.as_deref() {
+        Some("iterm2") => ("iTerm", "/Applications/iTerm.app/Contents/MacOS/iTerm2"),
+        Some("warp") => ("Warp", "/Applications/Warp.app/Contents/MacOS/Warp"),
+        Some("alacritty") => (
+            "Alacritty",
+            "/Applications/Alacritty.app/Contents/MacOS/alacritty",
+        ),
+        Some("kitty") => ("kitty", "/Applications/kitty.app/Contents/MacOS/kitty"),
+        Some("ghostty") => (
+            "Ghostty",
+            "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+        ),
+        Some("wezterm") => (
+            "WezTerm",
+            "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
+        ),
+        Some("kaku") => ("Kaku", "/Applications/Kaku.app/Contents/MacOS/Kaku"),
+        _ => (
+            "Terminal",
+            "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+        ),
+    };
+    let mut command = Command::new(executable);
+    command
+        .arg(&launcher_path)
+        .env_remove("TERM")
+        .envs(env_vars.iter().map(|(name, value)| (name, value)));
+    match command.spawn() {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            let _ = std::fs::remove_file(&launcher_path);
+            Err(format!("启动 {app_name} 失败: {error}"))
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+fn launch_secure_terminal(
+    _tool: &str,
+    _args: &[String],
+    _env_vars: &[(String, String)],
+    _label: &str,
+    _cwd: Option<&Path>,
+) -> Result<(), String> {
+    Err("不支持的操作系统".to_string())
 }
 
 /// Escape a value as an AppleScript string literal.
@@ -3592,112 +3753,6 @@ fn launch_macos_warp(script_file: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Linux: 根据用户首选终端启动
-#[cfg(target_os = "linux")]
-fn launch_linux_terminal(config_file: &std::path::Path, cwd: Option<&Path>) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
-    use std::process::Command;
-
-    let preferred = crate::settings::get_preferred_terminal();
-
-    let shell = get_user_shell();
-    let exec_line = build_exec_line(&shell, cwd);
-    let final_cd_command = build_final_shell_cd_command(&shell, cwd);
-
-    // Default terminal list with their arguments
-    let default_terminals = [
-        ("gnome-terminal", vec!["--"]),
-        ("konsole", vec!["-e"]),
-        ("xfce4-terminal", vec!["-e"]),
-        ("mate-terminal", vec!["--"]),
-        ("lxterminal", vec!["-e"]),
-        ("alacritty", vec!["-e"]),
-        ("kitty", vec!["-e"]),
-        ("ghostty", vec!["-e"]),
-    ];
-
-    // Create temp script file
-    let temp_dir = std::env::temp_dir();
-    let script_file = temp_dir.join(format!("stackferry_launcher_{}.sh", std::process::id()));
-    let config_path = config_file.to_string_lossy();
-    let provider_command = build_provider_command_line(&shell, &config_path, cwd);
-
-    let script_content = format!(
-        r#"#!/usr/bin/env sh
-trap 'rm -f "{config_path}" "{script_file}"' EXIT
-echo "Using provider-specific claude config:"
-echo "{config_path}"
-{provider_command}
-{final_cd_command}
-{exec_line}
-"#,
-        config_path = config_path,
-        script_file = script_file.display(),
-        provider_command = provider_command,
-        final_cd_command = final_cd_command,
-        exec_line = exec_line,
-    );
-
-    std::fs::write(&script_file, &script_content).map_err(|e| format!("写入启动脚本失败: {e}"))?;
-
-    std::fs::set_permissions(&script_file, std::fs::Permissions::from_mode(0o755))
-        .map_err(|e| format!("设置脚本权限失败: {e}"))?;
-
-    // Build terminal list: preferred terminal first (if specified), then defaults
-    let terminals_to_try: Vec<(&str, Vec<&str>)> = if let Some(ref pref) = preferred {
-        // Find the preferred terminal's args from default list
-        let pref_args = default_terminals
-            .iter()
-            .find(|(name, _)| *name == pref.as_str())
-            .map(|(_, args)| args.to_vec())
-            .unwrap_or_else(|| vec!["-e"]); // Default args for unknown terminals
-
-        let mut list = vec![(pref.as_str(), pref_args)];
-        // Add remaining terminals as fallbacks
-        for (name, args) in &default_terminals {
-            if *name != pref.as_str() {
-                list.push((*name, args.to_vec()));
-            }
-        }
-        list
-    } else {
-        default_terminals
-            .iter()
-            .map(|(name, args)| (*name, args.to_vec()))
-            .collect()
-    };
-
-    let mut last_error = String::from("未找到可用的终端");
-
-    for (terminal, args) in terminals_to_try {
-        // Check if terminal exists in common paths
-        let terminal_exists = std::path::Path::new(&format!("/usr/bin/{}", terminal)).exists()
-            || std::path::Path::new(&format!("/bin/{}", terminal)).exists()
-            || std::path::Path::new(&format!("/usr/local/bin/{}", terminal)).exists()
-            || which_command(terminal);
-
-        if terminal_exists {
-            let result = Command::new(terminal)
-                .args(&args)
-                .arg("sh")
-                .arg(script_file.to_string_lossy().as_ref())
-                .spawn();
-
-            match result {
-                Ok(_) => return Ok(()),
-                Err(e) => {
-                    last_error = format!("执行 {} 失败: {}", terminal, e);
-                }
-            }
-        }
-    }
-
-    // Clean up on failure
-    let _ = std::fs::remove_file(&script_file);
-    let _ = std::fs::remove_file(config_file);
-    Err(last_error)
-}
-
 /// Check if a command exists using `which`
 #[cfg(target_os = "linux")]
 fn which_command(cmd: &str) -> bool {
@@ -3707,63 +3762,6 @@ fn which_command(cmd: &str) -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
-}
-
-/// Windows: 根据用户首选终端启动
-#[cfg(target_os = "windows")]
-fn launch_windows_terminal(
-    temp_dir: &std::path::Path,
-    config_file: &std::path::Path,
-    cwd: Option<&Path>,
-) -> Result<(), String> {
-    let preferred = crate::settings::get_preferred_terminal();
-    let terminal = preferred.as_deref().unwrap_or("cmd");
-
-    let bat_file = temp_dir.join(format!("stackferry_claude_{}.bat", std::process::id()));
-    let config_path_for_batch = escape_windows_batch_value(&config_file.to_string_lossy());
-    let cwd_command = build_windows_cwd_command(cwd);
-
-    let content = format!(
-        "@echo off
-{cwd_command}
-echo Using provider-specific claude config:
-echo {}
-claude --settings \"{}\"
-del \"{}\" >nul 2>&1
-del \"%~f0\" >nul 2>&1
-",
-        config_path_for_batch,
-        config_path_for_batch,
-        config_path_for_batch,
-        cwd_command = cwd_command,
-    );
-
-    std::fs::write(&bat_file, &content).map_err(|e| format!("写入批处理文件失败: {e}"))?;
-
-    let bat_path = bat_file.to_string_lossy();
-    let ps_cmd = format!("& '{}'", bat_path);
-
-    // Try the preferred terminal first
-    let result = match terminal {
-        "powershell" => run_windows_start_command(
-            &["powershell", "-NoExit", "-Command", &ps_cmd],
-            "PowerShell",
-        ),
-        "wt" => run_windows_start_command(&["wt", "cmd", "/K", &bat_path], "Windows Terminal"),
-        _ => run_windows_start_command(&["cmd", "/K", &bat_path], "cmd"), // "cmd" or default
-    };
-
-    // If preferred terminal fails and it's not the default, try cmd as fallback
-    if result.is_err() && terminal != "cmd" {
-        log::warn!(
-            "首选终端 {} 启动失败，回退到 cmd: {:?}",
-            terminal,
-            result.as_ref().err()
-        );
-        return run_windows_start_command(&["cmd", "/K", &bat_path], "cmd");
-    }
-
-    result
 }
 
 #[cfg_attr(windows, allow(dead_code))]
@@ -4037,6 +4035,60 @@ pub async fn set_window_theme(window: tauri::Window, theme: String) -> Result<()
 mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn secure_shell_command_never_serializes_environment_values() {
+        let secret = "sk-instance-secret";
+        let command = secure_shell_command(
+            "claude",
+            &["--resume".to_string(), "session-123".to_string()],
+            Some(Path::new("/tmp/project")),
+        );
+
+        assert_eq!(
+            command,
+            "cd '/tmp/project' || exit 1; exec claude '--resume' 'session-123'"
+        );
+        assert!(!command.contains(secret));
+        assert!(!command.contains("ANTHROPIC_AUTH_TOKEN"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn wsl_launch_uses_the_probed_distro_path_space() {
+        assert_eq!(
+            wsl_path_for_distro(
+                Path::new(r"\\wsl.localhost\Ubuntu\home\user\.codex"),
+                "Ubuntu"
+            ),
+            "/home/user/.codex"
+        );
+        assert_eq!(
+            wsl_path_for_distro(Path::new(r"\\wsl$\Ubuntu\home\user\project"), "Ubuntu"),
+            "/home/user/project"
+        );
+        assert_eq!(
+            wsl_path_for_distro(Path::new(r"E:\Project\StackFerry"), "Ubuntu"),
+            r"E:\Project\StackFerry"
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn wsl_env_bridge_contains_names_only() {
+        let env_vars = vec![
+            (
+                "STACKFERRY_INSTANCE_API_KEY".to_string(),
+                "secret".to_string(),
+            ),
+            ("CODEX_HOME".to_string(), "/home/user/.codex".to_string()),
+        ];
+        let bridge = wsl_env_bridge(&env_vars);
+
+        assert!(bridge.contains("STACKFERRY_INSTANCE_API_KEY"));
+        assert!(bridge.contains("CODEX_HOME"));
+        assert!(!bridge.contains("secret"));
+    }
 
     #[cfg(unix)]
     fn set_test_executable(path: &Path, executable: bool) {

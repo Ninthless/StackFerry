@@ -73,7 +73,6 @@ import {
   ResourceToolbar,
 } from "@/components/common/ManagementWorkbench";
 import { extractErrorMessage } from "@/utils/errorUtils";
-import { isMac } from "@/lib/platform";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { SessionItem } from "./SessionItem";
 import { SessionMessageItem } from "./SessionMessageItem";
@@ -269,6 +268,9 @@ export function SessionManagerPage({
     readInitialSessionProvider,
   );
   const [instances, setInstances] = useState<AgentInstance[]>([]);
+  const [instanceProviderNames, setInstanceProviderNames] = useState<
+    Map<string, string>
+  >(new Map());
   const [sessionScope, setSessionScope] = useState<SessionScope>(
     () =>
       initialScope ??
@@ -288,6 +290,13 @@ export function SessionManagerPage({
   const instanceNames = useMemo(
     () => new Map(instances.map((instance) => [instance.id, instance.name])),
     [instances],
+  );
+  const getEnvironmentLabel = useCallback(
+    (instance: AgentInstance) =>
+      `${instance.name} · ${
+        instanceProviderNames.get(instance.id) ?? instance.providerId
+      }`,
+    [instanceProviderNames],
   );
   const sessions = useMemo(
     () =>
@@ -374,24 +383,41 @@ export function SessionManagerPage({
   useEffect(() => {
     if (sessionProvider !== "codex" && sessionProvider !== "claude") {
       setInstances([]);
+      setInstanceProviderNames(new Map());
       return;
     }
     let cancelled = false;
     void providersApi
       .getAll(sessionProvider)
-      .then((providers) =>
-        Promise.all(
+      .then(async (providers) => {
+        const instanceGroups = await Promise.all(
           Object.keys(providers).map((providerId) =>
             providersApi.getAgentInstances(providerId, sessionProvider),
           ),
-        ),
-      )
-      .then((instanceGroups) => instanceGroups.flat())
-      .then((nextInstances) => {
-        if (!cancelled) setInstances(nextInstances);
+        );
+        return {
+          providers,
+          instances: instanceGroups.flat(),
+        };
+      })
+      .then(({ providers, instances: nextInstances }) => {
+        if (!cancelled) {
+          setInstances(nextInstances);
+          setInstanceProviderNames(
+            new Map(
+              nextInstances.map((instance) => [
+                instance.id,
+                providers[instance.providerId]?.name ?? instance.providerId,
+              ]),
+            ),
+          );
+        }
       })
       .catch(() => {
-        if (!cancelled) setInstances([]);
+        if (!cancelled) {
+          setInstances([]);
+          setInstanceProviderNames(new Map());
+        }
       });
     return () => {
       cancelled = true;
@@ -687,14 +713,6 @@ export function SessionManagerPage({
 
   const handleResume = async () => {
     if (!selectedSession?.resumeCommand) return;
-
-    if (!isMac()) {
-      await handleCopy(
-        selectedSession.resumeCommand,
-        t("sessionManager.resumeCommandCopied"),
-      );
-      return;
-    }
 
     try {
       await sessionsApi.launchTerminal({
@@ -1158,8 +1176,15 @@ export function SessionManagerPage({
                               ? t("sessionManager.defaultEnvironment", {
                                   defaultValue: "默认环境",
                                 })
-                              : (instanceNames.get(sessionScope.instanceId) ??
-                                sessionScope.instanceId)}
+                              : (() => {
+                                  const instance = instances.find(
+                                    (item) =>
+                                      item.id === sessionScope.instanceId,
+                                  );
+                                  return instance
+                                    ? getEnvironmentLabel(instance)
+                                    : sessionScope.instanceId;
+                                })()}
                         </span>
                       </SelectTrigger>
                       <SelectContent>
@@ -1175,7 +1200,7 @@ export function SessionManagerPage({
                         </SelectItem>
                         {instances.map((instance) => (
                           <SelectItem key={instance.id} value={instance.id}>
-                            {instance.name}
+                            {getEnvironmentLabel(instance)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1612,8 +1637,7 @@ export function SessionManagerPage({
                       </div>
 
                       <div className="session-detail-actions flex items-center gap-2 shrink-0">
-                        {isMac() &&
-                          selectedSession.resumeCommand &&
+                        {selectedSession.resumeCommand &&
                           selectedSession.providerId !== "openclaw" &&
                           selectedSession.providerId !== "hermes" && (
                             <Tooltip>
@@ -1679,32 +1703,59 @@ export function SessionManagerPage({
                     {selectedSession.resumeCommand &&
                       selectedSession.providerId !== "openclaw" &&
                       selectedSession.providerId !== "hermes" && (
-                        <div className="mt-3 flex items-center gap-2">
-                          <div className="flex-1 rounded-md bg-muted/60 px-3 py-1.5 font-mono text-xs text-muted-foreground truncate">
-                            {selectedSession.resumeCommand}
+                        <div className="mt-3 space-y-2">
+                          {selectedSession.instanceId && (
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <Badge variant="secondary">
+                                {t("sessionManager.environmentIdentity", {
+                                  environment:
+                                    instanceNames.get(
+                                      selectedSession.instanceId,
+                                    ) ?? selectedSession.instanceId,
+                                })}
+                              </Badge>
+                              <Badge variant="outline">
+                                {t("sessionManager.providerIdentity", {
+                                  provider:
+                                    instanceProviderNames.get(
+                                      selectedSession.instanceId,
+                                    ) ?? selectedSession.providerId,
+                                })}
+                              </Badge>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 rounded-md bg-muted/60 px-3 py-1.5 font-mono text-xs text-muted-foreground truncate">
+                              {selectedSession.resumeCommand}
+                            </div>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 shrink-0"
+                                  onClick={() =>
+                                    void handleCopy(
+                                      selectedSession.resumeCommand!,
+                                      t("sessionManager.resumeCommandCopied"),
+                                    )
+                                  }
+                                >
+                                  <Copy className="size-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {t("sessionManager.copyCommand", {
+                                  defaultValue: "复制命令",
+                                })}
+                              </TooltipContent>
+                            </Tooltip>
                           </div>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-7 shrink-0"
-                                onClick={() =>
-                                  void handleCopy(
-                                    selectedSession.resumeCommand!,
-                                    t("sessionManager.resumeCommandCopied"),
-                                  )
-                                }
-                              >
-                                <Copy className="size-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {t("sessionManager.copyCommand", {
-                                defaultValue: "复制命令",
-                              })}
-                            </TooltipContent>
-                          </Tooltip>
+                          {selectedSession.instanceId && (
+                            <p className="text-xs leading-5 text-amber-700 dark:text-amber-400">
+                              {t("sessionManager.bareCommandWarning")}
+                            </p>
+                          )}
                         </div>
                       )}
                     {selectedSession.summary && (

@@ -30,7 +30,7 @@ pub struct BindSessionCredentialRequest {
     pub instance_id: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentInstanceResponse {
     pub id: String,
@@ -44,8 +44,11 @@ pub struct AgentInstanceResponse {
     pub updated_at: i64,
 }
 
-impl From<crate::database::AgentInstance> for AgentInstanceResponse {
-    fn from(instance: crate::database::AgentInstance) -> Self {
+impl AgentInstanceResponse {
+    fn from_instance(
+        instance: crate::database::AgentInstance,
+        runtime_status: crate::services::credential_isolation::AgentInstanceStatusKind,
+    ) -> Self {
         Self {
             id: instance.id,
             provider_id: instance.provider_id,
@@ -53,7 +56,10 @@ impl From<crate::database::AgentInstance> for AgentInstanceResponse {
             name: instance.name,
             recent_project_dir: instance.recent_project_dir,
             last_launched_at: instance.last_launched_at,
-            runtime_status: "ready".to_string(),
+            runtime_status: serde_json::to_value(runtime_status)
+                .ok()
+                .and_then(|value| value.as_str().map(str::to_string))
+                .unwrap_or_else(|| "unknown".to_string()),
             created_at: instance.created_at,
             updated_at: instance.updated_at,
         }
@@ -63,6 +69,8 @@ impl From<crate::database::AgentInstance> for AgentInstanceResponse {
 #[cfg(test)]
 mod agent_instance_response_tests {
     use super::AgentInstanceResponse;
+    use crate::database::AgentInstance;
+    use crate::services::credential_isolation::AgentInstanceStatusKind;
 
     #[test]
     fn serialization_excludes_credential_reference_and_codex_home() {
@@ -87,6 +95,30 @@ mod agent_instance_response_tests {
         assert_eq!(value["recentProjectDir"], "/tmp/project");
         assert_eq!(value["lastLaunchedAt"], 3);
         assert_eq!(value["runtimeStatus"], "ready");
+    }
+
+    #[test]
+    fn response_uses_computed_runtime_status() {
+        let response = AgentInstanceResponse::from_instance(
+            AgentInstance {
+                id: "instance-a".to_string(),
+                provider_id: "provider-a".to_string(),
+                app_type: "codex".to_string(),
+                name: "Work".to_string(),
+                credential_ref: "hidden".to_string(),
+                codex_home: None,
+                runtime_home: None,
+                recent_project_dir: None,
+                last_launched_at: None,
+                runtime_config: None,
+                created_at: 1,
+                updated_at: 2,
+            },
+            AgentInstanceStatusKind::RuntimeConfigInvalid,
+        );
+
+        let value = serde_json::to_value(response).expect("serialize response");
+        assert_eq!(value["runtimeStatus"], "runtimeConfigInvalid");
     }
 }
 
@@ -137,7 +169,7 @@ pub fn create_agent_instance(
         &request.name,
         &request.api_key,
     )
-    .map(Into::into)
+    .and_then(|instance| agent_instance_response(&state.db, instance))
     .map_err(|error| error.to_string())
 }
 
@@ -152,7 +184,12 @@ pub fn get_agent_instances(
         &provider_id,
         &app_type,
     )
-    .map(|instances| instances.into_iter().map(Into::into).collect())
+    .and_then(|instances| {
+        instances
+            .into_iter()
+            .map(|instance| agent_instance_response(&state.db, instance))
+            .collect()
+    })
     .map_err(|error| error.to_string())
 }
 
@@ -212,7 +249,7 @@ pub fn rename_agent_instance(
     crate::services::credential_isolation::CredentialIsolationService::rename_instance(
         &state.db, &id, &name,
     )
-    .map(Into::into)
+    .and_then(|instance| agent_instance_response(&state.db, instance))
     .map_err(|error| error.to_string())
 }
 
@@ -231,7 +268,7 @@ pub fn rotate_agent_instance_key(
             .get_agent_instance(&id)?
             .ok_or_else(|| AppError::InvalidInput(format!("实例 {id} 不存在")))
     })
-    .map(Into::into)
+    .and_then(|instance| agent_instance_response(&state.db, instance))
     .map_err(|error| error.to_string())
 }
 
@@ -246,7 +283,7 @@ pub fn set_agent_instance_recent_project(
         &id,
         recentProjectDir.as_deref(),
     )
-    .map(Into::into)
+    .and_then(|instance| agent_instance_response(&state.db, instance))
     .map_err(|error| error.to_string())
 }
 
@@ -257,6 +294,31 @@ pub fn get_agent_instance_status(
 ) -> Result<crate::services::credential_isolation::AgentInstanceStatus, String> {
     crate::services::credential_isolation::CredentialIsolationService::status(&state.db, &id)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn rebuild_agent_instance_config(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<crate::services::credential_isolation::AgentInstanceStatus, String> {
+    crate::services::credential_isolation::CredentialIsolationService::refresh_instance_config(
+        &state.db, &id,
+    )
+    .and_then(|_| {
+        crate::services::credential_isolation::CredentialIsolationService::status(&state.db, &id)
+    })
+    .map_err(|error| error.to_string())
+}
+
+fn agent_instance_response(
+    db: &crate::database::Database,
+    instance: crate::database::AgentInstance,
+) -> Result<AgentInstanceResponse, AppError> {
+    let status = crate::services::credential_isolation::CredentialIsolationService::status(
+        db,
+        &instance.id,
+    )?;
+    Ok(AgentInstanceResponse::from_instance(instance, status.kind))
 }
 
 #[tauri::command]

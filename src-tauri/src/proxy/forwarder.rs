@@ -1622,6 +1622,7 @@ impl RequestForwarder {
                 crate::services::credential_isolation::CredentialIsolationService::resolve_session_api_key(
                     &self.db,
                     app_type.as_str(),
+                    instance_id,
                     &self.session_id,
                     &provider.id,
                 )

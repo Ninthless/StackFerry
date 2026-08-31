@@ -1,8 +1,8 @@
 use serde_json::json;
 
 use stackferry_lib::{
-    get_claude_settings_path, read_json_file, write_codex_live_atomic, AppError, AppType, McpApps,
-    McpServer, MultiAppConfig, Provider, ProviderMeta, ProviderService,
+    get_claude_settings_path, read_json_file, write_codex_live_atomic, AgentInstance, AppError,
+    AppType, McpApps, McpServer, MultiAppConfig, Provider, ProviderMeta, ProviderService,
 };
 
 #[path = "support.rs"]
@@ -2938,6 +2938,53 @@ fn provider_service_delete_current_provider_returns_error() {
         ),
         other => panic!("expected Config/Message error, got {other:?}"),
     }
+}
+
+#[test]
+fn provider_service_delete_rejects_provider_with_instance() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let _home = ensure_test_home();
+    let state = create_test_state().expect("create test state");
+    state
+        .db
+        .save_provider(
+            AppType::Codex.as_str(),
+            &Provider::with_id(
+                "isolated".to_string(),
+                "Isolated".to_string(),
+                json!({}),
+                None,
+            ),
+        )
+        .expect("save provider");
+    state
+        .db
+        .save_agent_instance(&AgentInstance {
+            id: "instance-a".to_string(),
+            provider_id: "isolated".to_string(),
+            app_type: "codex".to_string(),
+            name: "Work".to_string(),
+            credential_ref: "credential-a".to_string(),
+            codex_home: None,
+            runtime_home: Some("/tmp/instance-a".to_string()),
+            recent_project_dir: None,
+            last_launched_at: None,
+            runtime_config: Some("config.toml".to_string()),
+            created_at: 1,
+            updated_at: 1,
+        })
+        .expect("save instance");
+
+    let error = ProviderService::delete(&state, AppType::Codex, "isolated")
+        .expect_err("provider with instance must be retained");
+
+    assert!(error.to_string().contains("隔离实例"));
+    assert!(state
+        .db
+        .get_provider_by_id("isolated", AppType::Codex.as_str())
+        .expect("read provider")
+        .is_some());
 }
 
 #[test]

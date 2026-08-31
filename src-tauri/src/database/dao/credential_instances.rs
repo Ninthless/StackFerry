@@ -298,6 +298,24 @@ impl Database {
         }
         Ok(first)
     }
+
+    pub fn mark_session_credential_binding_used(
+        &self,
+        app_type: &str,
+        instance_id: &str,
+        session_id: &str,
+        now: i64,
+    ) -> Result<bool, AppError> {
+        let conn = lock_conn!(self.conn);
+        conn.execute(
+            "UPDATE session_credential_bindings
+             SET last_used_at = ?4
+             WHERE app_type = ?1 AND instance_id = ?2 AND session_id = ?3",
+            params![app_type, instance_id, session_id, now],
+        )
+        .map(|changed| changed > 0)
+        .map_err(|e| AppError::Database(e.to_string()))
+    }
 }
 
 fn map_agent_instance(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentInstance> {
@@ -386,6 +404,33 @@ mod tests {
         assert_eq!(binding.provider_id, "provider-a");
         assert_eq!(binding.instance_id, "instance-a");
         assert_eq!(binding.last_used_at, 10);
+    }
+
+    #[test]
+    fn mark_session_binding_used_updates_only_exact_instance_scope() {
+        let db = Database::memory().expect("memory db");
+        seed_instance(&db, "instance-a", "provider-a");
+        seed_instance(&db, "instance-b", "provider-b");
+
+        db.bind_session_credential("codex", "session-1", "provider-a", "instance-a", 10)
+            .expect("bind first");
+        db.bind_session_credential("codex", "session-1", "provider-b", "instance-b", 11)
+            .expect("bind second");
+
+        assert!(db
+            .mark_session_credential_binding_used("codex", "instance-a", "session-1", 20)
+            .expect("mark binding used"));
+
+        let first = db
+            .get_session_credential_binding("codex", "session-1", Some("instance-a"))
+            .expect("read first")
+            .expect("first binding");
+        let second = db
+            .get_session_credential_binding("codex", "session-1", Some("instance-b"))
+            .expect("read second")
+            .expect("second binding");
+        assert_eq!(first.last_used_at, 20);
+        assert_eq!(second.last_used_at, 11);
     }
 
     #[test]

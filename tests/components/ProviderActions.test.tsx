@@ -60,6 +60,52 @@ describe("ProviderActions", () => {
     expect(props.onConfigureUsage).toHaveBeenCalledOnce();
   });
 
+  it("keeps runtime environments visible beside the primary action", async () => {
+    const user = userEvent.setup();
+    const props = createProps();
+    const onManageRuntimeEnvironments = vi.fn();
+
+    render(
+      <ProviderActions
+        {...props}
+        appId="codex"
+        onManageRuntimeEnvironments={onManageRuntimeEnvironments}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "provider.manageRuntimeEnvironments",
+      }),
+    );
+
+    expect(onManageRuntimeEnvironments).toHaveBeenCalledOnce();
+
+    await user.click(
+      screen.getByRole("button", { name: "provider.moreActions" }),
+    );
+    expect(
+      screen.queryByRole("menuitem", {
+        name: "provider.manageRuntimeEnvironments",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("labels direct launch as using the Provider Key", async () => {
+    const user = userEvent.setup();
+    const props = createProps();
+
+    render(<ProviderActions {...props} onOpenTerminal={vi.fn()} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "provider.moreActions" }),
+    );
+
+    expect(
+      screen.getByRole("menuitem", { name: "provider.launchDirect" }),
+    ).toBeVisible();
+  });
+
   it("renders the overflow tooltip outside its clipping container", async () => {
     const user = userEvent.setup();
     const props = createProps();

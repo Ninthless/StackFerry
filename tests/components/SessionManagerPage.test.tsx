@@ -11,6 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionManagerPage } from "@/components/sessions/SessionManagerPage";
 import { sessionsApi } from "@/lib/api/sessions";
+import { providersApi } from "@/lib/api/providers";
 import type { SessionMessage, SessionMeta } from "@/types";
 import { setSessionFixtures } from "../msw/state";
 
@@ -329,6 +330,97 @@ describe("SessionManagerPage", () => {
       screen.queryByRole("button", { name: /恢复会话|复制命令/i }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("openclaw resume")).not.toBeInTheDocument();
+  });
+
+  it("launches resume commands through the terminal API on every platform", async () => {
+    const launchSpy = vi
+      .spyOn(sessionsApi, "launchTerminal")
+      .mockResolvedValueOnce(true);
+    renderPage();
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Alpha Session" }),
+      ).toBeInTheDocument(),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /恢复会话/i }));
+
+    await waitFor(() =>
+      expect(launchSpy).toHaveBeenCalledWith({
+        command: "codex resume codex-session-1",
+        cwd: "/mock/codex",
+        providerId: "codex",
+        instanceId: undefined,
+        sessionId: "codex-session-1",
+        sourcePath: "/mock/codex/session-1.jsonl",
+      }),
+    );
+    launchSpy.mockRestore();
+  });
+
+  it("shows environment and Provider identity for isolated sessions", async () => {
+    setSessionFixtures(
+      [
+        {
+          providerId: "codex",
+          sessionId: "isolated-session",
+          instanceId: "instance-1",
+          title: "Isolated Session",
+          projectDir: "/mock/isolated",
+          sourcePath: "/mock/isolated.jsonl",
+          resumeCommand: "codex resume isolated-session",
+        },
+      ],
+      {},
+    );
+    const getAllSpy = vi.spyOn(providersApi, "getAll").mockResolvedValue({
+      "provider-1": {
+        id: "provider-1",
+        name: "Acme Provider",
+        settingsConfig: {},
+      },
+    });
+    const getInstancesSpy = vi
+      .spyOn(providersApi, "getAgentInstances")
+      .mockResolvedValue([
+        {
+          id: "instance-1",
+          providerId: "provider-1",
+          appType: "codex",
+          name: "Work Environment",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(getAllSpy).toHaveBeenCalledWith("codex");
+      expect(getInstancesSpy).toHaveBeenCalledWith("provider-1", "codex");
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByText("sessionManager.environmentIdentity"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("sessionManager.providerIdentity"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("sessionManager.bareCommandWarning"),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("combobox", { name: /运行环境/i }));
+    expect(
+      await screen.findByRole("option", {
+        name: "Work Environment · Acme Provider",
+      }),
+    ).toBeInTheDocument();
+
+    getAllSpy.mockRestore();
+    getInstancesSpy.mockRestore();
   });
 
   it("switches compact detail state and returns to the list", async () => {

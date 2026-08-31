@@ -91,7 +91,29 @@ export interface OpenTerminalOptions {
   instanceId?: string;
 }
 
-export type RuntimeEnvironmentStatus = "ready" | "running" | "unknown";
+export type RuntimeEnvironmentStatus =
+  | "ready"
+  | "credentialMissing"
+  | "runtimeHomeMissing"
+  | "runtimeConfigMissing"
+  | "runtimeConfigInvalid"
+  | "providerMissing"
+  | "cleanupPending"
+  | "unknown";
+
+export type RuntimeEnvironmentRepairAction = "rotateKey" | "rebuildConfig";
+
+export interface RuntimeEnvironmentHealth {
+  kind: RuntimeEnvironmentStatus;
+  providerExists: boolean;
+  runtimeHomeExists: boolean;
+  runtimeConfigExists: boolean;
+  runtimeConfigValid: boolean;
+  credentialAvailable: boolean;
+  cleanupPending: boolean;
+  healthy: boolean;
+  repairActions: RuntimeEnvironmentRepairAction[];
+}
 
 export interface RuntimeEnvironment {
   id: string;
@@ -208,6 +230,16 @@ export const providersApi = {
       id,
       recentProjectDir,
     });
+  },
+
+  async getAgentInstanceStatus(id: string): Promise<RuntimeEnvironmentHealth> {
+    return await invoke("get_agent_instance_status", { id });
+  },
+
+  async rebuildAgentInstanceConfig(
+    id: string,
+  ): Promise<RuntimeEnvironmentHealth> {
+    return await invoke("rebuild_agent_instance_config", { id });
   },
 
   async deleteAgentInstance(
