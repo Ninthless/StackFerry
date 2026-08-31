@@ -1,47 +1,45 @@
-# StackFerry v0.1.21
+# StackFerry v0.1.22
 
-> 自 v0.1.20 发布以来的更新。
+> 自 v0.1.21 发布以来的更新。
 
 ## 简体中文
 
-### 同步安全
+### 故障路由与熔断恢复
 
-- WebDAV 密码和 S3 Secret Access Key 迁移到系统凭据管理器，旧版 `settings.json` 中的明文凭据会在迁移成功后清除。
-- 远程 WebDAV 与自定义 S3 端点必须使用 HTTPS；HTTP 仅允许本机回环地址。
-- 同步协议升级到 v3，并使用 HMAC-SHA256 对远程快照清单进行来源认证，避免远端文件与哈希同时被替换后仍通过校验。
+- Codex 故障路由现在会区分真实上游错误、凭据失败与本地代理问题，避免把错误归因到无关 Provider。
+- 改善 Provider 切换与失败重试的稳定性，减少错误状态导致的路由波动。
+- 新增按应用配置的自动熔断恢复开关；关闭后，已熔断 Provider 会保持阻断，直到用户手动恢复。
+- 故障转移队列现在直接显示 Provider 健康状态，并提供手动恢复操作。
 
-### 配置恢复与一致性
+### Codex 配置与鉴权
 
-- 数据库备份恢复、SQL 导入以及 WebDAV/S3 快照下载后会重新投影当前 Provider 到各工具的 live 配置。
-- 后置投影失败不会撤销已成功的数据库恢复，但会返回明确警告，方便用户重新同步。
-- Provider 切换前读取 live 配置失败时会记录错误，同时保持既有 Profile 警告契约和切换流程。
+- Codex Provider 编辑器改为使用数据库中的已保存配置，避免 live `config.toml` 的旧内容或外部改写覆盖编辑结果。
+- 手动修改 TOML 中的 `experimental_bearer_token` 时会同步更新规范凭据，确保保存、切换和代理转发使用最新 API Key。
+- 修复因旧凭据覆盖 TOML Token 而导致上游缺少有效 `Authorization` 头并返回 401 的问题。
 
-### 发布与质量保障
+### 兼容性与质量
 
-- macOS 构建保留在发布矩阵中；在未配置 Apple 证书和公证凭据时生成未签名安装包，配置后可启用正式签名与公证。
-- CI 新增 renderer 生产构建和前后端 IPC 契约检查，并在 Linux、macOS、Windows 上继续执行 Rustfmt、Clippy 和完整测试。
-- 发布版本校验现在同时检查 `package.json`、Tauri 配置、`Cargo.toml` 与 `Cargo.lock`。
-- 统一 Node.js、pnpm 与 Rust 开发和发布工具链说明，并修正支持工具能力矩阵。
+- 数据库 v28 迁移现在兼容不包含 `proxy_config` 的历史或精简测试 Schema，避免迁移测试和部分恢复场景失败。
+- 增加 Codex 配置保存、凭据同步、熔断恢复和数据库迁移回归测试。
 
 ## English
 
-> Changes since the v0.1.20 release.
+> Changes since the v0.1.21 release.
 
-### Synchronization Security
+### Failover and Circuit Recovery
 
-- Moved WebDAV passwords and S3 secret access keys into the operating system credential manager and removed legacy plaintext values from `settings.json` after a successful migration.
-- Required HTTPS for remote WebDAV and custom S3 endpoints, while allowing HTTP only for loopback addresses.
-- Upgraded the synchronization protocol to v3 and added HMAC-SHA256 authentication for remote snapshot manifests so replacing both artifacts and hashes no longer bypasses verification.
+- Improved Codex failover attribution so upstream errors, credential failures, and local proxy problems do not penalize unrelated providers.
+- Stabilized provider switching and retry behavior to reduce routing fluctuations caused by stale failure state.
+- Added a per-application automatic circuit recovery switch. When disabled, an open circuit remains blocked until the user recovers it manually.
+- Added provider health indicators and manual recovery actions directly to the failover queue.
 
-### Restore and Live-State Consistency
+### Codex Configuration and Authentication
 
-- Reprojected current providers into each tool's live configuration after database backup restore, SQL import, and WebDAV or S3 snapshot download.
-- Kept successful database restores intact when post-restore projection fails while returning an explicit warning for manual resynchronization.
-- Logged live-configuration read failures before provider switches without changing the established profile warning contract.
+- Made the saved database configuration authoritative in the Codex provider editor so stale or externally rewritten live `config.toml` content cannot overwrite edits.
+- Synchronized manually edited `experimental_bearer_token` values into canonical credentials so saves, switches, and proxy forwarding use the latest API key.
+- Fixed 401 responses caused by stale credentials replacing the TOML token and leaving the upstream request without valid authorization.
 
-### Release and Quality
+### Compatibility and Quality
 
-- Kept macOS builds in the release matrix; without Apple signing and notarization credentials, the workflow produces unsigned installers, while configured credentials enable official signing and notarization.
-- Added production renderer builds and frontend-to-Tauri IPC contract validation to CI while retaining cross-platform Rustfmt, Clippy, and full test coverage.
-- Extended release version validation to cover `package.json`, Tauri configuration, `Cargo.toml`, and `Cargo.lock`.
-- Aligned Node.js, pnpm, and Rust development and release requirements and corrected the supported-tool capability matrix.
+- Made the v28 database migration tolerate historical or partial schemas without `proxy_config`, preventing migration-test and partial-restore failures.
+- Added regression coverage for Codex configuration persistence, credential synchronization, circuit recovery, and database migration compatibility.

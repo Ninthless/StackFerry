@@ -1,6 +1,6 @@
 {
   "name": "stackferry",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "Provider and configuration manager for AI coding tools",
   "type": "module",
   "packageManager": "pnpm@10.12.3",

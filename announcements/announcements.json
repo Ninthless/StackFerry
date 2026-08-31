@@ -1,7 +1,53 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-25T06:46:00Z",
+  "generatedAt": "2026-08-31T11:43:00Z",
   "announcements": [
+    {
+      "id": "2026-08-stackferry-0-1-22",
+      "category": "release",
+      "severity": "important",
+      "publishedAt": "2026-08-31T11:43:00Z",
+      "expiresAt": null,
+      "minAppVersion": null,
+      "maxAppVersion": null,
+      "platforms": ["windows", "macos", "linux"],
+      "channels": ["stable"],
+      "relatedVersion": "0.1.22",
+      "locales": {
+        "zh": {
+          "title": "StackFerry v0.1.22 已发布",
+          "summary": "增强 Codex 配置保存与鉴权稳定性，并加入可配置的熔断恢复模式。",
+          "body": "本次更新修复 Codex Provider 编辑后配置被旧 live config.toml 覆盖的问题。手动修改 experimental_bearer_token 时，StackFerry 现在会同步更新规范凭据，确保保存、切换和代理转发使用最新 API Key，避免上游因缺少有效 Authorization 而返回 401。\n\n故障路由现在会更准确地区分上游错误、凭据失败和本地代理问题，减少错误归因导致的 Provider 波动。自动熔断恢复新增按应用开关；关闭后，已熔断 Provider 会保持阻断，直到用户在故障转移队列中手动恢复。\n\n数据库 v28 迁移也增强了对历史和精简 Schema 的兼容性，并补充了配置保存、凭据同步、熔断恢复和迁移回归测试。"
+        },
+        "en": {
+          "title": "StackFerry v0.1.22 is available",
+          "summary": "Improves Codex configuration persistence and authentication stability, with configurable circuit recovery.",
+          "body": "This release fixes Codex provider edits being overwritten by stale live config.toml content. When experimental_bearer_token is edited manually, StackFerry now synchronizes it into the canonical credential so saves, switches, and proxy forwarding use the latest API key and avoid upstream 401 responses caused by missing valid authorization.\n\nFailover routing now distinguishes upstream errors, credential failures, and local proxy problems more accurately, reducing provider fluctuations caused by incorrect attribution. Automatic circuit recovery is configurable per application; when disabled, an open circuit remains blocked until it is manually recovered from the failover queue.\n\nThe v28 database migration also gains compatibility with historical and partial schemas, with additional regression coverage for configuration persistence, credential synchronization, circuit recovery, and migrations."
+        },
+        "zh-TW": {
+          "title": "StackFerry v0.1.22 已發佈",
+          "summary": "改善 Codex 設定儲存與驗證穩定性，並加入可設定的熔斷恢復模式。",
+          "body": "本次更新修正 Codex Provider 編輯後被舊 live config.toml 內容覆蓋的問題。手動修改 experimental_bearer_token 時，StackFerry 現在會同步更新規範憑證，確保儲存、切換和代理轉送使用最新 API Key，避免上游因缺少有效 Authorization 而回傳 401。\n\n故障路由現在會更準確地區分上游錯誤、憑證失敗和本機代理問題，減少錯誤歸因造成的 Provider 波動。自動熔斷恢復新增依應用程式設定的開關；關閉後，已熔斷 Provider 會維持阻擋，直到使用者在故障轉移佇列中手動恢復。\n\n資料庫 v28 遷移也加強了對歷史和精簡 Schema 的相容性，並補充設定儲存、憑證同步、熔斷恢復和遷移回歸測試。"
+        },
+        "ja": {
+          "title": "StackFerry v0.1.22 をリリースしました",
+          "summary": "Codex 設定の保存と認証の安定性を改善し、サーキット回復を設定可能にしました。",
+          "body": "この更新では、Codex Provider の編集内容が古い live config.toml によって上書きされる問題を修正しました。experimental_bearer_token を手動で変更した場合、StackFerry は正規の資格情報にも同期し、保存、切り替え、プロキシ転送で最新の API Key を使用します。これにより、有効な Authorization がないために上流から 401 が返される問題を防ぎます。\n\nフェイルオーバールーティングは、上流エラー、資格情報エラー、ローカルプロキシ問題をより正確に区別し、誤った判定による Provider の変動を減らします。サーキットの自動回復はアプリごとに設定でき、無効時はフェイルオーバーキューから手動回復するまで遮断状態を維持します。\n\nデータベース v28 の移行も、過去の Schema や一部のみの Schema に対応し、設定保存、資格情報同期、サーキット回復、移行の回帰テストを追加しました。"
+        }
+      },
+      "actions": [
+        {
+          "type": "external",
+          "url": "https://github.com/Ninthless/StackFerry/releases/tag/v0.1.22",
+          "label": {
+            "zh": "查看发行说明",
+            "en": "View release notes",
+            "zh-TW": "查看發行說明",
+            "ja": "リリースノートを見る"
+          }
+        }
+      ]
+    },
     {
       "id": "2026-08-report-stackferry-bugs",
       "category": "service",
@@ -55,7 +101,7 @@
       "publishedAt": "2026-08-25T06:46:00Z",
       "expiresAt": null,
       "minAppVersion": null,
-      "maxAppVersion": null,
+      "maxAppVersion": "0.1.21",
       "platforms": ["windows", "macos", "linux"],
       "channels": ["stable"],
       "relatedVersion": "0.1.21",
