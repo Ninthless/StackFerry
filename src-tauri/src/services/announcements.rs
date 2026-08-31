@@ -598,7 +598,12 @@ mod tests {
     #[test]
     fn version_platform_expiry_and_channel_filters_are_applied() {
         let mut manifest = bundled_manifest();
-        let base = manifest.announcements[0].clone();
+        let base = manifest
+            .announcements
+            .iter()
+            .find(|announcement| announcement.id == "2026-08-stackferry-0-1-22")
+            .unwrap()
+            .clone();
         let mut expired = base.clone();
         expired.id = "expired-announcement".to_string();
         expired.expires_at = Some("2020-01-01T00:00:00Z".to_string());
@@ -612,17 +617,19 @@ mod tests {
 
         let visible = visible_records(&manifest);
         assert_eq!(visible.len(), 1);
-        assert_eq!(visible[0].id, "2026-08-report-stackferry-bugs");
+        assert_eq!(visible[0].id, "2026-08-stackferry-0-1-22");
     }
 
     #[test]
     fn localized_content_falls_back_to_english() {
         let manifest = bundled_manifest();
         let feed = build_feed(&AnnouncementStore::default(), &manifest, "fr", None, false);
-        assert_eq!(
-            feed.announcements[0].title,
-            "Found a problem? Report it on GitHub"
-        );
+        let announcement = feed
+            .announcements
+            .iter()
+            .find(|announcement| announcement.id == "2026-08-stackferry-0-1-22")
+            .unwrap();
+        assert_eq!(announcement.title, "StackFerry v0.1.22 is available");
     }
 
     #[test]
