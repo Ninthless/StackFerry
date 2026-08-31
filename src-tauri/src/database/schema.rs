@@ -1943,12 +1943,14 @@ impl Database {
     }
 
     fn migrate_v27_to_v28(conn: &Connection) -> Result<(), AppError> {
-        Self::add_column_if_missing(
-            conn,
-            "proxy_config",
-            "circuit_auto_recovery_enabled",
-            "INTEGER NOT NULL DEFAULT 1",
-        )?;
+        if Self::table_exists(conn, "proxy_config")? {
+            Self::add_column_if_missing(
+                conn,
+                "proxy_config",
+                "circuit_auto_recovery_enabled",
+                "INTEGER NOT NULL DEFAULT 1",
+            )?;
+        }
         Ok(())
     }
 
@@ -4026,6 +4028,19 @@ mod tests {
             |row| row.get(0),
         )?;
         assert_eq!(enabled, 1);
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v27_to_v28_allows_partial_test_schemas_without_proxy_config() -> Result<(), AppError>
+    {
+        let conn = Connection::open_in_memory()?;
+        Database::set_user_version(&conn, 27)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert!(!Database::table_exists(&conn, "proxy_config")?);
         assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
         Ok(())
     }
