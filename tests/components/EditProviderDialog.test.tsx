@@ -98,7 +98,7 @@ describe("EditProviderDialog", () => {
     apiMocks.getOpenClawLiveProvider.mockReset();
   });
 
-  it("保留 Codex 数据库中的 modelCatalog，避免 live 配置缺字段时清空模型映射", async () => {
+  it("编辑 Codex 供应商时以数据库配置为准，不让 live 配置覆盖用户保存内容", async () => {
     const dbModelCatalog = {
       models: [
         {
@@ -120,16 +120,15 @@ describe("EditProviderDialog", () => {
         modelCatalog: dbModelCatalog,
       },
     };
-    const liveSettings = {
+    const handleSubmit = vi.fn().mockResolvedValue(undefined);
+
+    apiMocks.getCurrent.mockResolvedValue(provider.id);
+    apiMocks.getLiveProviderSettings.mockResolvedValue({
       auth: {
         OPENAI_API_KEY: "live-key",
       },
       config: 'model_provider = "custom"\nmodel = "deepseek-v4-pro"\n',
-    };
-    const handleSubmit = vi.fn().mockResolvedValue(undefined);
-
-    apiMocks.getCurrent.mockResolvedValue(provider.id);
-    apiMocks.getLiveProviderSettings.mockResolvedValue(liveSettings);
+    });
 
     render(
       <EditProviderDialog
@@ -144,19 +143,16 @@ describe("EditProviderDialog", () => {
     await waitFor(() => {
       expect(
         JSON.parse(screen.getByTestId("settings-config").textContent ?? "{}"),
-      ).toEqual({
-        ...liveSettings,
-        modelCatalog: dbModelCatalog,
-      });
+      ).toEqual(provider.settingsConfig);
     });
 
     fireEvent.click(screen.getByRole("button", { name: "common.save" }));
 
     await waitFor(() => expect(handleSubmit).toHaveBeenCalledTimes(1));
-    expect(handleSubmit.mock.calls[0][0].provider.settingsConfig).toEqual({
-      ...liveSettings,
-      modelCatalog: dbModelCatalog,
-    });
+    expect(handleSubmit.mock.calls[0][0].provider.settingsConfig).toEqual(
+      provider.settingsConfig,
+    );
+    expect(apiMocks.getLiveProviderSettings).not.toHaveBeenCalled();
   });
 
   it("代理接管中编辑 Codex 供应商时展示数据库配置而不是读取 live 代理配置", async () => {

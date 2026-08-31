@@ -289,6 +289,18 @@ export function useCodexConfigState({ initialData }: UseCodexConfigStateProps) {
       // 归一化中文/全角/弯引号，避免 TOML 解析报错
       const normalized = normalizeTomlText(value);
       setCodexConfig(normalized);
+      const configApiKey = extractCodexExperimentalBearerToken(normalized);
+      if (configApiKey) {
+        try {
+          const auth = parseCodexAuthObject(codexAuth);
+          if (auth.OPENAI_API_KEY !== configApiKey) {
+            auth.OPENAI_API_KEY = configApiKey;
+            setCodexAuth(JSON.stringify(auth, null, 2));
+          }
+        } catch {
+          return;
+        }
+      }
 
       if (!isUpdatingCodexBaseUrlRef.current) {
         const extracted = extractCodexBaseUrl(normalized) || "";
@@ -297,7 +309,7 @@ export function useCodexConfigState({ initialData }: UseCodexConfigStateProps) {
         }
       }
     },
-    [setCodexConfig, codexBaseUrl],
+    [setCodexConfig, setCodexAuth, codexAuth, codexBaseUrl],
   );
 
   // 重置配置（用于预设切换）
