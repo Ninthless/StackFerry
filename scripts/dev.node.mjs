@@ -24,3 +24,12 @@ test("development paths are isolated without replacing toolchain paths", () => {
   assert.equal(environment.PI_CODING_AGENT_DIR, join(devHome, ".pi", "agent"));
   assert.equal(environment.XDG_DATA_HOME, join(devHome, ".local", "share"));
 });
+
+test("uses cmd.exe to launch pnpm on Windows", async () => {
+  const source = await import("node:fs/promises").then((fs) =>
+    fs.readFile(new URL("./dev.mjs", import.meta.url), "utf8"),
+  );
+
+  assert.match(source, /process\.env\.ComSpec \?\? "cmd\.exe"/);
+  assert.match(source, /"pnpm tauri dev --config src-tauri\/tauri\.dev\.conf\.json"/);
+});

@@ -37,10 +37,19 @@ export function runDev(root = projectRoot, baseEnvironment = process.env) {
   mkdirSync(devHome, { recursive: true });
   console.log(`[dev] Isolated data directory: ${devHome}`);
 
-  const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  const isWindows = process.platform === "win32";
+  const command = isWindows ? process.env.ComSpec ?? "cmd.exe" : "pnpm";
+  const args = isWindows
+    ? [
+        "/d",
+        "/s",
+        "/c",
+        "pnpm tauri dev --config src-tauri/tauri.dev.conf.json",
+      ]
+    : ["tauri", "dev", "--config", "src-tauri/tauri.dev.conf.json"];
   const child = spawn(
-    pnpm,
-    ["tauri", "dev", "--config", "src-tauri/tauri.dev.conf.json"],
+    command,
+    args,
     {
       cwd: root,
       env: environment,
