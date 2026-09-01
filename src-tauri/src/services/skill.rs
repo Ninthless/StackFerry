@@ -20,6 +20,7 @@ use crate::app_config::{AppType, InstalledSkill, SkillApps, UnmanagedSkill};
 use crate::config::get_app_config_dir;
 use crate::database::Database;
 use crate::error::format_skill_error;
+pub use crate::infrastructure::persistence::SkillRepo;
 
 // ========== 数据结构 ==========
 
@@ -100,19 +101,6 @@ pub struct Skill {
     pub repo_branch: Option<String>,
 }
 
-/// 仓库配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillRepo {
-    /// GitHub 用户/组织名
-    pub owner: String,
-    /// 仓库名称
-    pub name: String,
-    /// 分支 (默认 "main")
-    pub branch: String,
-    /// 是否启用
-    pub enabled: bool,
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillRepoFailure {
@@ -159,32 +147,7 @@ impl Default for SkillStore {
     fn default() -> Self {
         SkillStore {
             skills: HashMap::new(),
-            repos: vec![
-                SkillRepo {
-                    owner: "anthropics".to_string(),
-                    name: "skills".to_string(),
-                    branch: "main".to_string(),
-                    enabled: true,
-                },
-                SkillRepo {
-                    owner: "ComposioHQ".to_string(),
-                    name: "awesome-claude-skills".to_string(),
-                    branch: "master".to_string(),
-                    enabled: true,
-                },
-                SkillRepo {
-                    owner: "cexll".to_string(),
-                    name: "myclaude".to_string(),
-                    branch: "master".to_string(),
-                    enabled: true,
-                },
-                SkillRepo {
-                    owner: "JimLiu".to_string(),
-                    name: "baoyu-skills".to_string(),
-                    branch: "main".to_string(),
-                    enabled: true,
-                },
-            ],
+            repos: crate::infrastructure::persistence::default_skill_repos(),
         }
     }
 }

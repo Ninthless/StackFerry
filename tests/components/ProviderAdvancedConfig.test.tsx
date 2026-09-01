@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ProviderAdvancedConfig } from "@/components/providers/forms/ProviderAdvancedConfig";
+import { ProviderAdvancedConfig } from "@/features/providers/forms/ProviderAdvancedConfig";
 
 describe("ProviderAdvancedConfig", () => {
   it("keeps the disclosure and pricing switch as separate controls", () => {

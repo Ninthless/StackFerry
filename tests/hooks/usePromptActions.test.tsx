@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { usePromptActions } from "@/hooks/usePromptActions";
+import { usePromptActions } from "@/features/prompts/model/usePromptActions";
 
 const promptsApiMock = vi.hoisted(() => ({
   getPrompts: vi.fn(),
@@ -11,7 +11,7 @@ const promptsApiMock = vi.hoisted(() => ({
   getCurrentFileContent: vi.fn(),
 }));
 
-vi.mock("@/lib/api", () => ({ promptsApi: promptsApiMock }));
+vi.mock("@/platform/tauri/api", () => ({ promptsApi: promptsApiMock }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const prompt = {

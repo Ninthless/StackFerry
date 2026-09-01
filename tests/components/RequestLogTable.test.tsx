@@ -2,8 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import fs from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { RequestLogTable } from "@/components/usage/RequestLogTable";
-import type { UsageRangeSelection } from "@/types/usage";
+import { RequestLogTable } from "@/features/usage/RequestLogTable";
+import type { UsageRangeSelection } from "@/shared/contracts/usage";
 
 const useRequestLogsMock = vi.hoisted(() => vi.fn());
 const useRequestLogFacetsMock = vi.hoisted(() => vi.fn());
@@ -13,7 +13,7 @@ const requestLogSource = fs.readFileSync(
     "..",
     "..",
     "src",
-    "components",
+    "features",
     "usage",
     "RequestLogTable.tsx",
   ),
@@ -39,22 +39,22 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@/lib/query/usage", () => ({
+vi.mock("@/features/usage/model/usage", () => ({
   useRequestLogs: (args: unknown) => useRequestLogsMock(args),
   useRequestLogFacets: (args: unknown) => useRequestLogFacetsMock(args),
 }));
 
-vi.mock("@/components/ui/button", () => ({
+vi.mock("@/shared/ui/button", () => ({
   Button: ({ children, ...props }: any) => (
     <button {...props}>{children}</button>
   ),
 }));
 
-vi.mock("@/components/ui/input", () => ({
+vi.mock("@/shared/ui/input", () => ({
   Input: (props: any) => <input {...props} />,
 }));
 
-vi.mock("@/components/ui/select", () => ({
+vi.mock("@/shared/ui/select", () => ({
   Select: ({ children }: any) => <div>{children}</div>,
   SelectTrigger: ({ children, ...props }: any) => (
     <button type="button" {...props}>
@@ -66,7 +66,7 @@ vi.mock("@/components/ui/select", () => ({
   SelectItem: () => null,
 }));
 
-vi.mock("@/components/ui/table", () => ({
+vi.mock("@/shared/ui/table", () => ({
   Table: ({ children }: any) => <table>{children}</table>,
   TableBody: ({ children }: any) => <tbody>{children}</tbody>,
   TableCell: ({ children, ...props }: any) => <td {...props}>{children}</td>,

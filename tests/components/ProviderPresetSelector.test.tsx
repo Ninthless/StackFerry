@@ -3,8 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { TFunction } from "i18next";
 import { useForm } from "react-hook-form";
-import { Form } from "@/components/ui/form";
-import type { ProviderCategory } from "@/types";
+import { Form } from "@/shared/ui/form";
+import type { ProviderCategory } from "@/shared/contracts";
 import {
   ProviderPresetSelector,
   filterPresetEntries,
@@ -13,10 +13,10 @@ import {
   getVisiblePresetEntries,
   sortPresetEntries,
   type PresetSortMode,
-} from "@/components/providers/forms/ProviderPresetSelector";
+} from "@/features/providers/forms/ProviderPresetSelector";
 
 // Mock ProviderIcon 以避免依赖图标库的实际内容
-vi.mock("@/components/ProviderIcon", () => ({
+vi.mock("@/shared/ui/ProviderIcon", () => ({
   ProviderIcon: ({
     icon,
     name,

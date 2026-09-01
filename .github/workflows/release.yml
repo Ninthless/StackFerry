@@ -37,14 +37,12 @@ jobs:
       - name: Validate release version
         run: node scripts/validate-release-version.mjs
 
-      - name: Test Node scripts
+      - name: Test release scripts
         run: >-
           node --test
-          scripts/dev.node.mjs
           scripts/generate-updater-manifest.node.mjs
           scripts/build-fast.node.mjs
           scripts/verify-bundle-marker.node.mjs
-          scripts/validate-ipc-contract.node.mjs
 
       - name: Validate updater signing secret
         shell: bash

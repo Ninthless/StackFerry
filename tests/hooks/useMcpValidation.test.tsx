@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { useMcpValidation } from "@/components/mcp/useMcpValidation";
+import { useMcpValidation } from "@/features/mcp/useMcpValidation";
 
 const validateTomlMock = vi.hoisted(() => vi.fn());
 const tomlToMcpServerMock = vi.hoisted(() => vi.fn());
@@ -11,7 +11,7 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@/utils/tomlUtils", () => ({
+vi.mock("@/shared/lib/tomlUtils", () => ({
   validateToml: (...args: unknown[]) => validateTomlMock(...args),
   tomlToMcpServer: (...args: unknown[]) => tomlToMcpServerMock(...args),
 }));

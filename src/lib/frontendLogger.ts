@@ -1,4 +1,4 @@
-import { error as writeErrorLog } from "@tauri-apps/plugin-log";
+import { runtimeApi } from "@/platform/tauri/api";
 
 const MAX_LOG_MESSAGE_LENGTH = 12_000;
 const MAX_RAW_LOG_INPUT_LENGTH = 16_000;
@@ -319,7 +319,7 @@ export function reportFrontendError(
 
   // Web 开发/测试环境没有 Tauri invoke，日志上报失败不应再触发
   // console.error 或未处理 Promise，否则会形成错误循环。
-  void writeErrorLog(message, { file: "frontend" }).catch(() => undefined);
+  void runtimeApi.writeFrontendError(message).catch(() => undefined);
 }
 
 export function installGlobalErrorHandlers(

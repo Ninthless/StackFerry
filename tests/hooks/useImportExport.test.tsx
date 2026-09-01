@@ -1,6 +1,6 @@
 import { renderHook, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { useImportExport } from "@/hooks/useImportExport";
+import { useImportExport } from "@/features/settings/model/useImportExport";
 
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
@@ -20,7 +20,7 @@ const saveFileDialogMock = vi.fn();
 const exportConfigMock = vi.fn();
 const syncCurrentProvidersLiveMock = vi.fn();
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   settingsApi: {
     openFileDialog: (...args: unknown[]) => openFileDialogMock(...args),
     importConfigFromFile: (...args: unknown[]) => importConfigMock(...args),

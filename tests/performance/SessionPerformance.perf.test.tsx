@@ -3,9 +3,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { Profiler } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { SessionManagerPage } from "@/components/sessions/SessionManagerPage";
-import { sessionsApi } from "@/lib/api/sessions";
-import type { SessionMessage, SessionMeta } from "@/types";
+import { SessionManagerPage } from "@/features/sessions/SessionManagerPage";
+import { sessionsApi } from "@/platform/tauri/api/sessions";
+import type { SessionMessage, SessionMeta } from "@/shared/contracts";
 import { setSessionFixtures } from "../msw/state";
 
 const SESSION_COUNT_PER_PROVIDER = 1_000;

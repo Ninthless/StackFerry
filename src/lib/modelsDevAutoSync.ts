@@ -1,11 +1,11 @@
-import { usageApi } from "@/lib/api/usage";
+import { usageApi } from "@/platform/tauri/api/usage";
 import {
   fetchModelsDevPricing,
   flattenModels,
   resolveModelsDevSelection,
   toModelPricing,
 } from "@/lib/modelsDevPricing";
-import type { ModelsDevSyncState } from "@/types/usage";
+import type { ModelsDevSyncState } from "@/shared/contracts/usage";
 
 export interface ModelsDevSyncResult {
   skipped: boolean;

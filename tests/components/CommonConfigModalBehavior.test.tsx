@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import CodexConfigEditor from "@/components/providers/forms/CodexConfigEditor";
-import GeminiConfigEditor from "@/components/providers/forms/GeminiConfigEditor";
-import { isCodexGoalModeEnabled } from "@/utils/providerConfigUtils";
+import CodexConfigEditor from "@/features/providers/forms/CodexConfigEditor";
+import GeminiConfigEditor from "@/features/providers/forms/GeminiConfigEditor";
+import { isCodexGoalModeEnabled } from "@/features/providers/model/providerConfigUtils";
 
-vi.mock("@/components/common/FullScreenPanel", () => ({
+vi.mock("@/shared/common/FullScreenPanel", () => ({
   FullScreenPanel: ({
     isOpen,
     title,
@@ -31,7 +31,7 @@ vi.mock("@/components/common/FullScreenPanel", () => ({
     ) : null,
 }));
 
-vi.mock("@/components/JsonEditor", () => ({
+vi.mock("@/shared/editor/JsonEditor", () => ({
   default: ({
     value,
     onChange,

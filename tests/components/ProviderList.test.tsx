@@ -2,18 +2,18 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ReactElement } from "react";
-import type { Provider } from "@/types";
-import { ProviderList } from "@/components/providers/ProviderList";
+import type { Provider } from "@/shared/contracts";
+import { ProviderList } from "@/features/providers/ProviderList";
 
 const useDragSortMock = vi.fn();
 const useSortableMock = vi.fn();
 const providerCardRenderSpy = vi.fn();
 
-vi.mock("@/hooks/useDragSort", () => ({
+vi.mock("@/features/providers/model/useDragSort", () => ({
   useDragSort: (...args: unknown[]) => useDragSortMock(...args),
 }));
 
-vi.mock("@/components/providers/ProviderCard", () => ({
+vi.mock("@/features/providers/ProviderCard", () => ({
   ProviderCard: (props: any) => {
     providerCardRenderSpy(props);
     const {
@@ -68,7 +68,7 @@ vi.mock("@/components/providers/ProviderCard", () => ({
   },
 }));
 
-vi.mock("@/components/UsageFooter", () => ({
+vi.mock("@/features/usage/UsageFooter", () => ({
   default: () => <div data-testid="usage-footer" />,
 }));
 
@@ -82,14 +82,14 @@ vi.mock("@dnd-kit/sortable", async () => {
 });
 
 // Mock hooks that use QueryClient
-vi.mock("@/hooks/useStreamCheck", () => ({
+vi.mock("@/features/providers/model/useStreamCheck", () => ({
   useStreamCheck: () => ({
     checkProvider: vi.fn(),
     isChecking: () => false,
   }),
 }));
 
-vi.mock("@/lib/query/failover", () => ({
+vi.mock("@/features/proxy/model/failover", () => ({
   useAutoFailoverEnabled: () => ({ data: false }),
   useFailoverQueue: () => ({ data: [] }),
   useAddToFailoverQueue: () => ({ mutate: vi.fn() }),

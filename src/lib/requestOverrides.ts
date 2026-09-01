@@ -1,4 +1,4 @@
-import type { LocalProxyRequestOverrides } from "@/types";
+import type { LocalProxyRequestOverrides } from "@/shared/contracts";
 
 export interface RequestOverrideJsonResult {
   value?: Record<string, unknown>;

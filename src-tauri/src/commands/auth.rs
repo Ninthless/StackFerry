@@ -1,8 +1,6 @@
 use tauri::State;
 
-use crate::commands::codex_oauth::CodexOAuthState;
-use crate::commands::copilot::CopilotAuthState;
-use crate::commands::xai_oauth::XaiOAuthState;
+use crate::providers::{CodexOAuthState, CopilotAuthState, XaiOAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthError;
 use crate::proxy::providers::copilot_auth::{
     CopilotAuthError, GitHubAccount, GitHubDeviceCodeResponse,

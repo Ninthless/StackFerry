@@ -2,10 +2,13 @@ use indexmap::IndexMap;
 use tauri::{Emitter, Manager, State};
 
 use crate::app_config::AppType;
-use crate::commands::copilot::CopilotAuthState;
-use crate::commands::xai_oauth::XaiOAuthState;
 use crate::error::AppError;
+use crate::infrastructure::persistence::{AgentInstance, SessionCredentialBinding};
 use crate::provider::{ClaudeDesktopMode, Provider};
+use crate::provider_defaults::{
+    CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID, CODEX_OFFICIAL_PROVIDER_ID, GROKBUILD_OFFICIAL_PROVIDER_ID,
+};
+use crate::providers::{query_xai_oauth_quota, CopilotAuthState, XaiOAuthState};
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
 };
@@ -46,8 +49,8 @@ pub struct AgentInstanceResponse {
 
 impl AgentInstanceResponse {
     fn from_instance(
-        instance: crate::database::AgentInstance,
-        runtime_status: crate::services::credential_isolation::AgentInstanceStatusKind,
+        instance: AgentInstance,
+        runtime_status: crate::credentials::AgentInstanceStatusKind,
     ) -> Self {
         Self {
             id: instance.id,
@@ -69,8 +72,8 @@ impl AgentInstanceResponse {
 #[cfg(test)]
 mod agent_instance_response_tests {
     use super::AgentInstanceResponse;
-    use crate::database::AgentInstance;
-    use crate::services::credential_isolation::AgentInstanceStatusKind;
+    use crate::credentials::AgentInstanceStatusKind;
+    use crate::infrastructure::persistence::AgentInstance;
 
     #[test]
     fn serialization_excludes_credential_reference_and_codex_home() {
@@ -162,14 +165,14 @@ pub fn create_agent_instance(
     state: State<'_, AppState>,
     request: CreateAgentInstanceRequest,
 ) -> Result<AgentInstanceResponse, String> {
-    crate::services::credential_isolation::CredentialIsolationService::create_instance(
+    crate::credentials::CredentialIsolationService::create_instance(
         &state.db,
         &request.provider_id,
         &request.app_type,
         &request.name,
         &request.api_key,
     )
-    .and_then(|instance| agent_instance_response(&state.db, instance))
+    .and_then(|instance| agent_instance_response(&state, instance))
     .map_err(|error| error.to_string())
 }
 
@@ -179,7 +182,7 @@ pub fn get_agent_instances(
     provider_id: String,
     app_type: String,
 ) -> Result<Vec<AgentInstanceResponse>, String> {
-    crate::services::credential_isolation::CredentialIsolationService::list_instances(
+    crate::credentials::CredentialIsolationService::list_instances(
         &state.db,
         &provider_id,
         &app_type,
@@ -187,7 +190,7 @@ pub fn get_agent_instances(
     .and_then(|instances| {
         instances
             .into_iter()
-            .map(|instance| agent_instance_response(&state.db, instance))
+            .map(|instance| agent_instance_response(&state, instance))
             .collect()
     })
     .map_err(|error| error.to_string())
@@ -234,10 +237,8 @@ pub fn delete_agent_instance(
             return Err(format!("删除实例会话失败: {} 项", failures.len()));
         }
     }
-    crate::services::credential_isolation::CredentialIsolationService::delete_instance(
-        &state.db, &id,
-    )
-    .map_err(|error| error.to_string())
+    crate::credentials::CredentialIsolationService::delete_instance(&state.db, &id)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -246,11 +247,9 @@ pub fn rename_agent_instance(
     id: String,
     name: String,
 ) -> Result<AgentInstanceResponse, String> {
-    crate::services::credential_isolation::CredentialIsolationService::rename_instance(
-        &state.db, &id, &name,
-    )
-    .and_then(|instance| agent_instance_response(&state.db, instance))
-    .map_err(|error| error.to_string())
+    crate::credentials::CredentialIsolationService::rename_instance(&state.db, &id, &name)
+        .and_then(|instance| agent_instance_response(&state, instance))
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -259,17 +258,15 @@ pub fn rotate_agent_instance_key(
     id: String,
     #[allow(non_snake_case)] apiKey: String,
 ) -> Result<AgentInstanceResponse, String> {
-    crate::services::credential_isolation::CredentialIsolationService::replace_api_key(
-        &state.db, &id, &apiKey,
-    )
-    .and_then(|_| {
-        state
-            .db
-            .get_agent_instance(&id)?
-            .ok_or_else(|| AppError::InvalidInput(format!("实例 {id} 不存在")))
-    })
-    .and_then(|instance| agent_instance_response(&state.db, instance))
-    .map_err(|error| error.to_string())
+    crate::credentials::CredentialIsolationService::replace_api_key(&state.db, &id, &apiKey)
+        .and_then(|_| {
+            state
+                .db
+                .get_agent_instance(&id)?
+                .ok_or_else(|| AppError::InvalidInput(format!("实例 {id} 不存在")))
+        })
+        .and_then(|instance| agent_instance_response(&state, instance))
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -278,12 +275,12 @@ pub fn set_agent_instance_recent_project(
     id: String,
     #[allow(non_snake_case)] recentProjectDir: Option<String>,
 ) -> Result<AgentInstanceResponse, String> {
-    crate::services::credential_isolation::CredentialIsolationService::set_recent_project(
+    crate::credentials::CredentialIsolationService::set_recent_project(
         &state.db,
         &id,
         recentProjectDir.as_deref(),
     )
-    .and_then(|instance| agent_instance_response(&state.db, instance))
+    .and_then(|instance| agent_instance_response(&state, instance))
     .map_err(|error| error.to_string())
 }
 
@@ -291,8 +288,8 @@ pub fn set_agent_instance_recent_project(
 pub fn get_agent_instance_status(
     state: State<'_, AppState>,
     id: String,
-) -> Result<crate::services::credential_isolation::AgentInstanceStatus, String> {
-    crate::services::credential_isolation::CredentialIsolationService::status(&state.db, &id)
+) -> Result<crate::credentials::AgentInstanceStatus, String> {
+    crate::credentials::CredentialIsolationService::status(&state.db, &id)
         .map_err(|error| error.to_string())
 }
 
@@ -300,24 +297,17 @@ pub fn get_agent_instance_status(
 pub fn rebuild_agent_instance_config(
     state: State<'_, AppState>,
     id: String,
-) -> Result<crate::services::credential_isolation::AgentInstanceStatus, String> {
-    crate::services::credential_isolation::CredentialIsolationService::refresh_instance_config(
-        &state.db, &id,
-    )
-    .and_then(|_| {
-        crate::services::credential_isolation::CredentialIsolationService::status(&state.db, &id)
-    })
-    .map_err(|error| error.to_string())
+) -> Result<crate::credentials::AgentInstanceStatus, String> {
+    crate::credentials::CredentialIsolationService::refresh_instance_config(&state.db, &id)
+        .and_then(|_| crate::credentials::CredentialIsolationService::status(&state.db, &id))
+        .map_err(|error| error.to_string())
 }
 
 fn agent_instance_response(
-    db: &crate::database::Database,
-    instance: crate::database::AgentInstance,
+    state: &AppState,
+    instance: AgentInstance,
 ) -> Result<AgentInstanceResponse, AppError> {
-    let status = crate::services::credential_isolation::CredentialIsolationService::status(
-        db,
-        &instance.id,
-    )?;
+    let status = crate::credentials::CredentialIsolationService::status(&state.db, &instance.id)?;
     Ok(AgentInstanceResponse::from_instance(instance, status.kind))
 }
 
@@ -325,8 +315,8 @@ fn agent_instance_response(
 pub fn bind_session_credential(
     state: State<'_, AppState>,
     request: BindSessionCredentialRequest,
-) -> Result<crate::database::SessionCredentialBinding, String> {
-    crate::services::credential_isolation::CredentialIsolationService::bind_session(
+) -> Result<SessionCredentialBinding, String> {
+    crate::credentials::CredentialIsolationService::bind_session(
         &state.db,
         &request.app_type,
         &request.session_id,
@@ -516,16 +506,15 @@ fn import_default_config_internal(state: &AppState, app_type: AppType) -> Result
                 .unwrap_or_default();
             if crate::grok_config::is_official_live_config(config) {
                 state.db.ensure_official_seed_by_id(
-                    crate::database::GROKBUILD_OFFICIAL_PROVIDER_ID,
+                    GROKBUILD_OFFICIAL_PROVIDER_ID,
                     AppType::GrokBuild,
                 )?;
-                state.db.set_current_provider(
-                    app_type.as_str(),
-                    crate::database::GROKBUILD_OFFICIAL_PROVIDER_ID,
-                )?;
+                state
+                    .db
+                    .set_current_provider(app_type.as_str(), GROKBUILD_OFFICIAL_PROVIDER_ID)?;
                 crate::settings::set_current_provider(
                     &app_type,
-                    Some(crate::database::GROKBUILD_OFFICIAL_PROVIDER_ID),
+                    Some(GROKBUILD_OFFICIAL_PROVIDER_ID),
                 )?;
                 return Ok(true);
             }
@@ -535,10 +524,10 @@ fn import_default_config_internal(state: &AppState, app_type: AppType) -> Result
         // 整理该表"的隐式信号，把官方入口补回来。覆盖导入必然失败的场景
         //（live 文件缺失 / TOML 语法错误 / 残缺的自定义配置），避免
         // "报错 + 空列表"死胡同。失败只 warn，不影响导入主流程。
-        if let Err(e) = state.db.ensure_official_seed_by_id(
-            crate::database::GROKBUILD_OFFICIAL_PROVIDER_ID,
-            AppType::GrokBuild,
-        ) {
+        if let Err(e) = state
+            .db
+            .ensure_official_seed_by_id(GROKBUILD_OFFICIAL_PROVIDER_ID, AppType::GrokBuild)
+        {
             log::warn!("Failed to ensure grokbuild-official seed during import: {e}");
         }
     }
@@ -643,10 +632,10 @@ pub fn import_claude_desktop_providers_from_claude(
     // Safety net: 用户可能手动删除过 claude-desktop-official seed。
     // 用户主动点 import 是"重新整理 ClaudeDesktop 表"的隐式信号，把官方入口补回来。
     // 失败只 warn，不影响 imported 主流程；imported 计数语义保持纯净。
-    if let Err(e) = state.db.ensure_official_seed_by_id(
-        crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID,
-        AppType::ClaudeDesktop,
-    ) {
+    if let Err(e) = state
+        .db
+        .ensure_official_seed_by_id(CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID, AppType::ClaudeDesktop)
+    {
         log::warn!("Failed to ensure claude-desktop-official seed during import: {e}");
     }
 
@@ -657,10 +646,7 @@ pub fn import_claude_desktop_providers_from_claude(
 pub fn ensure_claude_desktop_official_provider(state: State<'_, AppState>) -> Result<bool, String> {
     state
         .db
-        .ensure_official_seed_by_id(
-            crate::database::CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID,
-            AppType::ClaudeDesktop,
-        )
+        .ensure_official_seed_by_id(CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID, AppType::ClaudeDesktop)
         .map_err(|e| e.to_string())
 }
 
@@ -668,7 +654,7 @@ pub fn ensure_claude_desktop_official_provider(state: State<'_, AppState>) -> Re
 pub fn ensure_codex_official_provider(state: State<'_, AppState>) -> Result<bool, String> {
     state
         .db
-        .ensure_official_seed_by_id(crate::database::CODEX_OFFICIAL_PROVIDER_ID, AppType::Codex)
+        .ensure_official_seed_by_id(CODEX_OFFICIAL_PROVIDER_ID, AppType::Codex)
         .map_err(|e| e.to_string())
 }
 
@@ -676,10 +662,7 @@ pub fn ensure_codex_official_provider(state: State<'_, AppState>) -> Result<bool
 pub fn ensure_grokbuild_official_provider(state: State<'_, AppState>) -> Result<bool, String> {
     state
         .db
-        .ensure_official_seed_by_id(
-            crate::database::GROKBUILD_OFFICIAL_PROVIDER_ID,
-            AppType::GrokBuild,
-        )
+        .ensure_official_seed_by_id(GROKBUILD_OFFICIAL_PROVIDER_ID, AppType::GrokBuild)
         .map_err(|e| e.to_string())
 }
 
@@ -1090,7 +1073,7 @@ async fn query_provider_usage_inner(
             let account_id = provider
                 .and_then(|p| p.meta.as_ref())
                 .and_then(|m| m.managed_account_id_for("xai_oauth"));
-            crate::commands::xai_oauth::query_xai_oauth_quota_for(xai_state, account_id).await?
+            query_xai_oauth_quota(xai_state, account_id).await?
         } else {
             crate::services::subscription::get_subscription_quota(app_type.as_str())
                 .await

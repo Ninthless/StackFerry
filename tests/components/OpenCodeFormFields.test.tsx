@@ -2,8 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, PropsWithChildren } from "react";
 import { useForm } from "react-hook-form";
 import { describe, expect, it, vi } from "vitest";
-import { OpenCodeFormFields } from "@/components/providers/forms/OpenCodeFormFields";
-import { Form } from "@/components/ui/form";
+import { OpenCodeFormFields } from "@/features/providers/forms/OpenCodeFormFields";
+import { Form } from "@/shared/ui/form";
 
 type OpenCodeFormFieldsProps = ComponentProps<typeof OpenCodeFormFields>;
 

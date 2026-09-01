@@ -5,7 +5,7 @@ import {
   getOpenClawUnsupportedProfile,
   OPENCLAW_UNSUPPORTED_PROFILE,
   parseOpenClawEnvEditorValue,
-} from "@/components/openclaw/utils";
+} from "@/features/openclaw/utils";
 
 describe("OpenClaw utils", () => {
   it("parses nested env objects without stringifying them", () => {

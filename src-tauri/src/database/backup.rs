@@ -5,12 +5,11 @@
 use super::{lock_conn, Database};
 use crate::config::get_app_config_dir;
 use crate::error::AppError;
-use crate::services::credential_cleanup::CredentialCleanupService;
+use crate::infrastructure::persistence::BackupEntry;
 use chrono::{Local, Utc};
 use rusqlite::backup::Backup;
 use rusqlite::types::ValueRef;
 use rusqlite::Connection;
-use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
@@ -94,15 +93,6 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "instance_resource_operations",
 ];
 
-/// A database backup entry for the UI
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BackupEntry {
-    pub filename: String,
-    pub size_bytes: u64,
-    pub created_at: String, // ISO 8601
-}
-
 impl Database {
     /// 导出为 SQLite 兼容的 SQL 文本（内存字符串，完整导出）
     pub fn export_sql_string(&self) -> Result<String, AppError> {
@@ -159,8 +149,6 @@ impl Database {
     ) -> Result<String, AppError> {
         let sql_content = sql_raw.trim_start_matches('\u{feff}');
         Self::validate_stackferry_sql_export(sql_content)?;
-        let before_instances = CredentialCleanupService::snapshot_instances(self)?;
-
         // 导入前备份现有数据库
         let backup_path = self.backup_database_file()?;
 
@@ -206,14 +194,6 @@ impl Database {
                 .step(-1)
                 .map_err(|e| AppError::Database(e.to_string()))?;
         }
-        let after_instances = CredentialCleanupService::snapshot_instances(self)?;
-        let after_ids = after_instances
-            .iter()
-            .map(|instance| instance.id.clone())
-            .collect::<HashSet<_>>();
-        CredentialCleanupService::schedule_orphan_cleanup(self, &before_instances, &after_ids)?;
-        crate::services::credential_isolation::CredentialIsolationService::resume_pending_resource_operations(self)?;
-
         let backup_id = backup_path
             .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
             .unwrap_or_default();
@@ -678,8 +658,6 @@ impl Database {
                 "Backup file not found: {filename}"
             )));
         }
-        let before_instances = CredentialCleanupService::snapshot_instances(self)?;
-
         // Step 1: Create safety backup of current database
         let safety_backup = self.backup_database_file()?;
         let safety_id = safety_backup
@@ -703,14 +681,6 @@ impl Database {
         self.create_tables()?;
         self.apply_schema_migrations()?;
         self.ensure_model_pricing_seeded()?;
-        let after_instances = CredentialCleanupService::snapshot_instances(self)?;
-        let after_ids = after_instances
-            .iter()
-            .map(|instance| instance.id.clone())
-            .collect::<HashSet<_>>();
-        CredentialCleanupService::schedule_orphan_cleanup(self, &before_instances, &after_ids)?;
-        crate::services::credential_isolation::CredentialIsolationService::resume_pending_resource_operations(self)?;
-
         log::info!("Database restored from backup: {filename}, safety backup: {safety_id}");
         Ok(safety_id)
     }

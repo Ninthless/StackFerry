@@ -135,7 +135,7 @@ pub async fn launch_session_terminal(
         let db = state.db.clone();
         let provider_id = provider_id.to_string();
         tauri::async_runtime::spawn_blocking(move || {
-            crate::commands::misc::launch_instance_session(
+            crate::toolchain::launch_instance_session(
                 &db,
                 &provider_id,
                 &instance_id,

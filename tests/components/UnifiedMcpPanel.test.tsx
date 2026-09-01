@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { McpServer, PiMcpAdapterStatus } from "@/types";
+import type { McpServer, PiMcpAdapterStatus } from "@/shared/contracts";
 
 const toggleMcpAppMock = vi.hoisted(() => vi.fn());
 const bulkToggleMcpAppMock = vi.hoisted(() => vi.fn());
@@ -33,7 +33,7 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("sonner", () => ({ toast: toastMocks }));
 
-vi.mock("@/hooks/useMcp", () => ({
+vi.mock("@/features/mcp/model/useMcp", () => ({
   useAllMcpServers: () => ({ data: hookState.servers, isLoading: false }),
   usePiMcpAdapterStatus: (_projectDir?: string, enabled = true) => {
     hookState.adapterQueryEnabled = enabled;
@@ -67,7 +67,7 @@ vi.mock("@/hooks/useMcp", () => ({
   }),
 }));
 
-import UnifiedMcpPanel from "@/components/mcp/UnifiedMcpPanel";
+import UnifiedMcpPanel from "@/features/mcp/UnifiedMcpPanel";
 
 describe("UnifiedMcpPanel Pi adapter status", () => {
   beforeEach(() => {

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
-import { AnnouncementCenter } from "@/components/announcements/AnnouncementCenter";
-import type { AnnouncementFeed } from "@/lib/api";
+import { AnnouncementCenter } from "@/features/announcements/AnnouncementCenter";
+import type { AnnouncementFeed } from "@/platform/tauri/api";
 
 const markRead = vi.fn().mockResolvedValue(undefined);
 const markAllRead = vi.fn().mockResolvedValue(undefined);

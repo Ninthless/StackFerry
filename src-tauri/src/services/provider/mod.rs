@@ -660,7 +660,7 @@ mod tests {
                     .expect("save instance");
             }
 
-            crate::services::credential_isolation::fail_runtime_config_write_at(1);
+            crate::credentials::fail_runtime_config_write_at(1);
             let updated = Provider::with_id(
                 previous.id.clone(),
                 previous.name.clone(),
@@ -3316,7 +3316,7 @@ impl ProviderService {
             crate::settings::get_effective_current_provider(&state.db, &app_type)?;
         let is_current = effective_current.as_deref() == Some(provider.id.as_str());
         let instance_config_refresh =
-            crate::services::credential_isolation::RuntimeConfigRefreshBatch::prepare_for_provider(
+            crate::credentials::RuntimeConfigRefreshBatch::prepare_for_provider(
                 state.db.as_ref(),
                 app_type.as_str(),
                 &provider.id,

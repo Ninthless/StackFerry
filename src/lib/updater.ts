@@ -1,6 +1,6 @@
-import { getVersion } from "@tauri-apps/api/app";
 import { APP_VERSION } from "./appVersion";
 import { isUpdateAvailable } from "./version";
+import { runtimeApi } from "@/platform/tauri/api";
 
 export interface UpdateInfo {
   currentVersion: string;
@@ -15,7 +15,7 @@ export interface CheckOptions {
 
 export async function getCurrentVersion(): Promise<string> {
   try {
-    return await getVersion();
+    return await runtimeApi.getVersion();
   } catch {
     return APP_VERSION;
   }
@@ -27,8 +27,7 @@ export async function checkForUpdate(
   { status: "up-to-date" } | { status: "available"; info: UpdateInfo }
 > {
   const currentVersion = await getCurrentVersion();
-  const { check } = await import("@tauri-apps/plugin-updater");
-  const update = await check({ timeout: opts.timeout ?? 30000 });
+  const update = await runtimeApi.checkForUpdate(opts.timeout ?? 30000);
 
   if (!update || !isUpdateAvailable(currentVersion, update.version)) {
     return { status: "up-to-date" };

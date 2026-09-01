@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { act, renderHook } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useAddProviderMutation } from "@/lib/query/mutations";
-import type { Provider } from "@/types";
+import { useAddProviderMutation } from "@/features/providers/model/mutations";
+import type { Provider } from "@/shared/contracts";
 
 const apiMocks = vi.hoisted(() => ({
   add: vi.fn(),
@@ -17,7 +17,7 @@ const uuidMocks = vi.hoisted(() => ({
   generateUUID: vi.fn(),
 }));
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   providersApi: {
     add: (...args: unknown[]) => apiMocks.add(...args),
     ensureClaudeDesktopOfficialProvider: (...args: unknown[]) =>
@@ -31,7 +31,7 @@ vi.mock("@/lib/api", () => ({
   settingsApi: {},
 }));
 
-vi.mock("@/utils/uuid", () => ({
+vi.mock("@/shared/lib/uuid", () => ({
   generateUUID: () => uuidMocks.generateUUID(),
 }));
 

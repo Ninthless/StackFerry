@@ -1,4 +1,7 @@
-import type { UsageRangePreset, UsageRangeSelection } from "@/types/usage";
+import type {
+  UsageRangePreset,
+  UsageRangeSelection,
+} from "@/shared/contracts/usage";
 
 const DAY_SECONDS = 24 * 60 * 60;
 const DAY_MS = DAY_SECONDS * 1000;

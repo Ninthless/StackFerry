@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ProviderMeta } from "@/types";
-import { mergeProviderMeta } from "@/utils/providerMetaUtils";
+import type { ProviderMeta } from "@/shared/contracts";
+import { mergeProviderMeta } from "@/features/providers/model/providerMetaUtils";
 
 const buildEndpoint = (url: string) => ({
   url,

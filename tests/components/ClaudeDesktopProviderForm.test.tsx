@@ -2,10 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { ClaudeDesktopProviderForm } from "@/components/providers/forms/ClaudeDesktopProviderForm";
+import { ClaudeDesktopProviderForm } from "@/features/providers/forms/ClaudeDesktopProviderForm";
 import { createTestQueryClient } from "../utils/testQueryClient";
 
-vi.mock("@/lib/api/providers", () => ({
+vi.mock("@/platform/tauri/api/providers", () => ({
   providersApi: {
     getClaudeDesktopDefaultRoutes: () => Promise.resolve([]),
   },

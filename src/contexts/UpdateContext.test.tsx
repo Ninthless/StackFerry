@@ -12,7 +12,7 @@ vi.mock("../lib/updater", () => ({
   checkForUpdate: checkForUpdateMock,
 }));
 
-vi.mock("../lib/api/settings", () => ({
+vi.mock("@/platform/tauri/api/settings", () => ({
   settingsApi: {
     installUpdateAndRestart: installUpdateAndRestartMock,
   },

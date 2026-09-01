@@ -9,10 +9,10 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SessionManagerPage } from "@/components/sessions/SessionManagerPage";
-import { sessionsApi } from "@/lib/api/sessions";
-import { providersApi } from "@/lib/api/providers";
-import type { SessionMessage, SessionMeta } from "@/types";
+import { SessionManagerPage } from "@/features/sessions/SessionManagerPage";
+import { sessionsApi } from "@/platform/tauri/api/sessions";
+import { providersApi } from "@/platform/tauri/api/providers";
+import type { SessionMessage, SessionMeta } from "@/shared/contracts";
 import { setSessionFixtures } from "../msw/state";
 
 const toastSuccessMock = vi.fn();
@@ -29,12 +29,12 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/components/sessions/SessionToc", () => ({
+vi.mock("@/features/sessions/SessionToc", () => ({
   SessionTocSidebar: () => null,
   SessionTocDialog: () => null,
 }));
 
-vi.mock("@/components/ConfirmDialog", () => ({
+vi.mock("@/shared/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({
     isOpen,
     title,

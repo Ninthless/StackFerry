@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { renderHook, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useProviderActions } from "@/hooks/useProviderActions";
-import type { Provider, UsageScript } from "@/types";
+import { useProviderActions } from "@/features/providers/model/useProviderActions";
+import type { Provider, UsageScript } from "@/shared/contracts";
 
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
@@ -46,7 +46,7 @@ const useUpdateProviderMutationMock = vi.fn(() => updateProviderMutation);
 const useDeleteProviderMutationMock = vi.fn(() => deleteProviderMutation);
 const useSwitchProviderMutationMock = vi.fn(() => switchProviderMutation);
 
-vi.mock("@/lib/query", () => ({
+vi.mock("@/features/providers/model/mutations", () => ({
   useAddProviderMutation: () => useAddProviderMutationMock(),
   useUpdateProviderMutation: () => useUpdateProviderMutationMock(),
   useDeleteProviderMutation: () => useDeleteProviderMutationMock(),
@@ -61,7 +61,7 @@ const openclawApiGetModelCatalogMock = vi.fn();
 const openclawApiGetDefaultModelMock = vi.fn();
 const openclawApiSetDefaultModelMock = vi.fn();
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   providersApi: {
     update: (...args: unknown[]) => providersApiUpdateMock(...args),
     updateTrayMenu: (...args: unknown[]) =>

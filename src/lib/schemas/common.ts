@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { validateToml, tomlToMcpServer } from "@/utils/tomlUtils";
+import { validateToml, tomlToMcpServer } from "@/shared/lib/tomlUtils";
 
 /**
  * 解析 JSON 语法错误，返回更友好的位置信息。

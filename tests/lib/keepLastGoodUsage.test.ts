@@ -4,8 +4,8 @@ import {
   isTransientUsageError,
   KEEP_LAST_GOOD_MS,
   type LastGoodUsage,
-} from "@/lib/query/queries";
-import type { UsageResult } from "@/types";
+} from "@/features/providers/model/queries";
+import type { UsageResult } from "@/shared/contracts";
 
 // keep-last-good 的纯决策逻辑：仅"瞬时/网络类"失败才在 KEEP_LAST_GOOD_MS 窗口内继续
 // 展示上一次成功；确定性失败（鉴权/空 key/未知供应商等）必须立即透出。
@@ -64,9 +64,9 @@ describe("isTransientUsageError", () => {
     expect(
       isTransientUsageError(fail("API error (HTTP 429): rate limited")),
     ).toBe(true);
-    expect(
-      isTransientUsageError(fail("HTTP 429 Too Many Requests : x")),
-    ).toBe(true);
+    expect(isTransientUsageError(fail("HTTP 429 Too Many Requests : x"))).toBe(
+      true,
+    );
     expect(
       isTransientUsageError(fail("Authentication failed (HTTP 403)")),
     ).toBe(false);

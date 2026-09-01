@@ -90,8 +90,7 @@ impl CredentialCleanupService {
         };
         let mut warnings = Vec::new();
         for instance in &instances {
-            match super::credential_isolation::CredentialIsolationService::status(db, &instance.id)
-            {
+            match crate::credentials::CredentialIsolationService::status(db, &instance.id) {
                 Ok(status) => {
                     if !status.credential_available {
                         warnings.push(format!("实例 {} 的本地凭据不可用", instance.name));

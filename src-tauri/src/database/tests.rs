@@ -172,8 +172,8 @@ fn deleted_default_skill_repo_is_not_restored() {
 #[test]
 fn existing_skill_repo_selection_is_not_supplemented() {
     let db = Database::memory().expect("create memory db");
-    let default_store = crate::services::skill::SkillStore::default();
-    db.save_skill_repo(&default_store.repos[0])
+    let default_repos = crate::infrastructure::persistence::default_skill_repos();
+    db.save_skill_repo(&default_repos[0])
         .expect("save existing repo");
 
     assert_eq!(db.init_default_skill_repos().expect("initialize repos"), 0);

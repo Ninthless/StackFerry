@@ -1,4 +1,7 @@
-import type { ModelPricing, ModelsDevSyncConfig } from "@/types/usage";
+import type {
+  ModelPricing,
+  ModelsDevSyncConfig,
+} from "@/shared/contracts/usage";
 
 export const MODELS_DEV_API_URL = "https://models.dev/api.json";
 const MODELS_DEV_FETCH_TIMEOUT_MS = 15_000;

@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { PiIcon } from "@/components/BrandIcons";
-import { ProviderIcon } from "@/components/ProviderIcon";
+import { PiIcon } from "@/shared/ui/icons/BrandIcons";
+import { ProviderIcon } from "@/shared/ui/ProviderIcon";
 
 describe("PiIcon", () => {
   it("renders the official badge in app icon surfaces", () => {

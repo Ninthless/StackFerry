@@ -28,7 +28,7 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-vi.mock("@/lib/api/usage", () => ({
+vi.mock("@/platform/tauri/api/usage", () => ({
   usageApi: {
     getModelsDevSyncConfig,
     saveModelsDevSyncConfig,
@@ -36,7 +36,7 @@ vi.mock("@/lib/api/usage", () => ({
   },
 }));
 
-vi.mock("@/lib/api/settings", () => ({
+vi.mock("@/platform/tauri/api/settings", () => ({
   settingsApi: { openAppConfigFolder },
 }));
 
@@ -45,7 +45,7 @@ vi.mock("@/lib/modelsDevAutoSync", () => ({
   syncModelsDevPricing,
 }));
 
-import { ModelsDevAutoSyncPanel } from "@/components/usage/ModelsDevAutoSyncPanel";
+import { ModelsDevAutoSyncPanel } from "@/features/usage/ModelsDevAutoSyncPanel";
 
 const state = {
   configPath: "C:/Users/test/.stackferry/model-pricing.json",

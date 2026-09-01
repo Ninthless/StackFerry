@@ -4,8 +4,8 @@ import {
   formatSessionMessagePreview,
   groupSessionsByProviderAndDirectory,
   shouldHideCodexMessageFromToc,
-} from "@/components/sessions/utils";
-import type { SessionMeta } from "@/types";
+} from "@/features/sessions/utils";
+import type { SessionMeta } from "@/shared/contracts";
 
 describe("session utils", () => {
   it("extracts Codex VS Code prompts after the request marker", () => {

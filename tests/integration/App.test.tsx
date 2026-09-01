@@ -9,8 +9,8 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { providersApi } from "@/lib/api/providers";
-import { supportsCapability } from "@/config/appConfig";
+import { providersApi } from "@/platform/tauri/api/providers";
+import { supportsCapability } from "@/app/capabilities";
 import {
   resetProviderState,
   setCurrentProviderId,
@@ -36,7 +36,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/components/providers/ProviderList", () => ({
+vi.mock("@/features/providers/ProviderList", () => ({
   ProviderList: ({
     providers,
     currentProviderId,
@@ -68,7 +68,7 @@ vi.mock("@/components/providers/ProviderList", () => ({
   ),
 }));
 
-vi.mock("@/components/providers/AddProviderDialog", () => ({
+vi.mock("@/features/providers/AddProviderDialog", () => ({
   AddProviderDialog: ({ open, onOpenChange, onSubmit, appId }: any) =>
     open ? (
       <div data-testid="add-provider-dialog">
@@ -89,7 +89,7 @@ vi.mock("@/components/providers/AddProviderDialog", () => ({
     ) : null,
 }));
 
-vi.mock("@/components/providers/EditProviderDialog", () => ({
+vi.mock("@/features/providers/EditProviderDialog", () => ({
   EditProviderDialog: ({ open, provider, onSubmit, onOpenChange }: any) =>
     open ? (
       <div data-testid="edit-provider-dialog">
@@ -111,7 +111,7 @@ vi.mock("@/components/providers/EditProviderDialog", () => ({
     ) : null,
 }));
 
-vi.mock("@/components/UsageScriptModal", () => ({
+vi.mock("@/features/usage/UsageScriptModal", () => ({
   default: ({ isOpen, provider, appId, onSave, onClose }: any) =>
     isOpen ? (
       <div data-testid="usage-modal">
@@ -123,7 +123,7 @@ vi.mock("@/components/UsageScriptModal", () => ({
     ) : null,
 }));
 
-vi.mock("@/components/ConfirmDialog", () => ({
+vi.mock("@/shared/ui/ConfirmDialog", () => ({
   ConfirmDialog: ({ isOpen, onConfirm, onCancel }: any) =>
     isOpen ? (
       <div data-testid="confirm-dialog">
@@ -133,7 +133,7 @@ vi.mock("@/components/ConfirmDialog", () => ({
     ) : null,
 }));
 
-vi.mock("@/components/AppSwitcher", () => ({
+vi.mock("@/shared/common/AppSwitcher", () => ({
   AppSwitcher: ({ activeApp, onSwitch }: any) => (
     <div data-testid="app-switcher">
       <span>{activeApp}</span>
@@ -152,13 +152,13 @@ vi.mock("@/components/AppSwitcher", () => ({
   ),
 }));
 
-vi.mock("@/components/UpdateBadge", () => ({
+vi.mock("@/features/settings/UpdateBadge", () => ({
   UpdateBadge: ({ onClick }: any) => (
     <button onClick={onClick}>update-badge</button>
   ),
 }));
 
-vi.mock("@/components/pi/PiExtensionsPanel", () => ({
+vi.mock("@/features/pi/PiExtensionsPanel", () => ({
   default: ({ requestedMode, onPageStateChange }: any) => (
     <div data-testid="pi-extensions-panel">
       <span>{requestedMode}</span>
@@ -178,11 +178,11 @@ vi.mock("@/components/pi/PiExtensionsPanel", () => ({
   ),
 }));
 
-vi.mock("@/components/settings/ThemeSettings", () => ({
+vi.mock("@/features/settings/ThemeSettings", () => ({
   ThemeSettings: () => null,
 }));
 
-vi.mock("@/components/mcp/McpPanel", () => ({
+vi.mock("@/features/mcp/McpPanel", () => ({
   default: ({ open, onOpenChange }: any) =>
     open ? (
       <div data-testid="mcp-panel">
@@ -223,7 +223,7 @@ describe("App integration with MSW", () => {
     window.localStorage.setItem(ROUTE_APP_STORAGE_KEY, "codex");
     window.localStorage.setItem(VIEW_STORAGE_KEY, "openclawAgents");
 
-    const { default: App } = await import("@/App");
+    const { default: App } = await import("@/app/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -233,7 +233,7 @@ describe("App integration with MSW", () => {
   }, 30_000);
 
   it("covers basic provider flows via real hooks", async () => {
-    const { default: App } = await import("@/App");
+    const { default: App } = await import("@/app/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -311,7 +311,7 @@ describe("App integration with MSW", () => {
   }, 60_000);
 
   it("shows application switching only on the provider routing view", async () => {
-    const { default: App } = await import("@/App");
+    const { default: App } = await import("@/app/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -379,7 +379,7 @@ describe("App integration with MSW", () => {
   }, 30_000);
 
   it("keeps the session filter independent from provider route switching", async () => {
-    const { default: App } = await import("@/App");
+    const { default: App } = await import("@/app/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -448,7 +448,7 @@ describe("App integration with MSW", () => {
   }, 30_000);
 
   it("keeps MCP reachable and route-neutral for every routing application", async () => {
-    const { default: App } = await import("@/App");
+    const { default: App } = await import("@/app/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -528,7 +528,7 @@ describe("App integration with MSW", () => {
     window.localStorage.setItem(LEGACY_SKILLS_TARGET_APP_STORAGE_KEY, "pi");
     window.localStorage.setItem(SESSION_PROVIDER_FILTER_STORAGE_KEY, "gemini");
 
-    const { default: App } = await import("@/App");
+    const { default: App } = await import("@/app/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -638,7 +638,7 @@ describe("App integration with MSW", () => {
     });
     setCurrentProviderId("pi", "pi-1");
 
-    const { default: App } = await import("@/App");
+    const { default: App } = await import("@/app/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -659,7 +659,7 @@ describe("App integration with MSW", () => {
   }, 30_000);
 
   it("shows toast when auto sync fails in background", async () => {
-    const { default: App } = await import("@/App");
+    const { default: App } = await import("@/app/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -701,7 +701,7 @@ describe("App integration with MSW", () => {
   });
 
   it("routes Pi extension navigation into the Pi workbench", async () => {
-    const { default: App } = await import("@/App");
+    const { default: App } = await import("@/app/App");
     renderApp(App);
 
     fireEvent.click(
@@ -749,7 +749,7 @@ describe("App integration with MSW", () => {
     setCurrentProviderId("openclaw", "deepseek");
     setLiveProviderIds("openclaw", ["deepseek-copy"]);
 
-    const { default: App } = await import("@/App");
+    const { default: App } = await import("@/app/App");
     renderApp(App);
 
     fireEvent.click(screen.getByText("switch-openclaw"));
@@ -795,7 +795,7 @@ describe("App integration with MSW", () => {
       .spyOn(providersApi, "getOpenClawLiveProviderIds")
       .mockRejectedValueOnce(new Error("broken config"));
 
-    const { default: App } = await import("@/App");
+    const { default: App } = await import("@/app/App");
     renderApp(App);
 
     fireEvent.click(screen.getByText("switch-openclaw"));

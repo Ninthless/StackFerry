@@ -5,9 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   GrokBuildProviderForm,
   grokApiBackendFromApiFormat,
-} from "@/components/providers/forms/GrokBuildProviderForm";
+} from "@/features/providers/forms/GrokBuildProviderForm";
 
-vi.mock("@/components/JsonEditor", () => ({
+vi.mock("@/shared/editor/JsonEditor", () => ({
   default: ({
     value,
     onChange,

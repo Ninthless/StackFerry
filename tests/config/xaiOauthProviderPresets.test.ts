@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { claudeDesktopProviderPresets } from "@/config/claudeDesktopProviderPresets";
-import { providerPresets } from "@/config/claudeProviderPresets";
-import { codexProviderPresets } from "@/config/codexProviderPresets";
+import { claudeDesktopProviderPresets } from "@/features/providers/config/claudeDesktopProviderPresets";
+import { providerPresets } from "@/features/providers/config/claudeProviderPresets";
+import { codexProviderPresets } from "@/features/providers/config/codexProviderPresets";
 import {
   extractCodexBaseUrl,
   extractCodexModelName,
   extractCodexWireApi,
-} from "@/utils/providerConfigUtils";
+} from "@/features/providers/model/providerConfigUtils";
 
 describe("xAI OAuth provider presets", () => {
   it("pins the Claude Code preset to managed Responses auth", () => {

@@ -8,13 +8,13 @@ import {
   SkillsPage,
   getSkillsPageHeaderActions,
   type SkillsPageHandle,
-} from "@/components/skills/SkillsPage";
+} from "@/features/skills/SkillsPage";
 import type {
   DiscoverableSkill,
   SkillRepo,
   SkillsShDiscoverableSkill,
   SkillsShSearchResult,
-} from "@/lib/api/skills";
+} from "@/platform/tauri/api/skills";
 
 const installMutateAsyncMock = vi.fn();
 const addRepoMutateAsyncMock = vi.fn();
@@ -61,7 +61,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/hooks/useSkills", () => ({
+vi.mock("@/features/skills/model/useSkills", () => ({
   useDiscoverableSkills: () => ({
     data: { skills: discoverableSkillsMock, failures: [] },
     isLoading: false,

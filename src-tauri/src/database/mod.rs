@@ -24,6 +24,7 @@
 //! ```
 
 pub(crate) mod backup;
+pub(crate) mod codex_usage;
 mod dao;
 mod migration;
 mod schema;
@@ -31,19 +32,16 @@ mod schema;
 #[cfg(test)]
 mod tests;
 
-// DAO 类型导出供外部使用
-pub use dao::credential_instances::{AgentInstance, SessionCredentialBinding};
-pub(crate) use dao::providers_seed::{
-    is_official_seed_id, CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID, CODEX_OFFICIAL_PROVIDER_ID,
-    GROKBUILD_OFFICIAL_PROVIDER_ID,
+pub use crate::infrastructure::persistence::{AgentInstance, Profile, SessionCredentialBinding};
+pub(crate) use crate::provider_defaults::{
+    CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID, CODEX_OFFICIAL_PROVIDER_ID, GROKBUILD_OFFICIAL_PROVIDER_ID,
 };
+pub(crate) use dao::providers_seed::is_official_seed_id;
 pub(crate) use dao::proxy::{
     validate_cost_multiplier, validate_pricing_source, PRICING_SOURCE_REQUEST,
     PRICING_SOURCE_RESPONSE,
 };
-pub use dao::resource_operations::ResourceOperation;
-pub use dao::FailoverQueueItem;
-pub use dao::Profile;
+pub use dao::resource_operations::{ResourceOperation, ResourceOperationUpdate};
 
 use crate::config::get_app_config_dir;
 use crate::error::AppError;
@@ -87,8 +85,7 @@ fn register_db_change_hook(conn: &Connection) {
     conn.update_hook(Some(
         |action: Action, _database: &str, table: &str, _row_id: i64| match action {
             Action::SQLITE_INSERT | Action::SQLITE_UPDATE | Action::SQLITE_DELETE => {
-                crate::services::webdav_auto_sync::notify_db_changed(table);
-                crate::services::s3_auto_sync::notify_db_changed(table);
+                crate::infrastructure::events::notify_database_changed(table);
             }
             _ => {}
         },
@@ -146,9 +143,6 @@ impl Database {
             log::warn!("Failed to ensure incremental auto-vacuum: {e}");
         }
         db.ensure_model_pricing_seeded()?;
-        if let Err(e) = crate::services::model_pricing::sync_local_model_pricing(&db) {
-            log::warn!("Failed to sync local model pricing file: {e}");
-        }
 
         // Startup cleanup: prune old logs and reclaim space
         if let Err(e) = db.cleanup_old_stream_check_logs(7) {

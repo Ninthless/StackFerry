@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { renderHook, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi, beforeEach, afterAll } from "vitest";
-import type { Provider } from "@/types";
-import { useDragSort } from "@/hooks/useDragSort";
+import type { Provider } from "@/shared/contracts";
+import { useDragSort } from "@/features/providers/model/useDragSort";
 
 const updateSortOrderMock = vi.fn();
 const toastSuccessMock = vi.fn();
@@ -17,7 +17,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   providersApi: {
     updateSortOrder: (...args: unknown[]) => updateSortOrderMock(...args),
   },

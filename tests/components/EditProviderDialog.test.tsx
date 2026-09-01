@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Provider } from "@/types";
+import type { Provider } from "@/shared/contracts";
 
 const apiMocks = vi.hoisted(() => ({
   getCurrent: vi.fn(),
@@ -8,7 +8,7 @@ const apiMocks = vi.hoisted(() => ({
   getOpenClawLiveProvider: vi.fn(),
 }));
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   providersApi: {
     getCurrent: apiMocks.getCurrent,
   },
@@ -20,7 +20,7 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
-vi.mock("@/components/common/FullScreenPanel", () => ({
+vi.mock("@/shared/common/FullScreenPanel", () => ({
   FullScreenPanel: ({
     isOpen,
     children,
@@ -38,7 +38,7 @@ vi.mock("@/components/common/FullScreenPanel", () => ({
     ) : null,
 }));
 
-vi.mock("@/components/providers/forms/ProviderForm", () => ({
+vi.mock("@/features/providers/forms/ProviderForm", () => ({
   ProviderForm: ({
     initialData,
     onSubmit,
@@ -89,7 +89,7 @@ vi.mock("@/components/providers/forms/ProviderForm", () => ({
   ),
 }));
 
-import { EditProviderDialog } from "@/components/providers/EditProviderDialog";
+import { EditProviderDialog } from "@/features/providers/EditProviderDialog";
 
 describe("EditProviderDialog", () => {
   beforeEach(() => {

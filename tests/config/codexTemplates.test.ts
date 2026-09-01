@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parse as parseToml } from "smol-toml";
-import { getCodexCustomTemplate } from "@/config/codexTemplates";
+import { getCodexCustomTemplate } from "@/features/providers/config/codexTemplates";
 
 describe("Codex custom templates", () => {
   it("does not force Codex Goal mode in the custom provider template", () => {

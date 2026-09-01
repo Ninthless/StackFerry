@@ -11,20 +11,20 @@ import userEvent from "@testing-library/user-event";
 import PromptPanel, {
   type PromptPageState,
   type PromptPanelHandle,
-} from "@/components/prompts/PromptPanel";
-import type { AppId } from "@/lib/api/types";
+} from "@/features/prompts/PromptPanel";
+import type { AppId } from "@/platform/tauri/api/types";
 
 const usePromptActionsMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/hooks/usePromptActions", () => ({
+vi.mock("@/features/prompts/model/usePromptActions", () => ({
   usePromptActions: (app: AppId) => usePromptActionsMock(app),
 }));
 
-vi.mock("@/hooks/useTauriEvent", () => ({
+vi.mock("@/platform/tauri/react/useTauriEvent", () => ({
   useTauriEvent: () => {},
 }));
 
-vi.mock("@/components/prompts/PromptFormPanel", () => ({
+vi.mock("@/features/prompts/PromptFormPanel", () => ({
   default: ({
     appId,
     onCancel,

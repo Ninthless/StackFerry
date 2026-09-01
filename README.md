@@ -127,16 +127,15 @@ pnpm dev
 ### Verification
 
 ```bash
-pnpm typecheck
-pnpm format:check
-pnpm test:unit
-
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml
+pnpm verify
+pnpm verify:full
 ```
 
-Run `pnpm format` to format frontend source files and `pnpm build:renderer` to build only the renderer.
+`pnpm verify` is the cross-platform development gate. `pnpm verify:full` also runs locked Rust formatting, Clippy for all targets with warnings denied, and Rust tests. Full Rust verification requires the native Tauri prerequisites for Windows, macOS, or Linux; one platform does not replace the three-platform CI matrix. Release packaging and signing remain platform-specific.
+
+Architecture validation protects the frontend capability boundaries, Rust dependency direction, direct Tauri IPC access, and source-file size ceilings. Existing exceptions are frozen in reviewed architecture and file-size baselines; `pnpm architecture:update` adds intentional exceptions without erasing unrelated entries during parallel migrations.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for scoped CI verification, baseline review rules, and the optional pre-push hook.
 
 ### Build Commands
 

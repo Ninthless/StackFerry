@@ -5,9 +5,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   useProviderHealth,
   useResetCircuitBreaker,
-} from "@/lib/query/failover";
-import { useProvidersQuery } from "@/lib/query/queries";
-import { invalidateDatabaseState } from "@/lib/query/invalidateDatabaseState";
+} from "@/features/proxy/model/failover";
+import { useProvidersQuery } from "@/features/providers/model/queries";
+import { invalidateDatabaseState } from "@/platform/tauri/query/invalidateDatabaseState";
 
 const {
   getProviderHealthMock,
@@ -23,7 +23,7 @@ const {
   getCurrentProviderMock: vi.fn(),
 }));
 
-vi.mock("@/lib/api/failover", () => ({
+vi.mock("@/platform/tauri/api/failover", () => ({
   failoverApi: {
     getProviderHealth: getProviderHealthMock,
     resetCircuitBreaker: resetCircuitBreakerMock,
@@ -34,7 +34,7 @@ vi.mock("sonner", () => ({
   toast: { success: toastSuccessMock, error: vi.fn() },
 }));
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   providersApi: {
     getAll: getAllProvidersMock,
     getCurrent: getCurrentProviderMock,

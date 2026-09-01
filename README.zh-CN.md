@@ -127,16 +127,15 @@ pnpm dev
 ### 验证
 
 ```bash
-pnpm typecheck
-pnpm format:check
-pnpm test:unit
-
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml
+pnpm verify
+pnpm verify:full
 ```
 
-使用 `pnpm format` 格式化前端源码；使用 `pnpm build:renderer` 仅构建前端渲染器。
+`pnpm verify` 是跨平台开发门禁。`pnpm verify:full` 还会执行锁定依赖的 Rust 格式检查、覆盖所有 targets 且将警告视为错误的 Clippy，以及 Rust 测试。完整 Rust 验证需要当前 Windows、macOS 或 Linux 平台对应的 Tauri 原生前置依赖；单个平台通过不能替代三平台 CI 矩阵。发布打包与签名仍具有平台特异性。
+
+架构验证会保护前端 capability 边界、Rust 依赖方向、直接 Tauri IPC 访问与源文件规模上限。现有例外冻结在经过审查的架构和文件规模基线中；`pnpm architecture:update` 会增量记录有意例外，不会在并行迁移期间删除无关条目。
+
+CI scope、基线审查规则以及可选 pre-push hook 说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ### 构建命令
 

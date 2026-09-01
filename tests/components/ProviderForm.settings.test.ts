@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { serializeGeminiSettingsForSave } from "@/components/providers/forms/ProviderForm";
+import { serializeGeminiSettingsForSave } from "@/features/providers/forms/ProviderForm";
 
 describe("ProviderForm settings serialization", () => {
   it("serializes the current Gemini API key", () => {

@@ -1,6 +1,10 @@
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
+pub(crate) const CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID: &str = "claude-desktop-official";
+pub(crate) const CODEX_OFFICIAL_PROVIDER_ID: &str = "codex-official";
+pub(crate) const GROKBUILD_OFFICIAL_PROVIDER_ID: &str = "grokbuild-official";
+
 /// 供应商图标信息
 #[derive(Debug, Clone)]
 #[allow(dead_code)]

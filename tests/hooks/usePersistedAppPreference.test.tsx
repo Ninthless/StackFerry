@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { usePersistedAppPreference } from "@/hooks/usePersistedAppPreference";
-import type { AppId } from "@/lib/api/types";
+import { usePersistedAppPreference } from "@/app/hooks/usePersistedAppPreference";
+import type { AppId } from "@/platform/tauri/api/types";
 
 const STORAGE_KEY = "stackferry.test.feature-app";
 

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { codexProviderPresets } from "@/config/codexProviderPresets";
+import { codexProviderPresets } from "@/features/providers/config/codexProviderPresets";
 import {
   extractCodexBaseUrl,
   extractCodexModelName,
   extractCodexWireApi,
-} from "@/utils/providerConfigUtils";
+} from "@/features/providers/model/providerConfigUtils";
 
 const expectedChatPresets = new Map<
   string,

@@ -1,7 +1,7 @@
 import { renderHook, act } from "@testing-library/react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { useSettings } from "@/hooks/useSettings";
-import type { Settings } from "@/types";
+import { useSettings } from "@/features/settings/model/useSettings";
+import type { Settings } from "@/shared/contracts";
 
 const mutateAsyncMock = vi.fn();
 const useSettingsQueryMock = vi.fn();
@@ -29,19 +29,19 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/hooks/useSettingsForm", () => ({
+vi.mock("@/features/settings/model/useSettingsForm", () => ({
   useSettingsForm: () => settingsFormMock,
 }));
 
-vi.mock("@/hooks/useDirectorySettings", () => ({
+vi.mock("@/features/settings/model/useDirectorySettings", () => ({
   useDirectorySettings: () => directorySettingsMock,
 }));
 
-vi.mock("@/hooks/useSettingsMetadata", () => ({
+vi.mock("@/features/settings/model/useSettingsMetadata", () => ({
   useSettingsMetadata: () => metadataMock,
 }));
 
-vi.mock("@/lib/query", () => ({
+vi.mock("@/features/providers", () => ({
   useSettingsQuery: (...args: unknown[]) => useSettingsQueryMock(...args),
   useSaveSettingsMutation: () => ({
     mutateAsync: mutateAsyncMock,
@@ -61,7 +61,7 @@ vi.mock("@tanstack/react-query", async () => {
   };
 });
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   settingsApi: {
     setAppConfigDirOverride: (...args: unknown[]) =>
       setAppConfigDirOverrideMock(...args),
@@ -420,7 +420,9 @@ describe("useSettings hook", () => {
     });
 
     // 修复生效：读的是缓存实时值 true，payload=false，差异触发 clear_claude_config
-    expect(applyClaudePluginConfigMock).toHaveBeenCalledWith({ official: true });
+    expect(applyClaudePluginConfigMock).toHaveBeenCalledWith({
+      official: true,
+    });
     expect(syncCurrentProvidersLiveMock).toHaveBeenCalled();
   });
 

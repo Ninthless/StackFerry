@@ -1,13 +1,13 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { PricingEditModal } from "@/components/usage/PricingEditModal";
-import type { ModelPricing } from "@/types/usage";
+import { PricingEditModal } from "@/features/usage/PricingEditModal";
+import type { ModelPricing } from "@/shared/contracts/usage";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, options?: string | { defaultValue?: string }) =>
-      typeof options === "string" ? options : options?.defaultValue ?? key,
+      typeof options === "string" ? options : (options?.defaultValue ?? key),
   }),
 }));
 
@@ -18,14 +18,14 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/lib/query/usage", () => ({
+vi.mock("@/features/usage/model/usage", () => ({
   useUpdateModelPricing: () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
 }));
 
-vi.mock("@/components/common/FullScreenPanel", () => ({
+vi.mock("@/shared/common/FullScreenPanel", () => ({
   FullScreenPanel: ({
     children,
     footer,
@@ -61,9 +61,12 @@ describe("PricingEditModal", () => {
     render(<PricingEditModal open model={model} onClose={() => {}} />);
 
     for (const { id } of PRICE_FIELDS) {
-      const input = screen.getByLabelText(/每百万 tokens/ as unknown as string, {
-        selector: `#${id}`,
-      }) as HTMLInputElement;
+      const input = screen.getByLabelText(
+        /每百万 tokens/ as unknown as string,
+        {
+          selector: `#${id}`,
+        },
+      ) as HTMLInputElement;
       expect(input).toHaveAttribute("step", "0.0001");
     }
   });
@@ -79,9 +82,7 @@ describe("PricingEditModal", () => {
   });
 
   it("allows user to input sub-cent prices via change event", () => {
-    render(
-      <PricingEditModal open model={model} onClose={() => {}} isNew />,
-    );
+    render(<PricingEditModal open model={model} onClose={() => {}} isNew />);
 
     const cacheReadInput = document.getElementById(
       "cacheReadCost",

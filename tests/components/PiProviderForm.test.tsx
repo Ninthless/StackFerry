@@ -1,19 +1,19 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PiProviderForm } from "@/components/providers/forms/PiProviderForm";
-import { fetchModelsForConfig } from "@/lib/api/model-fetch";
+import { PiProviderForm } from "@/features/providers/forms/PiProviderForm";
+import { fetchModelsForConfig } from "@/platform/tauri/api/model-fetch";
 
-vi.mock("@/lib/api/model-fetch", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/model-fetch")>(
-    "@/lib/api/model-fetch",
-  );
+vi.mock("@/platform/tauri/api/model-fetch", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/platform/tauri/api/model-fetch")
+  >("@/platform/tauri/api/model-fetch");
   return {
     ...actual,
     fetchModelsForConfig: vi.fn(),
   };
 });
 
-vi.mock("@/components/JsonEditor", () => ({
+vi.mock("@/shared/editor/JsonEditor", () => ({
   default: ({
     value,
     onChange,

@@ -4,20 +4,9 @@
 
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
+use crate::infrastructure::persistence::FailoverQueueItem;
 use crate::provider::Provider;
 use rusqlite::OptionalExtension;
-use serde::{Deserialize, Serialize};
-
-/// 故障转移队列条目
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FailoverQueueItem {
-    pub provider_id: String,
-    pub provider_name: String,
-    pub queue_order: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider_notes: Option<String>,
-}
 
 impl Database {
     /// 获取故障转移队列（按加入顺序排序）

@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { getTauriWindowMock } from "../msw/tauriMocks";
-import { useWindowControls } from "@/hooks/useWindowControls";
+import { useWindowControls } from "@/app/shell/useWindowControls";
 
 const tauriWindowMock = getTauriWindowMock();
 

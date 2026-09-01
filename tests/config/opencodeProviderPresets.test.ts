@@ -3,7 +3,7 @@ import {
   opencodeProviderPresets,
   opencodeNpmPackages,
   OPENCODE_PRESET_MODEL_VARIANTS,
-} from "@/config/opencodeProviderPresets";
+} from "@/features/providers/config/opencodeProviderPresets";
 
 describe("AWS Bedrock OpenCode Provider Presets", () => {
   it("should include @ai-sdk/amazon-bedrock in npm packages", () => {

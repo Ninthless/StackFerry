@@ -287,49 +287,7 @@ pub async fn export_request_logs(
 #[tauri::command]
 pub fn get_model_pricing(state: State<'_, AppState>) -> Result<Vec<ModelPricingInfo>, AppError> {
     log::info!("获取模型定价列表");
-    state.db.ensure_model_pricing_seeded()?;
-    crate::services::model_pricing::sync_local_model_pricing(&state.db)?;
-
-    let db = state.db.clone();
-    let conn = crate::database::lock_conn!(db.conn);
-
-    // 检查表是否存在
-    let table_exists: bool = conn
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='model_pricing'",
-            [],
-            |row| row.get::<_, i64>(0).map(|count| count > 0),
-        )
-        .unwrap_or(false);
-
-    if !table_exists {
-        log::error!("model_pricing 表不存在,可能需要重启应用以触发数据库迁移");
-        return Ok(Vec::new());
-    }
-
-    let mut stmt = conn.prepare(
-        "SELECT model_id, display_name, input_cost_per_million, output_cost_per_million,
-                cache_read_cost_per_million, cache_creation_cost_per_million
-         FROM model_pricing
-         ORDER BY display_name",
-    )?;
-
-    let rows = stmt.query_map([], |row| {
-        Ok(ModelPricingInfo {
-            model_id: row.get(0)?,
-            display_name: row.get(1)?,
-            input_cost_per_million: row.get(2)?,
-            output_cost_per_million: row.get(3)?,
-            cache_read_cost_per_million: row.get(4)?,
-            cache_creation_cost_per_million: row.get(5)?,
-        })
-    })?;
-
-    let mut pricing = Vec::new();
-    for row in rows {
-        pricing.push(row?);
-    }
-
+    let pricing = crate::services::model_pricing::list_model_pricing(&state.db)?;
     log::info!("成功获取 {} 条模型定价数据", pricing.len());
     Ok(pricing)
 }

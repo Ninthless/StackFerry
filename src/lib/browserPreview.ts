@@ -1,6 +1,9 @@
-import { isTauri, type InvokeArgs } from "@tauri-apps/api/core";
-import type { Provider, Settings, UniversalProvider } from "@/types";
-import type { AppId } from "@/lib/api/types";
+import type { Provider, Settings, UniversalProvider } from "@/shared/contracts";
+import {
+  runtimeApi,
+  type AppId,
+  type RuntimeInvokeArgs,
+} from "@/platform/tauri/api";
 import { APP_VERSION } from "@/lib/appVersion";
 
 const visibleApps = {
@@ -175,7 +178,7 @@ export const createBrowserPreviewCommandHandler = () => {
   const universalProviders: Record<string, UniversalProvider> = {};
   let announcements = structuredClone(browserPreviewAnnouncements);
 
-  return (command: string, payload: InvokeArgs = {}): unknown => {
+  return (command: string, payload: RuntimeInvokeArgs = {}): unknown => {
     const args = Array.isArray(payload)
       ? {}
       : (payload as Record<string, unknown>);
@@ -666,9 +669,7 @@ export const createBrowserPreviewCommandHandler = () => {
 };
 
 export async function installBrowserPreview(): Promise<void> {
-  if (!import.meta.env.DEV || isTauri()) return;
+  if (!import.meta.env.DEV || runtimeApi.isTauri()) return;
 
-  const { mockIPC, mockWindows } = await import("@tauri-apps/api/mocks");
-  mockWindows("main");
-  mockIPC(createBrowserPreviewCommandHandler(), { shouldMockEvents: true });
+  runtimeApi.installPreviewMocks(createBrowserPreviewCommandHandler());
 }

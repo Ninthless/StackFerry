@@ -2,7 +2,7 @@
 //!
 //! 管理代理模式下的故障转移队列
 
-use crate::database::FailoverQueueItem;
+use crate::infrastructure::persistence::FailoverQueueItem;
 use crate::provider::Provider;
 use crate::store::AppState;
 use std::str::FromStr;

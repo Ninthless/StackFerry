@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   openclawProviderPresets,
   rebaseOpenClawSuggestedDefaults,
-} from "@/config/openclawProviderPresets";
+} from "@/features/providers/config/openclawProviderPresets";
 
 describe("Xiaomi MiMo Token Plan presets", () => {
   it("uses a separate OpenClaw provider namespace from pay-as-you-go MiMo", () => {
@@ -40,9 +40,7 @@ describe("Xiaomi MiMo Token Plan presets", () => {
     );
 
     expect(rebased.model?.primary).toBe("my-mimo-plan/mimo-v2.5-pro");
-    expect(rebased.modelCatalog).toHaveProperty(
-      "my-mimo-plan/mimo-v2.5-pro",
-    );
+    expect(rebased.modelCatalog).toHaveProperty("my-mimo-plan/mimo-v2.5-pro");
     expect(rebased.modelCatalog).toHaveProperty("my-mimo-plan/mimo-v2.5");
     expect(rebased.modelCatalog).not.toHaveProperty(
       "xiaomi-mimo-token-plan/mimo-v2.5-pro",

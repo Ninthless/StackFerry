@@ -7,6 +7,8 @@ on:
     paths:
       - "announcements/**"
       - "scripts/validate-announcements.mjs"
+      - "scripts/validate-announcements.node.mjs"
+      - "scripts/verify.mjs"
       - ".github/workflows/announcements.yml"
   workflow_dispatch:
 
@@ -29,8 +31,7 @@ jobs:
         with:
           node-version-file: ".node-version"
           cache: pnpm
-      - run: pnpm announcements:validate
-      - run: node --test scripts/validate-announcements.node.mjs
+      - run: node scripts/verify.mjs --scope=announcements
 
   publish:
     needs: validate

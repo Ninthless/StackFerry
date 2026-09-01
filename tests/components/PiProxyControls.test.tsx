@@ -8,7 +8,7 @@ const failoverState = vi.hoisted(() => ({
   mutate: vi.fn(),
 }));
 
-vi.mock("@/hooks/useProxyStatus", () => ({
+vi.mock("@/features/proxy/model/useProxyStatus", () => ({
   useProxyStatus: () => ({
     isRunning: true,
     takeoverStatus: { pi: true },
@@ -18,7 +18,7 @@ vi.mock("@/hooks/useProxyStatus", () => ({
   }),
 }));
 
-vi.mock("@/lib/query/failover", () => ({
+vi.mock("@/features/proxy/model/failover", () => ({
   useAutoFailoverEnabled: () => ({ data: false, isLoading: false }),
   useSetAutoFailoverEnabled: () => ({
     mutate: failoverState.mutate,
@@ -33,8 +33,8 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-import { FailoverToggle } from "@/components/proxy/FailoverToggle";
-import { ProxyToggle } from "@/components/proxy/ProxyToggle";
+import { FailoverToggle } from "@/features/proxy/FailoverToggle";
+import { ProxyToggle } from "@/features/proxy/ProxyToggle";
 
 describe("Pi proxy controls", () => {
   beforeEach(() => {

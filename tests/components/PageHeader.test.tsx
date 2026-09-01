@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { Download } from "lucide-react";
-import { PageHeader } from "@/components/shell/PageHeader";
+import { PageHeader } from "@/app/shell/PageHeader";
 
 describe("PageHeader", () => {
   it("keeps primary actions visible and exposes secondary actions in a menu", async () => {

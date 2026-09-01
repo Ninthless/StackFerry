@@ -10,7 +10,7 @@ import type { ComponentProps } from "react";
 import fs from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { UsageDashboard } from "@/components/usage/UsageDashboard";
+import { UsageDashboard } from "@/features/usage/UsageDashboard";
 
 const useProviderStatsMock = vi.hoisted(() => vi.fn());
 const useModelStatsMock = vi.hoisted(() => vi.fn());
@@ -20,7 +20,7 @@ const dashboardSource = fs.readFileSync(
     "..",
     "..",
     "src",
-    "components",
+    "features",
     "usage",
     "UsageDashboard.tsx",
   ),
@@ -32,7 +32,7 @@ const heroSource = fs.readFileSync(
     "..",
     "..",
     "src",
-    "components",
+    "features",
     "usage",
     "UsageHero.tsx",
   ),
@@ -59,15 +59,14 @@ vi.mock("framer-motion", () => ({
   },
 }));
 
-vi.mock("@/hooks/useUsageEventBridge", () => ({
+vi.mock("@/features/usage/model/useUsageEventBridge", () => ({
   useUsageEventBridge: () => {},
 }));
 
-vi.mock("@/lib/query/usage", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/lib/query/usage")>(
-      "@/lib/query/usage",
-    );
+vi.mock("@/features/usage/model/usage", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/features/usage/model/usage")
+  >("@/features/usage/model/usage");
   return {
     ...actual,
     useProviderStats: (...args: unknown[]) => useProviderStatsMock(...args),
@@ -75,37 +74,37 @@ vi.mock("@/lib/query/usage", async () => {
   };
 });
 
-vi.mock("@/components/usage/UsageHero", () => ({
+vi.mock("@/features/usage/UsageHero", () => ({
   UsageHero: ({ appType }: { appType?: string }) => (
     <div data-testid="usage-hero" data-app-type={appType ?? "all"} />
   ),
 }));
 
-vi.mock("@/components/usage/UsageTrendChart", () => ({
+vi.mock("@/features/usage/UsageTrendChart", () => ({
   UsageTrendChart: () => <div data-testid="usage-trend" />,
 }));
 
-vi.mock("@/components/usage/RequestLogTable", () => ({
+vi.mock("@/features/usage/RequestLogTable", () => ({
   RequestLogTable: () => <div data-testid="request-log-table" />,
 }));
 
-vi.mock("@/components/usage/ProviderStatsTable", () => ({
+vi.mock("@/features/usage/ProviderStatsTable", () => ({
   ProviderStatsTable: () => <div data-testid="provider-stats-table" />,
 }));
 
-vi.mock("@/components/usage/ModelStatsTable", () => ({
+vi.mock("@/features/usage/ModelStatsTable", () => ({
   ModelStatsTable: () => <div data-testid="model-stats-table" />,
 }));
 
-vi.mock("@/components/usage/PricingConfigPanel", () => ({
+vi.mock("@/features/usage/PricingConfigPanel", () => ({
   PricingConfigPanel: () => <div data-testid="pricing-config-panel" />,
 }));
 
-vi.mock("@/components/usage/UsageDateRangePicker", () => ({
+vi.mock("@/features/usage/UsageDateRangePicker", () => ({
   UsageDateRangePicker: () => <button type="button">date-range</button>,
 }));
 
-vi.mock("@/components/ui/select", () => ({
+vi.mock("@/shared/ui/select", () => ({
   Select: ({ value, onValueChange, children }: any) => (
     <div data-testid={`select-${value}`}>
       {children}

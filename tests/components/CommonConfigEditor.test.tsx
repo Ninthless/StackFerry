@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { CommonConfigEditor } from "@/components/providers/forms/CommonConfigEditor";
+import { CommonConfigEditor } from "@/features/providers/forms/CommonConfigEditor";
 
-vi.mock("@/components/common/FullScreenPanel", () => ({
+vi.mock("@/shared/common/FullScreenPanel", () => ({
   FullScreenPanel: ({
     isOpen,
     title,
@@ -29,7 +29,7 @@ vi.mock("@/components/common/FullScreenPanel", () => ({
     ) : null,
 }));
 
-vi.mock("@/components/JsonEditor", () => ({
+vi.mock("@/shared/editor/JsonEditor", () => ({
   default: ({
     value,
     onChange,

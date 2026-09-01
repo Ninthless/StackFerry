@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ProviderHealthBadge } from "@/components/providers/ProviderHealthBadge";
+import { ProviderHealthBadge } from "@/features/providers/ProviderHealthBadge";
 
 describe("ProviderHealthBadge", () => {
   it("offers manual recovery only when the circuit is open", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { providerPresets } from "@/config/claudeProviderPresets";
+import { providerPresets } from "@/features/providers/config/claudeProviderPresets";
 
 describe("Kimi For Coding Provider Preset", () => {
   const kimiForCoding = providerPresets.find(

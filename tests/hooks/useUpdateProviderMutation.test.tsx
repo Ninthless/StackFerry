@@ -2,15 +2,15 @@ import type { ReactNode } from "react";
 import { act, renderHook } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useUpdateProviderMutation } from "@/lib/query/mutations";
-import { usageKeys } from "@/lib/query/usage";
-import type { Provider } from "@/types";
+import { useUpdateProviderMutation } from "@/features/providers/model/mutations";
+import { usageKeys } from "@/features/usage/model/usage";
+import type { Provider } from "@/shared/contracts";
 
 const apiMocks = vi.hoisted(() => ({
   update: vi.fn(),
 }));
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   providersApi: {
     update: (...args: unknown[]) => apiMocks.update(...args),
   },
@@ -18,11 +18,11 @@ vi.mock("@/lib/api", () => ({
   settingsApi: {},
 }));
 
-vi.mock("@/hooks/useHermes", () => ({
+vi.mock("@/features/hermes/model/useHermes", () => ({
   invalidateHermesProviderCaches: vi.fn(),
 }));
 
-vi.mock("@/hooks/useOpenClaw", () => ({
+vi.mock("@/features/openclaw/model/useOpenClaw", () => ({
   openclawKeys: {
     health: ["openclaw", "health"],
   },

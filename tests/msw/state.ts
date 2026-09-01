@@ -1,4 +1,4 @@
-import type { AppId } from "@/lib/api/types";
+import type { AppId } from "@/platform/tauri/api/types";
 import type {
   McpServer,
   Provider,
@@ -6,8 +6,8 @@ import type {
   SessionMessagePage,
   SessionMeta,
   Settings,
-} from "@/types";
-import { deepClone } from "@/utils/deepClone";
+} from "@/shared/contracts";
+import { deepClone } from "@/shared/lib/deepClone";
 
 type ProvidersByApp = Record<AppId, Record<string, Provider>>;
 type CurrentProviderState = Record<AppId, string>;

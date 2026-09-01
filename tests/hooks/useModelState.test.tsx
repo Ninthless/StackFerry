@@ -5,7 +5,7 @@ import {
   setClaudeOneMMarker,
   stripClaudeOneMMarker,
   useModelState,
-} from "@/components/providers/forms/hooks/useModelState";
+} from "@/features/providers/forms/hooks/useModelState";
 
 describe("useModelState", () => {
   it("hydrates role models and display names from Claude Code env", () => {

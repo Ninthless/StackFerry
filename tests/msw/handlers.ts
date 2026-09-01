@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
-import type { ManagedAuthProvider } from "@/lib/api/auth";
-import type { AppId } from "@/lib/api/types";
-import type { McpServer, Provider, Settings } from "@/types";
+import type { ManagedAuthProvider } from "@/platform/tauri/api/auth";
+import type { AppId } from "@/platform/tauri/api/types";
+import type { McpServer, Provider, Settings } from "@/shared/contracts";
 import {
   addProvider,
   deleteProvider,

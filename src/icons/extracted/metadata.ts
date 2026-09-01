@@ -1,5 +1,5 @@
 // Icon metadata for search and categorization
-import { IconMetadata } from "@/types/icon";
+import { IconMetadata } from "@/shared/contracts/icon";
 
 export const iconMetadata: Record<string, IconMetadata> = {
   a6api: {

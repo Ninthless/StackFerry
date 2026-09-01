@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getFreshInputTokens, KNOWN_APP_TYPES } from "@/types/usage";
+import { getFreshInputTokens, KNOWN_APP_TYPES } from "@/shared/contracts/usage";
 
 describe("Pi usage semantics", () => {
   it("surfaces Pi in application filters", () => {

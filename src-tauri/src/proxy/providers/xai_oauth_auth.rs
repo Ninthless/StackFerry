@@ -429,13 +429,6 @@ impl XaiOAuthManager {
             username,
         }
     }
-
-    pub async fn list_accounts(&self) -> Vec<XaiOAuthAccount> {
-        let accounts = self.accounts.read().await.clone();
-        let default_account_id = self.resolve_default_account_id().await;
-        Self::sorted_accounts(&accounts, default_account_id.as_deref())
-    }
-
     pub async fn remove_account(&self, account_id: &str) -> Result<(), XaiOAuthError> {
         let _mutation_guard = self.mutation_lock.lock().await;
         let mut accounts = self.accounts.read().await.clone();
@@ -1188,7 +1181,7 @@ mod tests {
             )
             .await;
         assert!(matches!(result, Err(XaiOAuthError::IoError(_))));
-        assert!(manager.list_accounts().await.is_empty());
+        assert!(manager.get_status().await.accounts.is_empty());
     }
 
     #[tokio::test]
@@ -1333,7 +1326,7 @@ mod tests {
             .await;
 
         assert!(matches!(result, Err(XaiOAuthError::TokenFetchFailed(_))));
-        assert!(manager.list_accounts().await.is_empty());
+        assert!(manager.get_status().await.accounts.is_empty());
         assert!(manager.access_tokens.read().await.is_empty());
         assert!(!data_dir.path().join("xai_oauth_auth.json").exists());
     }

@@ -1,0 +1,627 @@
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { motion } from "framer-motion";
+import {
+  Loader2,
+  Save,
+  FolderSearch,
+  Database,
+  Cloud,
+  ScrollText,
+  HardDriveDownload,
+  FlaskConical,
+  Settings2,
+  Network,
+  ShieldCheck,
+  SlidersHorizontal,
+  ChartNoAxesCombined,
+  Info,
+} from "lucide-react";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/shared/ui/accordion";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { Button } from "@/shared/ui/button";
+import { settingsApi } from "@/platform/tauri/api";
+import { LanguageSettings } from "@/features/settings/LanguageSettings";
+import { ThemeSettings } from "@/features/settings/ThemeSettings";
+import { WindowSettings } from "@/features/settings/WindowSettings";
+import { AppVisibilitySettings } from "@/features/settings/AppVisibilitySettings";
+import { SkillStorageLocationSettings } from "@/features/settings/SkillStorageLocationSettings";
+import { SkillSyncMethodSettings } from "@/features/settings/SkillSyncMethodSettings";
+import { TerminalSettings } from "@/features/settings/TerminalSettings";
+import { DirectorySettings } from "@/features/settings/DirectorySettings";
+import { ImportExportSection } from "@/features/settings/ImportExportSection";
+import { BackupListSection } from "@/features/settings/BackupListSection";
+import { WebdavSyncSection } from "@/features/settings/WebdavSyncSection";
+import { AboutSection } from "@/features/settings/AboutSection";
+import { ProxyTabContent } from "@/features/settings/ProxyTabContent";
+import { ConnectivityCheckConfigPanel } from "@/features/usage";
+import { UsageDashboard } from "@/features/usage";
+import { LogConfigPanel } from "@/features/settings/LogConfigPanel";
+import { AuthCenterPanel } from "@/features/settings/AuthCenterPanel";
+import { CodexAuthSettings } from "@/features/settings/CodexAuthSettings";
+import { useInstalledSkills } from "@/features/skills";
+import { useSettings } from "@/features/settings/model/useSettings";
+import { useImportExport } from "@/features/settings/model/useImportExport";
+import { useTranslation } from "react-i18next";
+import type { SettingsFormState } from "@/features/settings/model/useSettings";
+
+interface SettingsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onImportSuccess?: () => void | Promise<void>;
+  defaultTab?: string;
+}
+
+export function SettingsPage({
+  open,
+  onOpenChange,
+  onImportSuccess,
+  defaultTab = "general",
+}: SettingsDialogProps) {
+  const { t } = useTranslation();
+  const {
+    settings,
+    isLoading,
+    isSaving,
+    isPortable,
+    appConfigDir,
+    resolvedDirs,
+    updateSettings,
+    updateDirectory,
+    updateAppConfigDir,
+    browseDirectory,
+    browseAppConfigDir,
+    resetDirectory,
+    resetAppConfigDir,
+    saveSettings,
+    autoSaveSettings,
+    requiresRestart,
+    acknowledgeRestart,
+  } = useSettings();
+
+  const {
+    selectedFile,
+    status: importStatus,
+    errorMessage,
+    backupId,
+    isImporting,
+    selectImportFile,
+    importConfig,
+    exportConfig,
+    clearSelection,
+    resetStatus,
+  } = useImportExport({ onImportSuccess });
+
+  const { data: installedSkills } = useInstalledSkills();
+
+  const [activeTab, setActiveTab] = useState<string>("general");
+  const [showRestartPrompt, setShowRestartPrompt] = useState(false);
+  const tabScrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setActiveTab(defaultTab);
+      resetStatus();
+    }
+  }, [open, resetStatus, defaultTab]);
+
+  useEffect(() => {
+    if (requiresRestart) {
+      setShowRestartPrompt(true);
+    }
+  }, [requiresRestart]);
+
+  useLayoutEffect(() => {
+    if (tabScrollContainerRef.current) {
+      tabScrollContainerRef.current.scrollTop = 0;
+    }
+  }, [activeTab]);
+
+  const closeAfterSave = useCallback(() => {
+    // 保存成功后关闭：不再重置语言，避免需要“保存两次”才生效
+    acknowledgeRestart();
+    clearSelection();
+    resetStatus();
+    onOpenChange(false);
+  }, [acknowledgeRestart, clearSelection, onOpenChange, resetStatus]);
+
+  const handleSave = useCallback(async () => {
+    try {
+      const result = await saveSettings(undefined, { silent: false });
+      if (!result) return;
+      if (result.requiresRestart) {
+        setShowRestartPrompt(true);
+        return;
+      }
+      closeAfterSave();
+    } catch (error) {
+      console.error("[SettingsPage] Failed to save settings", error);
+    }
+  }, [closeAfterSave, saveSettings]);
+
+  const handleRestartLater = useCallback(() => {
+    setShowRestartPrompt(false);
+    closeAfterSave();
+  }, [closeAfterSave]);
+
+  const handleRestartNow = useCallback(async () => {
+    setShowRestartPrompt(false);
+    if (import.meta.env.DEV) {
+      toast.success(t("settings.devModeRestartHint"), { closeButton: true });
+      closeAfterSave();
+      return;
+    }
+
+    try {
+      await settingsApi.restart();
+    } catch (error) {
+      console.error("[SettingsPage] Failed to restart app", error);
+      toast.error(t("settings.restartFailed"));
+    } finally {
+      closeAfterSave();
+    }
+  }, [closeAfterSave, t]);
+
+  // 通用设置即时保存（无需手动点击）
+  // 使用 autoSaveSettings 避免误触发系统 API（开机自启、Claude 插件等）
+  // 返回保存是否成功：需要在保存成功后追加动作的调用方（如统一会话历史
+  // 关闭后的备份还原）据此短路，其余调用方可忽略返回值。
+  const handleAutoSave = useCallback(
+    async (updates: Partial<SettingsFormState>): Promise<boolean> => {
+      if (!settings) return false;
+      // 乐观更新前捕获旧值：autoSaveSettings 发送的是全量表单状态，后端按
+      // diff 触发副作用（如统一会话开关的 live 重写与历史迁移）。保存失败
+      // 不回滚的话，失败的变更会滞留在表单里，被之后任意一次无关保存原样
+      // 重放，绕过确认弹窗。
+      const previousValues = Object.fromEntries(
+        Object.keys(updates).map((key) => [
+          key,
+          settings[key as keyof SettingsFormState],
+        ]),
+      ) as Partial<SettingsFormState>;
+      updateSettings(updates);
+      try {
+        await autoSaveSettings(updates);
+        return true;
+      } catch (error) {
+        console.error("[SettingsPage] Failed to autosave settings", error);
+        updateSettings(previousValues);
+        toast.error(
+          t("settings.saveFailedGeneric", {
+            defaultValue: "保存失败，请重试",
+          }),
+        );
+        return false;
+      }
+    },
+    [autoSaveSettings, settings, t, updateSettings],
+  );
+
+  const isBusy = useMemo(() => isLoading && !settings, [isLoading, settings]);
+
+  return (
+    <div className="settings-page-container settings-page-root flex h-full flex-col overflow-hidden px-6">
+      {isBusy ? (
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="flex h-full min-h-0 flex-col"
+        >
+          <TabsList
+            layout="scrollable"
+            className="mx-auto flex w-full max-w-[960px] shrink-0 border-b border-border py-3"
+            aria-label={t("common.settings")}
+          >
+            <TabsTrigger
+              value="general"
+              className="settings-tab-trigger gap-2 px-3"
+              title={t("settings.tabGeneral")}
+            >
+              <Settings2 className="h-4 w-4" />
+              <span>{t("settings.tabGeneral")}</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="proxy"
+              className="settings-tab-trigger gap-2 px-3"
+              title={t("settings.tabProxy")}
+            >
+              <Network className="h-4 w-4" />
+              <span>{t("settings.tabProxy")}</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="auth"
+              className="settings-tab-trigger gap-2 px-3"
+              title={t("settings.tabAuth")}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              <span>{t("settings.tabAuth")}</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="advanced"
+              className="settings-tab-trigger gap-2 px-3"
+              title={t("settings.tabAdvanced")}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              <span>{t("settings.tabAdvanced")}</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="usage"
+              className="settings-tab-trigger gap-2 px-3"
+              title={t("settings.tabUsage")}
+            >
+              <ChartNoAxesCombined className="h-4 w-4" />
+              <span>{t("settings.tabUsage")}</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="about"
+              className="settings-tab-trigger gap-2 px-3"
+              title={t("common.about")}
+            >
+              <Info className="h-4 w-4" />
+              <span>{t("common.about")}</span>
+            </TabsTrigger>
+          </TabsList>
+
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col pt-4">
+            <div
+              ref={tabScrollContainerRef}
+              className="mx-auto w-full max-w-[960px] flex-1 overflow-y-auto overflow-x-hidden pr-2"
+            >
+              <TabsContent value="general" className="space-y-6 mt-0">
+                {settings ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="space-y-6"
+                  >
+                    <LanguageSettings
+                      value={settings.language}
+                      onChange={(lang) => handleAutoSave({ language: lang })}
+                    />
+                    <ThemeSettings />
+                    <AppVisibilitySettings
+                      settings={settings}
+                      onChange={handleAutoSave}
+                    />
+                    <SkillStorageLocationSettings
+                      value={settings.skillStorageLocation ?? "stack_ferry"}
+                      installedCount={installedSkills?.length ?? 0}
+                      onMigrated={(location) =>
+                        updateSettings({ skillStorageLocation: location })
+                      }
+                    />
+                    <SkillSyncMethodSettings
+                      value={settings.skillSyncMethod ?? "auto"}
+                      onChange={(method) =>
+                        handleAutoSave({ skillSyncMethod: method })
+                      }
+                    />
+                    <CodexAuthSettings
+                      settings={settings}
+                      onChange={handleAutoSave}
+                    />
+                    <WindowSettings
+                      settings={settings}
+                      onChange={handleAutoSave}
+                    />
+                    <TerminalSettings
+                      value={settings.preferredTerminal}
+                      onChange={(terminal) =>
+                        handleAutoSave({ preferredTerminal: terminal })
+                      }
+                    />
+                  </motion.div>
+                ) : null}
+              </TabsContent>
+
+              <TabsContent value="proxy" className="space-y-6 mt-0 pb-4">
+                {settings ? (
+                  <ProxyTabContent
+                    settings={settings}
+                    onAutoSave={handleAutoSave}
+                  />
+                ) : null}
+              </TabsContent>
+
+              <TabsContent value="auth" className="space-y-6 mt-0 pb-4">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-6"
+                >
+                  <AuthCenterPanel />
+                </motion.div>
+              </TabsContent>
+
+              <TabsContent value="advanced" className="space-y-6 mt-0 pb-4">
+                {settings ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="space-y-4"
+                  >
+                    <Accordion
+                      type="multiple"
+                      defaultValue={[]}
+                      className="w-full space-y-4"
+                    >
+                      <AccordionItem
+                        value="directory"
+                        className="overflow-hidden rounded-md border border-border bg-card"
+                      >
+                        <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+                          <div className="flex items-center gap-3">
+                            <FolderSearch className="h-5 w-5 text-primary" />
+                            <div className="text-left">
+                              <h3 className="text-base font-semibold">
+                                {t("settings.advanced.configDir.title")}
+                              </h3>
+                              <p className="text-sm text-muted-foreground font-normal">
+                                {t("settings.advanced.configDir.description")}
+                              </p>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+                          <DirectorySettings
+                            appConfigDir={appConfigDir}
+                            resolvedDirs={resolvedDirs}
+                            onAppConfigChange={updateAppConfigDir}
+                            onBrowseAppConfig={browseAppConfigDir}
+                            onResetAppConfig={resetAppConfigDir}
+                            claudeDir={settings.claudeConfigDir}
+                            codexDir={settings.codexConfigDir}
+                            piDir={settings.piConfigDir}
+                            geminiDir={settings.geminiConfigDir}
+                            grokDir={settings.grokConfigDir}
+                            opencodeDir={settings.opencodeConfigDir}
+                            openclawDir={settings.openclawConfigDir}
+                            hermesDir={settings.hermesConfigDir}
+                            onDirectoryChange={updateDirectory}
+                            onBrowseDirectory={browseDirectory}
+                            onResetDirectory={resetDirectory}
+                          />
+                        </AccordionContent>
+                      </AccordionItem>
+
+                      <AccordionItem
+                        value="data"
+                        className="overflow-hidden rounded-md border border-border bg-card"
+                      >
+                        <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+                          <div className="flex items-center gap-3">
+                            <Database className="h-5 w-5 text-muted-foreground" />
+                            <div className="text-left">
+                              <h3 className="text-base font-semibold">
+                                {t("settings.advanced.data.title")}
+                              </h3>
+                              <p className="text-sm text-muted-foreground font-normal">
+                                {t("settings.advanced.data.description")}
+                              </p>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+                          <ImportExportSection
+                            status={importStatus}
+                            selectedFile={selectedFile}
+                            errorMessage={errorMessage}
+                            backupId={backupId}
+                            isImporting={isImporting}
+                            onSelectFile={selectImportFile}
+                            onImport={importConfig}
+                            onExport={exportConfig}
+                            onClear={clearSelection}
+                          />
+                        </AccordionContent>
+                      </AccordionItem>
+
+                      <AccordionItem
+                        value="backup"
+                        className="overflow-hidden rounded-md border border-border bg-card"
+                      >
+                        <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+                          <div className="flex items-center gap-3">
+                            <HardDriveDownload className="h-5 w-5 text-muted-foreground" />
+                            <div className="text-left">
+                              <h3 className="text-base font-semibold">
+                                {t("settings.advanced.backup.title", {
+                                  defaultValue: "Backup & Restore",
+                                })}
+                              </h3>
+                              <p className="text-sm text-muted-foreground font-normal">
+                                {t("settings.advanced.backup.description", {
+                                  defaultValue:
+                                    "Manage automatic backups, view and restore database snapshots",
+                                })}
+                              </p>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+                          <BackupListSection
+                            backupIntervalHours={settings.backupIntervalHours}
+                            backupRetainCount={settings.backupRetainCount}
+                            onSettingsChange={(updates) =>
+                              handleAutoSave(updates)
+                            }
+                          />
+                        </AccordionContent>
+                      </AccordionItem>
+
+                      <AccordionItem
+                        value="cloudSync"
+                        className="overflow-hidden rounded-md border border-border bg-card"
+                      >
+                        <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+                          <div className="flex items-center gap-3">
+                            <Cloud className="h-5 w-5 text-muted-foreground" />
+                            <div className="text-left">
+                              <h3 className="text-base font-semibold">
+                                {t("settings.advanced.cloudSync.title")}
+                              </h3>
+                              <p className="text-sm text-muted-foreground font-normal">
+                                {t("settings.advanced.cloudSync.description")}
+                              </p>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+                          <WebdavSyncSection
+                            config={settings?.webdavSync}
+                            s3Config={settings?.s3Sync}
+                            settings={settings}
+                            onAutoSave={handleAutoSave}
+                          />
+                        </AccordionContent>
+                      </AccordionItem>
+
+                      <AccordionItem
+                        value="connectivityCheck"
+                        className="overflow-hidden rounded-md border border-border bg-card"
+                      >
+                        <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+                          <div className="flex items-center gap-3">
+                            <FlaskConical className="h-5 w-5 text-muted-foreground" />
+                            <div className="text-left">
+                              <h3 className="text-base font-semibold">
+                                {t("settings.advanced.connectivityCheck.title")}
+                              </h3>
+                              <p className="text-sm text-muted-foreground font-normal">
+                                {t(
+                                  "settings.advanced.connectivityCheck.description",
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+                          <ConnectivityCheckConfigPanel />
+                        </AccordionContent>
+                      </AccordionItem>
+
+                      <AccordionItem
+                        value="logConfig"
+                        className="overflow-hidden rounded-md border border-border bg-card"
+                      >
+                        <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 data-[state=open]:bg-muted/50">
+                          <div className="flex items-center gap-3">
+                            <ScrollText className="h-5 w-5 text-muted-foreground" />
+                            <div className="text-left">
+                              <h3 className="text-base font-semibold">
+                                {t("settings.advanced.logConfig.title")}
+                              </h3>
+                              <p className="text-sm text-muted-foreground font-normal">
+                                {t("settings.advanced.logConfig.description")}
+                              </p>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-6 pb-6 pt-4 border-t border-border/50">
+                          <LogConfigPanel />
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                  </motion.div>
+                ) : null}
+              </TabsContent>
+
+              <TabsContent value="about" className="mt-0">
+                <AboutSection isPortable={isPortable} />
+              </TabsContent>
+
+              <TabsContent value="usage" className="mt-0">
+                <UsageDashboard
+                  refreshIntervalMs={settings?.usageDashboardRefreshIntervalMs}
+                  onRefreshIntervalChange={(usageDashboardRefreshIntervalMs) =>
+                    handleAutoSave({ usageDashboardRefreshIntervalMs })
+                  }
+                />
+              </TabsContent>
+            </div>
+
+            {activeTab === "advanced" && settings && (
+              <div
+                className="settings-save-bar flex h-[61px] shrink-0 items-center border-t border-border-default px-6 py-3"
+                style={{ backgroundColor: "hsl(var(--background))" }}
+              >
+                <div className="mx-auto flex h-9 w-full max-w-[960px] items-center justify-end gap-3 pr-2">
+                  <Button onClick={handleSave} disabled={isSaving}>
+                    {isSaving ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {t("settings.saving")}
+                      </span>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        {t("common.save")}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </Tabs>
+      )}
+
+      <Dialog
+        open={showRestartPrompt}
+        onOpenChange={(open) => !open && handleRestartLater()}
+      >
+        <DialogContent zIndex="alert" className="max-w-md border-border">
+          <DialogHeader>
+            <DialogTitle>{t("settings.restartRequired")}</DialogTitle>
+          </DialogHeader>
+          <div className="px-6">
+            <p className="text-sm text-muted-foreground">
+              {t("settings.restartRequiredMessage")}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={handleRestartLater}
+              className="hover:bg-muted/50"
+            >
+              {t("settings.restartLater")}
+            </Button>
+            <Button
+              onClick={handleRestartNow}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {t("settings.restartNow")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

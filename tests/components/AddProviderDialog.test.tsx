@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AddProviderDialog } from "@/components/providers/AddProviderDialog";
-import type { ProviderFormValues } from "@/components/providers/forms/ProviderForm";
+import { AddProviderDialog } from "@/features/providers/AddProviderDialog";
+import type { ProviderFormValues } from "@/features/providers/forms/ProviderForm";
 
-vi.mock("@/components/ui/dialog", () => ({
+vi.mock("@/shared/ui/dialog", () => ({
   Dialog: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
@@ -26,7 +26,7 @@ vi.mock("@/components/ui/dialog", () => ({
 
 let mockFormValues: ProviderFormValues;
 
-vi.mock("@/components/providers/forms/ProviderForm", () => ({
+vi.mock("@/features/providers/forms/ProviderForm", () => ({
   ProviderForm: ({
     onSubmit,
   }: {

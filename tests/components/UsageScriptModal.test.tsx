@@ -1,15 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import UsageScriptModal from "@/components/UsageScriptModal";
-import type { Provider } from "@/types";
+import UsageScriptModal from "@/features/usage/UsageScriptModal";
+import type { Provider } from "@/shared/contracts";
 
 const apiMocks = vi.hoisted(() => ({
   testScript: vi.fn(),
   saveSettings: vi.fn(),
 }));
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   usageApi: {
     testScript: apiMocks.testScript,
   },
@@ -19,19 +19,19 @@ vi.mock("@/lib/api", () => ({
   subscriptionApi: {},
 }));
 
-vi.mock("@/lib/query", () => ({
+vi.mock("@/app/query", () => ({
   useSettingsQuery: () => ({ data: { usageConfirmed: true } }),
 }));
 
-vi.mock("@/hooks/useDarkMode", () => ({
+vi.mock("@/shared/hooks/useDarkMode", () => ({
   useDarkMode: () => false,
 }));
 
-vi.mock("@/components/JsonEditor", () => ({
+vi.mock("@/shared/editor/JsonEditor", () => ({
   default: () => <div data-testid="json-editor" />,
 }));
 
-vi.mock("@/components/common/FullScreenPanel", () => ({
+vi.mock("@/shared/common/FullScreenPanel", () => ({
   FullScreenPanel: ({
     isOpen,
     children,

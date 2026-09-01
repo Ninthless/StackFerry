@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   mergeCustomModelsIntoStore,
   type CustomModelItem,
-} from "@/components/providers/forms/OmoFormFields";
+} from "@/features/providers/forms/OmoFormFields";
 
 describe("mergeCustomModelsIntoStore", () => {
   it("保留自定义项高级字段，并在模型变更时仅按需清理非法 variant", () => {

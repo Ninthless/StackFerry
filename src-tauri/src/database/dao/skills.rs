@@ -9,7 +9,7 @@
 use crate::app_config::{AppType, InstalledSkill, SkillApps};
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
-use crate::services::skill::SkillRepo;
+use crate::infrastructure::persistence::{default_skill_repos, SkillRepo};
 use indexmap::IndexMap;
 use rusqlite::params;
 
@@ -298,10 +298,10 @@ impl Database {
             return Ok(0);
         }
 
-        let default_store = crate::services::skill::SkillStore::default();
+        let default_repos = default_skill_repos();
         let mut count = 0;
 
-        for repo in &default_store.repos {
+        for repo in &default_repos {
             self.save_skill_repo(repo)?;
             count += 1;
             log::info!("初始化默认 Skill 仓库: {}/{}", repo.owner, repo.name);

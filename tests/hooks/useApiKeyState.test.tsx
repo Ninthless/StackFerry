@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { useApiKeyState } from "@/components/providers/forms/hooks/useApiKeyState";
+import { useApiKeyState } from "@/features/providers/forms/hooks/useApiKeyState";
 
 describe("useApiKeyState", () => {
   it("shows and creates Claude API key for uncategorized edit providers", () => {

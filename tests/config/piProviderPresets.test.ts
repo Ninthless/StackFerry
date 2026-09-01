@@ -3,7 +3,7 @@ import {
   PI_USER_AGENT,
   piProviderPresets,
   withPiDefaultHeaders,
-} from "@/config/piProviderPresets";
+} from "@/features/providers/config/piProviderPresets";
 
 describe("Pi provider presets", () => {
   it("provides valid custom-provider contracts", () => {

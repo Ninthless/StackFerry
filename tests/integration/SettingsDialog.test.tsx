@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { SettingsPage } from "@/components/settings/SettingsPage";
+import { SettingsPage } from "@/features/settings/SettingsPage";
 import {
   resetProviderState,
   getSettings,
@@ -21,7 +21,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/components/ui/dialog", () => ({
+vi.mock("@/shared/ui/dialog", () => ({
   Dialog: ({ open, children }: any) =>
     open ? <div data-testid="dialog-root">{children}</div> : null,
   DialogContent: ({ children }: any) => <div>{children}</div>,
@@ -38,7 +38,7 @@ const TabsContext = React.createContext<{
   value: "general",
 });
 
-vi.mock("@/components/ui/tabs", () => {
+vi.mock("@/shared/ui/tabs", () => {
   return {
     Tabs: ({ value, onValueChange, children }: any) => (
       <TabsContext.Provider value={{ value, onValueChange }}>
@@ -63,7 +63,7 @@ vi.mock("@/components/ui/tabs", () => {
   };
 });
 
-vi.mock("@/components/settings/LanguageSettings", () => ({
+vi.mock("@/features/settings/LanguageSettings", () => ({
   LanguageSettings: ({ value, onChange }: any) => (
     <div>
       <span>language:{value}</span>
@@ -72,11 +72,11 @@ vi.mock("@/components/settings/LanguageSettings", () => ({
   ),
 }));
 
-vi.mock("@/components/settings/ThemeSettings", () => ({
+vi.mock("@/features/settings/ThemeSettings", () => ({
   ThemeSettings: () => <div data-testid="theme-settings">theme</div>,
 }));
 
-vi.mock("@/components/settings/WindowSettings", () => ({
+vi.mock("@/features/settings/WindowSettings", () => ({
   WindowSettings: ({ onChange }: any) => (
     <button onClick={() => onChange({ minimizeToTrayOnClose: false })}>
       window-settings
@@ -84,14 +84,14 @@ vi.mock("@/components/settings/WindowSettings", () => ({
   ),
 }));
 
-vi.mock("@/components/settings/DirectorySettings", async () => {
+vi.mock("@/features/settings/DirectorySettings", async () => {
   const actual = await vi.importActual<
-    typeof import("@/components/settings/DirectorySettings")
-  >("@/components/settings/DirectorySettings");
+    typeof import("@/features/settings/DirectorySettings")
+  >("@/features/settings/DirectorySettings");
   return actual;
 });
 
-vi.mock("@/components/settings/ImportExportSection", () => ({
+vi.mock("@/features/settings/ImportExportSection", () => ({
   ImportExportSection: ({
     status,
     selectedFile,
@@ -116,7 +116,7 @@ vi.mock("@/components/settings/ImportExportSection", () => ({
   ),
 }));
 
-vi.mock("@/components/settings/AboutSection", () => ({
+vi.mock("@/features/settings/AboutSection", () => ({
   AboutSection: ({ isPortable }: any) => <div>about:{String(isPortable)}</div>,
 }));
 
@@ -147,8 +147,8 @@ describe("SettingsPage integration", () => {
   it("loads default settings from MSW", async () => {
     renderDialog();
 
-    await waitFor(() =>
-      expect(screen.getByText("language:zh")).toBeInTheDocument(),
+    await waitFor(
+      () => expect(screen.getByText("language:zh")).toBeInTheDocument(),
       { timeout: 5_000 },
     );
     fireEvent.click(screen.getByText("settings.tabAdvanced"));
@@ -163,8 +163,8 @@ describe("SettingsPage integration", () => {
     const onImportSuccess = vi.fn();
     renderDialog({ onImportSuccess });
 
-    await waitFor(() =>
-      expect(screen.getByText("language:zh")).toBeInTheDocument(),
+    await waitFor(
+      () => expect(screen.getByText("language:zh")).toBeInTheDocument(),
       { timeout: 5_000 },
     );
 
@@ -188,8 +188,8 @@ describe("SettingsPage integration", () => {
   it("saves settings and handles restart prompt", async () => {
     renderDialog();
 
-    await waitFor(() =>
-      expect(screen.getByText("language:zh")).toBeInTheDocument(),
+    await waitFor(
+      () => expect(screen.getByText("language:zh")).toBeInTheDocument(),
       { timeout: 5_000 },
     );
 
@@ -216,8 +216,8 @@ describe("SettingsPage integration", () => {
   it("allows browsing and resetting directories", async () => {
     renderDialog();
 
-    await waitFor(() =>
-      expect(screen.getByText("language:zh")).toBeInTheDocument(),
+    await waitFor(
+      () => expect(screen.getByText("language:zh")).toBeInTheDocument(),
       { timeout: 5_000 },
     );
 
@@ -258,8 +258,8 @@ describe("SettingsPage integration", () => {
   it("notifies when export fails", async () => {
     renderDialog();
 
-    await waitFor(() =>
-      expect(screen.getByText("language:zh")).toBeInTheDocument(),
+    await waitFor(
+      () => expect(screen.getByText("language:zh")).toBeInTheDocument(),
       { timeout: 5_000 },
     );
     fireEvent.click(screen.getByText("settings.tabAdvanced"));

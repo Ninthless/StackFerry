@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { RepoManagerPanel } from "@/components/skills/RepoManagerPanel";
-import type { DiscoverableSkill, SkillRepo } from "@/lib/api/skills";
+import { RepoManagerPanel } from "@/features/skills/RepoManagerPanel";
+import type { DiscoverableSkill, SkillRepo } from "@/platform/tauri/api/skills";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({

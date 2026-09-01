@@ -6,6 +6,7 @@
 
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
+use crate::infrastructure::persistence::Profile;
 use rusqlite::params;
 
 /// 每个 scope 的 current 标记 key = 前缀 + scope（如 current_profile_id_claude）
@@ -13,18 +14,6 @@ const CURRENT_PROFILE_ID_KEY_PREFIX: &str = "current_profile_id_";
 
 fn current_profile_key(scope: &str) -> String {
     format!("{CURRENT_PROFILE_ID_KEY_PREFIX}{scope}")
-}
-
-/// 项目 Profile 记录（全应用共享，无所属分组）
-#[derive(Debug, Clone)]
-pub struct Profile {
-    pub id: String,
-    pub name: String,
-    /// 原始 JSON 快照文本（ProfilePayload），解析在 service 层
-    pub payload: String,
-    pub sort_order: Option<i64>,
-    pub created_at: Option<i64>,
-    pub updated_at: Option<i64>,
 }
 
 impl Database {

@@ -3,7 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import {
   parseCodexAuthObject,
   useCodexConfigState,
-} from "@/components/providers/forms/hooks/useCodexConfigState";
+} from "@/features/providers/forms/hooks/useCodexConfigState";
 
 describe("parseCodexAuthObject", () => {
   it("accepts empty and object auth configurations", () => {

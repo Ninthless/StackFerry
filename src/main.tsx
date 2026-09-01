@@ -1,21 +1,21 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App";
-import { DatabaseUpgrade } from "./components/DatabaseUpgrade";
+import App from "./app/App";
+import { DatabaseUpgrade } from "./app/bootstrap/DatabaseUpgrade";
 import { UpdateProvider } from "./contexts/UpdateContext";
 import { AnnouncementProvider } from "./contexts/AnnouncementContext";
 import "./index.css";
 // 导入国际化配置
 import i18n from "./i18n";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { ThemeProvider } from "@/components/theme-provider";
-import { queryClient } from "@/lib/query";
-import { Toaster } from "@/components/ui/sonner";
-import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
-import { message } from "@tauri-apps/plugin-dialog";
-import { exit } from "@tauri-apps/plugin-process";
-import { FrontendErrorBoundary } from "./components/FrontendErrorBoundary";
+import { ThemeProvider } from "@/shared/platform/theme";
+import { queryClient } from "@/app/query";
+import { Toaster } from "@/shared/ui/sonner";
+import {
+  bootstrapApi,
+  type ConfigLoadErrorPayload,
+} from "@/platform/tauri/api";
+import { FrontendErrorBoundary } from "./app/bootstrap/FrontendErrorBoundary";
 import {
   installGlobalErrorHandlers,
   reportFrontendError,
@@ -25,7 +25,7 @@ import {
   syncModelsDevPricingOnStartup,
 } from "./lib/modelsDevAutoSync";
 import { installBrowserPreview } from "./lib/browserPreview";
-import { WindowFrame } from "./components/shell/WindowFrame";
+import { WindowFrame } from "./app/shell/WindowFrame";
 
 installGlobalErrorHandlers();
 
@@ -41,14 +41,6 @@ try {
   // 忽略平台检测失败
 }
 
-// 配置加载错误payload类型
-interface ConfigLoadErrorPayload {
-  path?: string;
-  error?: string;
-  /** "db_version_too_new" 表示数据库版本过新，渲染应用内升级恢复界面 */
-  kind?: string;
-}
-
 /**
  * 处理配置加载失败：显示错误消息并强制退出应用
  * 不给用户"取消"选项，因为配置损坏时应用无法正常运行
@@ -59,22 +51,19 @@ async function handleConfigLoadError(
   const path = payload?.path ?? "~/.stackferry/config.json";
   const detail = payload?.error ?? "Unknown error";
 
-  await message(
+  await bootstrapApi.showErrorMessage(
     i18n.t("errors.configLoadFailedMessage", {
       path,
       detail,
       defaultValue:
         "无法读取配置文件：\n{{path}}\n\n错误详情：\n{{detail}}\n\n请手动检查 JSON 是否有效，或从同目录的备份文件（如 config.json.bak）恢复。\n\n应用将退出以便您进行修复。",
     }),
-    {
-      title: i18n.t("errors.configLoadFailedTitle", {
-        defaultValue: "配置加载失败",
-      }),
-      kind: "error",
-    },
+    i18n.t("errors.configLoadFailedTitle", {
+      defaultValue: "配置加载失败",
+    }),
   );
 
-  await exit(1);
+  await bootstrapApi.exit(1);
 }
 
 async function bootstrap() {
@@ -94,8 +83,8 @@ async function bootstrap() {
   );
 
   try {
-    void listen("configLoadError", async (evt) => {
-      await handleConfigLoadError(evt.payload as ConfigLoadErrorPayload | null);
+    void bootstrapApi.onConfigLoadError(async (payload) => {
+      await handleConfigLoadError(payload);
     });
   } catch (e) {
     reportFrontendError("config_load_error_listener", e);
@@ -103,9 +92,7 @@ async function bootstrap() {
 
   // 启动早期主动查询后端初始化错误，避免事件竞态
   try {
-    const initError = (await invoke(
-      "get_init_error",
-    )) as ConfigLoadErrorPayload | null;
+    const initError = await bootstrapApi.getInitError();
     if (initError && initError.kind === "db_version_too_new") {
       // 数据库版本过新：渲染应用内「升级应用」恢复界面，不进入正常 App
       ReactDOM.createRoot(document.getElementById("root")!).render(

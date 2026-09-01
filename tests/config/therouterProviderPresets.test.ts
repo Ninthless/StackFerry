@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { providerPresets } from "@/config/claudeProviderPresets";
-import { codexProviderPresets } from "@/config/codexProviderPresets";
-import { geminiProviderPresets } from "@/config/geminiProviderPresets";
+import { providerPresets } from "@/features/providers/config/claudeProviderPresets";
+import { codexProviderPresets } from "@/features/providers/config/codexProviderPresets";
+import { geminiProviderPresets } from "@/features/providers/config/geminiProviderPresets";
 
 describe("TheRouter provider presets", () => {
   it("uses the Anthropic-compatible root endpoint for Claude", () => {

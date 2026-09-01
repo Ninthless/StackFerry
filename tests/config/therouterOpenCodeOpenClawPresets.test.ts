@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   OPENCODE_PRESET_MODEL_VARIANTS,
   opencodeProviderPresets,
-} from "@/config/opencodeProviderPresets";
-import { openclawProviderPresets } from "@/config/openclawProviderPresets";
+} from "@/features/providers/config/opencodeProviderPresets";
+import { openclawProviderPresets } from "@/features/providers/config/openclawProviderPresets";
 
 describe("TheRouter OpenCode and OpenClaw presets", () => {
   it("uses OpenAI-compatible config for OpenCode", () => {

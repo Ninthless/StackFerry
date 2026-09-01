@@ -12,10 +12,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   PiExtensionInventory,
   PiPackageSearchResult,
-} from "@/lib/api/piExtensions";
+} from "@/platform/tauri/api/piExtensions";
 import PiExtensionsPanel, {
   type PiExtensionsPageState,
-} from "@/components/pi/PiExtensionsPanel";
+} from "@/features/pi/PiExtensionsPanel";
 
 const mocks = vi.hoisted(() => ({
   getInventory: vi.fn(),
@@ -32,10 +32,10 @@ const mocks = vi.hoisted(() => ({
   openExternal: vi.fn(),
 }));
 
-vi.mock("@/lib/api/piExtensions", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/piExtensions")>(
-    "@/lib/api/piExtensions",
-  );
+vi.mock("@/platform/tauri/api/piExtensions", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/platform/tauri/api/piExtensions")
+  >("@/platform/tauri/api/piExtensions");
   return {
     ...actual,
     piExtensionsApi: {
@@ -52,7 +52,7 @@ vi.mock("@/lib/api/piExtensions", async () => {
   };
 });
 
-vi.mock("@/lib/api/settings", () => ({
+vi.mock("@/platform/tauri/api/settings", () => ({
   settingsApi: {
     get: mocks.getSettings,
     save: mocks.saveSettings,

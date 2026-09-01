@@ -1,4 +1,4 @@
-import type { ProviderMeta } from "@/types";
+import type { ProviderMeta } from "@/shared/contracts";
 
 export function resolveManagedAccountId(
   meta: ProviderMeta | undefined,

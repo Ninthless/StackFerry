@@ -12,9 +12,12 @@ import userEvent from "@testing-library/user-event";
 
 import UnifiedSkillsPanel, {
   type UnifiedSkillsPanelHandle,
-} from "@/components/skills/UnifiedSkillsPanel";
-import { skillsApi } from "@/lib/api";
-import type { InstalledSkill, SkillBackupEntry } from "@/lib/api/skills";
+} from "@/features/skills/UnifiedSkillsPanel";
+import { skillsApi } from "@/platform/tauri/api";
+import type {
+  InstalledSkill,
+  SkillBackupEntry,
+} from "@/platform/tauri/api/skills";
 import en from "@/i18n/locales/en.json";
 import ja from "@/i18n/locales/ja.json";
 import zh from "@/i18n/locales/zh.json";
@@ -59,7 +62,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/hooks/useSkills", () => ({
+vi.mock("@/features/skills/model/useSkills", () => ({
   useInstalledSkills: () => ({
     data: installedSkillsMock,
     isLoading: false,
@@ -347,9 +350,7 @@ describe("UnifiedSkillsPanel", () => {
     });
     expect(
       container.querySelector(".installed-skill-detail-page"),
-    ).toContainElement(
-      screen.getByRole("button", { name: "Pi" }),
-    );
+    ).toContainElement(screen.getByRole("button", { name: "Pi" }));
     for (const locale of [en, ja, zh, zhTW]) {
       expect(locale.skills.installedCount).toContain("{{count}}");
     }

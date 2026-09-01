@@ -12,8 +12,8 @@ import {
   announcementsApi,
   type Announcement,
   type AnnouncementFeed,
-} from "@/lib/api";
-import { extractErrorMessage } from "@/utils/errorUtils";
+} from "@/platform/tauri/api";
+import { extractErrorMessage } from "@/shared/lib/errorUtils";
 
 interface AnnouncementContextValue {
   feed: AnnouncementFeed | null;

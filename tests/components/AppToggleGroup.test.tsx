@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { AppToggleGroup } from "@/components/common/AppToggleGroup";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { AppToggleGroup } from "@/shared/common/AppToggleGroup";
+import { TooltipProvider } from "@/shared/ui/tooltip";
 
 describe("AppToggleGroup", () => {
   it("shows selection independently from brand icon color", () => {

@@ -6,7 +6,7 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { settingsApi } from "../lib/api/settings";
+import { settingsApi } from "@/platform/tauri/api/settings";
 import type { UpdateInfo } from "../lib/updater";
 import { checkForUpdate } from "../lib/updater";
 

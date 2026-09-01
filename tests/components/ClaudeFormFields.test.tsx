@@ -2,8 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps, PropsWithChildren } from "react";
 import { useForm } from "react-hook-form";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ClaudeFormFields } from "@/components/providers/forms/ClaudeFormFields";
-import { Form } from "@/components/ui/form";
+import { ClaudeFormFields } from "@/features/providers/forms/ClaudeFormFields";
+import { Form } from "@/shared/ui/form";
 
 const copilotApiMock = vi.hoisted(() => ({
   copilotGetModels: vi.fn(),
@@ -16,22 +16,22 @@ const modelFetchApiMock = vi.hoisted(() => ({
   showFetchModelsError: vi.fn(),
 }));
 
-vi.mock("@/lib/api/copilot", () => ({
+vi.mock("@/platform/tauri/api/copilot", () => ({
   copilotGetModels: copilotApiMock.copilotGetModels,
   copilotGetModelsForAccount: copilotApiMock.copilotGetModelsForAccount,
 }));
 
-vi.mock("@/lib/api/model-fetch", () => ({
+vi.mock("@/platform/tauri/api/model-fetch", () => ({
   fetchCodexOauthModels: modelFetchApiMock.fetchCodexOauthModels,
   fetchModelsForConfig: modelFetchApiMock.fetchModelsForConfig,
   showFetchModelsError: modelFetchApiMock.showFetchModelsError,
 }));
 
-vi.mock("@/components/providers/forms/CopilotAuthSection", () => ({
+vi.mock("@/features/providers/forms/CopilotAuthSection", () => ({
   CopilotAuthSection: () => <div data-testid="copilot-auth-section" />,
 }));
 
-vi.mock("@/components/providers/forms/CodexOAuthSection", () => ({
+vi.mock("@/features/providers/forms/CodexOAuthSection", () => ({
   CodexOAuthSection: () => <div data-testid="codex-oauth-section" />,
 }));
 

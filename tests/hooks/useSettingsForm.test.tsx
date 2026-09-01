@@ -1,11 +1,11 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import i18n from "i18next";
-import { useSettingsForm } from "@/hooks/useSettingsForm";
+import { useSettingsForm } from "@/features/settings/model/useSettingsForm";
 
 const useSettingsQueryMock = vi.fn();
 
-vi.mock("@/lib/query", () => ({
+vi.mock("@/features/providers", () => ({
   useSettingsQuery: (...args: unknown[]) => useSettingsQueryMock(...args),
 }));
 

@@ -198,16 +198,14 @@ impl RequestContext {
                         ))
                     })?;
                 Some(
-                    crate::services::credential_isolation::CredentialIsolationService::bind_session(
+                    crate::credentials::CredentialIsolationService::bind_session(
                         &state.db,
                         "pi",
                         &session_id,
                         &instance.provider_id,
                         &instance_id,
                     )
-                    .map_err(|error| {
-                        ProxyError::SessionCredentialConflict(error.to_string())
-                    })?,
+                    .map_err(|error| ProxyError::SessionCredentialConflict(error.to_string()))?,
                 )
             }
             (None, None) => None,
@@ -369,16 +367,14 @@ impl RequestContext {
                     })?
                     .provider_id;
                 Some(
-                    crate::services::credential_isolation::CredentialIsolationService::bind_session(
+                    crate::credentials::CredentialIsolationService::bind_session(
                         &state.db,
                         app_type_str,
                         &session_id,
                         &provider_id,
                         &instance_id,
                     )
-                    .map_err(|error| {
-                        ProxyError::SessionCredentialConflict(error.to_string())
-                    })?,
+                    .map_err(|error| ProxyError::SessionCredentialConflict(error.to_string()))?,
                 )
             }
             (None, None) => None,

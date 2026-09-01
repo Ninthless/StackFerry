@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { deepClone } from "@/utils/deepClone";
+import { deepClone } from "@/shared/lib/deepClone";
 
 describe("deepClone", () => {
   afterEach(() => {

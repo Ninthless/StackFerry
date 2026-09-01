@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { AppSwitcher } from "@/components/AppSwitcher";
-import type { VisibleApps } from "@/types";
+import { AppSwitcher } from "@/shared/common/AppSwitcher";
+import type { VisibleApps } from "@/shared/contracts";
 
 const visibleApps: VisibleApps = {
   claude: false,

@@ -10,10 +10,9 @@
 //! - `src/components/providers/forms/GrokBuildProviderForm.tsx`（"Grok Official"）
 
 use crate::app_config::AppType;
-
-pub(crate) const CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID: &str = "claude-desktop-official";
-pub(crate) const CODEX_OFFICIAL_PROVIDER_ID: &str = "codex-official";
-pub(crate) const GROKBUILD_OFFICIAL_PROVIDER_ID: &str = "grokbuild-official";
+use crate::provider_defaults::{
+    CLAUDE_DESKTOP_OFFICIAL_PROVIDER_ID, CODEX_OFFICIAL_PROVIDER_ID, GROKBUILD_OFFICIAL_PROVIDER_ID,
+};
 
 /// 单条官方供应商种子定义。
 pub(crate) struct OfficialProviderSeed {

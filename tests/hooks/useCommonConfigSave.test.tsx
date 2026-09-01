@@ -1,14 +1,14 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useCodexCommonConfig } from "@/components/providers/forms/hooks/useCodexCommonConfig";
-import { useGeminiCommonConfig } from "@/components/providers/forms/hooks/useGeminiCommonConfig";
+import { useCodexCommonConfig } from "@/features/providers/forms/hooks/useCodexCommonConfig";
+import { useGeminiCommonConfig } from "@/features/providers/forms/hooks/useGeminiCommonConfig";
 
 const getCommonConfigSnippetMock = vi.fn();
 const setCommonConfigSnippetMock = vi.fn();
 const extractCommonConfigSnippetMock = vi.fn();
 const updateTomlCommonConfigSnippetMock = vi.fn();
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   configApi: {
     getCommonConfigSnippet: (...args: unknown[]) =>
       getCommonConfigSnippetMock(...args),
@@ -35,7 +35,7 @@ describe("common config snippet saving", () => {
     const onConfigChange = vi.fn();
     const { result } = renderHook(() =>
       useCodexCommonConfig({
-        codexConfig: "model = \"gpt-5\"",
+        codexConfig: 'model = "gpt-5"',
         onConfigChange,
       }),
     );

@@ -1,7 +1,7 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { useDirectorySettings } from "@/hooks/useDirectorySettings";
-import type { SettingsFormState } from "@/hooks/useSettingsForm";
+import { useDirectorySettings } from "@/features/settings/model/useDirectorySettings";
+import type { SettingsFormState } from "@/features/settings/model/useSettingsForm";
 
 const getAppConfigDirOverrideMock = vi.hoisted(() => vi.fn());
 const getConfigDirMock = vi.hoisted(() => vi.fn());
@@ -13,18 +13,17 @@ const joinMock = vi.hoisted(() =>
 );
 const toastErrorMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
+  runtimeApi: {
+    homeDir: homeDirMock,
+    joinPath: joinMock,
+  },
   settingsApi: {
     getAppConfigDirOverride: getAppConfigDirOverrideMock,
     getConfigDir: getConfigDirMock,
     selectConfigDirectory: selectConfigDirectoryMock,
     setAppConfigDirOverride: setAppConfigDirOverrideMock,
   },
-}));
-
-vi.mock("@tauri-apps/api/path", () => ({
-  homeDir: homeDirMock,
-  join: joinMock,
 }));
 
 vi.mock("sonner", () => ({

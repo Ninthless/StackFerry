@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatUsageDataSummary } from "@/utils/usageDisplay";
+import { formatUsageDataSummary } from "@/features/usage/model/usageDisplay";
 
 const labels = {
   invalid: "Invalid",

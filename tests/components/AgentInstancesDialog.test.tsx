@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Provider } from "@/types";
+import type { Provider } from "@/shared/contracts";
 
 const translations: Record<string, string> = {
   "common.close": "关闭",
@@ -57,13 +57,13 @@ const apiMocks = vi.hoisted(() => ({
   pickDirectory: vi.fn(),
 }));
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   settingsApi: {
     pickDirectory: apiMocks.pickDirectory,
   },
 }));
 
-vi.mock("@/lib/api/providers", () => ({
+vi.mock("@/platform/tauri/api/providers", () => ({
   providersApi: {
     getAgentInstances: apiMocks.getAgentInstances,
     createAgentInstance: apiMocks.createAgentInstance,
@@ -72,7 +72,7 @@ vi.mock("@/lib/api/providers", () => ({
   },
 }));
 
-import { AgentInstancesDialog } from "@/components/providers/AgentInstancesDialog";
+import { AgentInstancesDialog } from "@/features/providers/AgentInstancesDialog";
 
 const provider: Provider = {
   id: "provider-1",

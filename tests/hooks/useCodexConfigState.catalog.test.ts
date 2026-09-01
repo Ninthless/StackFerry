@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
-import { useCodexConfigState } from "@/components/providers/forms/hooks/useCodexConfigState";
+import { useCodexConfigState } from "@/features/providers/forms/hooks/useCodexConfigState";
 
 // 回归：编辑已存在的原生 Responses 供应商时，读回 modelCatalog 必须保留隐藏字段
 // (supportsParallelToolCalls / inputModalities / baseInstructions)，否则保存会

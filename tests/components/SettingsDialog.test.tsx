@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom";
 import { createContext, useContext, type ComponentProps } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { SettingsPage } from "@/components/settings/SettingsPage";
+import { SettingsPage } from "@/features/settings/SettingsPage";
 
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
@@ -20,7 +20,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: tMock }),
 }));
 
-vi.mock("@/hooks/useProxyStatus", () => ({
+vi.mock("@/features/proxy/model/useProxyStatus", () => ({
   useProxyStatus: () => ({
     status: null,
     isLoading: false,
@@ -128,16 +128,16 @@ let importExportMock = createImportExportMock();
 const useImportExportSpy = vi.fn();
 let lastUseImportExportOptions: Record<string, unknown> | undefined;
 
-vi.mock("@/hooks/useSettings", () => ({
+vi.mock("@/features/settings/model/useSettings", () => ({
   useSettings: () => settingsMock,
 }));
 
-vi.mock("@/hooks/useImportExport", () => ({
+vi.mock("@/features/settings/model/useImportExport", () => ({
   useImportExport: (options?: Record<string, unknown>) =>
     useImportExportSpy(options),
 }));
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   settingsApi: {
     restart: vi.fn().mockResolvedValue(true),
   },
@@ -150,7 +150,7 @@ const TabsContext = createContext<{
   value: "general",
 });
 
-vi.mock("@/components/ui/dialog", () => ({
+vi.mock("@/shared/ui/dialog", () => ({
   Dialog: ({ open, children }: any) =>
     open ? <div data-testid="dialog-root">{children}</div> : null,
   DialogContent: ({ children }: any) => <div>{children}</div>,
@@ -160,7 +160,7 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogDescription: ({ children }: any) => <div>{children}</div>,
 }));
 
-vi.mock("@/components/ui/tabs", () => {
+vi.mock("@/shared/ui/tabs", () => {
   return {
     Tabs: ({ value, onValueChange, children }: any) => (
       <TabsContext.Provider value={{ value, onValueChange }}>
@@ -184,7 +184,7 @@ vi.mock("@/components/ui/tabs", () => {
   };
 });
 
-vi.mock("@/components/settings/LanguageSettings", () => ({
+vi.mock("@/features/settings/LanguageSettings", () => ({
   LanguageSettings: ({ value, onChange }: any) => (
     <div>
       <span>language:{value}</span>
@@ -193,11 +193,11 @@ vi.mock("@/components/settings/LanguageSettings", () => ({
   ),
 }));
 
-vi.mock("@/components/settings/ThemeSettings", () => ({
+vi.mock("@/features/settings/ThemeSettings", () => ({
   ThemeSettings: () => <div>theme-settings</div>,
 }));
 
-vi.mock("@/components/settings/WindowSettings", () => ({
+vi.mock("@/features/settings/WindowSettings", () => ({
   WindowSettings: ({ onChange }: any) => (
     <button onClick={() => onChange({ minimizeToTrayOnClose: false })}>
       window-settings
@@ -205,7 +205,7 @@ vi.mock("@/components/settings/WindowSettings", () => ({
   ),
 }));
 
-vi.mock("@/components/settings/DirectorySettings", () => ({
+vi.mock("@/features/settings/DirectorySettings", () => ({
   DirectorySettings: ({
     onBrowseDirectory,
     onResetDirectory,
@@ -233,11 +233,11 @@ vi.mock("@/components/settings/DirectorySettings", () => ({
   ),
 }));
 
-vi.mock("@/components/settings/AboutSection", () => ({
+vi.mock("@/features/settings/AboutSection", () => ({
   AboutSection: ({ isPortable }: any) => <div>about:{String(isPortable)}</div>,
 }));
 
-vi.mock("@/components/settings/WebdavSyncSection", () => ({
+vi.mock("@/features/settings/WebdavSyncSection", () => ({
   WebdavSyncSection: ({ config }: any) => (
     <div>webdav-sync-section:{config?.baseUrl ?? "none"}</div>
   ),
@@ -275,7 +275,7 @@ describe("SettingsPage Component", () => {
     lastUseImportExportOptions = undefined;
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
-    settingsApi = (await import("@/lib/api")).settingsApi;
+    settingsApi = (await import("@/platform/tauri/api")).settingsApi;
     settingsApi.restart.mockClear();
   });
 

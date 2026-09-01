@@ -20,6 +20,15 @@ pub struct ResourceOperation {
     pub completed_at: Option<i64>,
 }
 
+pub struct ResourceOperationUpdate<'a> {
+    pub phase: &'a str,
+    pub original_dir: Option<&'a str>,
+    pub quarantine_dir: Option<&'a str>,
+    pub error: Option<&'a str>,
+    pub retry_count: i64,
+    pub updated_at: i64,
+}
+
 impl Database {
     pub fn create_resource_operation(&self, operation: &ResourceOperation) -> Result<(), AppError> {
         let conn = lock_conn!(self.conn);
@@ -52,12 +61,7 @@ impl Database {
     pub fn update_resource_operation(
         &self,
         id: &str,
-        phase: &str,
-        original_dir: Option<&str>,
-        quarantine_dir: Option<&str>,
-        error: Option<&str>,
-        retry_count: i64,
-        updated_at: i64,
+        update: ResourceOperationUpdate<'_>,
     ) -> Result<bool, AppError> {
         let conn = lock_conn!(self.conn);
         conn.execute(
@@ -71,12 +75,12 @@ impl Database {
              WHERE id = ?1 AND completed_at IS NULL",
             params![
                 id,
-                phase,
-                original_dir,
-                quarantine_dir,
-                error,
-                retry_count,
-                updated_at
+                update.phase,
+                update.original_dir,
+                update.quarantine_dir,
+                update.error,
+                update.retry_count,
+                update.updated_at
             ],
         )
         .map(|changed| changed > 0)

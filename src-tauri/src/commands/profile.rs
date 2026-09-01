@@ -3,7 +3,7 @@
 use serde::Serialize;
 use tauri::{Emitter, Manager, State};
 
-use crate::database::Profile;
+use crate::infrastructure::persistence::Profile;
 use crate::services::profile::{ProfilePayload, ProfileScope, ProfileService};
 use crate::store::AppState;
 

@@ -18,65 +18,13 @@
 
 use reqwest::header::HeaderValue;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 use crate::app_config::AppType;
 use crate::error::AppError;
+pub use crate::infrastructure::persistence::{HealthStatus, StreamCheckConfig, StreamCheckResult};
 use crate::provider::Provider;
 use crate::proxy::providers::{get_adapter, ClaudeAdapter, ProviderAdapter};
-
-/// 健康状态枚举
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum HealthStatus {
-    Operational,
-    Degraded,
-    Failed,
-}
-
-/// 连通性检查配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StreamCheckConfig {
-    /// 单次探测超时（秒）
-    pub timeout_secs: u64,
-    /// 超时类失败的最大重试次数
-    pub max_retries: u32,
-    /// 降级阈值（毫秒）：可达但 TTFB 超过该值判定为"较慢"
-    pub degraded_threshold_ms: u64,
-}
-
-impl Default for StreamCheckConfig {
-    fn default() -> Self {
-        // 可达性探测打的是 base_url 的小请求（仅读响应头），不等待模型生成，故超时远小于
-        // 旧的真实请求检查（45s → 8s）；降级阈值沿用旧尺度 6000ms——探测 TTFB 一般远低于
-        // 此，仅在确实很慢时才标"较慢"，避免把 1 秒多的正常延迟误判为降级。
-        Self {
-            timeout_secs: 8,
-            max_retries: 1,
-            degraded_threshold_ms: 6000,
-        }
-    }
-}
-
-/// 连通性检查结果
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StreamCheckResult {
-    pub status: HealthStatus,
-    pub success: bool,
-    pub message: String,
-    pub response_time_ms: Option<u64>,
-    pub http_status: Option<u16>,
-    /// 保留字段以兼容 `stream_check_logs` 表结构；连通性检查恒为空串。
-    pub model_used: String,
-    pub tested_at: i64,
-    pub retry_count: u32,
-    /// 细粒度错误分类；连通性检查不再细分，恒为 None。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error_category: Option<String>,
-}
 
 /// 连通性检查服务
 pub struct StreamCheckService;

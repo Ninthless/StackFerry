@@ -1,10 +1,10 @@
 import { renderHook, act } from "@testing-library/react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { useSettingsMetadata } from "@/hooks/useSettingsMetadata";
+import { useSettingsMetadata } from "@/features/settings/model/useSettingsMetadata";
 
 const isPortableMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/platform/tauri/api", () => ({
   settingsApi: {
     isPortable: (...args: unknown[]) => isPortableMock(...args),
   },

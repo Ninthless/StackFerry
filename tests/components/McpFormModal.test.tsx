@@ -6,8 +6,8 @@ import {
   waitFor,
   act,
 } from "@testing-library/react";
-import type { McpServer } from "@/types";
-import McpFormModal from "@/components/mcp/McpFormModal";
+import type { McpServer } from "@/shared/contracts";
+import McpFormModal from "@/features/mcp/McpFormModal";
 
 const toastErrorMock = vi.hoisted(() => vi.fn());
 const toastSuccessMock = vi.hoisted(() => vi.fn());
@@ -33,7 +33,7 @@ vi.mock("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => {} },
 }));
 
-vi.mock("@/config/mcpPresets", () => ({
+vi.mock("@/features/mcp/config/mcpPresets", () => ({
   mcpPresets: [
     {
       id: "preset-stdio",
@@ -47,7 +47,7 @@ vi.mock("@/config/mcpPresets", () => ({
   }),
 }));
 
-vi.mock("@/components/ui/button", () => ({
+vi.mock("@/shared/ui/button", () => ({
   Button: ({ children, onClick, type = "button", ...rest }: any) => (
     <button type={type} onClick={onClick} {...rest}>
       {children}
@@ -55,7 +55,7 @@ vi.mock("@/components/ui/button", () => ({
   ),
 }));
 
-vi.mock("@/components/ui/input", () => ({
+vi.mock("@/shared/ui/input", () => ({
   Input: ({ value, onChange, ...rest }: any) => (
     <input
       value={value}
@@ -67,7 +67,7 @@ vi.mock("@/components/ui/input", () => ({
   ),
 }));
 
-vi.mock("@/components/ui/textarea", () => ({
+vi.mock("@/shared/ui/textarea", () => ({
   Textarea: ({ value, onChange, ...rest }: any) => (
     <textarea
       value={value}
@@ -79,7 +79,7 @@ vi.mock("@/components/ui/textarea", () => ({
   ),
 }));
 
-vi.mock("@/components/JsonEditor", () => ({
+vi.mock("@/shared/editor/JsonEditor", () => ({
   default: ({ value, onChange, placeholder }: any) => (
     <textarea
       value={value}
@@ -89,7 +89,7 @@ vi.mock("@/components/JsonEditor", () => ({
   ),
 }));
 
-vi.mock("@/components/ui/checkbox", () => ({
+vi.mock("@/shared/ui/checkbox", () => ({
   Checkbox: ({ id, checked, onCheckedChange, ...rest }: any) => (
     <input
       type="checkbox"
@@ -101,7 +101,7 @@ vi.mock("@/components/ui/checkbox", () => ({
   ),
 }));
 
-vi.mock("@/components/ui/dialog", () => ({
+vi.mock("@/shared/ui/dialog", () => ({
   Dialog: ({ children }: any) => <div>{children}</div>,
   DialogContent: ({ children }: any) => <div>{children}</div>,
   DialogHeader: ({ children }: any) => <div>{children}</div>,
@@ -109,7 +109,7 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogFooter: ({ children }: any) => <div>{children}</div>,
 }));
 
-vi.mock("@/components/mcp/McpWizardModal", () => ({
+vi.mock("@/features/mcp/McpWizardModal", () => ({
   default: ({ isOpen, onApply }: any) =>
     isOpen ? (
       <button
@@ -127,9 +127,10 @@ vi.mock("@/components/mcp/McpWizardModal", () => ({
     ) : null,
 }));
 
-vi.mock("@/hooks/useMcp", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/hooks/useMcp")>("@/hooks/useMcp");
+vi.mock("@/features/mcp/model/useMcp", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/features/mcp/model/useMcp")
+  >("@/features/mcp/model/useMcp");
   return {
     ...actual,
     useUpsertMcpServer: () => ({

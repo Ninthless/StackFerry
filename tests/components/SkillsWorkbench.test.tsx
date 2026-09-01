@@ -2,9 +2,9 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import SkillsWorkbench from "@/components/skills/SkillsWorkbench";
+import SkillsWorkbench from "@/features/skills/SkillsWorkbench";
 
-vi.mock("@/components/skills/UnifiedSkillsPanel", () => ({
+vi.mock("@/features/skills/UnifiedSkillsPanel", () => ({
   default: React.forwardRef(
     ({ workbenchTabs }: { workbenchTabs: React.ReactNode }, _ref) => (
       <div>
@@ -15,7 +15,7 @@ vi.mock("@/components/skills/UnifiedSkillsPanel", () => ({
   ),
 }));
 
-vi.mock("@/components/skills/SkillsPage", () => ({
+vi.mock("@/features/skills/SkillsPage", () => ({
   SkillsPage: React.forwardRef(
     ({ workbenchTabs }: { workbenchTabs: React.ReactNode }, _ref) => (
       <div>

@@ -7,12 +7,12 @@ const readSource = (...segments: string[]) =>
 
 const themeCss = readSource("src", "index.css");
 const auditedSurfaces = [
-  readSource("src", "components", "UsageScriptModal.tsx"),
-  readSource("src", "components", "proxy", "AutoFailoverConfigPanel.tsx"),
-  readSource("src", "components", "usage", "RequestDetailPanel.tsx"),
-  readSource("src", "components", "usage", "ModelStatsTable.tsx"),
-  readSource("src", "components", "usage", "ProviderStatsTable.tsx"),
-  readSource("src", "components", "usage", "RequestLogTable.tsx"),
+  readSource("src", "features", "usage", "UsageScriptModal.tsx"),
+  readSource("src", "features", "proxy", "AutoFailoverConfigPanel.tsx"),
+  readSource("src", "features", "usage", "RequestDetailPanel.tsx"),
+  readSource("src", "features", "usage", "ModelStatsTable.tsx"),
+  readSource("src", "features", "usage", "ProviderStatsTable.tsx"),
+  readSource("src", "features", "usage", "RequestLogTable.tsx"),
 ].join("\n");
 
 describe("theme surfaces", () => {

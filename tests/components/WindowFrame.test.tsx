@@ -32,7 +32,7 @@ vi.mock("@/lib/platform", () => ({
   isWindows: () => platformState.current === "windows",
 }));
 
-vi.mock("@/hooks/useWindowControls", () => ({
+vi.mock("@/app/shell/useWindowControls", () => ({
   useWindowControls: () => windowState,
 }));
 
@@ -46,8 +46,8 @@ vi.mock("@/lib/frontendLogger", () => ({
 
 vi.mock("@/lib/updater", () => ({ getCurrentVersion }));
 
-import { WindowFrame } from "@/components/shell/WindowFrame";
-import { FrontendErrorBoundary } from "@/components/FrontendErrorBoundary";
+import { WindowFrame } from "@/app/shell/WindowFrame";
+import { FrontendErrorBoundary } from "@/app/bootstrap/FrontendErrorBoundary";
 
 function ThrowingChild(): React.ReactNode {
   throw new Error("render failed");

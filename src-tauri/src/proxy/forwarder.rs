@@ -23,7 +23,7 @@ use super::{
     types::{CopilotOptimizerConfig, OptimizerConfig, ProxyStatus, RectifierConfig},
     ProxyError,
 };
-use crate::commands::{CodexOAuthState, CopilotAuthState, XaiOAuthState};
+use crate::providers::{CodexOAuthState, CopilotAuthState, XaiOAuthState};
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
 use crate::proxy::providers::xai_oauth_auth::XaiOAuthManager;
@@ -1619,7 +1619,7 @@ impl RequestForwarder {
                 )));
             }
             Some(
-                crate::services::credential_isolation::CredentialIsolationService::resolve_session_api_key(
+                crate::credentials::CredentialIsolationService::resolve_session_api_key(
                     &self.db,
                     app_type.as_str(),
                     instance_id,

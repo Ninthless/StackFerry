@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { useOpencodeFormState } from "@/components/providers/forms/hooks/useOpencodeFormState";
+import { useOpencodeFormState } from "@/features/providers/forms/hooks/useOpencodeFormState";
 
 const renderOpencodeFormState = (
   initialSettingsConfig: Record<string, unknown>,

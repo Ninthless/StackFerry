@@ -1,8 +1,8 @@
 import { act, render } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
 import { describe, expect, it, vi } from "vitest";
-import JsonEditor from "@/components/JsonEditor";
-import MarkdownEditor from "@/components/MarkdownEditor";
+import JsonEditor from "@/shared/editor/JsonEditor";
+import MarkdownEditor from "@/shared/editor/MarkdownEditor";
 
 const getEditorView = (container: HTMLElement) => {
   const editor = container.querySelector<HTMLElement>(".cm-editor");

@@ -1,10 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { AppCountBar } from "@/components/common/AppCountBar";
-import { AppToggleGroup } from "@/components/common/AppToggleGroup";
-import { ListItemRow } from "@/components/common/ListItemRow";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { AppCountBar } from "@/shared/common/AppCountBar";
+import { AppToggleGroup } from "@/shared/common/AppToggleGroup";
+import { ListItemRow } from "@/shared/common/ListItemRow";
+import { Tabs, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { TooltipProvider } from "@/shared/ui/tooltip";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({

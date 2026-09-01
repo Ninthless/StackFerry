@@ -1036,7 +1036,7 @@ pub fn schedule_tray_refresh(app: &tauri::AppHandle) {
 /// `TRAY_SECTIONS.len()` 次外部请求；只有显式启用的用量查询（含官方订阅、
 /// coding_plan / balance / Copilot / 自定义脚本）才会发请求。
 pub(crate) async fn refresh_all_usage_in_tray(app: &tauri::AppHandle) {
-    use crate::commands::CopilotAuthState;
+    use crate::providers::{CopilotAuthState, XaiOAuthState};
     use futures::future::join_all;
 
     {
@@ -1103,7 +1103,7 @@ pub(crate) async fn refresh_all_usage_in_tray(app: &tauri::AppHandle) {
             let app_clone = app.clone();
             let state = app.state::<AppState>();
             let copilot_state = app.state::<CopilotAuthState>();
-            let xai_state = app.state::<crate::commands::XaiOAuthState>();
+            let xai_state = app.state::<XaiOAuthState>();
             let provider_id = current_id.clone();
             let app_str = app_type_str.to_string();
             script_futures.push(async move {

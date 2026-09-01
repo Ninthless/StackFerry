@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { GlobalProxySettings } from "@/components/settings/GlobalProxySettings";
+import { GlobalProxySettings } from "@/features/settings/GlobalProxySettings";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -10,8 +10,11 @@ const mutateAsyncMock = vi.fn();
 const testMutateAsyncMock = vi.fn();
 const scanMutateAsyncMock = vi.fn();
 
-vi.mock("@/hooks/useGlobalProxy", () => ({
-  useGlobalProxyUrl: () => ({ data: "http://127.0.0.1:7890", isLoading: false }),
+vi.mock("@/features/proxy/model/useGlobalProxy", () => ({
+  useGlobalProxyUrl: () => ({
+    data: "http://127.0.0.1:7890",
+    isLoading: false,
+  }),
   useSetGlobalProxyUrl: () => ({
     mutateAsync: mutateAsyncMock,
     isPending: false,
@@ -40,9 +43,7 @@ describe("GlobalProxySettings", () => {
       "http://127.0.0.1:7890 / socks5://127.0.0.1:1080",
     );
     // URL 对象会在末尾添加斜杠
-    await waitFor(() =>
-      expect(urlInput).toHaveValue("http://127.0.0.1:7890/"),
-    );
+    await waitFor(() => expect(urlInput).toHaveValue("http://127.0.0.1:7890/"));
   });
 
   it("saves proxy URL when save button is clicked", async () => {
@@ -70,9 +71,7 @@ describe("GlobalProxySettings", () => {
     );
 
     // Wait for initial value to load
-    await waitFor(() =>
-      expect(urlInput).toHaveValue("http://127.0.0.1:7890/"),
-    );
+    await waitFor(() => expect(urlInput).toHaveValue("http://127.0.0.1:7890/"));
 
     // Click clear button
     const clearButton = screen.getByTitle("settings.globalProxy.clear");

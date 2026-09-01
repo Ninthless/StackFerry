@@ -1,8 +1,8 @@
-import { invoke } from "@tauri-apps/api/core";
+import { settingsApi } from "@/platform/tauri/api";
 
 export async function copyText(text: string): Promise<void> {
   try {
-    await invoke("copy_text_to_clipboard", { text });
+    await settingsApi.copyTextToClipboard(text);
     return;
   } catch (nativeError) {
     try {

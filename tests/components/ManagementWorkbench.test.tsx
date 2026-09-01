@@ -9,7 +9,7 @@ import {
   StatusBadge,
   StatusReason,
   type StatusTone,
-} from "@/components/common/ManagementWorkbench";
+} from "@/shared/common/ManagementWorkbench";
 
 describe("ManagementWorkbench", () => {
   it("renders summary, toolbar, primary content, and detail slots", () => {

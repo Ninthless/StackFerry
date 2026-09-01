@@ -103,6 +103,42 @@ pub fn model_pricing_file_path() -> PathBuf {
     get_app_config_dir().join(MODEL_PRICING_FILE_NAME)
 }
 
+pub fn list_model_pricing(db: &Database) -> Result<Vec<ModelPricingInfo>, AppError> {
+    db.ensure_model_pricing_seeded()?;
+    sync_local_model_pricing(db)?;
+
+    let conn = lock_conn!(db.conn);
+    let table_exists = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='model_pricing'",
+            [],
+            |row| row.get::<_, i64>(0).map(|count| count > 0),
+        )
+        .unwrap_or(false);
+    if !table_exists {
+        return Ok(Vec::new());
+    }
+
+    let mut stmt = conn.prepare(
+        "SELECT model_id, display_name, input_cost_per_million, output_cost_per_million,
+                cache_read_cost_per_million, cache_creation_cost_per_million
+         FROM model_pricing
+         ORDER BY display_name",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(ModelPricingInfo {
+            model_id: row.get(0)?,
+            display_name: row.get(1)?,
+            input_cost_per_million: row.get(2)?,
+            output_cost_per_million: row.get(3)?,
+            cache_read_cost_per_million: row.get(4)?,
+            cache_creation_cost_per_million: row.get(5)?,
+        })
+    })?;
+
+    rows.collect::<Result<Vec<_>, _>>().map_err(AppError::from)
+}
+
 fn normalize_decimal(label: &str, value: &str) -> Result<String, AppError> {
     let value = value.trim();
     let parsed = Decimal::from_str(value).map_err(|error| {

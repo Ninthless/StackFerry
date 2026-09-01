@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { codexProviderPresets } from "@/config/codexProviderPresets";
-import { openclawProviderPresets } from "@/config/openclawProviderPresets";
+import { codexProviderPresets } from "@/features/providers/config/codexProviderPresets";
+import { openclawProviderPresets } from "@/features/providers/config/openclawProviderPresets";
 
 // 回归：同一个 doubao 模型在 Codex catalog 与 OpenClaw settingsConfig 里都声明了
 // contextWindow，二者必须一致。曾出现 OpenClaw 写成 128000、Codex 写成 262144 的

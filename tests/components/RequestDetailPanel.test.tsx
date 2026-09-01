@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { RequestDetailPanel } from "@/components/usage/RequestDetailPanel";
+import { RequestDetailPanel } from "@/features/usage/RequestDetailPanel";
 
 const requestDetailMock = vi.hoisted((): { data: any } => ({
   data: {
@@ -81,7 +81,7 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@/components/ui/dialog", () => {
+vi.mock("@/shared/ui/dialog", () => {
   let closeDialog: (() => void) | undefined;
   return {
     Dialog: ({
@@ -116,7 +116,7 @@ vi.mock("@/components/ui/dialog", () => {
   };
 });
 
-vi.mock("@/lib/query/usage", () => ({
+vi.mock("@/features/usage/model/usage", () => ({
   useRequestDetail: () => ({
     isLoading: false,
     data: requestDetailMock.data,

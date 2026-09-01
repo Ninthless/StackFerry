@@ -5,7 +5,7 @@ vi.mock("@/lib/frontendLogger", () => ({
 }));
 
 import { render, screen } from "@testing-library/react";
-import { FrontendErrorBoundary } from "@/components/FrontendErrorBoundary";
+import { FrontendErrorBoundary } from "@/app/bootstrap/FrontendErrorBoundary";
 
 function ThrowingChild(): React.ReactNode {
   throw new Error("sensitive render failure");

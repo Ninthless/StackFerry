@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useProxyStatus } from "@/hooks/useProxyStatus";
+import { useProxyStatus } from "@/features/proxy/model/useProxyStatus";
 import { createTestQueryClient } from "../utils/testQueryClient";
 
 const toastSuccessMock = vi.fn();

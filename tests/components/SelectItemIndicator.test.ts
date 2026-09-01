@@ -7,7 +7,7 @@ const SELECT_TSX = path.resolve(
   "..",
   "..",
   "src",
-  "components",
+  "shared",
   "ui",
   "select.tsx",
 );

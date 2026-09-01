@@ -10,7 +10,7 @@ const {
   recordModelsDevSyncResult: vi.fn(),
 }));
 
-vi.mock("@/lib/api/usage", () => ({
+vi.mock("@/platform/tauri/api/usage", () => ({
   usageApi: {
     getModelsDevSyncConfig,
     updateModelPricingBatch,

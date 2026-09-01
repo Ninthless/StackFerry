@@ -1,35 +1,7 @@
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
+use crate::infrastructure::persistence::{AgentInstance, SessionCredentialBinding};
 use rusqlite::{params, OptionalExtension};
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentInstance {
-    pub id: String,
-    pub provider_id: String,
-    pub app_type: String,
-    pub name: String,
-    pub credential_ref: String,
-    pub codex_home: Option<String>,
-    pub runtime_home: Option<String>,
-    pub recent_project_dir: Option<String>,
-    pub last_launched_at: Option<i64>,
-    pub runtime_config: Option<String>,
-    pub created_at: i64,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionCredentialBinding {
-    pub app_type: String,
-    pub session_id: String,
-    pub provider_id: String,
-    pub instance_id: String,
-    pub created_at: i64,
-    pub last_used_at: i64,
-}
 
 impl Database {
     pub fn save_agent_instance(&self, instance: &AgentInstance) -> Result<(), AppError> {

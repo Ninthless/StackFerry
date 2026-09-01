@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { UniversalProviderFormModal } from "@/components/universal/UniversalProviderFormModal";
-import { APP_ICON_MAP, APP_IDS } from "@/config/appConfig";
+import { UniversalProviderFormModal } from "@/features/universal/UniversalProviderFormModal";
+import { APP_ICON_MAP, APP_IDS } from "@/app/capabilities";
 
 describe("UniversalProviderFormModal", () => {
   it("configures every supported application from one form", async () => {

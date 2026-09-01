@@ -35,23 +35,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: TypeScript type check
-        run: pnpm typecheck
-
-      - name: Check formatting
-        run: pnpm format:check
-
-      - name: Unit tests
-        run: pnpm exec vitest run --maxWorkers=1 --minWorkers=1
-
-      - name: Build renderer
-        run: pnpm build:renderer
-
-      - name: Validate IPC contract
-        run: pnpm ipc:validate
-
-      - name: Test Node scripts
-        run: node --test scripts/dev.node.mjs scripts/generate-updater-manifest.node.mjs scripts/build-fast.node.mjs scripts/validate-ipc-contract.node.mjs
+      - name: Verify frontend scope
+        run: node scripts/verify.mjs --scope=frontend
 
   backend:
     name: Backend Checks
@@ -94,13 +79,6 @@ jobs:
         shell: bash
         run: mkdir -p dist
 
-      - name: Check Rust formatting
-        run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
-
-      - name: Clippy
+      - name: Verify Rust scope
         timeout-minutes: 60
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-
-      - name: Run tests
-        timeout-minutes: 60
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: node scripts/verify.mjs --scope=rust

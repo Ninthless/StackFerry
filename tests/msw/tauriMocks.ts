@@ -24,7 +24,9 @@ const tauriWindowMock = vi.hoisted(() => {
       async (_handler: WindowEventHandler<unknown>): Promise<() => void> =>
         unlisten,
     ),
-    setDecorations: vi.fn(async (_decorated: boolean): Promise<void> => undefined),
+    setDecorations: vi.fn(
+      async (_decorated: boolean): Promise<void> => undefined,
+    ),
     toggleMaximize: vi.fn(async (): Promise<void> => undefined),
   };
 });

@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ImportExportSection } from "@/components/settings/ImportExportSection";
+import { ImportExportSection } from "@/features/settings/ImportExportSection";
 
 const tMock = vi.fn((key: string) => key);
 

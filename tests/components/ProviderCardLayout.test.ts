@@ -7,7 +7,7 @@ const PROVIDER_CARD_TSX = path.resolve(
   "..",
   "..",
   "src",
-  "components",
+  "features",
   "providers",
   "ProviderCard.tsx",
 );
@@ -16,7 +16,8 @@ const USAGE_FOOTER_TSX = path.resolve(
   "..",
   "..",
   "src",
-  "components",
+  "features",
+  "usage",
   "UsageFooter.tsx",
 );
 

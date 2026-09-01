@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import type { AppId } from "@/lib/api/types";
+import type { AppId } from "@/platform/tauri/api/types";
 import { vi } from "vitest";
 
-vi.mock("@/components/UpdateBadge", () => ({
+vi.mock("@/features/settings/UpdateBadge", () => ({
   UpdateBadge: ({ onClick }: { onClick: () => void }) => (
     <button type="button" onClick={onClick}>
       update-badge
@@ -16,9 +16,9 @@ vi.mock("@/contexts/AnnouncementContext", () => ({
   }),
 }));
 
-import { AppSidebar } from "@/components/shell/AppSidebar";
-import type { VisibleApps } from "@/types";
-import { supportsCapability } from "@/config/appConfig";
+import { AppSidebar } from "@/app/shell/AppSidebar";
+import type { VisibleApps } from "@/shared/contracts";
+import { supportsCapability } from "@/app/capabilities";
 
 const precedes = (before: Element, after: Element) =>
   Boolean(

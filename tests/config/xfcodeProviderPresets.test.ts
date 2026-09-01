@@ -1,19 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { providerPresets } from "@/config/claudeProviderPresets";
-import { claudeDesktopProviderPresets } from "@/config/claudeDesktopProviderPresets";
-import { codexProviderPresets } from "@/config/codexProviderPresets";
-import { geminiProviderPresets } from "@/config/geminiProviderPresets";
-import { grokBuildProviderPresets } from "@/config/grokBuildProviderPresets";
-import { hermesProviderPresets } from "@/config/hermesProviderPresets";
-import { openclawProviderPresets } from "@/config/openclawProviderPresets";
-import { opencodeProviderPresets } from "@/config/opencodeProviderPresets";
-import { piProviderPresets } from "@/config/piProviderPresets";
-import { XFCODE_PROVIDER } from "@/config/xfcodeProvider";
+import { providerPresets } from "@/features/providers/config/claudeProviderPresets";
+import { claudeDesktopProviderPresets } from "@/features/providers/config/claudeDesktopProviderPresets";
+import { codexProviderPresets } from "@/features/providers/config/codexProviderPresets";
+import { geminiProviderPresets } from "@/features/providers/config/geminiProviderPresets";
+import { grokBuildProviderPresets } from "@/features/providers/config/grokBuildProviderPresets";
+import { hermesProviderPresets } from "@/features/providers/config/hermesProviderPresets";
+import { openclawProviderPresets } from "@/features/providers/config/openclawProviderPresets";
+import { opencodeProviderPresets } from "@/features/providers/config/opencodeProviderPresets";
+import { piProviderPresets } from "@/features/providers/config/piProviderPresets";
+import { XFCODE_PROVIDER } from "@/features/providers/config/xfcodeProvider";
 import { hasIcon } from "@/icons/extracted";
 import {
   extractCodexBaseUrl,
   extractCodexModelName,
-} from "@/utils/providerConfigUtils";
+} from "@/features/providers/model/providerConfigUtils";
 
 const findPreset = <T extends { name: string; icon?: string }>(
   presets: T[],

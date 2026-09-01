@@ -5,14 +5,14 @@ use std::path::PathBuf;
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
-use crate::commands::sync_support::{
+use crate::error::AppError;
+use crate::infrastructure::persistence::BackupEntry;
+use crate::services::backup::BackupService;
+use crate::services::provider::ProviderService;
+use crate::services::sync::{
     combine_warnings, post_sync_warning_from_result, restoration_warning, run_post_import_sync,
     success_payload_with_warning,
 };
-use crate::database::backup::BackupEntry;
-use crate::database::Database;
-use crate::error::AppError;
-use crate::services::provider::ProviderService;
 use crate::store::AppState;
 
 // ─── File import/export ──────────────────────────────────────
@@ -48,7 +48,7 @@ pub async fn import_config_from_file(
     let db_for_sync = db.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let path_buf = PathBuf::from(&filePath);
-        let backup_id = db.import_sql(&path_buf)?;
+        let backup_id = BackupService::import_sql(&db, &path_buf)?;
         let local_warning = restoration_warning(db.as_ref());
         let warning = combine_warnings(
             local_warning,
@@ -149,7 +149,7 @@ pub async fn create_db_backup(state: State<'_, AppState>) -> Result<String, Stri
 /// List all database backup files
 #[tauri::command]
 pub fn list_db_backups() -> Result<Vec<BackupEntry>, String> {
-    Database::list_backups().map_err(|e| e.to_string())
+    BackupService::list().map_err(|e| e.to_string())
 }
 
 /// Restore database from a backup file
@@ -161,7 +161,7 @@ pub async fn restore_db_backup(
     let db = state.db.clone();
     let db_for_sync = db.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let backup_id = db.restore_from_backup(&filename)?;
+        let backup_id = BackupService::restore(&db, &filename)?;
         let local_warning = restoration_warning(db.as_ref());
         let warning = combine_warnings(
             local_warning,
@@ -186,11 +186,11 @@ pub fn rename_db_backup(
     #[allow(non_snake_case)] oldFilename: String,
     #[allow(non_snake_case)] newName: String,
 ) -> Result<String, String> {
-    Database::rename_backup(&oldFilename, &newName).map_err(|e| e.to_string())
+    BackupService::rename(&oldFilename, &newName).map_err(|e| e.to_string())
 }
 
 /// Delete a database backup file
 #[tauri::command]
 pub fn delete_db_backup(filename: String) -> Result<(), String> {
-    Database::delete_backup(&filename).map_err(|e| e.to_string())
+    BackupService::delete(&filename).map_err(|e| e.to_string())
 }

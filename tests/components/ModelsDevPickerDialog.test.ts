@@ -4,7 +4,7 @@ import {
   flattenModels,
   formatPrice,
   normalizeModelIdForPricing,
-} from "@/components/usage/ModelsDevPickerDialog";
+} from "@/features/usage/ModelsDevPickerDialog";
 import {
   getCommonModelKeys,
   resolveModelsDevSelection,

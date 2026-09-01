@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { mergeImportedSkills } from "@/hooks/useSkills.helpers";
-import type { InstalledSkill } from "@/lib/api/skills";
+import { mergeImportedSkills } from "@/features/skills/model/useSkills.helpers";
+import type { InstalledSkill } from "@/platform/tauri/api/skills";
 
 function makeSkill(overrides: Partial<InstalledSkill> = {}): InstalledSkill {
   return {

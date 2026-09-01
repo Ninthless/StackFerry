@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { claudeDesktopProviderPresets } from "@/config/claudeDesktopProviderPresets";
-import { providerPresets } from "@/config/claudeProviderPresets";
-import { codexProviderPresets } from "@/config/codexProviderPresets";
-import { geminiProviderPresets } from "@/config/geminiProviderPresets";
-import { hermesProviderPresets } from "@/config/hermesProviderPresets";
-import { openclawProviderPresets } from "@/config/openclawProviderPresets";
-import { opencodeProviderPresets } from "@/config/opencodeProviderPresets";
+import { claudeDesktopProviderPresets } from "@/features/providers/config/claudeDesktopProviderPresets";
+import { providerPresets } from "@/features/providers/config/claudeProviderPresets";
+import { codexProviderPresets } from "@/features/providers/config/codexProviderPresets";
+import { geminiProviderPresets } from "@/features/providers/config/geminiProviderPresets";
+import { hermesProviderPresets } from "@/features/providers/config/hermesProviderPresets";
+import { openclawProviderPresets } from "@/features/providers/config/openclawProviderPresets";
+import { opencodeProviderPresets } from "@/features/providers/config/opencodeProviderPresets";
 import { hasIcon } from "@/icons/extracted";
 
 const WEBSITE_URL = "https://subrouter.ai";
