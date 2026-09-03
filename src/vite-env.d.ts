@@ -1,6 +1,11 @@
 /// <reference types="vite/client" />
 
-interface Window {
-  // expose in the `electron/preload/index.ts`
-  ipcRenderer: import('electron').IpcRenderer
+import type { StackferryApi } from '../shared/types'
+
+declare global {
+  interface Window {
+    stackferry: StackferryApi
+  }
 }
+
+export {}
