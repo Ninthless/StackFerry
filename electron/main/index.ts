@@ -1,26 +1,21 @@
-import { app, BrowserWindow, shell, ipcMain } from 'electron'
-import { createRequire } from 'node:module'
+import { app, BrowserWindow, dialog, Menu, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
-import path from 'node:path'
 import os from 'node:os'
-import { update } from './update'
+import path from 'node:path'
+import { resolveCodexHome } from './codex/home'
+import {
+  broadcastChanged,
+  enableProvider,
+  registerIpc,
+  seedOfficialProvider,
+} from './ipc'
+import { ProviderStore } from './providers/store'
+import { AppTray } from './tray'
 
-const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-// The built directory structure
-//
-// ├─┬ dist-electron
-// │ ├─┬ main
-// │ │ └── index.js    > Electron-Main
-// │ └─┬ preload
-// │   └── index.mjs   > Preload-Scripts
-// ├─┬ dist
-// │ └── index.html    > Electron-Renderer
-//
 process.env.APP_ROOT = path.join(__dirname, '../..')
 
-export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 export const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 
@@ -28,11 +23,18 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   ? path.join(process.env.APP_ROOT, 'public')
   : RENDERER_DIST
 
-// Disable GPU Acceleration for Windows 7
-if (process.platform === 'win32' && os.release().startsWith('6.1')) app.disableHardwareAcceleration()
+const publicDir = process.env.VITE_PUBLIC ?? path.join(process.env.APP_ROOT, 'public')
+const WINDOW_BACKGROUND = '#0a0a0a'
+const TITLE_BAR_SYMBOL = '#fafafa'
+const TITLE_BAR_HEIGHT = 40
 
-// Set application name for Windows 10+ notifications
-if (process.platform === 'win32') app.setAppUserModelId(app.getName())
+if (process.platform === 'win32' && os.release().startsWith('6.1')) {
+  app.disableHardwareAcceleration()
+}
+
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.stackferry.app')
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -40,84 +42,132 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 let win: BrowserWindow | null = null
+let isQuitting = false
+let needsRestart = false
+let store: ProviderStore | null = null
+let tray: AppTray | null = null
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
-async function createWindow() {
+async function createWindow(): Promise<void> {
   win = new BrowserWindow({
-    title: 'Main window',
-    icon: path.join(process.env.VITE_PUBLIC, 'favicon.ico'),
+    title: 'StackFerry',
+    width: 960,
+    height: 680,
+    minWidth: 800,
+    minHeight: 560,
+    backgroundColor: WINDOW_BACKGROUND,
+    icon: path.join(publicDir, 'icon.png'),
+    autoHideMenuBar: true,
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    ...(process.platform !== 'darwin'
+      ? {
+          titleBarOverlay: {
+            color: WINDOW_BACKGROUND,
+            symbolColor: TITLE_BAR_SYMBOL,
+            height: TITLE_BAR_HEIGHT,
+          },
+        }
+      : {}),
     webPreferences: {
       preload,
-      // Warning: Enable nodeIntegration and disable contextIsolation is not secure in production
-      // nodeIntegration: true,
-
-      // Consider using contextBridge.exposeInMainWorld
-      // Read more on https://www.electronjs.org/docs/latest/tutorial/context-isolation
-      // contextIsolation: false,
-    },
-  })
-
-  if (VITE_DEV_SERVER_URL) { // #298
-    win.loadURL(VITE_DEV_SERVER_URL)
-    // Open devTool if the app is not packaged
-    win.webContents.openDevTools()
-  } else {
-    win.loadFile(indexHtml)
-  }
-
-  // Test actively push message to the Electron-Renderer
-  win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', new Date().toLocaleString())
-  })
-
-  // Make all links open with the browser, not with the application
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https:')) shell.openExternal(url)
-    return { action: 'deny' }
-  })
-
-  // Auto update
-  update(win)
-}
-
-app.whenReady().then(createWindow)
-
-app.on('window-all-closed', () => {
-  win = null
-  if (process.platform !== 'darwin') app.quit()
-})
-
-app.on('second-instance', () => {
-  if (win) {
-    // Focus on the main window if the user tried to open another
-    if (win.isMinimized()) win.restore()
-    win.focus()
-  }
-})
-
-app.on('activate', () => {
-  const allWindows = BrowserWindow.getAllWindows()
-  if (allWindows.length) {
-    allWindows[0].focus()
-  } else {
-    createWindow()
-  }
-})
-
-// New window example arg: new windows url
-ipcMain.handle('open-win', (_, arg) => {
-  const childWindow = new BrowserWindow({
-    webPreferences: {
-      preload,
-      nodeIntegration: true,
-      contextIsolation: false,
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
     },
   })
 
   if (VITE_DEV_SERVER_URL) {
-    childWindow.loadURL(`${VITE_DEV_SERVER_URL}#${arg}`)
+    await win.loadURL(VITE_DEV_SERVER_URL)
+    win.webContents.openDevTools({ mode: 'detach' })
   } else {
-    childWindow.loadFile(indexHtml, { hash: arg })
+    await win.loadFile(indexHtml)
   }
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https:') || url.startsWith('http:')) {
+      void shell.openExternal(url)
+    }
+    return { action: 'deny' }
+  })
+
+  win.on('close', (event) => {
+    if (isQuitting) return
+    event.preventDefault()
+    win?.hide()
+  })
+}
+
+function showWindow(): void {
+  if (!win) {
+    void createWindow()
+    return
+  }
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
+async function refreshTray(): Promise<void> {
+  if (!store || !tray) return
+  tray.update(await store.list())
+}
+
+app.whenReady().then(async () => {
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null)
+  }
+  store = new ProviderStore(path.join(app.getPath('userData'), 'providers.json'))
+  const ipcContext = {
+    store,
+    getCodexHome: () => resolveCodexHome(),
+    backupRoot: path.join(app.getPath('userData'), 'backups'),
+    getNeedsRestart: () => needsRestart,
+    setNeedsRestart: (value: boolean) => {
+      needsRestart = value
+    },
+    onChanged: () => {
+      broadcastChanged()
+      void refreshTray()
+    },
+  }
+  tray = new AppTray({
+    iconPath: path.join(publicDir, 'icon.png'),
+    onShow: () => showWindow(),
+    onQuit: () => {
+      isQuitting = true
+      app.quit()
+    },
+    onEnable: async (id) => {
+      try {
+        await enableProvider(ipcContext, id)
+      } catch (error) {
+        dialog.showErrorBox('启用失败', error instanceof Error ? error.message : String(error))
+      }
+    },
+  })
+  registerIpc(ipcContext)
+  await seedOfficialProvider(store)
+  tray.create()
+  await refreshTray()
+  await createWindow()
+})
+
+app.on('window-all-closed', () => {
+  win = null
+  if (process.platform !== 'darwin' && isQuitting) {
+    app.quit()
+  }
+})
+
+app.on('before-quit', () => {
+  isQuitting = true
+})
+
+app.on('second-instance', () => {
+  showWindow()
+})
+
+app.on('activate', () => {
+  showWindow()
 })
