@@ -23,6 +23,7 @@ export default defineConfig(({ command }) => {
     resolve: {
       alias: {
         '@': path.join(__dirname, 'src'),
+        '@shared': path.join(__dirname, 'shared'),
       },
     },
     plugins: [
