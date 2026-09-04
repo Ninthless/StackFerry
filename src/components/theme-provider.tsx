@@ -1,6 +1,10 @@
 import { createContext, useContext, useEffect, useState } from "react"
 
-type Theme = "dark" | "light" | "system"
+export type Theme = "dark" | "light" | "system"
+
+export function isTheme(value: string): value is Theme {
+  return value === "dark" || value === "light" || value === "system"
+}
 
 type ThemeProviderProps = {
   children: React.ReactNode

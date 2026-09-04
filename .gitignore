@@ -26,4 +26,7 @@ release
 
 test/screenshots
 .tmp-codex
+.tmp-*
+.agents
+.cursor
 

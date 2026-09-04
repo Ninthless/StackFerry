@@ -1,6 +1,14 @@
-import { parse, stringify } from 'smol-toml'
+import {
+  isPlainObject,
+  overlayUsesExternalAuth,
+  parseProviderOverlay,
+  parseToml,
+  stringifyToml,
+  type TomlTable,
+} from '../../../shared/provider-overlay'
 
-export type TomlTable = Record<string, unknown>
+export type { TomlTable }
+export { parseToml, stringifyToml }
 
 export const STACKFERRY_PREFIX = 'stackferry_'
 export const OFFICIAL_MODEL_PROVIDER = 'openai'
@@ -8,8 +16,7 @@ export const OFFICIAL_MODEL_PROVIDER = 'openai'
 export type ThirdPartyLiveConfig = {
   id: string
   name: string
-  baseUrl: string
-  model: string
+  tomlText: string
   apiKey: string
 }
 
@@ -17,36 +24,24 @@ export function providerKey(id: string): string {
   return `${STACKFERRY_PREFIX}${id.replaceAll('-', '')}`
 }
 
-export function parseToml(text: string): TomlTable {
-  const trimmed = text.trim()
-  if (!trimmed) return {}
-  const parsed = parse(trimmed)
-  if (!isPlainObject(parsed)) {
-    throw new Error('config.toml 根节点必须是表')
-  }
-  return parsed
-}
-
-export function stringifyToml(doc: TomlTable): string {
-  const rendered = stringify(doc).trim()
-  return rendered ? `${rendered}\n` : ''
-}
-
 export function applyThirdPartyProvider(doc: TomlTable, input: ThirdPartyLiveConfig): TomlTable {
+  const overlay = parseProviderOverlay(input.tomlText)
   const next = cloneDoc(doc)
   stripStackferryProviders(next)
   const key = providerKey(input.id)
   const providers = ensureProviderTable(next)
-  providers[key] = {
-    name: input.name,
-    base_url: input.baseUrl,
-    wire_api: 'responses',
-    experimental_bearer_token: input.apiKey,
+  const table: TomlTable = {
+    ...overlay.table,
+    name: typeof overlay.table.name === 'string' && overlay.table.name.trim()
+      ? overlay.table.name.trim()
+      : input.name,
   }
+  if (input.apiKey.trim() && !overlayUsesExternalAuth(table)) {
+    table.experimental_bearer_token = input.apiKey.trim()
+  }
+  providers[key] = table
   next.model_provider = key
-  if (input.model.trim()) {
-    next.model = input.model.trim()
-  }
+  applySessionKeys(next, overlay)
   return next
 }
 
@@ -82,6 +77,17 @@ function cloneDoc(doc: TomlTable): TomlTable {
   return structuredClone(doc)
 }
 
-function isPlainObject(value: unknown): value is TomlTable {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+function applySessionKeys(doc: TomlTable, overlay: ReturnType<typeof parseProviderOverlay>): void {
+  setOrDelete(doc, 'model', overlay.model || undefined)
+  setOrDelete(doc, 'model_reasoning_effort', overlay.reasoningEffort || undefined)
+  setOrDelete(doc, 'model_context_window', overlay.contextWindow ?? undefined)
+  setOrDelete(doc, 'model_auto_compact_token_limit', overlay.autoCompact ?? undefined)
+}
+
+function setOrDelete(doc: TomlTable, key: string, value: string | number | undefined): void {
+  if (value === undefined) {
+    delete doc[key]
+    return
+  }
+  doc[key] = value
 }

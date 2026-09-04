@@ -4,10 +4,16 @@ import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { safeStorage } from 'electron'
 import { findPreset } from '../../../shared/presets'
+import {
+  overlayRequiresApiKey,
+  parseProviderOverlay,
+  starterOverlayToml,
+  summarizeProviderOverlay,
+} from '../../../shared/provider-overlay'
 import type { ProviderDraft, ProviderKind, ProviderListItem } from '../../../shared/types'
 import { atomicWriteFile } from '../codex/writer'
 
-const STORE_VERSION = 1
+const STORE_VERSION = 2
 const OFFICIAL_ID = 'official'
 
 export type StoredProvider = {
@@ -16,6 +22,7 @@ export type StoredProvider = {
   kind: ProviderKind
   baseUrl: string
   model: string
+  tomlText: string
   apiKeyPayload: string
   createdAt: string
   updatedAt: string
@@ -26,6 +33,10 @@ type StoreFile = {
   activeProviderId: string | null
   lastWriteAt: string | null
   providers: StoredProvider[]
+}
+
+type LegacyStoredProvider = Omit<StoredProvider, 'tomlText'> & {
+  tomlText?: string
 }
 
 export class ProviderStore {
@@ -43,12 +54,14 @@ export class ProviderStore {
       throw new Error('官方登录配置已存在')
     }
     const now = new Date().toISOString()
+    const overlay = this.resolveOverlay(kind, draft.tomlText)
     const provider: StoredProvider = {
       id: kind === 'official' ? OFFICIAL_ID : randomUUID(),
       name: this.requireName(draft.name),
       kind,
-      baseUrl: draft.baseUrl.trim(),
-      model: draft.model.trim(),
+      baseUrl: overlay.baseUrl,
+      model: overlay.model,
+      tomlText: overlay.tomlText,
       apiKeyPayload: this.encryptApiKey(kind, draft.apiKey),
       createdAt: now,
       updatedAt: now,
@@ -62,10 +75,11 @@ export class ProviderStore {
   async update(id: string, draft: ProviderDraft): Promise<ProviderListItem> {
     const file = await this.read()
     const provider = this.requireProvider(file, id)
+    const overlay = this.resolveOverlay(provider.kind, draft.tomlText)
     provider.name = this.requireName(draft.name)
-    provider.kind = this.resolveKind(draft)
-    provider.baseUrl = draft.baseUrl.trim()
-    provider.model = draft.model.trim()
+    provider.baseUrl = overlay.baseUrl
+    provider.model = overlay.model
+    provider.tomlText = overlay.tomlText
     if (draft.apiKey?.trim()) {
       provider.apiKeyPayload = this.encryptApiKey(provider.kind, draft.apiKey)
     }
@@ -122,6 +136,7 @@ export class ProviderStore {
       kind: provider.kind,
       baseUrl: provider.baseUrl,
       model: provider.model,
+      tomlText: provider.tomlText,
       hasApiKey: Boolean(provider.apiKeyPayload),
       enabled: provider.id === activeProviderId,
     }
@@ -132,6 +147,19 @@ export class ProviderStore {
     return preset?.kind ?? draft.kind
   }
 
+  private resolveOverlay(kind: ProviderKind, tomlText: string | undefined): {
+    tomlText: string
+    baseUrl: string
+    model: string
+  } {
+    if (kind === 'official') {
+      return { tomlText: '', baseUrl: '', model: '' }
+    }
+    const text = tomlText ?? ''
+    const summary = summarizeProviderOverlay(text)
+    return { tomlText: text, baseUrl: summary.baseUrl, model: summary.model }
+  }
+
   private requireName(name: string): string {
     const trimmed = name.trim()
     if (!trimmed) throw new Error('请填写供应商名称')
@@ -140,10 +168,9 @@ export class ProviderStore {
 
   private assertReadyToSave(provider: StoredProvider, incomingKey: string | undefined): void {
     if (provider.kind === 'official') return
-    if (!provider.baseUrl) throw new Error('请填写 Base URL')
-    if (!provider.model) throw new Error('请填写模型')
-    if (!provider.apiKeyPayload && !incomingKey?.trim()) {
-      throw new Error('请填写 API Key')
+    parseProviderOverlay(provider.tomlText)
+    if (overlayRequiresApiKey(provider.tomlText) && !provider.apiKeyPayload && !incomingKey?.trim()) {
+      throw new Error('请填写 API Key，或在 TOML 中配置 env_key / auth')
     }
   }
 
@@ -167,15 +194,42 @@ export class ProviderStore {
     if (!existsSync(this.filePath)) {
       return this.emptyFile()
     }
-    const parsed = JSON.parse(await readFile(this.filePath, 'utf8')) as StoreFile
-    if (parsed.version !== STORE_VERSION || !Array.isArray(parsed.providers)) {
+    const parsed = JSON.parse(await readFile(this.filePath, 'utf8')) as StoreFile & {
+      providers: LegacyStoredProvider[]
+    }
+    if (!Array.isArray(parsed.providers) || (parsed.version !== 1 && parsed.version !== STORE_VERSION)) {
       throw new Error('供应商存储文件已损坏')
     }
-    return parsed
+    const migrated: StoreFile = {
+      version: STORE_VERSION,
+      activeProviderId: parsed.activeProviderId,
+      lastWriteAt: parsed.lastWriteAt,
+      providers: parsed.providers.map((provider) => this.migrateProvider(provider)),
+    }
+    if (parsed.version === 1) await this.write(migrated)
+    return migrated
+  }
+
+  private migrateProvider(provider: LegacyStoredProvider): StoredProvider {
+    if (provider.kind === 'official') {
+      return { ...provider, tomlText: '' }
+    }
+    return {
+      ...provider,
+      tomlText:
+        provider.tomlText ??
+        starterOverlayToml({
+          providerId: 'custom',
+          name: provider.name,
+          baseUrl: provider.baseUrl,
+          model: provider.model,
+        }),
+    }
   }
 
   private async write(file: StoreFile): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true })
+    file.version = STORE_VERSION
     await atomicWriteFile(this.filePath, `${JSON.stringify(file, null, 2)}\n`)
   }
 

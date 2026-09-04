@@ -4,16 +4,14 @@ export type Preset = {
   id: string
   name: string
   kind: ProviderKind
-  baseUrl: string
-  model: string
+  tomlText: string
   requiresApiKey: boolean
 }
 
 export type ProviderDraft = {
   name: string
   kind: ProviderKind
-  baseUrl: string
-  model: string
+  tomlText?: string
   apiKey?: string
   presetId?: string
 }
@@ -24,6 +22,7 @@ export type ProviderListItem = {
   kind: ProviderKind
   baseUrl: string
   model: string
+  tomlText: string
   hasApiKey: boolean
   enabled: boolean
 }
@@ -38,12 +37,24 @@ export type AppStatus = {
 }
 
 export type StackferryApi = {
+  showWindowControls: boolean
   listProviders: () => Promise<ProviderListItem[]>
   listPresets: () => Promise<Preset[]>
   addProvider: (draft: ProviderDraft) => Promise<ProviderListItem>
   updateProvider: (id: string, draft: ProviderDraft) => Promise<ProviderListItem>
   deleteProvider: (id: string) => Promise<void>
   enableProvider: (id: string) => Promise<AppStatus>
+  listModels: (input: {
+    baseUrl: string
+    apiKey?: string
+    providerId?: string
+  }) => Promise<string[]>
   getStatus: () => Promise<AppStatus>
+  openDevTools: () => Promise<void>
+  windowMinimize: () => Promise<void>
+  windowToggleMaximize: () => Promise<void>
+  windowClose: () => Promise<void>
+  isWindowMaximized: () => Promise<boolean>
+  onWindowMaximizedChange: (listener: (maximized: boolean) => void) => () => void
   onChanged: (listener: () => void) => () => void
 }

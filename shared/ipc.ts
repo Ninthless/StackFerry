@@ -5,6 +5,13 @@ export const IpcChannel = {
   updateProvider: 'providers:update',
   deleteProvider: 'providers:delete',
   enableProvider: 'providers:enable',
+  listModels: 'providers:list-models',
   getStatus: 'app:status',
+  openDevTools: 'app:devtools',
+  windowMinimize: 'window:minimize',
+  windowToggleMaximize: 'window:toggle-maximize',
+  windowClose: 'window:close',
+  windowIsMaximized: 'window:is-maximized',
+  windowMaximizedChanged: 'window:maximized-changed',
   changed: 'providers:changed',
 } as const

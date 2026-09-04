@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { resolveCodexHome } from './codex/home'
 import {
+  bindWindowState,
   broadcastChanged,
   enableProvider,
   registerIpc,
@@ -25,8 +26,6 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 
 const publicDir = process.env.VITE_PUBLIC ?? path.join(process.env.APP_ROOT, 'public')
 const WINDOW_BACKGROUND = '#0a0a0a'
-const TITLE_BAR_SYMBOL = '#fafafa'
-const TITLE_BAR_HEIGHT = 40
 
 if (process.platform === 'win32' && os.release().startsWith('6.1')) {
   app.disableHardwareAcceleration()
@@ -60,15 +59,6 @@ async function createWindow(): Promise<void> {
     icon: path.join(publicDir, 'icon.png'),
     autoHideMenuBar: true,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
-    ...(process.platform !== 'darwin'
-      ? {
-          titleBarOverlay: {
-            color: WINDOW_BACKGROUND,
-            symbolColor: TITLE_BAR_SYMBOL,
-            height: TITLE_BAR_HEIGHT,
-          },
-        }
-      : {}),
     webPreferences: {
       preload,
       sandbox: true,
@@ -76,6 +66,7 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false,
     },
   })
+  bindWindowState(win)
 
   if (VITE_DEV_SERVER_URL) {
     await win.loadURL(VITE_DEV_SERVER_URL)

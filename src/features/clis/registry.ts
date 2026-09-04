@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react"
-import { SquareTerminal } from "lucide-react"
+import { Bot, SquareTerminal } from "lucide-react"
 
-export type CliId = "codex"
+export type CliId = "codex" | "claude-code"
 
 export type CliDefinition = {
   id: CliId
@@ -14,6 +14,11 @@ export const clis: CliDefinition[] = [
     id: "codex",
     name: "Codex",
     icon: SquareTerminal,
+  },
+  {
+    id: "claude-code",
+    name: "Claude Code",
+    icon: Bot,
   },
 ]
 

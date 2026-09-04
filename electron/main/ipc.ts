@@ -1,10 +1,11 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { existsSync } from 'node:fs'
 import { PRESETS } from '../../shared/presets'
 import { IpcChannel } from '../../shared/ipc'
 import type { AppStatus, ProviderDraft } from '../../shared/types'
 import { codexAuthPath, codexConfigPath } from './codex/home'
 import { enableOfficialLiveConfig, enableThirdPartyLiveConfig } from './codex/writer'
+import { listProviderModels, type ListModelsInput } from './providers/models'
 import type { ProviderStore } from './providers/store'
 
 type IpcContext = {
@@ -39,7 +40,45 @@ export function registerIpc(context: IpcContext): void {
     writeChain = writeChain.catch(() => undefined).then(() => enableProvider(context, id))
     return writeChain.then(() => readStatus(context))
   })
+  ipcMain.handle(IpcChannel.listModels, (_event, input: ListModelsInput) => {
+    return listProviderModels(context.store, input)
+  })
   ipcMain.handle(IpcChannel.getStatus, () => readStatus(context))
+  ipcMain.handle(IpcChannel.openDevTools, (event) => {
+    const contents = event.sender
+    if (contents.isDestroyed()) return
+    contents.openDevTools({ mode: 'detach' })
+  })
+  ipcMain.handle(IpcChannel.windowMinimize, (event) => {
+    senderWindow(event)?.minimize()
+  })
+  ipcMain.handle(IpcChannel.windowToggleMaximize, (event) => {
+    const win = senderWindow(event)
+    if (!win) return
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+  })
+  ipcMain.handle(IpcChannel.windowClose, (event) => {
+    senderWindow(event)?.close()
+  })
+  ipcMain.handle(IpcChannel.windowIsMaximized, (event) => {
+    return senderWindow(event)?.isMaximized() ?? false
+  })
+}
+
+export function bindWindowState(win: BrowserWindow): void {
+  const sendMaximized = () => {
+    if (win.isDestroyed()) return
+    win.webContents.send(IpcChannel.windowMaximizedChanged, win.isMaximized())
+  }
+  win.on('maximize', sendMaximized)
+  win.on('unmaximize', sendMaximized)
+}
+
+function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win || win.isDestroyed()) return null
+  return win
 }
 
 export function broadcastChanged(): void {
@@ -61,8 +100,7 @@ export async function enableProvider(context: IpcContext, id: string): Promise<v
       provider: {
         id: provider.id,
         name: provider.name,
-        baseUrl: provider.baseUrl,
-        model: provider.model,
+        tomlText: provider.tomlText,
         apiKey: context.store.decryptApiKey(provider),
       },
     })
@@ -90,8 +128,6 @@ export async function seedOfficialProvider(store: ProviderStore): Promise<void> 
   await store.add({
     name: 'Codex Official',
     kind: 'official',
-    baseUrl: '',
-    model: '',
     presetId: 'official',
   })
 }

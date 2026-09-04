@@ -9,6 +9,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
+import { ItemGroup } from "@/components/ui/item"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DeleteProviderDialog } from "./delete-provider-dialog"
 import { ProviderCard } from "./provider-card"
@@ -22,7 +23,7 @@ type Props = {
 export function ProviderWorkspace({ session }: Props) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <main className="mx-auto flex w-full max-w-5xl min-h-0 flex-1 flex-col px-6 py-6">
+      <main className="mx-auto flex w-full max-w-5xl min-h-0 flex-1 flex-col overflow-hidden px-6 py-6">
         {session.providers.length === 0 ? (
           <Empty className="border">
             <EmptyHeader>
@@ -31,7 +32,7 @@ export function ProviderWorkspace({ session }: Props) {
               </EmptyMedia>
               <EmptyTitle>还没有供应商</EmptyTitle>
               <EmptyDescription>
-                用预设添加 OpenAI、OpenRouter、DeepSeek，或切回官方登录。
+                用预设添加 OpenAI、OpenRouter、DeepSeek，或切回官方登录。也可以直接编辑 config.toml 覆盖片段。
               </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
@@ -42,20 +43,19 @@ export function ProviderWorkspace({ session }: Props) {
             </EmptyContent>
           </Empty>
         ) : (
-          <ScrollArea className="min-h-0 flex-1">
-            <ul className="grid gap-3 pr-3">
+          <ScrollArea className="min-h-0 flex-1 overflow-hidden">
+            <ItemGroup className="min-w-0 pr-3">
               {session.providers.map((provider) => (
-                <li key={provider.id}>
-                  <ProviderCard
-                    provider={provider}
-                    busy={session.busyId === provider.id}
-                    onEnable={() => void session.enableProvider(provider.id)}
-                    onEdit={() => session.openEdit(provider)}
-                    onDelete={() => session.setDeleting(provider)}
-                  />
-                </li>
+                <ProviderCard
+                  key={provider.id}
+                  provider={provider}
+                  busy={session.busyId === provider.id}
+                  onEnable={() => void session.enableProvider(provider.id)}
+                  onEdit={() => session.openEdit(provider)}
+                  onDelete={() => session.setDeleting(provider)}
+                />
               ))}
-            </ul>
+            </ItemGroup>
           </ScrollArea>
         )}
       </main>

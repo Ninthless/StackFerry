@@ -24,8 +24,14 @@ describe('codex live writer', () => {
       provider: {
         id: 'prov-a',
         name: 'Provider A',
-        baseUrl: 'https://a.example/v1',
-        model: 'model-a',
+        tomlText: `model = "model-a"
+model_provider = "provider_a"
+
+[model_providers.provider_a]
+name = "Provider A"
+base_url = "https://a.example/v1"
+wire_api = "responses"
+`,
         apiKey: 'key-a',
       },
     })
@@ -44,8 +50,14 @@ describe('codex live writer', () => {
       provider: {
         id: 'prov-b',
         name: 'Provider B',
-        baseUrl: 'https://b.example/v1',
-        model: 'model-b',
+        tomlText: `model = "model-b"
+model_provider = "provider_b"
+
+[model_providers.provider_b]
+name = "Provider B"
+base_url = "https://b.example/v1"
+wire_api = "responses"
+`,
         apiKey: 'key-b',
       },
     })
