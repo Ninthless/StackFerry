@@ -3,7 +3,7 @@
   "allowlist": {
     "src-tauri/src/app_config.rs": 1156,
     "src-tauri/src/claude_desktop_config.rs": 2049,
-    "src-tauri/src/codex_config.rs": 3940,
+    "src-tauri/src/codex_config.rs": 3947,
     "src-tauri/src/codex_history_migration.rs": 2378,
     "src-tauri/src/commands/provider.rs": 1497,
     "src-tauri/src/commands/settings.rs": 801,
