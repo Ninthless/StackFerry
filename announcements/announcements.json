@@ -1,7 +1,53 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-31T11:43:00Z",
+  "generatedAt": "2026-09-04T09:34:00Z",
   "announcements": [
+    {
+      "id": "2026-09-stackferry-rebuild",
+      "category": "maintenance",
+      "severity": "important",
+      "publishedAt": "2026-09-04T09:34:00Z",
+      "expiresAt": null,
+      "minAppVersion": null,
+      "maxAppVersion": null,
+      "platforms": ["windows", "macos", "linux"],
+      "channels": ["stable"],
+      "relatedVersion": null,
+      "locales": {
+        "zh": {
+          "title": "StackFerry 正在重构",
+          "summary": "当前版本可继续使用。重构期间功能更新会放缓，请先以现有稳定版为主。",
+          "body": "我们正在对 StackFerry 做一次较大的重构，目标是把产品做更干净、更好维护。这不是停服，也不会作废你现在安装的版本。\n\n当前稳定版可以继续用：供应商、路由和本地配置不会因为这条公告而失效。重构期间，新功能和常规版本发布会明显放慢；已有问题仍可通过 GitHub Issue 反馈。\n\n在新版本准备好之前，请继续使用当前稳定版。不必卸载，也不必等待立刻替换。如果后续有迁移或发布时间，我们会再发公告说明。"
+        },
+        "en": {
+          "title": "StackFerry is being rebuilt",
+          "summary": "The current release remains usable. Feature updates will slow while we rebuild the app.",
+          "body": "We are rebuilding StackFerry to make the product cleaner and easier to maintain. This is not an outage, and the version you have installed is not being withdrawn.\n\nKeep using the current stable release. Providers, routes, and local configuration are unaffected by this notice. New features and regular version drops will be slower during the rebuild. Existing bugs can still be reported on GitHub Issues.\n\nThere is no replacement build to switch to yet. Do not uninstall while waiting. When a migration or new release is ready, we will announce it here."
+        },
+        "zh-TW": {
+          "title": "StackFerry 正在重構",
+          "summary": "目前版本可繼續使用。重構期間功能更新會放慢，請先以現有穩定版為主。",
+          "body": "我們正在對 StackFerry 進行一次較大的重構，目標是讓產品更乾淨、更好維護。這不是停服，也不會作廢你現在安裝的版本。\n\n目前穩定版可以繼續使用：供應商、路由和本機設定不會因為這則公告而失效。重構期間，新功能和常規版本發布會明顯放慢；既有問題仍可透過 GitHub Issue 回報。\n\n在新版本準備好之前，請繼續使用目前穩定版。不必解除安裝，也不必等待立刻替換。若後續有遷移或發布時程，我們會再發公告說明。"
+        },
+        "ja": {
+          "title": "StackFerry を再構築しています",
+          "summary": "現行バージョンはそのまま使えます。再構築中は機能更新が遅くなります。",
+          "body": "StackFerry をより整理され、保守しやすい製品にするため、大規模な再構築を進めています。これはサービス停止ではなく、インストール済みバージョンを無効にするものでもありません。\n\n現行の安定版はそのまま利用できます。プロバイダー、ルーティング、ローカル設定はこのお知らせによって無効になりません。再構築期間中は新機能と通常リリースのペースが遅くなります。既存の不具合は引き続き GitHub Issues で報告できます。\n\n差し替え用の新ビルドはまだありません。待っている間にアンインストールする必要はありません。移行や公開の準備ができ次第、ここにお知らせします。"
+        }
+      },
+      "actions": [
+        {
+          "type": "external",
+          "url": "https://github.com/Ninthless/StackFerry/issues/new/choose",
+          "label": {
+            "zh": "反馈问题",
+            "en": "Report an issue",
+            "zh-TW": "回報問題",
+            "ja": "問題を報告"
+          }
+        }
+      ]
+    },
     {
       "id": "2026-08-stackferry-0-1-22",
       "category": "release",
