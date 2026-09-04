@@ -3,7 +3,7 @@
   "allowlist": {
     "src-tauri/src/app_config.rs": 1156,
     "src-tauri/src/claude_desktop_config.rs": 2049,
-    "src-tauri/src/codex_config.rs": 3890,
+    "src-tauri/src/codex_config.rs": 3940,
     "src-tauri/src/codex_history_migration.rs": 2378,
     "src-tauri/src/commands/provider.rs": 1497,
     "src-tauri/src/commands/settings.rs": 801,
@@ -29,7 +29,7 @@
     "src-tauri/src/proxy/provider_router.rs": 944,
     "src-tauri/src/proxy/providers/claude.rs": 2480,
     "src-tauri/src/proxy/providers/codex_oauth_auth.rs": 953,
-    "src-tauri/src/proxy/providers/codex.rs": 1574,
+    "src-tauri/src/proxy/providers/codex.rs": 1612,
     "src-tauri/src/proxy/providers/copilot_auth.rs": 1795,
     "src-tauri/src/proxy/providers/pi.rs": 1353,
     "src-tauri/src/proxy/providers/streaming_codex_anthropic.rs": 1142,
