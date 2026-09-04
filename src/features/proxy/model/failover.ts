@@ -228,8 +228,7 @@ export function useSetFailoverProviderEnabled() {
       appType: string;
       providerId: string;
       enabled: boolean;
-    }) =>
-      failoverApi.setFailoverProviderEnabled(appType, providerId, enabled),
+    }) => failoverApi.setFailoverProviderEnabled(appType, providerId, enabled),
     onMutate: async ({ appType, providerId, enabled }) => {
       const queryKey = ["failoverQueue", appType] as const;
       await queryClient.cancelQueries({ queryKey });
