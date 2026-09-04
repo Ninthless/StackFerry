@@ -13,7 +13,7 @@ describe("XFcode Codex configuration", () => {
     );
 
     expect(models).toEqual(XFCODE_PROVIDER.codexModels);
-    expect(models).toHaveLength(11);
+    expect(models).toHaveLength(12);
   });
 
   it("preserves an explicitly customized single-model catalog", () => {

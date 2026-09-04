@@ -28,6 +28,7 @@ const CODEX_REASONING_LOW_TO_MAX: &[&str] = &["low", "medium", "high", "xhigh", 
 const CODEX_REASONING_LOW_TO_ULTRA: &[&str] = &["low", "medium", "high", "xhigh", "max", "ultra"];
 const XFCODE_CODEX_MODELS: &[(&str, &str, Option<u64>)] = &[
     ("gpt-5.6-sol", "GPT-5.6 Sol", Some(272_000)),
+    ("gpt-6-astra", "GPT-6-Astra", Some(272_000)),
     ("gpt-5.6-terra", "GPT-5.6 Terra", Some(272_000)),
     ("gpt-5.6-luna", "GPT-5.6 Luna", Some(272_000)),
     ("gpt-5.6", "GPT-5.6", None),
@@ -516,6 +517,12 @@ fn inferred_codex_reasoning(model: &str) -> Option<(&'static str, &'static [&'st
         "gpt-5.6-terra" => Some(("medium", CODEX_REASONING_LOW_TO_ULTRA)),
         "gpt-5.6-luna" => Some(("medium", CODEX_REASONING_LOW_TO_MAX)),
         "codex-auto-review" => Some(("medium", CODEX_REASONING_LOW_TO_XHIGH)),
+        "gpt-6-astra" => Some(("low", CODEX_REASONING_LOW_TO_ULTRA)),
+        // New GPT generations are published independently of StackFerry's
+        // release cadence. Treat the GPT-6 family as a reasoning model until
+        // its catalog metadata is available, while still allowing an explicit
+        // per-model capability declaration to take precedence above.
+        _ if model.starts_with("gpt-6") => Some(("medium", CODEX_REASONING_LOW_TO_MAX)),
         _ if model.starts_with("gpt-5.6") => Some(("medium", CODEX_REASONING_LOW_TO_MAX)),
         _ if model.starts_with("gpt-5.5")
             || model.starts_with("gpt-5.4")
@@ -540,6 +547,7 @@ fn normalized_codex_model_slug(model: &str) -> String {
 pub(crate) fn is_known_openai_codex_model(model: &str) -> bool {
     let model = normalized_codex_model_slug(model);
     model == "codex-auto-review"
+        || model.starts_with("gpt-6")
         || model.starts_with("gpt-5.2")
         || model.starts_with("gpt-5.3")
         || model.starts_with("gpt-5.4")
@@ -550,6 +558,7 @@ pub(crate) fn is_known_openai_codex_model(model: &str) -> bool {
 fn codex_known_max_context_window(model: &str, context_window: u64) -> u64 {
     match normalized_codex_model_slug(model).as_str() {
         "gpt-5.4" | "codex-auto-review" => 1_000_000,
+        "gpt-6-astra" => 872_000,
         _ => context_window,
     }
 }
@@ -765,13 +774,12 @@ fn xfcode_catalog_model_specs(default_context_window: u64) -> Vec<CodexCatalogMo
 }
 
 fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCatalogModelSpec> {
-    let Some(models) = settings
+    let models = settings
         .get("modelCatalog")
         .and_then(|catalog| catalog.get("models"))
         .and_then(|models| models.as_array())
-    else {
-        return Vec::new();
-    };
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
 
     let default_context_window =
         extract_codex_top_level_u64(config_text, "model_context_window").unwrap_or(128_000);
@@ -858,6 +866,25 @@ fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCa
             base_instructions,
             default_reasoning_level,
             supported_reasoning_levels,
+        });
+    }
+
+    // Codex keeps the active model in config.toml separately from the
+    // provider's optional mapping table. Include it in the external catalog
+    // so a newly released model can be selected from `/model` immediately
+    // after it is entered as the provider default.
+    if let Some(model) =
+        codex_top_level_model(config_text).filter(|model| seen.insert(model.clone()))
+    {
+        specs.push(CodexCatalogModelSpec {
+            display_name: model.clone(),
+            model,
+            context_window: default_context_window,
+            supports_parallel_tool_calls: None,
+            input_modalities: None,
+            base_instructions: None,
+            default_reasoning_level: None,
+            supported_reasoning_levels: None,
         });
     }
 
@@ -3337,6 +3364,7 @@ base_url = "https://production.api/v1"
         let settings = json!({
             "modelCatalog": {
                 "models": [
+                    { "model": "gpt-6-astra" },
                     { "model": "gpt-5.6-sol" },
                     { "model": "gpt-5.6-terra" },
                     { "model": "gpt-5.6-luna" },
@@ -3366,6 +3394,17 @@ base_url = "https://production.api/v1"
                 .filter_map(|item| item["effort"].as_str())
                 .collect::<Vec<_>>()
         };
+
+        assert_eq!(entry("gpt-6-astra")["default_reasoning_level"], "low");
+        assert_eq!(
+            efforts("gpt-6-astra"),
+            vec!["low", "medium", "high", "xhigh", "max", "ultra"]
+        );
+        assert_eq!(entry("gpt-6-astra")["supports_parallel_tool_calls"], true);
+        assert_eq!(entry("gpt-6-astra")["support_verbosity"], true);
+        assert_eq!(entry("gpt-6-astra")["supports_search_tool"], true);
+        assert_eq!(entry("gpt-6-astra")["supports_image_detail_original"], true);
+        assert_eq!(entry("gpt-6-astra")["max_context_window"], 872000);
 
         assert_eq!(entry("gpt-5.6-sol")["default_reasoning_level"], "low");
         assert_eq!(entry("gpt-5.6-sol")["supports_parallel_tool_calls"], true);
@@ -3398,6 +3437,20 @@ base_url = "https://production.api/v1"
     }
 
     #[test]
+    fn model_catalog_includes_configured_model_without_mapping() {
+        let settings = json!({});
+        let specs = codex_catalog_model_specs(
+            &settings,
+            r#"model_provider = "custom"
+model = "gpt-6-astra"
+"#,
+        );
+
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].model, "gpt-6-astra");
+    }
+
+    #[test]
     fn legacy_xfcode_catalog_expands_without_overwriting_custom_mappings() {
         let config = r#"model_provider = "custom"
 
@@ -3410,6 +3463,7 @@ base_url = "https://api.orangecc.cc/v1"
         let expanded = codex_catalog_model_specs(&legacy, config);
         assert_eq!(expanded.len(), XFCODE_CODEX_MODELS.len());
         assert_eq!(expanded[0].model, "gpt-5.6-sol");
+        assert!(expanded.iter().any(|spec| spec.model == "gpt-6-astra"));
         assert!(expanded.iter().any(|spec| spec.model == "gpt-5.6-terra"));
         assert!(expanded
             .iter()

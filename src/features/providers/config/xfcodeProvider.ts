@@ -2,6 +2,7 @@ import type { CodexCatalogModel } from "@/shared/contracts";
 
 const codexModels = [
   { model: "gpt-5.6-sol", displayName: "GPT-5.6 Sol", contextWindow: 272000 },
+  { model: "gpt-6-astra", displayName: "GPT-6-Astra", contextWindow: 272000 },
   {
     model: "gpt-5.6-terra",
     displayName: "GPT-5.6 Terra",

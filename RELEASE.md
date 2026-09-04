@@ -1,4 +1,28 @@
-# StackFerry v0.1.25
+# StackFerry v0.1.26
+
+> GPT-6-Astra Codex 兼容性更新。
+
+## 简体中文
+
+### Codex GPT-6-Astra
+
+- Codex 外部模型目录现在会自动包含配置中的默认模型，`gpt-6-astra` 可从 `/model` 菜单选择。
+- 对齐 Astra 的推理强度、联网搜索、图片输入、原图细节、并行工具和 872K 最大上下文能力。
+- 选择 Astra 后保留真实上游模型名，并支持在 Codex 中修改 `model_reasoning_effort`。
+
+## English
+
+> GPT-6-Astra Codex compatibility update.
+
+### Codex GPT-6-Astra
+
+- The external Codex model catalog now includes the configured default model, making `gpt-6-astra` selectable from `/model`.
+- Added Astra reasoning levels, web search, image input, original image detail, parallel tools, and 872K maximum context metadata.
+- Selecting Astra preserves the real upstream model name and supports changing `model_reasoning_effort` in Codex.
+
+---
+
+## Previous release
 
 > 自 v0.1.24 发布以来的更新（并包含此前未完成发布的故障转移修复）。
 

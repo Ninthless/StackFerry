@@ -385,8 +385,11 @@ pub fn apply_codex_upstream_model(provider: &Provider, body: &mut JsonValue) -> 
         let provider_targets_different_model = upstream_model
             .as_deref()
             .is_some_and(|model| !model.eq_ignore_ascii_case(request_model));
+        let request_is_direct_gpt6_model = request_model.eq_ignore_ascii_case("gpt-6-astra");
         if catalog_model_ids.contains(request_model)
-            && !(request_is_codex_template && provider_targets_different_model)
+            && !(request_is_codex_template
+                && provider_targets_different_model
+                && !request_is_direct_gpt6_model)
         {
             return Some(request_model.to_string());
         }
@@ -1283,6 +1286,46 @@ wire_api = "anthropic"
             body.get("model").and_then(|v| v.as_str()),
             Some("claude-opus-4-1[1m]")
         );
+    }
+
+    #[test]
+    fn test_apply_codex_upstream_model_handles_gpt6_catalog_aliases() {
+        let provider = create_provider(json!({
+            "config": r#"model_provider = "custom"
+model = "gpt-5.6"
+
+[model_providers.custom]
+wire_api = "responses"
+"#,
+            "modelCatalog": {
+                "models": [{ "model": "gpt-6-astra" }]
+            }
+        }));
+
+        // GPT-6 Astra is a real upstream model. Selecting it in Codex must
+        // survive the provider's default-model mapping.
+        let mut body = json!({ "model": "gpt-6-astra", "input": "hi" });
+        let result = apply_codex_upstream_model(&provider, &mut body);
+        assert_eq!(result.as_deref(), Some("gpt-6-astra"));
+        assert_eq!(body["model"].as_str(), Some("gpt-6-astra"));
+
+        // If the provider itself targets GPT-6 Astra, preserve the exact
+        // catalog id so the newly released upstream model remains usable.
+        let provider = create_provider(json!({
+            "config": r#"model_provider = "custom"
+model = "gpt-6-astra"
+
+[model_providers.custom]
+wire_api = "responses"
+"#,
+            "modelCatalog": {
+                "models": [{ "model": "gpt-6-astra" }]
+            }
+        }));
+        let mut body = json!({ "model": "gpt-6-astra", "input": "hi" });
+        let result = apply_codex_upstream_model(&provider, &mut body);
+        assert_eq!(result.as_deref(), Some("gpt-6-astra"));
+        assert_eq!(body["model"].as_str(), Some("gpt-6-astra"));
     }
 
     #[test]
