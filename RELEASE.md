@@ -1,13 +1,17 @@
-# StackFerry v0.1.24
+# StackFerry v0.1.25
 
-> 自 v0.1.23 发布以来的更新（包含上一版本未完成发布的故障转移修复）。
+> 自 v0.1.24 发布以来的更新（并包含此前未完成发布的故障转移修复）。
 
 ## 简体中文
 
 ### 发布与 CI
 
-- 更新架构文件大小基线，覆盖故障转移运行态控制实现后的已审查边界变化。
-- 统一项目版本到 `0.1.24`，用于生成新的跨平台安装包和自动更新清单。
+- 补齐故障转移运行态控制的发布流程，生成新的跨平台安装包和自动更新清单。
+- 修复 ProviderList 测试 mock 与格式检查，确保前端 CI 检查通过。
+
+### 产品公告
+
+- 增加 StackFerry 重构期间的维护公告，明确现有稳定版本、配置和供应商路由仍可继续使用。
 
 ### 故障转移渠道控制
 
@@ -30,12 +34,16 @@
 
 ## English
 
-> Changes since the v0.1.23 release, including the failover fixes from the previous tag whose release did not complete.
+> Changes since the v0.1.24 release, including the failover fixes whose previous release did not complete.
 
 ### Release and CI
 
-- Updated the reviewed architecture file-size baselines for the failover runtime control changes.
-- Unified the project version at `0.1.24` for new cross-platform installers and updater metadata.
+- Completed the release path for failover runtime controls, producing new cross-platform installers and updater metadata.
+- Fixed the ProviderList test mock and formatting checks so the frontend CI scope passes.
+
+### Product Announcement
+
+- Added a maintenance announcement for the ongoing StackFerry rebuild, clarifying that the current stable version, configuration, and provider routes remain usable.
 
 ### Failover Channel Control
 
