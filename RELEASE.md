@@ -1,6 +1,6 @@
-# StackFerry v0.1.26
+# StackFerry v0.1.27
 
-> GPT-6-Astra Codex 兼容性更新。
+> GPT-6-Astra Codex 兼容性更新，并同步 CI 架构体积基线。
 
 ## 简体中文
 
@@ -12,7 +12,7 @@
 
 ## English
 
-> GPT-6-Astra Codex compatibility update.
+> GPT-6-Astra Codex compatibility update with refreshed CI architecture size baselines.
 
 ### Codex GPT-6-Astra
 
