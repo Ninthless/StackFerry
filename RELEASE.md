@@ -1,8 +1,13 @@
-# StackFerry v0.1.23
+# StackFerry v0.1.24
 
-> 自 v0.1.22 发布以来的更新。
+> 自 v0.1.23 发布以来的更新（包含上一版本未完成发布的故障转移修复）。
 
 ## 简体中文
+
+### 发布与 CI
+
+- 更新架构文件大小基线，覆盖故障转移运行态控制实现后的已审查边界变化。
+- 统一项目版本到 `0.1.24`，用于生成新的跨平台安装包和自动更新清单。
 
 ### 故障转移渠道控制
 
@@ -25,7 +30,12 @@
 
 ## English
 
-> Changes since the v0.1.22 release.
+> Changes since the v0.1.23 release, including the failover fixes from the previous tag whose release did not complete.
+
+### Release and CI
+
+- Updated the reviewed architecture file-size baselines for the failover runtime control changes.
+- Unified the project version at `0.1.24` for new cross-platform installers and updater metadata.
 
 ### Failover Channel Control
 
