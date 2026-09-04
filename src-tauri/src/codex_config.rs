@@ -774,6 +774,11 @@ fn xfcode_catalog_model_specs(default_context_window: u64) -> Vec<CodexCatalogMo
 }
 
 fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCatalogModelSpec> {
+    // An explicitly supplied modelCatalog (including an empty mapping) is
+    // authoritative: an empty table must remove StackFerry's generated
+    // catalog pointer. Only providers that have no modelCatalog at all get
+    // the active config.toml model projected as a fallback entry.
+    let has_model_catalog = settings.get("modelCatalog").is_some();
     let models = settings
         .get("modelCatalog")
         .and_then(|catalog| catalog.get("models"))
@@ -873,19 +878,21 @@ fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCa
     // provider's optional mapping table. Include it in the external catalog
     // so a newly released model can be selected from `/model` immediately
     // after it is entered as the provider default.
-    if let Some(model) =
-        codex_top_level_model(config_text).filter(|model| seen.insert(model.clone()))
-    {
-        specs.push(CodexCatalogModelSpec {
-            display_name: model.clone(),
-            model,
-            context_window: default_context_window,
-            supports_parallel_tool_calls: None,
-            input_modalities: None,
-            base_instructions: None,
-            default_reasoning_level: None,
-            supported_reasoning_levels: None,
-        });
+    if !has_model_catalog {
+        if let Some(model) =
+            codex_top_level_model(config_text).filter(|model| seen.insert(model.clone()))
+        {
+            specs.push(CodexCatalogModelSpec {
+                display_name: model.clone(),
+                model,
+                context_window: default_context_window,
+                supports_parallel_tool_calls: None,
+                input_modalities: None,
+                base_instructions: None,
+                default_reasoning_level: None,
+                supported_reasoning_levels: None,
+            });
+        }
     }
 
     specs
