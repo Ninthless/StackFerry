@@ -328,6 +328,10 @@ function App() {
     }
   });
 
+  useTauriEvent("proxy-runtime-provider-changed", async () => {
+    await queryClient.invalidateQueries({ queryKey: ["proxyStatus"] });
+  });
+
   // 应用项目后刷新相关缓存（providers 由既有 provider-switched 监听承接；
   // proxy 状态由后端直接改 DB，不走 mutation，必须显式刷新）
   useTauriEvent("profile-applied", async () => {

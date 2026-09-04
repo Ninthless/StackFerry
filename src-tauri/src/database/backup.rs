@@ -832,6 +832,12 @@ mod tests {
                  VALUES ('p1', 'claude', 'Provider One', '{}', '{}')",
                 [],
             )?;
+            conn.execute(
+                "UPDATE providers
+                 SET in_failover_queue = 1, failover_order = 1, failover_enabled = 0
+                 WHERE id = 'p1' AND app_type = 'claude'",
+                [],
+            )?;
         }
         let exported = source.export_sql_string()?;
 
@@ -839,12 +845,13 @@ mod tests {
         target.import_sql_string(&exported)?;
 
         let conn = crate::database::lock_conn!(target.conn);
-        let name: String = conn.query_row(
-            "SELECT name FROM providers WHERE id = 'p1' AND app_type = 'claude'",
+        let state: (String, bool, i64, bool) = conn.query_row(
+            "SELECT name, in_failover_queue, failover_order, failover_enabled
+             FROM providers WHERE id = 'p1' AND app_type = 'claude'",
             [],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )?;
-        assert_eq!(name, "Provider One");
+        assert_eq!(state, ("Provider One".to_string(), true, 1, false));
         Ok(())
     }
 

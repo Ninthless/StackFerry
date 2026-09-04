@@ -3191,7 +3191,11 @@
       "removeFailed": "削除に失敗しました",
       "reorderSuccess": "キュー順序を更新しました",
       "reorderFailed": "順序の更新に失敗しました",
-      "toggleFailed": "状態の更新に失敗しました"
+      "toggleFailed": "状態の更新に失敗しました",
+      "channelToggle": "フェイルオーバーチャネルを有効化",
+      "channelEnabled": "有効",
+      "channelDisabled": "無効",
+      "channelDisabledHint": "優先順位は保持されますが、このチャネルはリクエストから除外されます"
     },
     "autoFailover": {
       "info": "フェイルオーバーキューに複数のプロバイダーが設定されている場合、リクエストが失敗すると優先度順に試行します。プロバイダーが連続失敗のしきい値に達すると、サーキットブレーカーが開き、一時的にスキップされます。",

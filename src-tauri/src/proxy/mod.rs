@@ -27,6 +27,7 @@ pub mod provider_router;
 pub mod providers;
 pub mod response_handler;
 pub mod response_processor;
+pub(crate) mod runtime_route;
 pub(crate) mod server;
 pub mod session;
 pub(crate) mod sse;

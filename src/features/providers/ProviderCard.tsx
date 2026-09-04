@@ -30,6 +30,7 @@ import {
   providerNeedsRouting,
 } from "@/features/providers/model/providerCapabilities";
 import { useProviderHealth } from "@/features/proxy";
+import { Switch } from "@/shared/ui/switch";
 import { useUsageQuery } from "@/features/providers/internal";
 import { resolveProviderIcon } from "@/features/providers/model/providerIcon";
 
@@ -65,8 +66,10 @@ interface ProviderCardProps {
   isAutoFailoverEnabled?: boolean; // 是否开启自动故障转移
   failoverPriority?: number; // 故障转移优先级（1 = P1, 2 = P2, ...）
   isInFailoverQueue?: boolean; // 是否在故障转移队列中
+  failoverEnabled?: boolean;
   isFailoverMutationPending?: boolean;
   onToggleFailover?: (enabled: boolean) => void; // 切换故障转移队列
+  onToggleFailoverEnabled?: (enabled: boolean) => void;
   isCircuitBreakerResetting?: boolean;
   onResetCircuitBreaker?: () => void;
   activeProviderId?: string; // 代理当前实际使用的供应商 ID（用于故障转移模式下标注绿色边框）
@@ -168,8 +171,10 @@ export function ProviderCard({
   isAutoFailoverEnabled = false,
   failoverPriority,
   isInFailoverQueue = false,
+  failoverEnabled = true,
   isFailoverMutationPending = false,
   onToggleFailover,
+  onToggleFailoverEnabled,
   isCircuitBreakerResetting = false,
   onResetCircuitBreaker,
   activeProviderId,
@@ -304,15 +309,23 @@ export function ProviderCard({
   // - OpenCode（非 OMO）：不存在"当前"概念，返回 false
   // - 故障转移模式：代理实际使用的供应商（activeProviderId）
   // - 普通模式：isCurrent
-  const isActiveProvider = isAnyOmo
-    ? isCurrent
-    : appId === "openclaw" || appId === "pi"
-      ? Boolean(isDefaultModel)
-      : appId === "opencode"
-        ? false
-        : isAutoFailoverEnabled
-          ? activeProviderId === provider.id
-          : isCurrent;
+  const isFailoverChannelDisabled =
+    isAutoFailoverEnabled && isInFailoverQueue && !failoverEnabled;
+  const isActiveProvider =
+    !isFailoverChannelDisabled &&
+    (isAnyOmo
+      ? isCurrent
+      : appId === "openclaw"
+        ? Boolean(isDefaultModel)
+        : appId === "pi"
+          ? isAutoFailoverEnabled
+            ? activeProviderId === provider.id
+            : Boolean(isDefaultModel)
+          : appId === "opencode"
+            ? false
+            : isAutoFailoverEnabled
+              ? activeProviderId === provider.id
+              : isCurrent);
 
   const hasPersistentConfigHighlight = isAdditiveMode && isInConfig;
 
@@ -322,9 +335,11 @@ export function ProviderCard({
         "provider-card group relative overflow-hidden rounded-md border border-l-[3px] bg-card p-3 text-card-foreground transition-colors",
         isActiveProvider
           ? "border-primary/55 border-l-primary bg-primary/[0.035]"
-          : hasPersistentConfigHighlight
-            ? "border-border border-l-foreground/35 bg-muted/20"
-            : "border-border border-l-border hover:border-primary/30",
+          : isFailoverChannelDisabled
+            ? "border-border/60 border-l-muted-foreground/30 bg-muted/40 opacity-60"
+            : hasPersistentConfigHighlight
+              ? "border-border border-l-foreground/35 bg-muted/20"
+              : "border-border border-l-border hover:border-primary/30",
         dragHandleProps?.isDragging &&
           "z-10 scale-[1.01] cursor-grabbing border-primary shadow-md",
       )}
@@ -456,6 +471,55 @@ export function ProviderCard({
                 isInFailoverQueue &&
                 failoverPriority && (
                   <FailoverPriorityBadge priority={failoverPriority} />
+                )}
+
+              {isFailoverChannelDisabled && (
+                <span
+                  className="inline-flex items-center rounded-md border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                  title={t("proxy.failoverQueue.channelDisabledHint", {
+                    defaultValue: "保留优先级但跳过请求",
+                  })}
+                >
+                  {t("proxy.failoverQueue.channelDisabled", {
+                    defaultValue: "已禁用",
+                  })}
+                </span>
+              )}
+
+              {isProxyRunning &&
+                isProxyTakeover &&
+                isAutoFailoverEnabled &&
+                isInFailoverQueue &&
+                onToggleFailoverEnabled && (
+                  <label
+                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+                    title={
+                      isFailoverChannelDisabled
+                        ? t("proxy.failoverQueue.channelDisabledHint", {
+                            defaultValue: "保留优先级但跳过请求",
+                          })
+                        : undefined
+                    }
+                  >
+                    <Switch
+                      checked={failoverEnabled}
+                      onCheckedChange={onToggleFailoverEnabled}
+                      disabled={isFailoverMutationPending}
+                      aria-label={t("proxy.failoverQueue.channelToggle", {
+                        defaultValue: "启用故障转移渠道",
+                      })}
+                      className="scale-75"
+                    />
+                    <span>
+                      {failoverEnabled
+                        ? t("proxy.failoverQueue.channelEnabled", {
+                            defaultValue: "已启用",
+                          })
+                        : t("proxy.failoverQueue.channelDisabled", {
+                            defaultValue: "已禁用",
+                          })}
+                    </span>
+                  </label>
                 )}
 
               {isHermesReadOnly && (

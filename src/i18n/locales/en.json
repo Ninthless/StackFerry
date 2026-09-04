@@ -3191,7 +3191,11 @@
       "removeFailed": "Failed to remove",
       "reorderSuccess": "Queue order updated",
       "reorderFailed": "Failed to update order",
-      "toggleFailed": "Failed to update status"
+      "toggleFailed": "Failed to update status",
+      "channelToggle": "Enable failover channel",
+      "channelEnabled": "Enabled",
+      "channelDisabled": "Disabled",
+      "channelDisabledHint": "Priority is retained, but requests skip this channel"
     },
     "autoFailover": {
       "info": "When the failover queue has multiple providers, the system will try them in priority order when requests fail. When a provider reaches the consecutive failure threshold, the circuit breaker will open and skip it temporarily.",

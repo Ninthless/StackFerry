@@ -3213,7 +3213,11 @@
       "removeFailed": "移除失败",
       "reorderSuccess": "队列顺序已更新",
       "reorderFailed": "更新顺序失败",
-      "toggleFailed": "状态更新失败"
+      "toggleFailed": "状态更新失败",
+      "channelToggle": "启用故障转移渠道",
+      "channelEnabled": "已启用",
+      "channelDisabled": "已禁用",
+      "channelDisabledHint": "保留优先级但跳过请求"
     },
     "autoFailover": {
       "info": "当故障转移队列中配置了多个供应商时，系统会在请求失败时按优先级顺序依次尝试。当某个供应商连续失败达到阈值时，熔断器会打开并在一段时间内跳过该供应商。",

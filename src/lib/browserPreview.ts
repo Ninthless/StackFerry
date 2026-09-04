@@ -652,6 +652,7 @@ export const createBrowserPreviewCommandHandler = () => {
       case "set_rectifier_config":
       case "set_optimizer_config":
       case "set_log_config":
+      case "set_failover_provider_enabled":
       case "save_models_dev_sync_config":
       case "record_models_dev_sync_result":
       case "sync_current_providers_live":

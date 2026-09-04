@@ -57,13 +57,22 @@ pub async fn stream_check_all_providers(
 
     let allowed_ids: Option<HashSet<String>> = if proxy_targets_only {
         let mut ids = HashSet::new();
-        if let Ok(Some(current_id)) = state.db.get_current_provider(app_type.as_str()) {
-            ids.insert(current_id);
-        }
-        if let Ok(queue) = state.db.get_failover_queue(app_type.as_str()) {
-            for item in queue {
-                ids.insert(item.provider_id);
+        let auto_failover = state
+            .db
+            .get_proxy_config_for_app(app_type.as_str())
+            .await
+            .map(|value| value.auto_failover_enabled)
+            .unwrap_or(false);
+        if auto_failover {
+            if let Ok(queue) = state.db.get_failover_queue(app_type.as_str()) {
+                for item in queue {
+                    if item.enabled {
+                        ids.insert(item.provider_id);
+                    }
+                }
             }
+        } else if let Ok(Some(current_id)) = state.db.get_current_provider(app_type.as_str()) {
+            ids.insert(current_id);
         }
         Some(ids)
     } else {

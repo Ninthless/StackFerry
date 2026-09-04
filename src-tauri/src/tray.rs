@@ -526,9 +526,12 @@ fn handle_auto_click(app: &tauri::AppHandle, app_type: &AppType) -> Result<(), A
         }
 
         let p1_provider_id = queue
-            .first()
+            .iter()
+            .find(|item| item.enabled)
             .map(|item| item.provider_id.clone())
-            .ok_or_else(|| AppError::Message("故障转移队列为空，无法启用 Auto 模式".to_string()))?;
+            .ok_or_else(|| {
+                AppError::Message("故障转移队列中没有启用渠道，无法启用 Auto 模式".to_string())
+            })?;
 
         // 真正启用 failover：启动代理服务 + 执行接管 + 开启 auto_failover
         let proxy_service = &app_state.proxy_service;

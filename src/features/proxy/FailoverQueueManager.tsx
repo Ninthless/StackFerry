@@ -29,6 +29,7 @@ import {
   useAvailableProvidersForFailover,
   useAddToFailoverQueue,
   useRemoveFromFailoverQueue,
+  useSetFailoverProviderEnabled,
   useAutoFailoverEnabled,
   useSetAutoFailoverEnabled,
   useProviderHealth,
@@ -63,6 +64,7 @@ export function FailoverQueueManager({
   // Mutations
   const addToQueue = useAddToFailoverQueue();
   const removeFromQueue = useRemoveFromFailoverQueue();
+  const setProviderEnabled = useSetFailoverProviderEnabled();
 
   // 切换故障转移开关
   const handleToggleFailover = (enabled: boolean) => {
@@ -101,6 +103,24 @@ export function FailoverQueueManager({
     } catch (error) {
       toast.error(
         t("proxy.failoverQueue.removeFailed", "移除失败") +
+          ": " +
+          String(error),
+      );
+    }
+  };
+
+  const handleToggleProvider = async (providerId: string, enabled: boolean) => {
+    try {
+      await setProviderEnabled.mutateAsync({
+        appType,
+        providerId,
+        enabled,
+      });
+    } catch (error) {
+      toast.error(
+        t("proxy.failoverQueue.toggleFailed", {
+          defaultValue: "更新故障转移渠道状态失败",
+        }) +
           ": " +
           String(error),
       );
@@ -234,7 +254,10 @@ export function FailoverQueueManager({
               item={item}
               appType={appType}
               disabled={disabled}
+              showToggle={!disabled && isFailoverEnabled}
               onRemove={handleRemoveProvider}
+              onToggleEnabled={handleToggleProvider}
+              isTogglePending={setProviderEnabled.isPending}
               isRemoving={removeFromQueue.isPending}
             />
           ))}
@@ -258,7 +281,10 @@ interface QueueItemProps {
   item: FailoverQueueItem;
   appType: AppId;
   disabled: boolean;
+  showToggle: boolean;
   onRemove: (providerId: string) => void;
+  onToggleEnabled: (providerId: string, enabled: boolean) => void;
+  isTogglePending: boolean;
   isRemoving: boolean;
 }
 
@@ -266,7 +292,10 @@ function QueueItem({
   item,
   appType,
   disabled,
+  showToggle,
   onRemove,
+  onToggleEnabled,
+  isTogglePending,
   isRemoving,
 }: QueueItemProps) {
   const { t } = useTranslation();
@@ -280,6 +309,7 @@ function QueueItem({
     <div
       className={cn(
         "flex items-center gap-3 rounded-lg border bg-card p-3 transition-colors",
+        !item.enabled && "border-border/60 bg-muted/40 opacity-60",
       )}
     >
       {/* 序号 */}
@@ -298,6 +328,40 @@ function QueueItem({
           )}
         </span>
       </div>
+
+      {showToggle && (
+        <label
+          className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+          title={
+            !item.enabled
+              ? t("proxy.failoverQueue.channelDisabledHint", {
+                  defaultValue: "保留优先级但跳过请求",
+                })
+              : undefined
+          }
+        >
+          <Switch
+            checked={item.enabled}
+            onCheckedChange={(enabled) =>
+              onToggleEnabled(item.providerId, enabled)
+            }
+            disabled={disabled || isTogglePending}
+            aria-label={t("proxy.failoverQueue.channelToggle", {
+              defaultValue: "启用故障转移渠道",
+            })}
+            className="scale-75"
+          />
+          <span>
+            {item.enabled
+              ? t("proxy.failoverQueue.channelEnabled", {
+                  defaultValue: "已启用",
+                })
+              : t("proxy.failoverQueue.channelDisabled", {
+                  defaultValue: "已禁用",
+                })}
+          </span>
+        </label>
+      )}
 
       {health && (
         <ProviderHealthBadge

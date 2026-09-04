@@ -14,6 +14,7 @@ use super::{
     log_codes::srv as log_srv,
     provider_router::ProviderRouter,
     providers::{codex_chat_history::CodexChatHistoryStore, gemini_shadow::GeminiShadowStore},
+    runtime_route::RuntimeRouteTracker,
     types::*,
     ProxyError,
 };
@@ -36,8 +37,7 @@ pub struct ProxyState {
     pub config: Arc<RwLock<ProxyConfig>>,
     pub status: Arc<RwLock<ProxyStatus>>,
     pub start_time: Arc<RwLock<Option<std::time::Instant>>>,
-    /// 每个应用类型当前使用的 provider (app_type -> (provider_id, provider_name))
-    pub current_providers: Arc<RwLock<std::collections::HashMap<String, (String, String)>>>,
+    pub runtime_routes: Arc<RuntimeRouteTracker>,
     /// 共享的 ProviderRouter（持有熔断器状态，跨请求保持）
     pub provider_router: Arc<ProviderRouter>,
     /// Gemini Native shadow state，用于 thoughtSignature / tool call 回放
@@ -389,7 +389,7 @@ mod tests {
             .get_proxy_config_for_app("codex")
             .await
             .expect("read Codex proxy config");
-        config.enabled = false;
+        config.enabled = true;
         config.auto_failover_enabled = true;
         config.max_retries = max_retries;
         config.non_streaming_timeout = timeout_seconds;
@@ -1697,10 +1697,10 @@ mod tests {
         let (proxy, proxy_origin) = start_proxy(db.clone()).await;
         proxy
             .state
-            .current_providers
-            .write()
+            .runtime_routes
+            .record_main_success("codex", &p1, false)
             .await
-            .insert("codex".to_string(), (p1.id.clone(), p1.name.clone()));
+            .expect("seed runtime provider");
         let client = reqwest::Client::new();
 
         for endpoint in ["/alpha/search", "/images/generations", "/images/edits"] {
@@ -1730,14 +1730,8 @@ mod tests {
             Some(p1.id.clone())
         );
         assert_eq!(
-            proxy
-                .state
-                .current_providers
-                .read()
-                .await
-                .get("codex")
-                .cloned(),
-            Some((p1.id, p1.name))
+            proxy.state.runtime_routes.provider_id("codex").await,
+            Some(p1.id)
         );
     }
 
@@ -2256,12 +2250,18 @@ impl ProxyServer {
         // 创建故障转移切换管理器
         let failover_manager = Arc::new(FailoverSwitchManager::new(db.clone()));
 
+        let status = Arc::new(RwLock::new(ProxyStatus::default()));
+        let runtime_routes = Arc::new(RuntimeRouteTracker::new(
+            db.clone(),
+            status.clone(),
+            app_handle.clone(),
+        ));
         let state = ProxyState {
             db,
             config: Arc::new(RwLock::new(config.clone())),
-            status: Arc::new(RwLock::new(ProxyStatus::default())),
+            status,
             start_time: Arc::new(RwLock::new(None)),
-            current_providers: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            runtime_routes,
             provider_router,
             gemini_shadow: Arc::new(GeminiShadowStore::default()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
@@ -2449,30 +2449,28 @@ impl ProxyServer {
             status.uptime_seconds = start.elapsed().as_secs();
         }
 
-        // 从 current_providers HashMap 获取每个应用类型当前正在使用的 provider
-        let current_providers = self.state.current_providers.read().await;
-        status.active_targets = current_providers
-            .iter()
-            .map(|(app_type, (provider_id, provider_name))| ActiveTarget {
-                app_type: app_type.clone(),
-                provider_id: provider_id.clone(),
-                provider_name: provider_name.clone(),
-            })
-            .collect();
+        status.active_targets = self.state.runtime_routes.active_targets().await;
 
         status
     }
 
-    /// 更新某个应用类型当前“目标供应商”（用于 UI 展示 active_targets）
-    ///
-    /// 注意：这不代表该供应商一定已经处理过请求，而是用于“热切换/启用故障转移立即切 P1”
-    /// 等场景下，让 UI 能立刻反映最新目标。
-    pub async fn set_active_target(&self, app_type: &str, provider_id: &str, provider_name: &str) {
-        let mut current_providers = self.state.current_providers.write().await;
-        current_providers.insert(
-            app_type.to_string(),
-            (provider_id.to_string(), provider_name.to_string()),
-        );
+    pub async fn clear_runtime_provider(&self, app_type: &str) -> bool {
+        self.state.runtime_routes.clear(app_type).await
+    }
+
+    pub async fn clear_runtime_provider_if_matches(
+        &self,
+        app_type: &str,
+        provider_id: &str,
+    ) -> bool {
+        self.state
+            .runtime_routes
+            .clear_if_matches(app_type, provider_id)
+            .await
+    }
+
+    pub async fn runtime_provider_id(&self, app_type: &str) -> Option<String> {
+        self.state.runtime_routes.provider_id(app_type).await
     }
 
     fn build_router(&self) -> Router {

@@ -10,6 +10,7 @@ export {
   useFailoverQueue,
   useAddToFailoverQueue,
   useRemoveFromFailoverQueue,
+  useSetFailoverProviderEnabled,
   useResetCircuitBreaker,
   useSetAutoFailoverEnabled,
   useUpdateCircuitBreakerConfig,

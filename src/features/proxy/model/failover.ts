@@ -3,7 +3,10 @@ import { failoverApi } from "@/platform/tauri/api/failover";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { extractErrorMessage } from "@/shared/lib/errorUtils";
-import type { ProviderHealth } from "@/shared/contracts/proxy";
+import type {
+  FailoverQueueItem,
+  ProviderHealth,
+} from "@/shared/contracts/proxy";
 
 // ========== 熔断器 Hooks ==========
 
@@ -209,6 +212,49 @@ export function useRemoveFromFailoverQueue() {
           variables.appType,
         ],
       });
+    },
+  });
+}
+
+export function useSetFailoverProviderEnabled() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      appType,
+      providerId,
+      enabled,
+    }: {
+      appType: string;
+      providerId: string;
+      enabled: boolean;
+    }) =>
+      failoverApi.setFailoverProviderEnabled(appType, providerId, enabled),
+    onMutate: async ({ appType, providerId, enabled }) => {
+      const queryKey = ["failoverQueue", appType] as const;
+      await queryClient.cancelQueries({ queryKey });
+      const previousQueue =
+        queryClient.getQueryData<FailoverQueueItem[]>(queryKey);
+      queryClient.setQueryData<FailoverQueueItem[]>(queryKey, (current) =>
+        current?.map((item) =>
+          item.providerId === providerId ? { ...item, enabled } : item,
+        ),
+      );
+      return { appType, previousQueue };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousQueue) {
+        queryClient.setQueryData(
+          ["failoverQueue", context.appType],
+          context.previousQueue,
+        );
+      }
+    },
+    onSettled: (_data, _error, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["failoverQueue", variables.appType],
+      });
+      queryClient.invalidateQueries({ queryKey: ["proxyStatus"] });
     },
   });
 }

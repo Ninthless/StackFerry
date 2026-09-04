@@ -420,6 +420,7 @@ pub(crate) async fn proxy(
     let bypass_circuit_breaker = providers.len() == 1 && binding.is_none();
     let mut last_error = "No Pi WebSocket provider was available".to_string();
     let mut last_provider = None;
+    let mut attempted_providers = 0usize;
 
     for provider in providers.iter().take(max_attempts) {
         last_provider = Some(provider.clone());
@@ -435,6 +436,7 @@ pub(crate) async fn proxy(
             }
             Some(permit.used_half_open_permit)
         };
+        attempted_providers = attempted_providers.saturating_add(1);
 
         let resolved = match resolve_pi_provider(provider).await {
             Ok(provider) => provider,
@@ -514,28 +516,6 @@ pub(crate) async fn proxy(
             .observe_upstream(&state, provider, &first_upstream)
             .await;
 
-        if binding.is_none() {
-            state.current_providers.write().await.insert(
-                "pi".to_string(),
-                (provider.id.clone(), provider.name.clone()),
-            );
-            let mut status = state.status.write().await;
-            status.last_error = None;
-            status.current_provider = Some(provider.name.clone());
-            status.current_provider_id = Some(provider.id.clone());
-        }
-        if binding.is_none() && provider.id != source_provider_id {
-            let manager = state.failover_manager.clone();
-            let app_handle = state.app_handle.clone();
-            let provider_id = provider.id.clone();
-            let provider_name = provider.name.clone();
-            tokio::spawn(async move {
-                let _ = manager
-                    .try_switch(app_handle.as_ref(), "pi", &provider_id, &provider_name)
-                    .await;
-            });
-        }
-
         if client.send(to_client(first_upstream)).await.is_err() {
             release_attempt_neutral(&state, &provider.id, permit).await;
             let _ = upstream.close(None).await;
@@ -555,6 +535,35 @@ pub(crate) async fn proxy(
                     .provider_router
                     .record_result(&provider.id, "pi", permit.unwrap_or(false), true, None)
                     .await;
+                let runtime_accepted = if binding.is_none() {
+                    match state
+                        .runtime_routes
+                        .record_main_success("pi", provider, attempted_providers > 1)
+                        .await
+                    {
+                        Ok(update) => update.accepted,
+                        Err(error) => {
+                            log::warn!(
+                                "[pi] 更新 WebSocket 实际运行渠道失败: provider_id={}, error={error}",
+                                provider.id
+                            );
+                            false
+                        }
+                    }
+                } else {
+                    false
+                };
+                if runtime_accepted && provider.id != source_provider_id {
+                    let manager = state.failover_manager.clone();
+                    let app_handle = state.app_handle.clone();
+                    let provider_id = provider.id.clone();
+                    let provider_name = provider.name.clone();
+                    tokio::spawn(async move {
+                        let _ = manager
+                            .try_switch(app_handle.as_ref(), "pi", &provider_id, &provider_name)
+                            .await;
+                    });
+                }
                 let mut status = state.status.write().await;
                 status.success_requests = status.success_requests.saturating_add(1);
                 status.last_error = None;

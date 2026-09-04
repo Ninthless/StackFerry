@@ -237,6 +237,7 @@ macro_rules! handler {
             commands::get_available_providers_for_failover,
             commands::add_to_failover_queue,
             commands::remove_from_failover_queue,
+            commands::set_failover_provider_enabled,
             commands::get_auto_failover_enabled,
             commands::set_auto_failover_enabled,
             // Usage statistics

@@ -40,6 +40,7 @@ impl Database {
                 is_current BOOLEAN NOT NULL DEFAULT 0,
                 in_failover_queue BOOLEAN NOT NULL DEFAULT 0,
                 failover_order INTEGER,
+                failover_enabled BOOLEAN NOT NULL DEFAULT 1,
                 source TEXT NOT NULL DEFAULT 'manual',
                 source_id TEXT,
                 source_dirty BOOLEAN NOT NULL DEFAULT 0,
@@ -638,6 +639,11 @@ impl Database {
                         log::info!("迁移数据库从 v28 到 v29（添加实例资源操作日志）");
                         Self::migrate_v28_to_v29(conn)?;
                         Self::set_user_version(conn, 29)?;
+                    }
+                    29 => {
+                        log::info!("迁移数据库从 v29 到 v30（添加故障转移渠道参与开关）");
+                        Self::migrate_v29_to_v30(conn)?;
+                        Self::set_user_version(conn, 30)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1962,6 +1968,18 @@ impl Database {
 
     fn migrate_v28_to_v29(conn: &Connection) -> Result<(), AppError> {
         Self::create_resource_operations_table(conn)
+    }
+
+    fn migrate_v29_to_v30(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "providers")? {
+            Self::add_column_if_missing(
+                conn,
+                "providers",
+                "failover_enabled",
+                "BOOLEAN NOT NULL DEFAULT 1",
+            )?;
+        }
+        Ok(())
     }
 
     fn create_credential_isolation_tables(conn: &Connection) -> Result<(), AppError> {
@@ -4135,6 +4153,43 @@ mod tests {
                 column
             )?);
         }
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v29_to_v30_enables_existing_failover_channels() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE providers (
+                id TEXT NOT NULL,
+                app_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                settings_config TEXT NOT NULL,
+                in_failover_queue BOOLEAN NOT NULL DEFAULT 0,
+                failover_order INTEGER,
+                PRIMARY KEY (id, app_type)
+             );
+             INSERT INTO providers
+                (id, app_type, name, settings_config, in_failover_queue, failover_order)
+             VALUES
+                ('queued', 'codex', 'Queued', '{}', 1, 1),
+                ('available', 'codex', 'Available', '{}', 0, NULL);",
+        )?;
+        Database::set_user_version(&conn, 29)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert!(Database::has_column(
+            &conn,
+            "providers",
+            "failover_enabled"
+        )?);
+        let values = conn
+            .prepare("SELECT failover_enabled FROM providers ORDER BY id")?
+            .query_map([], |row| row.get::<_, bool>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(values, vec![true, true]);
         assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
         Ok(())
     }

@@ -1,45 +1,47 @@
-# StackFerry v0.1.22
+# StackFerry v0.1.23
 
-> 自 v0.1.21 发布以来的更新。
+> 自 v0.1.22 发布以来的更新。
 
 ## 简体中文
 
-### 故障路由与熔断恢复
+### 故障转移渠道控制
 
-- Codex 故障路由现在会区分真实上游错误、凭据失败与本地代理问题，避免把错误归因到无关 Provider。
-- 改善 Provider 切换与失败重试的稳定性，减少错误状态导致的路由波动。
-- 新增按应用配置的自动熔断恢复开关；关闭后，已熔断 Provider 会保持阻断，直到用户手动恢复。
-- 故障转移队列现在直接显示 Provider 健康状态，并提供手动恢复操作。
+- 故障转移队列新增按渠道控制的启用/禁用开关。禁用渠道保留原有 P 序号，但会从所有故障转移候选中跳过。
+- 渠道状态使用事务化更新，保护最后一个启用渠道，并在重新加入或清空队列时正确恢复默认启用状态。
+- Provider 卡片与设置页故障转移队列使用同一套状态 mutation，避免两个入口产生不同结果。
 
-### Codex 配置与鉴权
+### 实际运行渠道与状态展示
 
-- Codex Provider 编辑器改为使用数据库中的已保存配置，避免 live `config.toml` 的旧内容或外部改写覆盖编辑结果。
-- 手动修改 TOML 中的 `experimental_bearer_token` 时会同步更新规范凭据，确保保存、切换和代理转发使用最新 API Key。
-- 修复因旧凭据覆盖 TOML Token 而导致上游缺少有效 `Authorization` 头并返回 401 的问题。
+- 新增按应用隔离的运行时渠道跟踪，只在主请求完整成功后显示实际使用的 Provider。
+- 修复故障转移成功后仍显示配置渠道的问题；Codex 不会因运行时切换改写持久化配置或 live 配置。
+- Pi、标准路由、图片生成、联网搜索、激活选择和批量检查统一过滤禁用渠道；辅助请求不会覆盖主请求当前渠道。
+- 故障转移、接管关闭、渠道移除或禁用后会立即清理失效的运行时状态，并通过事件刷新界面。
 
-### 兼容性与质量
+### 数据库与质量
 
-- 数据库 v28 迁移现在兼容不包含 `proxy_config` 的历史或精简测试 Schema，避免迁移测试和部分恢复场景失败。
-- 增加 Codex 配置保存、凭据同步、熔断恢复和数据库迁移回归测试。
+- 数据库 schema 升级到 v30，为既有 Provider 增加故障转移渠道参与状态并兼容旧数据库。
+- SQL 备份恢复、CCSwitch 导入和普通 Provider 保存不会覆盖用户手动设置的禁用状态。
+- 增加队列顺序、并发切换、运行时状态、Pi/Codex 路由和辅助请求隔离等回归测试。
 
 ## English
 
-> Changes since the v0.1.21 release.
+> Changes since the v0.1.22 release.
 
-### Failover and Circuit Recovery
+### Failover Channel Control
 
-- Improved Codex failover attribution so upstream errors, credential failures, and local proxy problems do not penalize unrelated providers.
-- Stabilized provider switching and retry behavior to reduce routing fluctuations caused by stale failure state.
-- Added a per-application automatic circuit recovery switch. When disabled, an open circuit remains blocked until the user recovers it manually.
-- Added provider health indicators and manual recovery actions directly to the failover queue.
+- Added a per-channel enable/disable switch to the failover queue. Disabled channels keep their P-order but are skipped by every failover candidate path.
+- Channel changes are transactional, protect the last enabled channel, and restore the default enabled state when a provider is re-added or the queue is cleared.
+- Provider cards and the settings queue manager now share the same mutation and cache behavior.
 
-### Codex Configuration and Authentication
+### Runtime Provider State
 
-- Made the saved database configuration authoritative in the Codex provider editor so stale or externally rewritten live `config.toml` content cannot overwrite edits.
-- Synchronized manually edited `experimental_bearer_token` values into canonical credentials so saves, switches, and proxy forwarding use the latest API key.
-- Fixed 401 responses caused by stale credentials replacing the TOML token and leaving the upstream request without valid authorization.
+- Added an app-isolated runtime route tracker that marks a provider current only after a complete successful main request.
+- Fixed failover status reporting so the UI shows the provider actually serving traffic; Codex runtime failover does not rewrite persisted or live configuration.
+- Pi, standard routing, image generation, web search, activation selection, and batch checks consistently skip disabled channels, while auxiliary requests cannot overwrite the main request channel.
+- Runtime state is cleared immediately when failover, takeover, or channel membership changes invalidate it, with event-driven UI refreshes.
 
-### Compatibility and Quality
+### Database and Quality
 
-- Made the v28 database migration tolerate historical or partial schemas without `proxy_config`, preventing migration-test and partial-restore failures.
-- Added regression coverage for Codex configuration persistence, credential synchronization, circuit recovery, and database migration compatibility.
+- Upgraded the database schema to v30 with backward-compatible failover participation state for existing providers.
+- SQL backup/restore, CCSwitch imports, and normal provider saves preserve a user-selected disabled state.
+- Added regression coverage for queue ordering, concurrent toggles, runtime state, Pi/Codex routing, and auxiliary request isolation.

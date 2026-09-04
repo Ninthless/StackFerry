@@ -84,6 +84,18 @@ export const failoverApi = {
     return invoke("remove_from_failover_queue", { appType, providerId });
   },
 
+  async setFailoverProviderEnabled(
+    appType: string,
+    providerId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    return invoke("set_failover_provider_enabled", {
+      appType,
+      providerId,
+      enabled,
+    });
+  },
+
   // 获取指定应用的自动故障转移开关状态
   async getAutoFailoverEnabled(appType: string): Promise<boolean> {
     return invoke("get_auto_failover_enabled", { appType });

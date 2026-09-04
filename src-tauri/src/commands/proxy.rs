@@ -356,10 +356,7 @@ pub async fn reset_circuit_breaker(
     };
 
     if app_enabled && auto_failover_enabled && state.proxy_service.is_running().await {
-        // 获取当前供应商 ID
-        let current_id = db
-            .get_current_provider(&app_type)
-            .map_err(|e| e.to_string())?;
+        let current_id = state.proxy_service.runtime_provider_id(&app_type).await;
 
         if let Some(current_id) = current_id {
             // 获取故障转移队列
@@ -370,12 +367,12 @@ pub async fn reset_circuit_breaker(
             // 找到恢复的供应商和当前供应商在队列中的位置
             let restored_order = queue
                 .iter()
-                .find(|item| item.provider_id == provider_id)
+                .find(|item| item.enabled && item.provider_id == provider_id)
                 .map(|item| item.queue_order);
 
             let current_order = queue
                 .iter()
-                .find(|item| item.provider_id == current_id)
+                .find(|item| item.enabled && item.provider_id == current_id)
                 .map(|item| item.queue_order);
 
             // 如果恢复的供应商优先级更高，则切换
@@ -384,6 +381,13 @@ pub async fn reset_circuit_breaker(
                     log::info!(
                         "[Recovery] 供应商 {provider_id} 已恢复且优先级更高 (P{restored} vs P{current})，自动切换"
                     );
+
+                    if app_type == "codex" {
+                        log::debug!(
+                            "[Recovery] Codex 保留持久配置，下一次主请求将按恢复后的队列优先级路由"
+                        );
+                        return Ok(());
+                    }
 
                     // 获取供应商名称用于日志和事件
                     let provider_name = db

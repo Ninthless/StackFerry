@@ -16,6 +16,7 @@ use super::{
         pi_prepare_bedrock_headers, pi_resolved_headers, resolve_pi_provider, AuthInfo,
         AuthStrategy, PiRequestMetadata, ProviderAdapter, ProviderType,
     },
+    runtime_route::RuntimeRouteTracker,
     thinking_budget_rectifier::{rectify_thinking_budget, should_rectify_thinking_budget},
     thinking_rectifier::{
         normalize_thinking_type, rectify_anthropic_request, should_rectify_thinking_signature,
@@ -221,7 +222,7 @@ pub struct RequestForwarder {
     /// 共享的 ProviderRouter（持有熔断器状态）
     router: Arc<ProviderRouter>,
     status: Arc<RwLock<ProxyStatus>>,
-    current_providers: Arc<RwLock<std::collections::HashMap<String, (String, String)>>>,
+    runtime_routes: Arc<RuntimeRouteTracker>,
     gemini_shadow: Arc<GeminiShadowStore>,
     codex_chat_history: Arc<CodexChatHistoryStore>,
     db: Arc<crate::database::Database>,
@@ -347,7 +348,7 @@ impl RequestForwarder {
         router: Arc<ProviderRouter>,
         non_streaming_timeout: u64,
         status: Arc<RwLock<ProxyStatus>>,
-        current_providers: Arc<RwLock<std::collections::HashMap<String, (String, String)>>>,
+        runtime_routes: Arc<RuntimeRouteTracker>,
         gemini_shadow: Arc<GeminiShadowStore>,
         codex_chat_history: Arc<CodexChatHistoryStore>,
         db: Arc<crate::database::Database>,
@@ -373,7 +374,7 @@ impl RequestForwarder {
         Self {
             router,
             status,
-            current_providers,
+            runtime_routes,
             gemini_shadow,
             codex_chat_history,
             db,
@@ -429,6 +430,61 @@ impl RequestForwarder {
                 );
             }
         });
+    }
+
+    async fn finish_successful_attempt(
+        &self,
+        app_type: &AppType,
+        provider: &Provider,
+        request_kind: ForwardRequestKind,
+        attempted_providers: usize,
+    ) {
+        let app_type_str = app_type.as_str();
+        let runtime_update = if request_kind.is_codex_auxiliary() || self.session_credential_bound {
+            None
+        } else {
+            match self
+                .runtime_routes
+                .record_main_success(app_type_str, provider, attempted_providers > 1)
+                .await
+            {
+                Ok(update) => Some(update),
+                Err(error) => {
+                    log::warn!(
+                        "[{app_type_str}] 更新实际运行渠道失败: provider_id={}, error={error}",
+                        provider.id
+                    );
+                    None
+                }
+            }
+        };
+
+        let should_persist_failover_switch = runtime_update.is_some_and(|update| update.accepted)
+            && !matches!(app_type, AppType::Codex)
+            && self.current_provider_id_at_start.as_str() != provider.id.as_str();
+
+        {
+            let mut status = self.status.write().await;
+            status.success_requests = status.success_requests.saturating_add(1);
+            status.last_error = None;
+            if status.total_requests > 0 {
+                status.success_rate =
+                    (status.success_requests as f32 / status.total_requests as f32) * 100.0;
+            }
+        }
+
+        if should_persist_failover_switch {
+            let manager = self.failover_manager.clone();
+            let app_handle = self.app_handle.clone();
+            let provider_id = provider.id.clone();
+            let provider_name = provider.name.clone();
+            let app_type = app_type_str.to_string();
+            tokio::spawn(async move {
+                let _ = manager
+                    .try_switch(app_handle.as_ref(), &app_type, &provider_id, &provider_name)
+                    .await;
+            });
+        }
     }
 
     /// 整流（thinking signature 或 budget）重试失败后的统一收尾。
@@ -724,17 +780,6 @@ impl RequestForwarder {
 
             attempted_providers += 1;
 
-            // 更新状态中的当前 Provider 信息（per-attempt 维度的标识）
-            //
-            // total_requests / last_request_at / active_connections 已由
-            // forward_with_retry wrapper 在客户端请求维度统一处理，这里只刷
-            // 新「正在尝试哪个 provider」的展示字段。
-            if !request_kind.is_codex_auxiliary() {
-                let mut status = self.status.write().await;
-                status.current_provider = Some(provider.name.clone());
-                status.current_provider_id = Some(provider.id.clone());
-            }
-
             // 转发请求（明确的 Responses 容量错误会在提交输出前有限重试）
             match self
                 .forward_with_capacity_retry(
@@ -763,53 +808,13 @@ impl RequestForwarder {
                         .await;
                     }
 
-                    let should_persist_failover_switch = !request_kind.is_codex_auxiliary()
-                        && !self.session_credential_bound
-                        && !matches!(app_type, AppType::Codex)
-                        && self.current_provider_id_at_start.as_str() != provider.id.as_str();
-
-                    if !request_kind.is_codex_auxiliary()
-                        && !self.session_credential_bound
-                        && !matches!(app_type, AppType::Codex)
-                    {
-                        let mut current_providers = self.current_providers.write().await;
-                        current_providers.insert(
-                            app_type_str.to_string(),
-                            (provider.id.clone(), provider.name.clone()),
-                        );
-                    }
-
-                    // 更新成功统计
-                    {
-                        let mut status = self.status.write().await;
-                        status.success_requests += 1;
-                        status.last_error = None;
-                        if should_persist_failover_switch {
-                            status.failover_count += 1;
-
-                            // 异步触发供应商切换，更新 UI/托盘，并把“当前供应商”同步为实际使用的 provider
-                            let fm = self.failover_manager.clone();
-                            let ah = self.app_handle.clone();
-                            let pid = provider.id.clone();
-                            let pname = provider.name.clone();
-                            let at = app_type_str.to_string();
-
-                            tokio::spawn(async move {
-                                let _ = fm.try_switch(ah.as_ref(), &at, &pid, &pname).await;
-                            });
-                        } else if !request_kind.is_codex_auxiliary()
-                            && !self.session_credential_bound
-                            && self.current_provider_id_at_start.as_str() != provider.id.as_str()
-                        {
-                            status.failover_count += 1;
-                        }
-                        // 重新计算成功率
-                        if status.total_requests > 0 {
-                            status.success_rate = (status.success_requests as f32
-                                / status.total_requests as f32)
-                                * 100.0;
-                        }
-                    }
+                    self.finish_successful_attempt(
+                        app_type,
+                        provider,
+                        request_kind,
+                        attempted_providers,
+                    )
+                    .await;
 
                     return Ok(ForwardResult {
                         response,
@@ -881,45 +886,13 @@ impl RequestForwarder {
                                         used_half_open_permit,
                                     )
                                     .await;
-
-                                    if !matches!(app_type, AppType::Codex) {
-                                        let mut current_providers =
-                                            self.current_providers.write().await;
-                                        current_providers.insert(
-                                            app_type_str.to_string(),
-                                            (provider.id.clone(), provider.name.clone()),
-                                        );
-                                    }
-
-                                    {
-                                        let mut status = self.status.write().await;
-                                        status.success_requests += 1;
-                                        status.last_error = None;
-                                        let switched_provider =
-                                            self.current_provider_id_at_start.as_str()
-                                                != provider.id.as_str();
-                                        if switched_provider {
-                                            status.failover_count += 1;
-                                            if !matches!(app_type, AppType::Codex) {
-                                                let fm = self.failover_manager.clone();
-                                                let ah = self.app_handle.clone();
-                                                let pid = provider.id.clone();
-                                                let pname = provider.name.clone();
-                                                let at = app_type_str.to_string();
-
-                                                tokio::spawn(async move {
-                                                    let _ = fm
-                                                        .try_switch(ah.as_ref(), &at, &pid, &pname)
-                                                        .await;
-                                                });
-                                            }
-                                        }
-                                        if status.total_requests > 0 {
-                                            status.success_rate = (status.success_requests as f32
-                                                / status.total_requests as f32)
-                                                * 100.0;
-                                        }
-                                    }
+                                    self.finish_successful_attempt(
+                                        app_type,
+                                        provider,
+                                        request_kind,
+                                        attempted_providers,
+                                    )
+                                    .await;
 
                                     return Ok(ForwardResult {
                                         response,
@@ -1029,53 +1002,13 @@ impl RequestForwarder {
                                             used_half_open_permit,
                                         )
                                         .await;
-
-                                        if !matches!(app_type, AppType::Codex) {
-                                            let mut current_providers =
-                                                self.current_providers.write().await;
-                                            current_providers.insert(
-                                                app_type_str.to_string(),
-                                                (provider.id.clone(), provider.name.clone()),
-                                            );
-                                        }
-
-                                        // 更新成功统计
-                                        {
-                                            let mut status = self.status.write().await;
-                                            status.success_requests += 1;
-                                            status.last_error = None;
-                                            let switched_provider =
-                                                self.current_provider_id_at_start.as_str()
-                                                    != provider.id.as_str();
-                                            if switched_provider {
-                                                status.failover_count += 1;
-
-                                                if !matches!(app_type, AppType::Codex) {
-                                                    let fm = self.failover_manager.clone();
-                                                    let ah = self.app_handle.clone();
-                                                    let pid = provider.id.clone();
-                                                    let pname = provider.name.clone();
-                                                    let at = app_type_str.to_string();
-
-                                                    tokio::spawn(async move {
-                                                        let _ = fm
-                                                            .try_switch(
-                                                                ah.as_ref(),
-                                                                &at,
-                                                                &pid,
-                                                                &pname,
-                                                            )
-                                                            .await;
-                                                    });
-                                                }
-                                            }
-                                            if status.total_requests > 0 {
-                                                status.success_rate = (status.success_requests
-                                                    as f32
-                                                    / status.total_requests as f32)
-                                                    * 100.0;
-                                            }
-                                        }
+                                        self.finish_successful_attempt(
+                                            app_type,
+                                            provider,
+                                            request_kind,
+                                            attempted_providers,
+                                        )
+                                        .await;
 
                                         return Ok(ForwardResult {
                                             response,
@@ -1202,44 +1135,13 @@ impl RequestForwarder {
                                         used_half_open_permit,
                                     )
                                     .await;
-
-                                    if !matches!(app_type, AppType::Codex) {
-                                        let mut current_providers =
-                                            self.current_providers.write().await;
-                                        current_providers.insert(
-                                            app_type_str.to_string(),
-                                            (provider.id.clone(), provider.name.clone()),
-                                        );
-                                    }
-
-                                    {
-                                        let mut status = self.status.write().await;
-                                        status.success_requests += 1;
-                                        status.last_error = None;
-                                        let switched_provider =
-                                            self.current_provider_id_at_start.as_str()
-                                                != provider.id.as_str();
-                                        if switched_provider {
-                                            status.failover_count += 1;
-                                            if !matches!(app_type, AppType::Codex) {
-                                                let fm = self.failover_manager.clone();
-                                                let ah = self.app_handle.clone();
-                                                let pid = provider.id.clone();
-                                                let pname = provider.name.clone();
-                                                let at = app_type_str.to_string();
-                                                tokio::spawn(async move {
-                                                    let _ = fm
-                                                        .try_switch(ah.as_ref(), &at, &pid, &pname)
-                                                        .await;
-                                                });
-                                            }
-                                        }
-                                        if status.total_requests > 0 {
-                                            status.success_rate = (status.success_requests as f32
-                                                / status.total_requests as f32)
-                                                * 100.0;
-                                        }
-                                    }
+                                    self.finish_successful_attempt(
+                                        app_type,
+                                        provider,
+                                        request_kind,
+                                        attempted_providers,
+                                    )
+                                    .await;
 
                                     return Ok(ForwardResult {
                                         response,
@@ -4414,11 +4316,12 @@ mod tests {
         streaming_first_byte_timeout: Duration,
     ) -> RequestForwarder {
         let db = Arc::new(Database::memory().expect("memory db"));
+        let status = Arc::new(RwLock::new(ProxyStatus::default()));
 
         RequestForwarder {
             router: Arc::new(ProviderRouter::new(db.clone())),
-            status: Arc::new(RwLock::new(ProxyStatus::default())),
-            current_providers: Arc::new(RwLock::new(HashMap::new())),
+            status: status.clone(),
+            runtime_routes: Arc::new(RuntimeRouteTracker::new(db.clone(), status, None)),
             gemini_shadow: Arc::new(GeminiShadowStore::new()),
             codex_chat_history: Arc::new(CodexChatHistoryStore::default()),
             db: db.clone(),

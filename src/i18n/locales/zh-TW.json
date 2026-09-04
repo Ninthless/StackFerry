@@ -3184,7 +3184,11 @@
       "removeFailed": "移除失敗",
       "reorderSuccess": "佇列順序已更新",
       "reorderFailed": "更新順序失敗",
-      "toggleFailed": "狀態更新失敗"
+      "toggleFailed": "狀態更新失敗",
+      "channelToggle": "啟用故障轉移供應商",
+      "channelEnabled": "已啟用",
+      "channelDisabled": "已停用",
+      "channelDisabledHint": "保留優先順序，但略過此供應商"
     },
     "autoFailover": {
       "info": "當故障轉移佇列中設定了多個供應商時，系統會在請求失敗時按優先順序依次嘗試。當某個供應商連續失敗達到閾值時，斷路器會打開並在一段時間內跳過該供應商。",

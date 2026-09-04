@@ -39,6 +39,7 @@ import {
   useFailoverQueue,
   useAddToFailoverQueue,
   useRemoveFromFailoverQueue,
+  useSetFailoverProviderEnabled,
   useResetCircuitBreaker,
 } from "@/features/proxy";
 import {
@@ -160,13 +161,18 @@ export function ProviderList({
   const { data: failoverQueue } = useFailoverQueue(appId);
   const addToQueue = useAddToFailoverQueue();
   const removeFromQueue = useRemoveFromFailoverQueue();
+  const setFailoverProviderEnabled = useSetFailoverProviderEnabled();
   const resetCircuitBreaker = useResetCircuitBreaker();
   const failoverMutationPendingRef = useRef(false);
   const isFailoverMutationPending =
-    addToQueue.isPending || removeFromQueue.isPending;
+    addToQueue.isPending ||
+    removeFromQueue.isPending ||
+    setFailoverProviderEnabled.isPending;
 
   const isFailoverModeActive =
-    isProxyTakeover === true && isAutoFailoverEnabled === true;
+    isProxyRunning === true &&
+    isProxyTakeover === true &&
+    isAutoFailoverEnabled === true;
 
   const isOpenCode = appId === "opencode";
   const { data: currentOmoId } = useCurrentOmoProviderId(isOpenCode);
@@ -187,6 +193,13 @@ export function ProviderList({
       return failoverQueue.some((item) => item.providerId === providerId);
     },
     [isFailoverModeActive, failoverQueue],
+  );
+
+  const isFailoverProviderEnabled = useCallback(
+    (providerId: string): boolean =>
+      failoverQueue?.find((item) => item.providerId === providerId)?.enabled ??
+      true,
+    [failoverQueue],
   );
 
   const handleToggleFailover = useCallback(
@@ -214,6 +227,26 @@ export function ProviderList({
       }
     },
     [appId, addToQueue, removeFromQueue, t],
+  );
+
+  const handleToggleFailoverProviderEnabled = useCallback(
+    async (providerId: string, enabled: boolean) => {
+      try {
+        await setFailoverProviderEnabled.mutateAsync({
+          appType: appId,
+          providerId,
+          enabled,
+        });
+      } catch (error) {
+        toast.error(
+          extractErrorMessage(error) ||
+            t("proxy.failoverQueue.toggleFailed", {
+              defaultValue: "更新故障转移渠道状态失败",
+            }),
+        );
+      }
+    },
+    [appId, setFailoverProviderEnabled, t],
   );
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -466,9 +499,13 @@ export function ProviderList({
                 isAutoFailoverEnabled={isFailoverModeActive}
                 failoverPriority={getFailoverPriority(provider.id)}
                 isInFailoverQueue={inFailoverQueue}
+                failoverEnabled={isFailoverProviderEnabled(provider.id)}
                 isFailoverMutationPending={isFailoverMutationPending}
                 onToggleFailover={(enabled) =>
                   handleToggleFailover(provider.id, enabled)
+                }
+                onToggleFailoverEnabled={(enabled) =>
+                  handleToggleFailoverProviderEnabled(provider.id, enabled)
                 }
                 isCircuitBreakerResetting={
                   resetCircuitBreaker.isPending &&
@@ -622,8 +659,10 @@ interface SortableProviderCardProps {
   isAutoFailoverEnabled: boolean;
   failoverPriority?: number;
   isInFailoverQueue: boolean;
+  failoverEnabled: boolean;
   isFailoverMutationPending: boolean;
   onToggleFailover: (enabled: boolean) => void;
+  onToggleFailoverEnabled: (enabled: boolean) => void;
   isCircuitBreakerResetting: boolean;
   onResetCircuitBreaker?: () => void;
   activeProviderId?: string;
@@ -657,8 +696,10 @@ function SortableProviderCard({
   isAutoFailoverEnabled,
   failoverPriority,
   isInFailoverQueue,
+  failoverEnabled,
   isFailoverMutationPending,
   onToggleFailover,
+  onToggleFailoverEnabled,
   isCircuitBreakerResetting,
   onResetCircuitBreaker,
   activeProviderId,
@@ -713,8 +754,10 @@ function SortableProviderCard({
         isAutoFailoverEnabled={isAutoFailoverEnabled}
         failoverPriority={failoverPriority}
         isInFailoverQueue={isInFailoverQueue}
+        failoverEnabled={failoverEnabled}
         isFailoverMutationPending={isFailoverMutationPending}
         onToggleFailover={onToggleFailover}
+        onToggleFailoverEnabled={onToggleFailoverEnabled}
         isCircuitBreakerResetting={isCircuitBreakerResetting}
         onResetCircuitBreaker={onResetCircuitBreaker}
         activeProviderId={activeProviderId}

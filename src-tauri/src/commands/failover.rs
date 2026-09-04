@@ -55,7 +55,36 @@ pub async fn remove_from_failover_queue(
     state
         .db
         .remove_from_failover_queue(&app_type, &provider_id)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state
+        .proxy_service
+        .clear_runtime_provider_if_matches(&app_type, &provider_id)
+        .await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_failover_provider_enabled(
+    state: tauri::State<'_, AppState>,
+    app_type: String,
+    provider_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    if !state.proxy_service.is_running().await {
+        return Err("需要先启动本地路由服务，再调整故障转移渠道".to_string());
+    }
+
+    state
+        .db
+        .set_failover_provider_enabled(&app_type, &provider_id, enabled)
+        .map_err(|e| e.to_string())?;
+    if !enabled {
+        state
+            .proxy_service
+            .clear_runtime_provider_if_matches(&app_type, &provider_id)
+            .await;
+    }
+    Ok(())
 }
 
 /// 获取指定应用的自动故障转移开关状态（从 proxy_config 表读取）

@@ -438,17 +438,6 @@ impl ProxyService {
             .map_err(|e| format!("读取 {app_type:?} 当前供应商失败: {e}"))
     }
 
-    async fn refresh_active_target_from_current_provider(&self, app_type: &AppType) {
-        let Ok(Some(provider)) = self.get_current_provider_for_app(app_type) else {
-            return;
-        };
-        if let Some(server) = self.server.read().await.as_ref() {
-            server
-                .set_active_target(app_type.as_str(), &provider.id, &provider.name)
-                .await;
-        }
-    }
-
     async fn rollback_hot_switch_preparation(
         &self,
         app_type: &AppType,
@@ -810,7 +799,6 @@ impl ProxyService {
                 // 只看占位符会把半接管/旧端口残留误判为可复用，导致开启接管后
                 // live 文件仍停留在普通供应商配置。
                 if has_backup && live_matches_current_proxy {
-                    self.refresh_active_target_from_current_provider(&app).await;
                     return Ok(());
                 }
                 restore_existing_backup_before_takeover = has_backup;
@@ -894,7 +882,7 @@ impl ProxyService {
             // 7) 兼容旧逻辑：写入 any-of 标志（失败不影响功能）
             let _ = self.db.set_live_takeover_active(true).await;
 
-            self.refresh_active_target_from_current_provider(&app).await;
+            self.clear_runtime_provider(app_type_str).await;
 
             // 8) Warn if the current provider is official (risk of account ban via proxy)
             if let Ok(Some(current_id)) =
@@ -968,6 +956,7 @@ impl ProxyService {
             .clear_provider_health_for_app(app_type_str)
             .await
             .map_err(|e| format!("清除 {app_type_str} 健康状态失败: {e}"))?;
+        self.clear_runtime_provider(app_type_str).await;
 
         // 5) 若无其它接管，更新旧标志，并停止代理服务
         // 检查是否还有其它 app 的 enabled = true
@@ -1022,6 +1011,7 @@ impl ProxyService {
         // 4) 清除该应用的健康状态
         futures::executor::block_on(self.db.clear_provider_health_for_app(app_type_str))
             .map_err(|e| format!("清除 {app_type_str} 健康状态失败: {e}"))?;
+        futures::executor::block_on(self.clear_runtime_provider(app_type_str));
 
         // 5) 清旧标志
         let _ = futures::executor::block_on(self.db.set_live_takeover_active(false));
@@ -2627,10 +2617,30 @@ impl ProxyService {
         self.hot_switch_provider_inner(app_type, provider_id).await
     }
 
+    pub async fn persist_failover_provider(
+        &self,
+        app_type: &str,
+        provider_id: &str,
+    ) -> Result<HotSwitchOutcome, String> {
+        let _guard = self.switch_locks.lock_for_app(app_type).await;
+        self.hot_switch_provider_inner_with_runtime_policy(app_type, provider_id, false)
+            .await
+    }
+
     pub(crate) async fn hot_switch_provider_inner(
         &self,
         app_type: &str,
         provider_id: &str,
+    ) -> Result<HotSwitchOutcome, String> {
+        self.hot_switch_provider_inner_with_runtime_policy(app_type, provider_id, true)
+            .await
+    }
+
+    async fn hot_switch_provider_inner_with_runtime_policy(
+        &self,
+        app_type: &str,
+        provider_id: &str,
+        clear_runtime_provider: bool,
     ) -> Result<HotSwitchOutcome, String> {
         let app_type_enum =
             AppType::from_str(app_type).map_err(|_| format!("无效的应用类型: {app_type}"))?;
@@ -2791,10 +2801,8 @@ impl ProxyService {
             return Err(format!("更新当前供应商失败: {error}"));
         }
 
-        if let Some(server) = self.server.read().await.as_ref() {
-            server
-                .set_active_target(app_type_enum.as_str(), &provider.id, &provider.name)
-                .await;
+        if clear_runtime_provider {
+            self.clear_runtime_provider(app_type_enum.as_str()).await;
         }
 
         Ok(HotSwitchOutcome {
@@ -3333,6 +3341,35 @@ impl ProxyService {
     /// 检查服务器是否正在运行
     pub async fn is_running(&self) -> bool {
         self.server.read().await.is_some()
+    }
+
+    pub async fn clear_runtime_provider(&self, app_type: &str) -> bool {
+        match self.server.read().await.as_ref() {
+            Some(server) => server.clear_runtime_provider(app_type).await,
+            None => false,
+        }
+    }
+
+    pub async fn clear_runtime_provider_if_matches(
+        &self,
+        app_type: &str,
+        provider_id: &str,
+    ) -> bool {
+        match self.server.read().await.as_ref() {
+            Some(server) => {
+                server
+                    .clear_runtime_provider_if_matches(app_type, provider_id)
+                    .await
+            }
+            None => false,
+        }
+    }
+
+    pub async fn runtime_provider_id(&self, app_type: &str) -> Option<String> {
+        match self.server.read().await.as_ref() {
+            Some(server) => server.runtime_provider_id(app_type).await,
+            None => None,
+        }
     }
 
     pub async fn select_failover_activation_provider(

@@ -684,7 +684,8 @@ mod tests {
             connection
                 .execute(
                     "UPDATE providers SET is_current = 1, in_failover_queue = 1,
-                     failover_order = 7, notes = 'local note', meta = '{\"isPartner\":true}'
+                     failover_order = 7, failover_enabled = 0,
+                     notes = 'local note', meta = '{\"isPartner\":true}'
                      WHERE id = 'relay' AND app_type = 'codex'",
                     [],
                 )
@@ -755,15 +756,15 @@ mod tests {
         assert_eq!(saved.notes.as_deref(), Some("local note"));
         assert!(saved.in_failover_queue);
         let connection = database.conn.lock().expect("database lock");
-        let state: (bool, i64) = connection
+        let state: (bool, i64, bool) = connection
             .query_row(
-                "SELECT is_current, failover_order FROM providers
+                "SELECT is_current, failover_order, failover_enabled FROM providers
                  WHERE id = 'relay' AND app_type = 'codex'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .expect("state");
-        assert_eq!(state, (true, 7));
+        assert_eq!(state, (true, 7, false));
         drop(connection);
         assert_eq!(
             origin(&database, "relay"),

@@ -130,6 +130,9 @@ impl ProviderRouter {
         let mut compatible_count = 0usize;
         let mut unavailable_count = 0usize;
         for item in queue {
+            if !item.enabled {
+                continue;
+            }
             let Some(provider) = all_providers.get(&item.provider_id) else {
                 continue;
             };
@@ -204,6 +207,7 @@ impl ProviderRouter {
             self.db
                 .get_failover_queue(app_type)?
                 .into_iter()
+                .filter(|item| item.enabled)
                 .filter_map(|item| all_providers.get(&item.provider_id).cloned())
                 .collect::<Vec<_>>()
         } else {
@@ -264,6 +268,7 @@ impl ProviderRouter {
             self.db
                 .get_failover_queue(app_type)?
                 .into_iter()
+                .filter(|item| item.enabled)
                 .filter_map(|item| all_providers.get(&item.provider_id).cloned())
                 .collect::<Vec<_>>()
         } else {
@@ -335,6 +340,7 @@ impl ProviderRouter {
             .db
             .get_failover_queue(app_type)?
             .into_iter()
+            .filter(|item| item.enabled)
             .map(|item| item.provider_id)
             .collect::<Vec<_>>();
         let total_providers = ordered_ids.len();
@@ -726,6 +732,36 @@ mod tests {
 
         assert_eq!(providers.len(), 1);
         assert_eq!(providers[0].id, "b");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_failover_enabled_skips_disabled_queue_channels_without_health_reads() {
+        let _home = TempHome::new();
+        let db = Arc::new(Database::memory().unwrap());
+        let first = Provider::with_id("first".to_string(), "First".to_string(), json!({}), None);
+        let second = Provider::with_id("second".to_string(), "Second".to_string(), json!({}), None);
+        db.save_provider("claude", &first).unwrap();
+        db.save_provider("claude", &second).unwrap();
+        db.add_to_failover_queue("claude", &first.id).unwrap();
+        db.add_to_failover_queue("claude", &second.id).unwrap();
+        db.set_proxy_flags_sync("claude", true, true).unwrap();
+        db.set_failover_provider_enabled("claude", &first.id, false)
+            .unwrap();
+
+        let router = ProviderRouter::new(db.clone());
+        let providers = router.select_providers("claude").await.unwrap();
+
+        assert_eq!(
+            providers
+                .iter()
+                .map(|provider| provider.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["second"]
+        );
+        let health = db.get_provider_health(&first.id, "claude").await.unwrap();
+        assert!(health.is_healthy);
+        assert_eq!(health.consecutive_failures, 0);
     }
 
     #[tokio::test]
