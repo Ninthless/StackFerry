@@ -94,6 +94,11 @@ vi.mock("@/features/proxy/model/failover", () => ({
   useFailoverQueue: () => ({ data: [] }),
   useAddToFailoverQueue: () => ({ mutate: vi.fn() }),
   useRemoveFromFailoverQueue: () => ({ mutate: vi.fn() }),
+  useSetFailoverProviderEnabled: () => ({
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
   useResetCircuitBreaker: () => ({
     mutate: vi.fn(),
     isPending: false,
