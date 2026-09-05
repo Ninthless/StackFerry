@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyOfficialProvider,
+  applyRouterProvider,
   applyThirdPartyProvider,
   parseToml,
   providerKey,
@@ -228,5 +229,28 @@ ${overlayFor({
     })
     expect(applied.model).toBe('gpt-6-astra')
     expect(applied.model_reasoning_effort).toBe('max')
+  })
+
+  it('writes a local router table without secrets', () => {
+    const next = applyRouterProvider(existing, {
+      port: 17890,
+      tomlText: overlayFor({
+        providerId: 'provider_r',
+        name: 'Routed',
+        baseUrl: 'https://secret.example/v1',
+        model: 'model-r',
+      }),
+    })
+    expect(next.model_provider).toBe('stackferry_router')
+    expect(next.model).toBe('model-r')
+    const providers = next.model_providers as Record<string, Record<string, string>>
+    expect(providers.stackferry_router).toEqual({
+      name: 'StackFerry Router',
+      base_url: 'http://127.0.0.1:17890/v1',
+      wire_api: 'responses',
+    })
+    expect(stringifyToml(next)).not.toContain('secret.example')
+    expect(stringifyToml(next)).not.toContain('experimental_bearer_token')
+    expect(stringifyToml(next)).not.toContain('localhost')
   })
 })

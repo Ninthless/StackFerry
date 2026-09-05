@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { enableOfficialLiveConfig, enableThirdPartyLiveConfig } from '../electron/main/codex/writer'
+import { enableOfficialLiveConfig, enableRouterLiveConfig, enableThirdPartyLiveConfig } from '../electron/main/codex/writer'
 
 const originalAuth = '{"OPENAI_API_KEY":"keep-me","tokens":{"access_token":"chatgpt"}}'
 
@@ -71,5 +71,38 @@ wire_api = "responses"
     expect(afterOfficial).toContain('approval_policy = "on-request"')
     expect(afterOfficial).not.toContain('experimental_bearer_token')
     expect(await readFile(path.join(codexHome, 'auth.json'), 'utf8')).toBe(originalAuth)
+  })
+
+  it('writes the local router table without copying the api key', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-router-'))
+    const codexHome = path.join(root, 'codex')
+    const backupRoot = path.join(root, 'backups')
+    await mkdir(codexHome, { recursive: true })
+    await writeFile(path.join(codexHome, 'config.toml'), 'approval_policy = "on-request"\n')
+
+    await enableRouterLiveConfig({
+      codexHome,
+      backupRoot,
+      port: 18765,
+      provider: {
+        tomlText: `model = "model-r"
+model_provider = "provider_r"
+
+[model_providers.provider_r]
+name = "Provider R"
+base_url = "https://r.example/v1"
+wire_api = "responses"
+`,
+      },
+    })
+
+    const written = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
+    expect(written).toContain('model_provider = "stackferry_router"')
+    expect(written).toContain('base_url = "http://127.0.0.1:18765/v1"')
+    expect(written).toContain('wire_api = "responses"')
+    expect(written).toContain('model = "model-r"')
+    expect(written).not.toContain('r.example')
+    expect(written).not.toContain('experimental_bearer_token')
+    expect(written).not.toContain('localhost')
   })
 })

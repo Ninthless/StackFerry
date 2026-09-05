@@ -1,4 +1,9 @@
 import {
+  ROUTER_BIND_HOST,
+  ROUTER_PROVIDER_KEY,
+  ROUTER_PROVIDER_NAME,
+} from '../../../shared/routing'
+import {
   isPlainObject,
   overlayUsesExternalAuth,
   parseProviderOverlay,
@@ -12,6 +17,11 @@ export { parseToml, stringifyToml }
 
 export const STACKFERRY_PREFIX = 'stackferry_'
 export const OFFICIAL_MODEL_PROVIDER = 'openai'
+
+export type RouterLiveConfig = {
+  port: number
+  tomlText: string
+}
 
 export type ThirdPartyLiveConfig = {
   id: string
@@ -49,6 +59,21 @@ export function applyOfficialProvider(doc: TomlTable): TomlTable {
   const next = cloneDoc(doc)
   stripStackferryProviders(next)
   next.model_provider = OFFICIAL_MODEL_PROVIDER
+  return next
+}
+
+export function applyRouterProvider(doc: TomlTable, input: RouterLiveConfig): TomlTable {
+  const overlay = parseProviderOverlay(input.tomlText)
+  const next = cloneDoc(doc)
+  stripStackferryProviders(next)
+  const providers = ensureProviderTable(next)
+  providers[ROUTER_PROVIDER_KEY] = {
+    name: ROUTER_PROVIDER_NAME,
+    base_url: `http://${ROUTER_BIND_HOST}:${input.port}/v1`,
+    wire_api: 'responses',
+  }
+  next.model_provider = ROUTER_PROVIDER_KEY
+  applySessionKeys(next, overlay)
   return next
 }
 

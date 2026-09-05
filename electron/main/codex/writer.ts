@@ -4,9 +4,11 @@ import path from 'node:path'
 import { codexAuthPath, codexConfigPath } from './home'
 import {
   applyOfficialProvider,
+  applyRouterProvider,
   applyThirdPartyProvider,
   parseToml,
   stringifyToml,
+  type RouterLiveConfig,
   type ThirdPartyLiveConfig,
 } from './merge'
 
@@ -37,6 +39,21 @@ export async function enableOfficialLiveConfig(options: {
   const backupPath = await backupLiveFiles(options.codexHome, options.backupRoot)
   const current = await readTomlOrEmpty(configPath)
   const next = applyOfficialProvider(current)
+  await mkdir(options.codexHome, { recursive: true })
+  await atomicWriteFile(configPath, stringifyToml(next))
+  return { backupPath, configPath }
+}
+
+export async function enableRouterLiveConfig(options: {
+  codexHome: string
+  backupRoot: string
+  port: number
+  provider: Pick<RouterLiveConfig, 'tomlText'>
+}): Promise<EnableResult> {
+  const configPath = codexConfigPath(options.codexHome)
+  const backupPath = await backupLiveFiles(options.codexHome, options.backupRoot)
+  const current = await readTomlOrEmpty(configPath)
+  const next = applyRouterProvider(current, { port: options.port, tomlText: options.provider.tomlText })
   await mkdir(options.codexHome, { recursive: true })
   await atomicWriteFile(configPath, stringifyToml(next))
   return { backupPath, configPath }
