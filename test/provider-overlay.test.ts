@@ -9,6 +9,7 @@ import {
   withOverlayBaseUrl,
   withOverlaySession,
 } from '../shared/provider-overlay'
+import { expectAppError } from './expect-app-error'
 
 describe('provider overlay', () => {
   it('parses a single custom provider table', () => {
@@ -60,8 +61,9 @@ args = ["read", "op://Codex/key"]
   })
 
   it('rejects unrelated top-level keys and mismatched provider ids', () => {
-    expect(() =>
-      parseProviderOverlay(`
+    expectAppError(
+      () =>
+        parseProviderOverlay(`
 approval_policy = "never"
 model_provider = "custom"
 
@@ -69,17 +71,21 @@ model_provider = "custom"
 name = "Custom"
 base_url = "https://api.example.com/v1"
 `),
-    ).toThrow('覆盖片段不支持顶层键 approval_policy')
+      'overlay_unsupported_top_level',
+      { key: 'approval_policy' },
+    )
 
-    expect(() =>
-      parseProviderOverlay(`
+    expectAppError(
+      () =>
+        parseProviderOverlay(`
 model_provider = "one"
 
 [model_providers.two]
 name = "Two"
 base_url = "https://api.example.com/v1"
 `),
-    ).toThrow('model_provider 必须与 [model_providers.<id>] 的 id 一致')
+      'overlay_provider_mismatch',
+    )
   })
 
   it('reads and writes base_url without dropping other overlay fields', () => {
@@ -113,7 +119,7 @@ wire_api = "responses"
 `)
     expect(formatToml(formatted)).toBe(formatted)
     expect(formatToml('')).toBe('')
-    expect(() => formatToml('model_provider = [')).toThrow('TOML 无法解析')
+    expectAppError(() => formatToml('model_provider = ['), 'toml_parse_failed')
   })
 
   it('reads and writes model, reasoning, and context without dropping table fields', () => {
@@ -146,5 +152,49 @@ wire_api = "responses"
     expect(overlaySession(cleared).reasoningEffort).toBe('')
     expect(cleared).not.toContain('model_reasoning_effort')
     expect(cleared).not.toContain('model_context_window')
+  })
+
+  it('accepts max and ultra reasoning effort', () => {
+    const starter = starterOverlayToml({
+      providerId: 'custom',
+      name: 'Custom',
+      baseUrl: 'https://api.example.com/v1',
+      model: 'gpt-6-astra',
+    })
+    const updated = withOverlaySession(starter, { reasoningEffort: 'ultra' })
+    expect(overlaySession(updated).reasoningEffort).toBe('ultra')
+    expect(parseProviderOverlay(updated).reasoningEffort).toBe('ultra')
+    expect(
+      parseProviderOverlay(withOverlaySession(starter, { reasoningEffort: 'max' }))
+        .reasoningEffort,
+    ).toBe('max')
+  })
+
+  it('rejects unknown reasoning effort and amazon-bedrock as a custom id', () => {
+    expectAppError(
+      () =>
+        parseProviderOverlay(`
+model_provider = "custom"
+model_reasoning_effort = "ludicrous"
+
+[model_providers.custom]
+name = "Custom"
+base_url = "https://api.example.com/v1"
+`),
+      'overlay_invalid_reasoning',
+    )
+
+    expectAppError(
+      () =>
+        parseProviderOverlay(`
+model_provider = "amazon-bedrock"
+
+[model_providers.amazon-bedrock]
+name = "Bedrock"
+base_url = "https://bedrock.example/v1"
+`),
+      'overlay_reserved_provider_id',
+      { name: 'amazon-bedrock' },
+    )
   })
 })

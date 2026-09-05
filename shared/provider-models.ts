@@ -1,16 +1,18 @@
+import { AppError } from './app-error'
+
 export function modelsUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim()
   if (!trimmed) {
-    throw new Error('请填写 Base URL')
+    throw new AppError('models_missing_base_url')
   }
   let parsed: URL
   try {
     parsed = new URL(trimmed)
   } catch {
-    throw new Error('Base URL 不是有效地址')
+    throw new AppError('models_invalid_url')
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error('Base URL 仅支持 http 或 https')
+    throw new AppError('models_unsupported_protocol')
   }
   const path = parsed.pathname.replace(/\/+$/, '')
   parsed.pathname = `${path}/models`
@@ -21,13 +23,13 @@ export function modelsUrl(baseUrl: string): string {
 
 export function parseModelsResponse(payload: unknown): string[] {
   if (!isRecord(payload) || !Array.isArray(payload.data)) {
-    throw new Error('模型列表格式无法解析')
+    throw new AppError('models_invalid_payload')
   }
   const ids = payload.data
     .map((item) => (isRecord(item) && typeof item.id === 'string' ? item.id.trim() : ''))
     .filter(Boolean)
   if (ids.length === 0) {
-    throw new Error('模型列表为空')
+    throw new AppError('models_empty')
   }
   return [...new Set(ids)]
 }

@@ -1,20 +1,18 @@
 import { useCallback, useEffect, useState } from "react"
 import type { Preset, ProviderDraft, ProviderListItem } from "@shared/types"
 import { toast } from "@/components/ui/toast"
+import { formatAppError } from "@/lib/format-app-error"
+import * as m from "@/paraglide/messages.js"
 
 function desktopApi() {
   if (!window.stackferry) {
-    throw new Error("请从 StackFerry 桌面应用打开，而不是浏览器预览页。")
+    throw new Error(m.error_desktop_only())
   }
   return window.stackferry
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 function tipError(description: string, id?: string): void {
-  toast.add({ id, type: "error", title: "操作失败", description })
+  toast.add({ id, type: "error", description, priority: "high" })
 }
 
 export function useProviders() {
@@ -34,10 +32,10 @@ export function useProviders() {
     try {
       void desktopApi().listPresets().then(setPresets)
       void refresh().catch((loadError) => {
-        window.setTimeout(() => tipError(errorMessage(loadError), "app-load"), 0)
+        window.setTimeout(() => tipError(formatAppError(loadError), "app-load"), 0)
       })
     } catch (loadError) {
-      window.setTimeout(() => tipError(errorMessage(loadError), "app-load"), 0)
+      window.setTimeout(() => tipError(formatAppError(loadError), "app-load"), 0)
     }
     if (!window.stackferry) return
     return window.stackferry.onChanged(() => {
@@ -54,7 +52,7 @@ export function useProviders() {
       await refresh()
     } catch (actionError) {
       if (options?.toastError !== false) {
-        tipError(errorMessage(actionError))
+        tipError(formatAppError(actionError))
       }
       throw actionError
     }
@@ -83,12 +81,18 @@ export function useProviders() {
       },
       { toastError: false },
     )
+    const rewriteLive = wasEditing && editing?.enabled
     setEditorOpen(false)
     setEditing(null)
+    if (rewriteLive) {
+      toast.add({
+        type: "warning",
+        description: m.toast_enabled_description({ name: draft.name }),
+      })
+      return
+    }
     toast.add({
-      type: "success",
-      title: wasEditing ? "供应商已更新" : "供应商已添加",
-      description: draft.name,
+      description: wasEditing ? m.toast_provider_updated() : m.toast_provider_added(),
     })
   }
 
@@ -104,9 +108,7 @@ export function useProviders() {
       await run(() => desktopApi().enableProvider(id))
       toast.add({
         type: "warning",
-        title: "配置已写入",
-        description: `已启用「${provider?.name ?? ""}」。请重启 Codex / 终端后生效。`,
-        timeout: 10_000,
+        description: m.toast_enabled_description({ name: provider?.name ?? "" }),
       })
     } catch {
       return
@@ -122,9 +124,7 @@ export function useProviders() {
       await run(() => desktopApi().deleteProvider(deleting.id))
       setDeleting(null)
       toast.add({
-        type: "success",
-        title: "供应商已删除",
-        description: `「${name}」已从列表移除。`,
+        description: m.toast_provider_deleted(),
       })
     } catch {
       return

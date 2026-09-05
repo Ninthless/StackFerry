@@ -1,3 +1,4 @@
+import { AppError } from '../../../shared/app-error'
 import { modelsUrl, parseModelsResponse } from '../../../shared/provider-models'
 import type { ProviderStore } from './store'
 
@@ -23,12 +24,12 @@ async function resolveApiKey(store: ProviderStore, input: ListModelsInput): Prom
   const typed = input.apiKey?.trim() ?? ''
   if (typed) return typed
   if (!input.providerId) {
-    throw new Error('请填写 API Key')
+    throw new AppError('models_missing_api_key')
   }
   const provider = await store.peek(input.providerId)
   const stored = store.decryptApiKey(provider)
   if (!stored) {
-    throw new Error('请填写 API Key')
+    throw new AppError('models_missing_api_key')
   }
   return stored
 }
@@ -46,18 +47,18 @@ async function fetchModelsJson(url: string, apiKey: string): Promise<unknown> {
       signal: controller.signal,
     })
     if (response.status === 401 || response.status === 403) {
-      throw new Error('认证失败，请检查 API Key')
+      throw new AppError('models_auth')
     }
     if (response.status === 404 || response.status === 405) {
-      throw new Error('该端点不支持 /v1/models，请手动输入模型 ID')
+      throw new AppError('models_unsupported_endpoint')
     }
     if (!response.ok) {
-      throw new Error(`获取模型列表失败（${response.status}）`)
+      throw new AppError('models_http', { status: String(response.status) })
     }
     return await response.json()
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('获取模型列表超时')
+      throw new AppError('models_timeout')
     }
     throw error
   } finally {

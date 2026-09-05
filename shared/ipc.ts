@@ -14,4 +14,6 @@ export const IpcChannel = {
   windowIsMaximized: 'window:is-maximized',
   windowMaximizedChanged: 'window:maximized-changed',
   changed: 'providers:changed',
+  getLocale: 'app:getLocale',
+  setLocale: 'app:setLocale',
 } as const

@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/empty"
 import { ItemGroup } from "@/components/ui/item"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import * as m from "@/paraglide/messages.js"
 import { DeleteProviderDialog } from "./delete-provider-dialog"
 import { ProviderCard } from "./provider-card"
 import { ProviderEditor } from "./provider-editor"
@@ -30,15 +31,13 @@ export function ProviderWorkspace({ session }: Props) {
               <EmptyMedia>
                 <BrandMark className="size-12 rounded-xl" />
               </EmptyMedia>
-              <EmptyTitle>还没有供应商</EmptyTitle>
-              <EmptyDescription>
-                用预设添加 OpenAI、OpenRouter、DeepSeek，或切回官方登录。也可以直接编辑 config.toml 覆盖片段。
-              </EmptyDescription>
+              <EmptyTitle>{m.providers_empty_title()}</EmptyTitle>
+              <EmptyDescription>{m.providers_empty_description()}</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
               <Button type="button" onClick={session.openCreate}>
                 <Plus data-icon="inline-start" />
-                添加第一个
+                {m.providers_add_first()}
               </Button>
             </EmptyContent>
           </Empty>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { Copy, Minus, Square, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import * as m from "@/paraglide/messages.js"
 
 export function WindowControls() {
   const api = window.stackferry
@@ -31,7 +32,7 @@ export function WindowControls() {
         variant="ghost"
         size="icon"
         className="size-10 rounded-none"
-        aria-label="最小化"
+        aria-label={m.window_minimize()}
         onClick={() => {
           void api.windowMinimize()
         }}
@@ -43,7 +44,7 @@ export function WindowControls() {
         variant="ghost"
         size="icon"
         className="size-10 rounded-none"
-        aria-label={maximized ? "还原" : "最大化"}
+        aria-label={maximized ? m.window_restore() : m.window_maximize()}
         onClick={() => {
           void api.windowToggleMaximize()
         }}
@@ -55,7 +56,7 @@ export function WindowControls() {
         variant="ghost"
         size="icon"
         className="size-10 rounded-none hover:bg-destructive hover:text-white dark:hover:bg-destructive"
-        aria-label="关闭"
+        aria-label={m.window_close()}
         onClick={() => {
           void api.windowClose()
         }}

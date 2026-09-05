@@ -1,5 +1,6 @@
 import { Menu, Tray, nativeImage, type NativeImage } from 'electron'
 import type { ProviderListItem } from '../../shared/types'
+import { m } from './i18n'
 
 type TrayOptions = {
   iconPath: string
@@ -31,13 +32,13 @@ export class AppTray {
     }))
     this.tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: '打开 StackFerry', click: () => this.options.onShow() },
+        { label: m.tray_open(), click: () => this.options.onShow() },
         { type: 'separator' },
         ...(providerItems.length
           ? providerItems
-          : [{ label: '暂无供应商', enabled: false }]),
+          : [{ label: m.tray_empty(), enabled: false }]),
         { type: 'separator' },
-        { label: '退出', click: () => this.options.onQuit() },
+        { label: m.tray_quit(), click: () => this.options.onQuit() },
       ]),
     )
   }

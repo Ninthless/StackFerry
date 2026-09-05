@@ -1,9 +1,25 @@
 import { parse, stringify } from 'smol-toml'
+import { AppError } from './app-error'
 
 export type TomlTable = Record<string, unknown>
 
-export const RESERVED_PROVIDER_IDS = new Set(['openai', 'ollama', 'lmstudio'])
-export const REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const
+export const RESERVED_PROVIDER_IDS = new Set([
+  'openai',
+  'ollama',
+  'lmstudio',
+  'amazon-bedrock',
+])
+export const REASONING_EFFORTS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+  'persistent',
+] as const
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number]
 
 const ALLOWED_TOP_LEVEL = new Set([
@@ -47,13 +63,13 @@ export function parseToml(text: string): TomlTable {
   try {
     const parsed = parse(trimmed)
     if (!isPlainObject(parsed)) {
-      throw new Error('TOML 根节点必须是表')
+      throw new AppError('toml_root_not_table')
     }
     return parsed
   } catch (error) {
-    if (error instanceof Error && error.message === 'TOML 根节点必须是表') throw error
+    if (error instanceof AppError) throw error
     const detail = error instanceof Error ? error.message : String(error)
-    throw new Error(`TOML 无法解析：${detail}`)
+    throw new AppError('toml_parse_failed', { detail })
   }
 }
 
@@ -93,52 +109,52 @@ export function parseProviderOverlay(
 ): ProviderOverlay {
   const doc = parseToml(text)
   if (Object.keys(doc).length === 0) {
-    throw new Error('请填写供应商 TOML 配置')
+    throw new AppError('overlay_empty')
   }
 
   for (const key of Object.keys(doc)) {
     if (!ALLOWED_TOP_LEVEL.has(key)) {
-      throw new Error(`覆盖片段不支持顶层键 ${key}`)
+      throw new AppError('overlay_unsupported_top_level', { key })
     }
   }
 
   const providers = doc.model_providers
   if (!isPlainObject(providers)) {
-    throw new Error('请提供一个 [model_providers.<id>] 表')
+    throw new AppError('overlay_missing_providers')
   }
 
   const keys = Object.keys(providers)
   if (keys.length !== 1) {
-    throw new Error('覆盖片段必须恰好包含一个自定义供应商表')
+    throw new AppError('overlay_single_provider')
   }
 
   const tableKey = keys[0]
   if (RESERVED_PROVIDER_IDS.has(tableKey)) {
-    throw new Error(`${tableKey} 是 Codex 内置供应商 ID，请改用其他名称`)
+    throw new AppError('overlay_reserved_provider_id', { name: tableKey })
   }
 
   const table = providers[tableKey]
   if (!isPlainObject(table)) {
-    throw new Error('供应商表必须是对象')
+    throw new AppError('overlay_table_not_object')
   }
 
   const declaredProvider = asTrimmedString(doc.model_provider)
   if (declaredProvider && declaredProvider !== tableKey) {
-    throw new Error('model_provider 必须与 [model_providers.<id>] 的 id 一致')
+    throw new AppError('overlay_provider_mismatch')
   }
 
   const baseUrl = asTrimmedString(table.base_url)
   if ((options.requireBaseUrl ?? true) && !baseUrl) {
-    throw new Error('请在 TOML 中填写 base_url')
+    throw new AppError('overlay_missing_base_url')
   }
 
   const wireApi = table.wire_api
   if (wireApi !== undefined && wireApi !== 'responses') {
-    throw new Error('wire_api 仅支持 responses')
+    throw new AppError('overlay_wire_api')
   }
 
   if (hasAuthTable(table) && hasInlineAuth(table)) {
-    throw new Error('auth 不能与 env_key / experimental_bearer_token / requires_openai_auth 同时使用')
+    throw new AppError('overlay_auth_conflict')
   }
 
   return {
@@ -241,7 +257,9 @@ function parseReasoningEffort(value: unknown): string {
   const effort = asTrimmedString(value)
   if (!effort) return ''
   if (!isReasoningEffort(effort)) {
-    throw new Error('model_reasoning_effort 仅支持 minimal / low / medium / high / xhigh')
+    throw new AppError('overlay_invalid_reasoning', {
+      allowed: REASONING_EFFORTS.join(' / '),
+    })
   }
   return effort
 }
@@ -249,7 +267,7 @@ function parseReasoningEffort(value: unknown): string {
 function parsePositiveInt(value: unknown, key: string): number | null {
   if (value === undefined) return null
   if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
-    throw new Error(`${key} 必须是正整数`)
+    throw new AppError('overlay_positive_int', { key })
   }
   return value
 }
@@ -259,7 +277,7 @@ function parseOptionalPositiveInt(text: string, key: string): number | null {
   if (!trimmed) return null
   const value = Number(trimmed)
   if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`${key} 必须是正整数`)
+    throw new AppError('overlay_positive_int', { key })
   }
   return value
 }

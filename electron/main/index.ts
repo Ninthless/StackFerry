@@ -2,7 +2,10 @@ import { app, BrowserWindow, dialog, Menu, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
+import type { LanguagePreference } from '../../shared/locale'
 import { resolveCodexHome } from './codex/home'
+import { formatAppError } from './format-error'
+import { setMainLocale, m } from './i18n'
 import {
   bindWindowState,
   broadcastChanged,
@@ -10,6 +13,7 @@ import {
   registerIpc,
   seedOfficialProvider,
 } from './ipc'
+import { LocaleStore } from './locale-store'
 import { ProviderStore } from './providers/store'
 import { AppTray } from './tray'
 
@@ -44,6 +48,7 @@ let win: BrowserWindow | null = null
 let isQuitting = false
 let needsRestart = false
 let store: ProviderStore | null = null
+let localeStore: LocaleStore | null = null
 let tray: AppTray | null = null
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
@@ -109,6 +114,8 @@ app.whenReady().then(async () => {
     Menu.setApplicationMenu(null)
   }
   store = new ProviderStore(path.join(app.getPath('userData'), 'providers.json'))
+  localeStore = new LocaleStore(path.join(app.getPath('userData'), 'locale.json'))
+  setMainLocale(await localeStore.resolveLocale())
   const ipcContext = {
     store,
     getCodexHome: () => resolveCodexHome(),
@@ -120,6 +127,13 @@ app.whenReady().then(async () => {
     onChanged: () => {
       broadcastChanged()
       void refreshTray()
+    },
+    getLocalePreference: () => localeStore!.getPreference(),
+    setLocalePreference: async (preference: LanguagePreference) => {
+      const next = await localeStore!.setPreference(preference)
+      setMainLocale(await localeStore!.resolveLocale())
+      void refreshTray()
+      return next
     },
   }
   tray = new AppTray({
@@ -133,7 +147,7 @@ app.whenReady().then(async () => {
       try {
         await enableProvider(ipcContext, id)
       } catch (error) {
-        dialog.showErrorBox('启用失败', error instanceof Error ? error.message : String(error))
+        dialog.showErrorBox(m.tray_enable_failed(), formatAppError(error))
       }
     },
   })

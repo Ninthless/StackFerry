@@ -6,6 +6,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
+import * as m from "@/paraglide/messages.js"
 
 export function ClaudeCodePlaceholder() {
   return (
@@ -16,10 +17,8 @@ export function ClaudeCodePlaceholder() {
             <EmptyMedia variant="icon">
               <Bot />
             </EmptyMedia>
-            <EmptyTitle>Claude Code 即将接入</EmptyTitle>
-            <EmptyDescription>
-              这里会管理 Claude Code 的供应商配置。当前只做占位，不会读写任何配置文件。
-            </EmptyDescription>
+            <EmptyTitle>{m.claude_placeholder_title()}</EmptyTitle>
+            <EmptyDescription>{m.claude_placeholder_description()}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </main>

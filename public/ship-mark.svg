@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="-2 -2 601 428"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Container ship mark</title>
+  <desc id="desc">A precisely traced container ship mark on a transparent background</desc>
+
+  <!-- Change the color property to recolor the whole mark. -->
+  <g
+    color="#f5f5f5"
+    fill="currentColor"
+  >
+    <g transform="translate(-5 432.5) scale(.1 -.1)">
+    <path d="M1296 4300c-53-27-87-66-105-119-7-23-11-167-11-457v-423l688-3c653-3 689-4 732-22 81-35 147-85 186-141l37-55h1837v534c0 381-3 543-12 567-16 48-46 86-88 112l-35 22-1590 5-1590 5-49-25Z"/>
+    <path d="M793 3018c-46-15-113-88-124-134-4-22-9-270-9-551v-513h1920v485c0 463-1 487-20 539-25 66-82 127-147 158l-48 23-770 2c-503 1-781-2-802-9Z"/>
+    <path d="M2854 2983c2-27 5-299 5-605l1-558h2320v508c-1 279-5 527-9 550-10 50-66 115-120 138-28 12-202 14-1117 14H2849l5-47Z"/>
+    <path d="M2862 1653c7-142 58-227 168-285l45-23 1473-3c809-1 1472 0 1472 3 0 3-21 32-47 64-27 33-74 92-105 132-59 78-117 140-158 174-25 20-42 20-1439 23l-1413 2 4-87Z"/>
+    </g>
+    <path d="M17 258.5h236V293c0 20.4 16.6 37 37 37h299l-73 87.5c-4 4.8-10 7.5-16.5 7.5H76c-7.4 0-14.4-3.7-18.5-10L5.2 336.2A31 31 0 0 1 0 319v-43.5c0-9.4 7.6-17 17-17Z"/>
+  </g>
+</svg>

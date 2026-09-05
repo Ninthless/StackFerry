@@ -2,6 +2,7 @@ import { useRef } from "react"
 import { Settings } from "lucide-react"
 import { BrandMark } from "@/components/brand-mark"
 import { clis, type CliId } from "@/features/clis/registry"
+import * as m from "@/paraglide/messages.js"
 import {
   Sidebar,
   SidebarContent,
@@ -55,7 +56,7 @@ export function AppSidebar({ activeId, onSelect }: Props) {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>CLI</SidebarGroupLabel>
+          <SidebarGroupLabel>{m.nav_cli()}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {clis.map((cli) => (
@@ -79,11 +80,11 @@ export function AppSidebar({ activeId, onSelect }: Props) {
           <SidebarMenuItem>
             <SidebarMenuButton
               isActive={activeId === "settings"}
-              tooltip="设置"
+              tooltip={m.nav_settings()}
               onClick={() => onSelect("settings")}
             >
               <Settings />
-              <span>设置</span>
+              <span>{m.nav_settings()}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

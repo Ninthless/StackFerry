@@ -9,6 +9,7 @@ import {
   FieldSet,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import * as m from "@/paraglide/messages.js"
 import { SettingsSection } from "./settings-section"
 
 export function AboutSettings() {
@@ -18,12 +19,10 @@ export function AboutSettings() {
     <SettingsSection>
       <FieldGroup>
         <FieldSet>
-          <FieldLegend>关于</FieldLegend>
-          <FieldDescription>
-            管理 Codex 与后续 CLI 的供应商配置，一键写入本机配置文件。
-          </FieldDescription>
+          <FieldLegend>{m.about_legend()}</FieldLegend>
+          <FieldDescription>{m.about_description()}</FieldDescription>
           <Field>
-            <FieldLabel htmlFor={`${formId}-version`}>版本</FieldLabel>
+            <FieldLabel htmlFor={`${formId}-version`}>{m.version_label()}</FieldLabel>
             <Input id={`${formId}-version`} value={packageJson.version} readOnly />
           </Field>
         </FieldSet>

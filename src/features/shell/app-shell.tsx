@@ -8,13 +8,14 @@ import { SettingsPage } from "@/features/settings/settings-page"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import * as m from "@/paraglide/messages.js"
 import { AppSidebar, type NavId } from "./app-sidebar"
 import { AppTitlebar } from "./app-titlebar"
 
 function SettingsView() {
   return (
     <>
-      <AppTitlebar title="设置" />
+      <AppTitlebar title={m.settings_title()} />
       <Separator />
       <SettingsPage />
     </>
@@ -44,7 +45,7 @@ function CodexView() {
         action={
           <Button className="app-region-no-drag" type="button" onClick={session.openCreate}>
             <Plus data-icon="inline-start" />
-            添加
+            {m.action_add()}
           </Button>
         }
       />

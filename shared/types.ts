@@ -1,3 +1,7 @@
+import type { LanguagePreference } from './locale'
+
+export type { LanguagePreference }
+
 export type ProviderKind = 'official' | 'custom'
 
 export type Preset = {
@@ -57,4 +61,6 @@ export type StackferryApi = {
   isWindowMaximized: () => Promise<boolean>
   onWindowMaximizedChange: (listener: (maximized: boolean) => void) => () => void
   onChanged: (listener: () => void) => () => void
+  getLocalePreference: () => Promise<LanguagePreference>
+  setLocalePreference: (preference: LanguagePreference) => Promise<LanguagePreference>
 }

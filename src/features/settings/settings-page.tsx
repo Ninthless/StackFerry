@@ -1,13 +1,14 @@
 import { useId, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import * as m from "@/paraglide/messages.js"
 import { AppearanceSettings } from "./appearance-settings"
 import { CodexSettings } from "./codex-settings"
 import { AboutSettings } from "./about-settings"
 
 const SECTIONS = [
-  { id: "appearance", label: "外观" },
-  { id: "codex", label: "Codex" },
-  { id: "about", label: "关于" },
+  { id: "appearance", label: () => m.settings_appearance() },
+  { id: "codex", label: () => m.settings_codex() },
+  { id: "about", label: () => m.settings_about() },
 ] as const
 
 type SectionId = (typeof SECTIONS)[number]["id"]
@@ -33,7 +34,7 @@ export function SettingsPage() {
         <TabsList className="mt-6 ml-6 shrink-0 self-start">
           {SECTIONS.map((item) => (
             <TabsTrigger key={item.id} value={item.id} id={`${tabsId}-${item.id}`}>
-              {item.label}
+              {item.label()}
             </TabsTrigger>
           ))}
         </TabsList>

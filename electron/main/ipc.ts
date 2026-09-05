@@ -2,7 +2,8 @@ import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { existsSync } from 'node:fs'
 import { PRESETS } from '../../shared/presets'
 import { IpcChannel } from '../../shared/ipc'
-import type { AppStatus, ProviderDraft } from '../../shared/types'
+import { isLanguagePreference } from '../../shared/locale'
+import type { AppStatus, LanguagePreference, ProviderDraft } from '../../shared/types'
 import { codexAuthPath, codexConfigPath } from './codex/home'
 import { enableOfficialLiveConfig, enableThirdPartyLiveConfig } from './codex/writer'
 import { listProviderModels, type ListModelsInput } from './providers/models'
@@ -15,6 +16,8 @@ type IpcContext = {
   getNeedsRestart: () => boolean
   setNeedsRestart: (value: boolean) => void
   onChanged: () => void
+  getLocalePreference: () => Promise<LanguagePreference>
+  setLocalePreference: (preference: LanguagePreference) => Promise<LanguagePreference>
 }
 
 export function registerIpc(context: IpcContext): void {
@@ -30,6 +33,10 @@ export function registerIpc(context: IpcContext): void {
   ipcMain.handle(IpcChannel.updateProvider, async (_event, id: string, draft: ProviderDraft) => {
     const provider = await context.store.update(id, draft)
     context.onChanged()
+    if ((await context.store.getActiveId()) === id) {
+      writeChain = writeChain.catch(() => undefined).then(() => enableProvider(context, id))
+      await writeChain
+    }
     return provider
   })
   ipcMain.handle(IpcChannel.deleteProvider, async (_event, id: string) => {
@@ -63,6 +70,13 @@ export function registerIpc(context: IpcContext): void {
   })
   ipcMain.handle(IpcChannel.windowIsMaximized, (event) => {
     return senderWindow(event)?.isMaximized() ?? false
+  })
+  ipcMain.handle(IpcChannel.getLocale, () => context.getLocalePreference())
+  ipcMain.handle(IpcChannel.setLocale, async (_event, preference: LanguagePreference) => {
+    if (!isLanguagePreference(preference)) {
+      return context.getLocalePreference()
+    }
+    return context.setLocalePreference(preference)
   })
 }
 

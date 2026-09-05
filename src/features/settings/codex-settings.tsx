@@ -11,17 +11,19 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { formatAppError } from "@/lib/format-app-error"
+import * as m from "@/paraglide/messages.js"
 import { SettingsSection } from "./settings-section"
 
 function formatWriteTime(iso: string | null): string {
-  if (!iso) return "尚未写入"
+  if (!iso) return m.never_written()
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
   return date.toLocaleString()
 }
 
 function fileState(exists: boolean): string {
-  return exists ? "已存在" : "未找到"
+  return exists ? m.file_exists() : m.file_missing()
 }
 
 export function CodexSettings() {
@@ -33,7 +35,7 @@ export function CodexSettings() {
   useEffect(() => {
     const api = window.stackferry
     if (!api) {
-      setError("请从 StackFerry 桌面应用打开，而不是浏览器预览页。")
+      setError(m.error_desktop_only())
       setLoading(false)
       return
     }
@@ -48,7 +50,7 @@ export function CodexSettings() {
         setError("")
       } catch (loadError) {
         if (cancelled) return
-        setError(loadError instanceof Error ? loadError.message : String(loadError))
+        setError(formatAppError(loadError))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -69,22 +71,18 @@ export function CodexSettings() {
     <SettingsSection>
       <FieldGroup>
         <FieldSet>
-          <FieldLegend>Codex 环境</FieldLegend>
-          <FieldDescription>
-            启用供应商时会写入这里的 config.toml。应用不会改写 auth.json。
-          </FieldDescription>
+          <FieldLegend>{m.codex_env_legend()}</FieldLegend>
+          <FieldDescription>{m.codex_env_description()}</FieldDescription>
           {error ? (
             <Alert variant="destructive">
-              <AlertTitle>无法读取状态</AlertTitle>
+              <AlertTitle>{m.status_read_failed()}</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : null}
           {status?.needsRestart ? (
             <Alert>
-              <AlertTitle>需要重启 Codex</AlertTitle>
-              <AlertDescription>
-                配置已写入，请重启 Codex / 终端后生效。
-              </AlertDescription>
+              <AlertTitle>{m.restart_codex_title()}</AlertTitle>
+              <AlertDescription>{m.restart_codex_description()}</AlertDescription>
             </Alert>
           ) : null}
           {loading ? (
@@ -96,7 +94,7 @@ export function CodexSettings() {
           ) : status ? (
             <>
               <Field>
-                <FieldLabel htmlFor={`${formId}-codex-home`}>Codex 目录</FieldLabel>
+                <FieldLabel htmlFor={`${formId}-codex-home`}>{m.codex_home_label()}</FieldLabel>
                 <Input id={`${formId}-codex-home`} value={status.codexHome} readOnly />
               </Field>
               <Field>
@@ -108,7 +106,7 @@ export function CodexSettings() {
                 <Input id={`${formId}-auth`} value={fileState(status.authExists)} readOnly />
               </Field>
               <Field>
-                <FieldLabel htmlFor={`${formId}-last-write`}>上次写入</FieldLabel>
+                <FieldLabel htmlFor={`${formId}-last-write`}>{m.last_write_label()}</FieldLabel>
                 <Input
                   id={`${formId}-last-write`}
                   value={formatWriteTime(status.lastWriteAt)}

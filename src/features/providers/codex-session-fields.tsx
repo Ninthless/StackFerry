@@ -1,5 +1,5 @@
-import { useId, useState } from "react"
-import { Download } from "lucide-react"
+import { useMemo, useState } from "react"
+import { CheckCircle2Icon, CircleHelp, Download, InfoIcon } from "lucide-react"
 import {
   REASONING_EFFORTS,
   overlayBaseUrl,
@@ -7,13 +7,18 @@ import {
   withOverlaySession,
   type OverlaySession,
 } from "@shared/provider-overlay"
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
+import { Alert, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { Field, FieldLabel } from "@/components/ui/field"
 import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@/components/ui/input-group"
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox"
+import { InputGroupAddon, InputGroupButton } from "@/components/ui/input-group"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -23,15 +28,39 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { formatAppError } from "@/lib/format-app-error"
+import * as m from "@/paraglide/messages.js"
 
-const REASONING_ITEMS = [
-  { label: "默认", value: null },
-  { label: "minimal", value: "minimal" },
-  { label: "low", value: "low" },
-  { label: "medium", value: "medium" },
-  { label: "high", value: "high" },
-  { label: "xhigh", value: "xhigh" },
-]
+function FieldHint({
+  htmlFor,
+  label,
+  hint,
+}: {
+  htmlFor: string
+  label: string
+  hint: string
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <FieldLabel htmlFor={htmlFor}>{label}</FieldLabel>
+      <Tooltip>
+        <TooltipTrigger render={<Button type="button" variant="ghost" size="icon-xs" />}>
+          <CircleHelp />
+          <span className="sr-only">{m.field_hint()}</span>
+        </TooltipTrigger>
+        <TooltipContent>{hint}</TooltipContent>
+      </Tooltip>
+    </div>
+  )
+}
+
+function reasoningItems() {
+  return [
+    { label: m.session_reasoning_default(), value: null },
+    ...REASONING_EFFORTS.map((value) => ({ label: value, value })),
+  ]
+}
 
 type Props = {
   formId: string
@@ -50,24 +79,29 @@ export function CodexSessionFields({
   onTomlChange,
   onError,
 }: Props) {
-  const modelsListId = useId()
   const session = overlaySession(tomlText)
   const [models, setModels] = useState<string[]>([])
   const [fetching, setFetching] = useState(false)
+  const [fetchedCount, setFetchedCount] = useState<number | null>(null)
+  const items = reasoningItems()
+  const modelItems = useMemo(() => {
+    if (!session.model || models.includes(session.model)) return models
+    return [session.model, ...models]
+  }, [models, session.model])
 
   function patchSession(patch: Partial<OverlaySession>): void {
     try {
       onTomlChange(withOverlaySession(tomlText, patch))
       onError("")
     } catch (error) {
-      onError(error instanceof Error ? error.message : String(error))
+      onError(formatAppError(error))
     }
   }
 
   async function handleFetchModels(): Promise<void> {
     const api = window.stackferry
     if (!api) {
-      onError("请从 StackFerry 桌面应用打开，而不是浏览器预览页。")
+      onError(m.error_desktop_only())
       return
     }
     setFetching(true)
@@ -78,9 +112,11 @@ export function CodexSessionFields({
         providerId,
       })
       setModels(ids)
+      setFetchedCount(ids.length)
       onError("")
     } catch (error) {
-      onError(error instanceof Error ? error.message : String(error))
+      setFetchedCount(null)
+      onError(formatAppError(error))
     } finally {
       setFetching(false)
     }
@@ -89,44 +125,72 @@ export function CodexSessionFields({
   return (
     <>
       <Field>
-        <FieldLabel htmlFor={`${formId}-model`}>默认模型</FieldLabel>
-        <InputGroup>
-          <InputGroupInput
+        <FieldHint
+          htmlFor={`${formId}-model`}
+          label={m.session_model()}
+          hint={m.session_model_description()}
+        />
+        <Combobox
+          items={modelItems}
+          value={session.model || null}
+          inputValue={session.model}
+          onValueChange={(value) => {
+            if (typeof value === "string") patchSession({ model: value })
+          }}
+          onInputValueChange={(value) => {
+            patchSession({ model: value })
+          }}
+        >
+          <ComboboxInput
             id={`${formId}-model`}
-            name="model"
             autoComplete="off"
-            list={modelsListId}
             placeholder="gpt-5.4"
-            value={session.model}
-            onChange={(event) => patchSession({ model: event.target.value })}
-          />
-          <InputGroupAddon align="inline-end">
-            <InputGroupButton
-              type="button"
-              size="icon-xs"
-              disabled={fetching}
-              aria-label="获取模型列表"
-              onClick={() => {
-                void handleFetchModels()
-              }}
-            >
-              <Download />
-            </InputGroupButton>
-          </InputGroupAddon>
-        </InputGroup>
-        <datalist id={modelsListId}>
-          {models.map((id) => (
-            <option key={id} value={id} />
-          ))}
-        </datalist>
-        <FieldDescription>
-          填写 Base URL 和 API Key 后可获取模型列表，也可直接输入模型 ID。
-        </FieldDescription>
+            className="w-full"
+          >
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                type="button"
+                size="icon-xs"
+                disabled={fetching}
+                aria-label={m.session_fetch_models()}
+                onClick={() => {
+                  void handleFetchModels()
+                }}
+              >
+                <Download />
+              </InputGroupButton>
+            </InputGroupAddon>
+          </ComboboxInput>
+          <ComboboxContent>
+            <ComboboxEmpty>{m.session_models_empty()}</ComboboxEmpty>
+            <ComboboxList>
+              {(item) => (
+                <ComboboxItem key={item} value={item}>
+                  {item}
+                </ComboboxItem>
+              )}
+            </ComboboxList>
+          </ComboboxContent>
+        </Combobox>
+        {fetchedCount == null ? null : (
+          <Alert>
+            {fetchedCount > 0 ? <CheckCircle2Icon /> : <InfoIcon />}
+            <AlertTitle>
+              {fetchedCount > 0
+                ? m.session_models_fetched({ count: fetchedCount })
+                : m.session_models_none()}
+            </AlertTitle>
+          </Alert>
+        )}
       </Field>
       <Field>
-        <FieldLabel htmlFor={`${formId}-reasoning`}>思考等级</FieldLabel>
+        <FieldHint
+          htmlFor={`${formId}-reasoning`}
+          label={m.session_reasoning()}
+          hint={m.session_reasoning_description()}
+        />
         <Select
-          items={REASONING_ITEMS}
+          items={items}
           value={session.reasoningEffort || null}
           onValueChange={(value) => {
             patchSession({
@@ -140,7 +204,7 @@ export function CodexSessionFields({
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false} side="bottom">
             <SelectGroup>
-              {REASONING_ITEMS.map((item) => (
+              {items.map((item) => (
                 <SelectItem key={item.value ?? "default"} value={item.value}>
                   {item.label}
                 </SelectItem>
@@ -148,35 +212,36 @@ export function CodexSessionFields({
             </SelectGroup>
           </SelectContent>
         </Select>
-        <FieldDescription>
-          对应 config.toml 的 model_reasoning_effort，仅 Responses API 生效。选「默认」则不写入该键。
-        </FieldDescription>
       </Field>
       <Field>
-        <FieldLabel htmlFor={`${formId}-context`}>上下文窗口</FieldLabel>
+        <FieldHint
+          htmlFor={`${formId}-context`}
+          label={m.session_context()}
+          hint={m.session_context_description()}
+        />
         <Input
           id={`${formId}-context`}
           name="contextWindow"
           inputMode="numeric"
-          placeholder="例如 272000，留空则用模型默认"
+          placeholder={m.session_context_placeholder()}
           value={session.contextWindow}
           onChange={(event) => patchSession({ contextWindow: event.target.value })}
         />
-        <FieldDescription>对应 model_context_window，单位是 token。</FieldDescription>
       </Field>
       <Field>
-        <FieldLabel htmlFor={`${formId}-compact`}>自动压缩阈值</FieldLabel>
+        <FieldHint
+          htmlFor={`${formId}-compact`}
+          label={m.session_compact()}
+          hint={m.session_compact_description()}
+        />
         <Input
           id={`${formId}-compact`}
           name="autoCompact"
           inputMode="numeric"
-          placeholder="例如 900000，留空则不写"
+          placeholder={m.session_compact_placeholder()}
           value={session.autoCompact}
           onChange={(event) => patchSession({ autoCompact: event.target.value })}
         />
-        <FieldDescription>
-          对应 model_auto_compact_token_limit。1M 上下文通常配 900000。
-        </FieldDescription>
       </Field>
     </>
   )

@@ -7,6 +7,7 @@ import {
   stringifyToml,
 } from '../electron/main/codex/merge'
 import { starterOverlayToml } from '../shared/provider-overlay'
+import { expectAppError } from './expect-app-error'
 
 const existing = parseToml(`
 approval_policy = "on-request"
@@ -176,11 +177,12 @@ ${overlayFor({
   })
 
   it('rejects chat wire_api and reserved provider ids', () => {
-    expect(() =>
-      applyThirdPartyProvider(existing, {
-        id: 'bad-wire',
-        name: 'Bad',
-        tomlText: `model = "x"
+    expectAppError(
+      () =>
+        applyThirdPartyProvider(existing, {
+          id: 'bad-wire',
+          name: 'Bad',
+          tomlText: `model = "x"
 model_provider = "bad"
 
 [model_providers.bad]
@@ -188,22 +190,43 @@ name = "Bad"
 base_url = "https://bad.example/v1"
 wire_api = "chat"
 `,
-        apiKey: 'k',
-      }),
-    ).toThrow('wire_api 仅支持 responses')
-
-    expect(() =>
-      applyThirdPartyProvider(existing, {
-        id: 'reserved',
-        name: 'OpenAI',
-        tomlText: overlayFor({
-          providerId: 'openai',
-          name: 'OpenAI',
-          baseUrl: 'https://api.openai.com/v1',
-          model: 'gpt-5.4',
+          apiKey: 'k',
         }),
-        apiKey: 'k',
-      }),
-    ).toThrow('openai 是 Codex 内置供应商 ID，请改用其他名称')
+      'overlay_wire_api',
+    )
+
+    expectAppError(
+      () =>
+        applyThirdPartyProvider(existing, {
+          id: 'reserved',
+          name: 'OpenAI',
+          tomlText: overlayFor({
+            providerId: 'openai',
+            name: 'OpenAI',
+            baseUrl: 'https://api.openai.com/v1',
+            model: 'gpt-5.4',
+          }),
+          apiKey: 'k',
+        }),
+      'overlay_reserved_provider_id',
+      { name: 'openai' },
+    )
+  })
+
+  it('writes max reasoning effort from the overlay', () => {
+    const applied = applyThirdPartyProvider(existing, {
+      id: 'astra',
+      name: 'Astra',
+      tomlText: `model_reasoning_effort = "max"
+${overlayFor({
+        providerId: 'provider_astra',
+        name: 'Astra',
+        baseUrl: 'https://astra.example/v1',
+        model: 'gpt-6-astra',
+      })}`,
+      apiKey: 'key-astra',
+    })
+    expect(applied.model).toBe('gpt-6-astra')
+    expect(applied.model_reasoning_effort).toBe('max')
   })
 })

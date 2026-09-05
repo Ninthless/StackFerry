@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type FormEvent } from "react"
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react"
 import { AlignLeft } from "lucide-react"
 import type { Preset, ProviderDraft, ProviderKind, ProviderListItem } from "@shared/types"
 import {
@@ -26,6 +26,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { formatAppError } from "@/lib/format-app-error"
+import { presetLabel } from "@/lib/preset-label"
+import * as m from "@/paraglide/messages.js"
 import { TomlEditor } from "./toml-editor"
 import { CodexSessionFields } from "./codex-session-fields"
 
@@ -46,12 +49,24 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
   const [error, setError] = useState("")
   const [pending, setPending] = useState(false)
 
+  const displayedEditingRef = useRef(editing)
+  if (open) displayedEditingRef.current = editing
+  const displayedEditing = displayedEditingRef.current
+
   const selectedPreset = presets.find((preset) => preset.id === presetId) ?? presets[0]
   const presetItems = useMemo(
-    () => presets.map((preset) => ({ label: preset.name, value: preset.id })),
+    () => presets.map((preset) => ({ label: presetLabel(preset.id, preset.name), value: preset.id })),
     [presets],
   )
-  const kind: ProviderKind = editing?.kind ?? selectedPreset?.kind ?? "custom"
+  const kind: ProviderKind = displayedEditing?.kind ?? selectedPreset?.kind ?? "custom"
+  const rewriteLive = Boolean(displayedEditing?.enabled)
+  const submitLabel = rewriteLive
+    ? pending
+      ? m.provider_enabling()
+      : m.provider_enable()
+    : pending
+      ? m.action_saving()
+      : m.action_save()
   const requiresApiKey = useMemo(() => {
     if (kind !== "custom") return false
     try {
@@ -80,7 +95,7 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
   function applyPreset(nextPresetId: string): void {
     const preset = presets.find((item) => item.id === nextPresetId)
     setPresetId(nextPresetId)
-    if (!preset || editing) return
+    if (!preset || displayedEditing) return
     setName(preset.name)
     setTomlText(preset.tomlText)
   }
@@ -90,7 +105,7 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
       setTomlText(formatToml(tomlText))
       setError("")
     } catch (formatError) {
-      setError(formatError instanceof Error ? formatError.message : String(formatError))
+      setError(formatAppError(formatError))
     }
   }
 
@@ -107,7 +122,7 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
         presetId: editing ? undefined : presetId,
       })
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : String(submitError))
+      setError(formatAppError(submitError))
     } finally {
       setPending(false)
     }
@@ -121,13 +136,13 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
       >
         <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
           <SheetHeader>
-            <SheetTitle>{editing ? "编辑供应商" : "添加供应商"}</SheetTitle>
+            <SheetTitle>{displayedEditing ? m.editor_edit_title() : m.editor_add_title()}</SheetTitle>
           </SheetHeader>
           <ScrollArea className="min-h-0 flex-1 overflow-hidden">
             <FieldGroup className="px-4 pb-4">
-              {!editing ? (
+              {!displayedEditing ? (
                 <Field>
-                  <FieldLabel htmlFor={`${formId}-preset`}>预设</FieldLabel>
+                  <FieldLabel htmlFor={`${formId}-preset`}>{m.field_preset()}</FieldLabel>
                   <Select
                     items={presetItems}
                     value={presetId}
@@ -151,7 +166,7 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
                 </Field>
               ) : null}
               <Field>
-                <FieldLabel htmlFor={`${formId}-name`}>名称</FieldLabel>
+                <FieldLabel htmlFor={`${formId}-name`}>{m.field_name()}</FieldLabel>
                 <Input
                   id={`${formId}-name`}
                   name="name"
@@ -184,15 +199,15 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
                     />
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor={`${formId}-api-key`}>API Key</FieldLabel>
+                    <FieldLabel htmlFor={`${formId}-api-key`}>{m.field_api_key()}</FieldLabel>
                     <Input
                       id={`${formId}-api-key`}
                       name="apiKey"
                       type="password"
                       autoComplete="off"
-                      required={requiresApiKey && (!editing || !editing.hasApiKey)}
+                      required={requiresApiKey && (!displayedEditing || !displayedEditing.hasApiKey)}
                       value={apiKey}
-                      placeholder={editing?.hasApiKey ? "不修改请留空" : ""}
+                      placeholder={displayedEditing?.hasApiKey ? m.api_key_keep_placeholder() : ""}
                       onChange={(event) => setApiKey(event.target.value)}
                     />
                   </Field>
@@ -200,16 +215,16 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
                     formId={formId}
                     tomlText={tomlText}
                     apiKey={apiKey}
-                    providerId={editing?.id}
+                    providerId={displayedEditing?.id}
                     onTomlChange={setTomlText}
                     onError={setError}
                   />
                   <Field data-invalid={error ? true : undefined}>
                     <Field orientation="horizontal">
-                      <FieldLabel htmlFor={`${formId}-toml`}>config.toml 覆盖片段</FieldLabel>
+                      <FieldLabel htmlFor={`${formId}-toml`}>{m.field_toml()}</FieldLabel>
                       <Button type="button" variant="outline" size="sm" onClick={handleFormatToml}>
                         <AlignLeft data-icon="inline-start" />
-                        格式化
+                        {m.action_format()}
                       </Button>
                     </Field>
                     <TomlEditor
@@ -227,10 +242,10 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
           <SheetFooter>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                取消
+                {m.action_cancel()}
               </Button>
               <Button type="submit" disabled={pending}>
-                {pending ? "保存中…" : "保存"}
+                {submitLabel}
               </Button>
             </div>
           </SheetFooter>

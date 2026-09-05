@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { safeStorage } from 'electron'
+import { AppError } from '../../../shared/app-error'
 import { findPreset } from '../../../shared/presets'
 import {
   overlayRequiresApiKey,
@@ -51,7 +52,7 @@ export class ProviderStore {
     const file = await this.read()
     const kind = this.resolveKind(draft)
     if (kind === 'official' && file.providers.some((provider) => provider.kind === 'official')) {
-      throw new Error('官方登录配置已存在')
+      throw new AppError('official_exists')
     }
     const now = new Date().toISOString()
     const overlay = this.resolveOverlay(kind, draft.tomlText)
@@ -124,7 +125,7 @@ export class ProviderStore {
   decryptApiKey(provider: StoredProvider): string {
     if (!provider.apiKeyPayload) return ''
     if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error('系统密钥存储不可用，无法读取 API Key')
+      throw new AppError('secret_storage_unavailable_read')
     }
     return safeStorage.decryptString(Buffer.from(provider.apiKeyPayload, 'base64'))
   }
@@ -162,7 +163,7 @@ export class ProviderStore {
 
   private requireName(name: string): string {
     const trimmed = name.trim()
-    if (!trimmed) throw new Error('请填写供应商名称')
+    if (!trimmed) throw new AppError('provider_name_required')
     return trimmed
   }
 
@@ -170,7 +171,7 @@ export class ProviderStore {
     if (provider.kind === 'official') return
     parseProviderOverlay(provider.tomlText)
     if (overlayRequiresApiKey(provider.tomlText) && !provider.apiKeyPayload && !incomingKey?.trim()) {
-      throw new Error('请填写 API Key，或在 TOML 中配置 env_key / auth')
+      throw new AppError('api_key_required')
     }
   }
 
@@ -179,14 +180,14 @@ export class ProviderStore {
     const trimmed = apiKey?.trim() ?? ''
     if (!trimmed) return ''
     if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error('系统密钥存储不可用，无法保存 API Key')
+      throw new AppError('secret_storage_unavailable_write')
     }
     return safeStorage.encryptString(trimmed).toString('base64')
   }
 
   private requireProvider(file: StoreFile, id: string): StoredProvider {
     const provider = file.providers.find((item) => item.id === id)
-    if (!provider) throw new Error('供应商不存在')
+    if (!provider) throw new AppError('provider_missing')
     return provider
   }
 
@@ -198,7 +199,7 @@ export class ProviderStore {
       providers: LegacyStoredProvider[]
     }
     if (!Array.isArray(parsed.providers) || (parsed.version !== 1 && parsed.version !== STORE_VERSION)) {
-      throw new Error('供应商存储文件已损坏')
+      throw new AppError('store_corrupt')
     }
     const migrated: StoreFile = {
       version: STORE_VERSION,

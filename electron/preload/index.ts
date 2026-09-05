@@ -31,6 +31,8 @@ const api: StackferryApi = {
       ipcRenderer.removeListener(IpcChannel.changed, wrapped)
     }
   },
+  getLocalePreference: () => ipcRenderer.invoke(IpcChannel.getLocale),
+  setLocalePreference: (preference) => ipcRenderer.invoke(IpcChannel.setLocale, preference),
 }
 
 contextBridge.exposeInMainWorld('stackferry', api)
