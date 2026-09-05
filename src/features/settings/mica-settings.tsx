@@ -1,13 +1,17 @@
 import { useEffect, useId, useState } from "react"
 import type { MicaState } from "@shared/mica"
 import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
   Field,
   FieldContent,
   FieldDescription,
-  FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from "@/components/ui/field"
 import { Switch } from "@/components/ui/switch"
 import { applyMicaDocument } from "@/lib/mica"
@@ -42,10 +46,12 @@ export function MicaSettings() {
   if (!state?.supported) return null
 
   return (
-    <FieldSet>
-      <FieldLegend>{m.mica_legend()}</FieldLegend>
-      <FieldDescription>{m.mica_description()}</FieldDescription>
-      <FieldGroup>
+    <Card>
+      <CardHeader>
+        <CardTitle>{m.mica_legend()}</CardTitle>
+        <CardDescription>{m.mica_description()}</CardDescription>
+      </CardHeader>
+      <CardContent>
         <Field orientation="horizontal">
           <FieldContent>
             <FieldLabel htmlFor={switchId}>{m.mica_label()}</FieldLabel>
@@ -59,7 +65,7 @@ export function MicaSettings() {
             }}
           />
         </Field>
-      </FieldGroup>
-    </FieldSet>
+      </CardContent>
+    </Card>
   )
 }

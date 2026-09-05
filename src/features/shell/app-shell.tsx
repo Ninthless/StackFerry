@@ -5,6 +5,12 @@ import { cliById, defaultCliId } from "@/features/clis/registry"
 import { ProviderWorkspace } from "@/features/providers/provider-workspace"
 import { useProviders } from "@/features/providers/use-providers"
 import { SettingsPage } from "@/features/settings/settings-page"
+import {
+  defaultSettingsSectionId,
+  isSettingsSectionId,
+  SETTINGS_SECTIONS,
+  type SettingsSectionId,
+} from "@/features/settings/sections"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -12,12 +18,20 @@ import * as m from "@/paraglide/messages.js"
 import { AppSidebar, type NavId } from "./app-sidebar"
 import { AppTitlebar } from "./app-titlebar"
 
-function SettingsView() {
+function settingsSectionFromNav(id: NavId): SettingsSectionId | null {
+  if (!id.startsWith("settings:")) return null
+  const section = id.slice("settings:".length)
+  return isSettingsSectionId(section) ? section : defaultSettingsSectionId
+}
+
+function SettingsView({ section }: { section: SettingsSectionId }) {
+  const current = SETTINGS_SECTIONS.find((item) => item.id === section)
+
   return (
     <>
-      <AppTitlebar title={m.settings_title()} />
+      <AppTitlebar title={current?.label() ?? m.settings_title()} />
       <Separator />
-      <SettingsPage />
+      <SettingsPage section={section} />
     </>
   )
 }
@@ -57,6 +71,7 @@ function CodexView() {
 
 export function AppShell() {
   const [navId, setNavId] = useState<NavId>(defaultCliId)
+  const settingsSection = settingsSectionFromNav(navId)
 
   return (
     <SidebarProvider
@@ -67,7 +82,7 @@ export function AppShell() {
       <SidebarInset className="min-h-0 overflow-hidden">
         {navId === "codex" ? <CodexView /> : null}
         {navId === "claude-code" ? <ClaudeCodeView /> : null}
-        {navId === "settings" ? <SettingsView /> : null}
+        {settingsSection ? <SettingsView section={settingsSection} /> : null}
       </SidebarInset>
     </SidebarProvider>
   )
