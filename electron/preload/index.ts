@@ -37,6 +37,9 @@ const api: StackferryApi = {
   setMicaPreference: (enabled) => ipcRenderer.invoke(IpcChannel.setMica, enabled),
   getThemePreference: () => ipcRenderer.invoke(IpcChannel.getTheme),
   setThemePreference: (preference) => ipcRenderer.invoke(IpcChannel.setTheme, preference),
+  getRouting: () => ipcRenderer.invoke(IpcChannel.getRouting),
+  setRoutingSettings: (patch) => ipcRenderer.invoke(IpcChannel.setRoutingSettings, patch),
+  setProviderQueued: (id, queued) => ipcRenderer.invoke(IpcChannel.setProviderQueued, id, queued),
 }
 
 contextBridge.exposeInMainWorld('stackferry', api)

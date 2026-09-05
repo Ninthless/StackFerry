@@ -4,15 +4,17 @@ import { PRESETS } from '../../shared/presets'
 import { IpcChannel } from '../../shared/ipc'
 import { isLanguagePreference } from '../../shared/locale'
 import type { MicaState } from '../../shared/mica'
+import { isRoutingSettingsPatch, type RoutingSettingsPatch } from '../../shared/routing'
 import { isThemePreference, type ThemePreference } from '../../shared/theme'
 import type { AppStatus, LanguagePreference, ProviderDraft } from '../../shared/types'
 import { codexAuthPath, codexConfigPath } from './codex/home'
-import { enableOfficialLiveConfig, enableThirdPartyLiveConfig } from './codex/writer'
 import { listProviderModels, type ListModelsInput } from './providers/models'
 import type { ProviderStore } from './providers/store'
+import type { RoutingService } from './routing/service'
 
 type IpcContext = {
   store: ProviderStore
+  routing: RoutingService
   getCodexHome: () => string
   backupRoot: string
   getNeedsRestart: () => boolean
@@ -47,6 +49,8 @@ export function registerIpc(context: IpcContext): void {
   })
   ipcMain.handle(IpcChannel.deleteProvider, async (_event, id: string) => {
     await context.store.delete(id)
+    writeChain = writeChain.catch(() => undefined).then(() => context.routing.removeDeleted(id))
+    await writeChain
     context.onChanged()
   })
   ipcMain.handle(IpcChannel.enableProvider, async (_event, id: string) => {
@@ -95,6 +99,26 @@ export function registerIpc(context: IpcContext): void {
     }
     return context.setThemePreference(preference)
   })
+  ipcMain.handle(IpcChannel.getRouting, () => context.routing.snapshot())
+  ipcMain.handle(IpcChannel.setRoutingSettings, async (_event, patch: RoutingSettingsPatch) => {
+    if (!isRoutingSettingsPatch(patch)) {
+      return context.routing.snapshot()
+    }
+    const next = await context.routing.setSettings(patch)
+    context.onChanged()
+    return next
+  })
+  ipcMain.handle(IpcChannel.setProviderQueued, async (_event, id: string, queued: boolean) => {
+    if (typeof id !== 'string' || typeof queued !== 'boolean') {
+      return context.routing.snapshot()
+    }
+    writeChain = writeChain.catch(() => undefined).then(async () => {
+      await context.routing.setQueued(id, queued)
+    })
+    const next = await writeChain.then(() => context.routing.snapshot())
+    context.onChanged()
+    return next
+  })
 }
 
 export function bindWindowState(win: BrowserWindow): void {
@@ -119,25 +143,7 @@ export function broadcastChanged(): void {
 }
 
 export async function enableProvider(context: IpcContext, id: string): Promise<void> {
-  const provider = await context.store.peek(id)
-  const backupRoot = context.backupRoot
-  const codexHome = context.getCodexHome()
-  if (provider.kind === 'official') {
-    await enableOfficialLiveConfig({ codexHome, backupRoot })
-  } else {
-    await enableThirdPartyLiveConfig({
-      codexHome,
-      backupRoot,
-      provider: {
-        id: provider.id,
-        name: provider.name,
-        tomlText: provider.tomlText,
-        apiKey: context.store.decryptApiKey(provider),
-      },
-    })
-  }
-  await context.store.markEnabled(id)
-  context.setNeedsRestart(true)
+  await context.routing.enable(id)
   context.onChanged()
 }
 

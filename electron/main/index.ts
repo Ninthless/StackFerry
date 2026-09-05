@@ -24,6 +24,8 @@ import {
   solidWindowBackground,
 } from './mica'
 import { ProviderStore } from './providers/store'
+import { RoutingService } from './routing/service'
+import { RoutingStore } from './routing/store'
 import { AppTray } from './tray'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -57,10 +59,13 @@ let win: BrowserWindow | null = null
 let isQuitting = false
 let needsRestart = false
 let store: ProviderStore | null = null
+let routingStore: RoutingStore | null = null
+let routing: RoutingService | null = null
 let localeStore: LocaleStore | null = null
 let appearanceStore: AppearanceStore | null = null
 let tray: AppTray | null = null
 let micaPreference = false
+let quitRestored = false
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
@@ -130,6 +135,7 @@ app.whenReady().then(async () => {
     Menu.setApplicationMenu(null)
   }
   store = new ProviderStore(path.join(app.getPath('userData'), 'providers.json'))
+  routingStore = new RoutingStore(path.join(app.getPath('userData'), 'routing.json'))
   localeStore = new LocaleStore(path.join(app.getPath('userData'), 'locale.json'))
   appearanceStore = new AppearanceStore(path.join(app.getPath('userData'), 'appearance.json'))
   micaPreference = await appearanceStore.getMicaPreference()
@@ -138,8 +144,18 @@ app.whenReady().then(async () => {
     if (win && !win.isDestroyed()) applyWindowMica(win, micaPreference)
   })
   setMainLocale(await localeStore.resolveLocale())
+  routing = new RoutingService({
+    store: routingStore,
+    providers: store,
+    getCodexHome: () => resolveCodexHome(),
+    backupRoot: path.join(app.getPath('userData'), 'backups'),
+    setNeedsRestart: (value) => {
+      needsRestart = value
+    },
+  })
   const ipcContext = {
     store,
+    routing,
     getCodexHome: () => resolveCodexHome(),
     backupRoot: path.join(app.getPath('userData'), 'backups'),
     getNeedsRestart: () => needsRestart,
@@ -175,8 +191,7 @@ app.whenReady().then(async () => {
     iconPath: path.join(publicDir, 'icon.png'),
     onShow: () => showWindow(),
     onQuit: () => {
-      isQuitting = true
-      app.quit()
+      void restoreThenQuit()
     },
     onEnable: async (id) => {
       try {
@@ -188,6 +203,7 @@ app.whenReady().then(async () => {
   })
   registerIpc(ipcContext)
   await seedOfficialProvider(store)
+  await routing.start()
   tray.create()
   await refreshTray()
   await createWindow()
@@ -200,9 +216,25 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
-  isQuitting = true
+app.on('before-quit', (event) => {
+  if (quitRestored) return
+  event.preventDefault()
+  void restoreThenQuit()
 })
+
+async function restoreThenQuit(): Promise<void> {
+  if (quitRestored) {
+    app.quit()
+    return
+  }
+  quitRestored = true
+  isQuitting = true
+  try {
+    await routing?.restoreOnQuit()
+  } finally {
+    app.quit()
+  }
+}
 
 app.on('second-instance', () => {
   showWindow()

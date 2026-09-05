@@ -1,8 +1,9 @@
 import type { LanguagePreference } from './locale'
 import type { MicaState } from './mica'
+import type { RoutingSettingsPatch, RoutingState } from './routing'
 import type { ThemePreference } from './theme'
 
-export type { LanguagePreference, MicaState, ThemePreference }
+export type { LanguagePreference, MicaState, RoutingSettingsPatch, RoutingState, ThemePreference }
 
 export type ProviderKind = 'official' | 'custom'
 
@@ -69,4 +70,7 @@ export type StackferryApi = {
   setMicaPreference: (enabled: boolean) => Promise<MicaState>
   getThemePreference: () => Promise<ThemePreference>
   setThemePreference: (preference: ThemePreference) => Promise<ThemePreference>
+  getRouting: () => Promise<RoutingState>
+  setRoutingSettings: (patch: RoutingSettingsPatch) => Promise<RoutingState>
+  setProviderQueued: (id: string, queued: boolean) => Promise<RoutingState>
 }

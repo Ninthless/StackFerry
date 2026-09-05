@@ -20,4 +20,7 @@ export const IpcChannel = {
   setMica: 'app:setMica',
   getTheme: 'app:getTheme',
   setTheme: 'app:setTheme',
+  getRouting: 'routing:get',
+  setRoutingSettings: 'routing:setSettings',
+  setProviderQueued: 'routing:setQueued',
 } as const
