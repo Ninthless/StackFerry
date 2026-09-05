@@ -3,7 +3,7 @@
   "allowlist": {
     "src-tauri/src/app_config.rs": 1156,
     "src-tauri/src/claude_desktop_config.rs": 2049,
-    "src-tauri/src/codex_config.rs": 3947,
+    "src-tauri/src/codex_config.rs": 4032,
     "src-tauri/src/codex_history_migration.rs": 2378,
     "src-tauri/src/commands/provider.rs": 1497,
     "src-tauri/src/commands/settings.rs": 801,
@@ -54,7 +54,7 @@
     "src-tauri/src/services/provider/ccswitch_reconcile.rs": 1087,
     "src-tauri/src/services/provider/live.rs": 2349,
     "src-tauri/src/services/provider/mod.rs": 5064,
-    "src-tauri/src/services/proxy.rs": 7457,
+    "src-tauri/src/services/proxy.rs": 7485,
     "src-tauri/src/services/s3.rs": 820,
     "src-tauri/src/services/session_usage_codex.rs": 2573,
     "src-tauri/src/services/session_usage_grokbuild.rs": 1057,

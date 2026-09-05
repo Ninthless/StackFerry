@@ -1,24 +1,30 @@
-# StackFerry v0.1.26
+# StackFerry v0.1.27
 
-> GPT-6-Astra Codex 兼容性更新。
+> 修复 Codex 中 GPT-6-Astra 需要先拉取模型才出现在菜单的问题。
 
 ## 简体中文
 
 ### Codex GPT-6-Astra
 
-- Codex 外部模型目录现在会自动包含配置中的默认模型，`gpt-6-astra` 可从 `/model` 菜单选择。
-- 对齐 Astra 的推理强度、联网搜索、图片输入、原图细节、并行工具和 872K 最大上下文能力。
-- 选择 Astra 后保留真实上游模型名，并支持在 Codex 中修改 `model_reasoning_effort`。
+- 未配置显式模型目录的 GPT 兼容配置会自动生成包含当前模型和 `gpt-6-astra` 的目录，无需先请求供应商 `/models`；带命名空间的模型保留原有前缀。
+- 修复旧模板中的隐藏标记导致模型无法出现在 Codex `/model` 菜单的问题，并保留 Astra 的六档推理强度（low、medium、high、xhigh、max、ultra）及 872K 最大上下文元数据。
+- 本地路由接管时区分“未配置目录”和“显式空目录”：前者生成默认目录，后者仍清除旧目录；已有自定义映射和非 GPT 模型不自动加入 Astra。
+- 新增三项定向回归测试，覆盖离线菜单、推理强度、显式映射和接管状态。本次未修改官方文档 MCP 的地址或鉴权逻辑，也不包含其间歇性 403 的修复。
+
+模型目录可见性不代表供应商必定支持该模型；实际请求仍取决于上游支持。更新后需让 StackFerry 同步 Codex 配置，并重启已有 Codex 会话以加载目录。
 
 ## English
 
-> GPT-6-Astra Codex compatibility update.
+> Fix GPT-6-Astra requiring a model fetch before appearing in Codex's picker.
 
 ### Codex GPT-6-Astra
 
-- The external Codex model catalog now includes the configured default model, making `gpt-6-astra` selectable from `/model`.
-- Added Astra reasoning levels, web search, image input, original image detail, parallel tools, and 872K maximum context metadata.
-- Selecting Astra preserves the real upstream model name and supports changing `model_reasoning_effort` in Codex.
+- GPT-compatible configurations without an explicit model catalog now generate a catalog containing the active model and `gpt-6-astra` without fetching the provider's `/models` endpoint. Namespaced models keep their prefix.
+- Override stale hidden-template flags so catalog models appear in Codex's `/model` picker, preserving Astra's six reasoning levels (low, medium, high, xhigh, max, ultra) and 872K maximum context metadata.
+- Local routing takeover now distinguishes missing catalogs from explicitly empty catalogs: missing catalogs allow defaults, while empty catalogs still clear old entries. Explicit mappings and non-GPT models do not receive an added Astra entry.
+- Added three targeted regression tests for offline picker entries, reasoning levels, explicit mappings, and takeover state. This release does not change the official documentation MCP endpoint or authentication and does not fix its intermittent HTTP 403 responses.
+
+Picker visibility does not guarantee upstream model support. After updating, let StackFerry synchronize the Codex configuration and restart existing Codex sessions to load the catalog.
 
 ---
 

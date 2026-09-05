@@ -3003,14 +3003,15 @@ impl ProxyService {
             return;
         };
 
-        let model_catalog = provider
-            .settings_config
-            .get("modelCatalog")
-            .cloned()
-            .unwrap_or_else(|| json!({ "models": [] }));
-
         if let Some(root) = live_config.as_object_mut() {
-            root.insert("modelCatalog".to_string(), model_catalog);
+            if let Some(model_catalog) = provider.settings_config.get("modelCatalog") {
+                root.insert("modelCatalog".to_string(), model_catalog.clone());
+            } else {
+                // Missing and explicitly empty catalogs have different meaning:
+                // missing allows the backend to project the top-level model and
+                // Astra defaults, while an empty table intentionally clears it.
+                root.remove("modelCatalog");
+            }
         }
     }
 
@@ -3655,6 +3656,36 @@ mod tests {
         db.update_proxy_config(proxy_config)
             .await
             .expect("set test proxy config to an ephemeral port");
+    }
+
+    #[test]
+    fn codex_default_catalog_takeover_preserves_missing_and_explicit_empty() {
+        let mut provider = Provider::with_id(
+            "codex-default".to_string(),
+            "Codex default".to_string(),
+            json!({ "config": "model = \"gpt-5.6-sol\"\n" }),
+            None,
+        );
+        let mut live = json!({
+            "config": "model = \"gpt-5.6-sol\"\n",
+            "modelCatalog": { "models": [{ "model": "previous-provider-model" }] }
+        });
+
+        ProxyService::attach_codex_model_catalog_from_provider(&mut live, Some(&provider));
+        assert!(live.get("modelCatalog").is_none());
+
+        for catalog in [
+            json!({ "models": [] }),
+            json!({ "models": [{ "model": "custom-model" }] }),
+        ] {
+            provider.settings_config["modelCatalog"] = catalog.clone();
+            ProxyService::attach_codex_model_catalog_from_provider(&mut live, Some(&provider));
+            assert_eq!(live["modelCatalog"], catalog);
+        }
+
+        let snapshot = live.clone();
+        ProxyService::attach_codex_model_catalog_from_provider(&mut live, None);
+        assert_eq!(live, snapshot);
     }
 
     #[tokio::test]

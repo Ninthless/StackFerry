@@ -26,6 +26,7 @@ const CODEX_REASONING_LEVELS: &[&str] = &["none", "low", "medium", "high", "xhig
 const CODEX_REASONING_LOW_TO_XHIGH: &[&str] = &["low", "medium", "high", "xhigh"];
 const CODEX_REASONING_LOW_TO_MAX: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 const CODEX_REASONING_LOW_TO_ULTRA: &[&str] = &["low", "medium", "high", "xhigh", "max", "ultra"];
+const CODEX_DEFAULT_PICKER_MODEL: &str = "gpt-6-astra";
 const XFCODE_CODEX_MODELS: &[(&str, &str, Option<u64>)] = &[
     ("gpt-5.6-sol", "GPT-5.6 Sol", Some(272_000)),
     ("gpt-6-astra", "GPT-6-Astra", Some(272_000)),
@@ -635,6 +636,11 @@ fn codex_catalog_model_entry(
     entry_obj.insert("slug".to_string(), json!(spec.model));
     entry_obj.insert("display_name".to_string(), json!(spec.display_name));
     entry_obj.insert("description".to_string(), json!(spec.display_name));
+    // An external catalog is authoritative for the picker. Do not inherit a
+    // stale template's hidden visibility for a model explicitly supplied by a
+    // StackFerry provider mapping.
+    entry_obj.insert("visibility".to_string(), json!("list"));
+    entry_obj.insert("supported_in_api".to_string(), json!(true));
     entry_obj.insert("context_window".to_string(), json!(spec.context_window));
     entry_obj.insert(
         "max_context_window".to_string(),
@@ -877,11 +883,19 @@ fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCa
     // Codex keeps the active model in config.toml separately from the
     // provider's optional mapping table. Include it in the external catalog
     // so a newly released model can be selected from `/model` immediately
-    // after it is entered as the provider default.
+    // after it is entered as the provider default. The current Astra model is
+    // also a stable offline default for GPT-compatible providers: waiting for
+    // `/models` would make the picker depend on a provider network call.
     if !has_model_catalog {
         if let Some(model) =
             codex_top_level_model(config_text).filter(|model| seen.insert(model.clone()))
         {
+            let astra_model = is_known_openai_codex_model(&model).then(|| {
+                model
+                    .rsplit_once('/')
+                    .map(|(namespace, _)| format!("{namespace}/{CODEX_DEFAULT_PICKER_MODEL}"))
+                    .unwrap_or_else(|| CODEX_DEFAULT_PICKER_MODEL.to_string())
+            });
             specs.push(CodexCatalogModelSpec {
                 display_name: model.clone(),
                 model,
@@ -892,6 +906,23 @@ fn codex_catalog_model_specs(settings: &Value, config_text: &str) -> Vec<CodexCa
                 default_reasoning_level: None,
                 supported_reasoning_levels: None,
             });
+
+            if let Some(astra_model) = astra_model.filter(|model| seen.insert(model.clone())) {
+                specs.push(CodexCatalogModelSpec {
+                    model: astra_model,
+                    display_name: "GPT-6-Astra".to_string(),
+                    context_window: extract_codex_top_level_u64(
+                        config_text,
+                        "model_context_window",
+                    )
+                    .unwrap_or(272_000),
+                    supports_parallel_tool_calls: None,
+                    input_modalities: None,
+                    base_instructions: None,
+                    default_reasoning_level: None,
+                    supported_reasoning_levels: None,
+                });
+            }
         }
     }
 
@@ -3455,6 +3486,67 @@ model = "gpt-6-astra"
 
         assert_eq!(specs.len(), 1);
         assert_eq!(specs[0].model, "gpt-6-astra");
+    }
+
+    #[test]
+    fn codex_default_catalog_exposes_astra_offline_with_reasoning() {
+        let mut template = load_codex_native_responses_template();
+        template["visibility"] = json!("hide");
+        template["supported_in_api"] = json!(false);
+
+        for (current_model, astra_model, expected_count) in [
+            ("gpt-5.6-sol", "gpt-6-astra", 2),
+            ("openai/gpt-5.6-sol", "openai/gpt-6-astra", 2),
+            ("gpt-6-astra", "gpt-6-astra", 1),
+        ] {
+            let config = format!("model_provider = \"custom\"\nmodel = \"{current_model}\"\n");
+            let specs = codex_catalog_model_specs(&json!({}), &config);
+            assert_eq!(specs.len(), expected_count);
+            assert_eq!(specs[0].model, current_model);
+
+            for profile in [
+                CodexCatalogToolProfile::NativeResponses,
+                CodexCatalogToolProfile::ProxyChat,
+            ] {
+                let catalog = codex_model_catalog_from_specs(&specs, &template, profile);
+                let astra = catalog["models"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|entry| entry["slug"] == astra_model)
+                    .expect("Astra must be present without fetching models");
+                assert_eq!(astra["visibility"], "list");
+                assert_eq!(astra["supported_in_api"], true);
+                assert_eq!(astra["default_reasoning_level"], "low");
+                assert_eq!(astra["max_context_window"], 872_000);
+                assert_eq!(
+                    astra["supported_reasoning_levels"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|level| level["effort"].as_str().unwrap())
+                        .collect::<Vec<_>>(),
+                    ["low", "medium", "high", "xhigh", "max", "ultra"]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn codex_default_catalog_preserves_explicit_mappings_and_other_providers() {
+        let config = "model_provider = \"custom\"\nmodel = \"gpt-5.6-sol\"\n";
+        let empty = json!({ "modelCatalog": { "models": [] } });
+        assert!(codex_catalog_model_specs(&empty, config).is_empty());
+
+        let custom = json!({ "modelCatalog": { "models": [{ "model": "custom-model" }] } });
+        let custom_specs = codex_catalog_model_specs(&custom, config);
+        assert_eq!(custom_specs.len(), 1);
+        assert_eq!(custom_specs[0].model, "custom-model");
+
+        let non_gpt = codex_catalog_model_specs(&json!({}), "model = \"deepseek-v4-pro\"\n");
+        assert_eq!(non_gpt.len(), 1);
+        assert_eq!(non_gpt[0].model, "deepseek-v4-pro");
+        assert!(codex_catalog_model_specs(&json!({}), "").is_empty());
     }
 
     #[test]
