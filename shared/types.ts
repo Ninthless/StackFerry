@@ -1,6 +1,8 @@
 import type { LanguagePreference } from './locale'
+import type { MicaState } from './mica'
+import type { ThemePreference } from './theme'
 
-export type { LanguagePreference }
+export type { LanguagePreference, MicaState, ThemePreference }
 
 export type ProviderKind = 'official' | 'custom'
 
@@ -63,4 +65,8 @@ export type StackferryApi = {
   onChanged: (listener: () => void) => () => void
   getLocalePreference: () => Promise<LanguagePreference>
   setLocalePreference: (preference: LanguagePreference) => Promise<LanguagePreference>
+  getMicaState: () => Promise<MicaState>
+  setMicaPreference: (enabled: boolean) => Promise<MicaState>
+  getThemePreference: () => Promise<ThemePreference>
+  setThemePreference: (preference: ThemePreference) => Promise<ThemePreference>
 }

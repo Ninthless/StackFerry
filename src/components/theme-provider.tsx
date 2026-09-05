@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useState } from "react"
+import { isThemePreference, type ThemePreference } from "@shared/theme"
 
-export type Theme = "dark" | "light" | "system"
+export type Theme = ThemePreference
 
 export function isTheme(value: string): value is Theme {
-  return value === "dark" || value === "light" || value === "system"
+  return isThemePreference(value)
 }
 
 type ThemeProviderProps = {
@@ -24,39 +25,50 @@ const initialState: ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
+function resolvedThemeClass(theme: Theme): "light" | "dark" {
+  if (theme === "system") {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+  }
+  return theme
+}
+
+function applyThemeClass(theme: Theme): void {
+  const root = window.document.documentElement
+  root.classList.remove("light", "dark")
+  root.classList.add(resolvedThemeClass(theme))
+}
+
 export function ThemeProvider({
   children,
   defaultTheme = "system",
   storageKey = "vite-ui-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
+  const [theme, setThemeState] = useState<Theme>(
+    () => {
+      const stored = localStorage.getItem(storageKey)
+      return isThemePreference(stored) ? stored : defaultTheme
+    }
   )
 
   useEffect(() => {
-    const root = window.document.documentElement
+    applyThemeClass(theme)
+    if (theme !== "system") return
+    const media = window.matchMedia("(prefers-color-scheme: dark)")
+    const sync = () => applyThemeClass("system")
+    media.addEventListener("change", sync)
+    return () => media.removeEventListener("change", sync)
+  }, [theme])
 
-    root.classList.remove("light", "dark")
-
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light"
-
-      root.classList.add(systemTheme)
-      return
-    }
-
-    root.classList.add(theme)
+  useEffect(() => {
+    void window.stackferry?.setThemePreference(theme)
   }, [theme])
 
   const value = {
     theme,
-    setTheme: (theme: Theme) => {
-      localStorage.setItem(storageKey, theme)
-      setTheme(theme)
+    setTheme: (next: Theme) => {
+      localStorage.setItem(storageKey, next)
+      setThemeState(next)
     },
   }
 

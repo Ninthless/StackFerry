@@ -3,6 +3,8 @@ import { existsSync } from 'node:fs'
 import { PRESETS } from '../../shared/presets'
 import { IpcChannel } from '../../shared/ipc'
 import { isLanguagePreference } from '../../shared/locale'
+import type { MicaState } from '../../shared/mica'
+import { isThemePreference, type ThemePreference } from '../../shared/theme'
 import type { AppStatus, LanguagePreference, ProviderDraft } from '../../shared/types'
 import { codexAuthPath, codexConfigPath } from './codex/home'
 import { enableOfficialLiveConfig, enableThirdPartyLiveConfig } from './codex/writer'
@@ -18,6 +20,10 @@ type IpcContext = {
   onChanged: () => void
   getLocalePreference: () => Promise<LanguagePreference>
   setLocalePreference: (preference: LanguagePreference) => Promise<LanguagePreference>
+  getMicaState: () => Promise<MicaState>
+  setMicaPreference: (enabled: boolean) => Promise<MicaState>
+  getThemePreference: () => Promise<ThemePreference>
+  setThemePreference: (preference: ThemePreference) => Promise<ThemePreference>
 }
 
 export function registerIpc(context: IpcContext): void {
@@ -77,6 +83,17 @@ export function registerIpc(context: IpcContext): void {
       return context.getLocalePreference()
     }
     return context.setLocalePreference(preference)
+  })
+  ipcMain.handle(IpcChannel.getMica, () => context.getMicaState())
+  ipcMain.handle(IpcChannel.setMica, (_event, enabled: boolean) => {
+    return context.setMicaPreference(enabled === true)
+  })
+  ipcMain.handle(IpcChannel.getTheme, () => context.getThemePreference())
+  ipcMain.handle(IpcChannel.setTheme, (_event, preference: ThemePreference) => {
+    if (!isThemePreference(preference)) {
+      return context.getThemePreference()
+    }
+    return context.setThemePreference(preference)
   })
 }
 

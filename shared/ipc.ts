@@ -16,4 +16,8 @@ export const IpcChannel = {
   changed: 'providers:changed',
   getLocale: 'app:getLocale',
   setLocale: 'app:setLocale',
+  getMica: 'app:getMica',
+  setMica: 'app:setMica',
+  getTheme: 'app:getTheme',
+  setTheme: 'app:setTheme',
 } as const

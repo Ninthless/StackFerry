@@ -13,6 +13,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { applyLanguagePreference, currentLanguagePreference } from "@/lib/locale"
 import * as m from "@/paraglide/messages.js"
 import { isLanguagePreference } from "@shared/locale"
+import { MicaSettings } from "./mica-settings"
 import { SettingsSection } from "./settings-section"
 
 const THEME_OPTIONS = [
@@ -107,6 +108,7 @@ export function AppearanceSettings() {
             })}
           </RadioGroup>
         </FieldSet>
+        <MicaSettings />
       </FieldGroup>
     </SettingsSection>
   )

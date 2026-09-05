@@ -1,8 +1,11 @@
-import { app, BrowserWindow, dialog, Menu, shell } from 'electron'
+import { app, BrowserWindow, dialog, Menu, nativeTheme, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
 import type { LanguagePreference } from '../../shared/locale'
+import { windowUsesMicaSurface } from '../../shared/mica'
+import type { ThemePreference } from '../../shared/theme'
+import { AppearanceStore } from './appearance-store'
 import { resolveCodexHome } from './codex/home'
 import { formatAppError } from './format-error'
 import { setMainLocale, m } from './i18n'
@@ -14,6 +17,12 @@ import {
   seedOfficialProvider,
 } from './ipc'
 import { LocaleStore } from './locale-store'
+import {
+  applyWindowMica,
+  currentMicaState,
+  MICA_WINDOW_BACKGROUND,
+  solidWindowBackground,
+} from './mica'
 import { ProviderStore } from './providers/store'
 import { AppTray } from './tray'
 
@@ -29,7 +38,6 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   : RENDERER_DIST
 
 const publicDir = process.env.VITE_PUBLIC ?? path.join(process.env.APP_ROOT, 'public')
-const WINDOW_BACKGROUND = '#0a0a0a'
 
 if (process.platform === 'win32' && os.release().startsWith('6.1')) {
   app.disableHardwareAcceleration()
@@ -44,23 +52,30 @@ if (!app.requestSingleInstanceLock()) {
   process.exit(0)
 }
 
+
 let win: BrowserWindow | null = null
 let isQuitting = false
 let needsRestart = false
 let store: ProviderStore | null = null
 let localeStore: LocaleStore | null = null
+let appearanceStore: AppearanceStore | null = null
 let tray: AppTray | null = null
+let micaPreference = false
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
 async function createWindow(): Promise<void> {
+  const mica = currentMicaState(micaPreference)
   win = new BrowserWindow({
     title: 'StackFerry',
     width: 960,
     height: 680,
     minWidth: 800,
     minHeight: 560,
-    backgroundColor: WINDOW_BACKGROUND,
+    backgroundColor: windowUsesMicaSurface(mica) ? MICA_WINDOW_BACKGROUND : solidWindowBackground(),
+    ...(windowUsesMicaSurface(mica) ? { backgroundMaterial: 'mica' as const } : {}),
+    roundedCorners: true,
+    hasShadow: true,
     icon: path.join(publicDir, 'icon.png'),
     autoHideMenuBar: true,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
@@ -72,6 +87,7 @@ async function createWindow(): Promise<void> {
     },
   })
   bindWindowState(win)
+  applyWindowMica(win, micaPreference)
 
   if (VITE_DEV_SERVER_URL) {
     await win.loadURL(VITE_DEV_SERVER_URL)
@@ -115,6 +131,12 @@ app.whenReady().then(async () => {
   }
   store = new ProviderStore(path.join(app.getPath('userData'), 'providers.json'))
   localeStore = new LocaleStore(path.join(app.getPath('userData'), 'locale.json'))
+  appearanceStore = new AppearanceStore(path.join(app.getPath('userData'), 'appearance.json'))
+  micaPreference = await appearanceStore.getMicaPreference()
+  nativeTheme.themeSource = await appearanceStore.getThemePreference()
+  nativeTheme.on('updated', () => {
+    if (win && !win.isDestroyed()) applyWindowMica(win, micaPreference)
+  })
   setMainLocale(await localeStore.resolveLocale())
   const ipcContext = {
     store,
@@ -133,6 +155,19 @@ app.whenReady().then(async () => {
       const next = await localeStore!.setPreference(preference)
       setMainLocale(await localeStore!.resolveLocale())
       void refreshTray()
+      return next
+    },
+    getMicaState: async () => currentMicaState(micaPreference),
+    setMicaPreference: async (enabled: boolean) => {
+      micaPreference = await appearanceStore!.setMicaPreference(enabled)
+      if (win && !win.isDestroyed()) applyWindowMica(win, micaPreference)
+      return currentMicaState(micaPreference)
+    },
+    getThemePreference: () => appearanceStore!.getThemePreference(),
+    setThemePreference: async (preference: ThemePreference) => {
+      const next = await appearanceStore!.setThemePreference(preference)
+      nativeTheme.themeSource = next
+      if (win && !win.isDestroyed()) applyWindowMica(win, micaPreference)
       return next
     },
   }

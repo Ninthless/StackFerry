@@ -33,6 +33,10 @@ const api: StackferryApi = {
   },
   getLocalePreference: () => ipcRenderer.invoke(IpcChannel.getLocale),
   setLocalePreference: (preference) => ipcRenderer.invoke(IpcChannel.setLocale, preference),
+  getMicaState: () => ipcRenderer.invoke(IpcChannel.getMica),
+  setMicaPreference: (enabled) => ipcRenderer.invoke(IpcChannel.setMica, enabled),
+  getThemePreference: () => ipcRenderer.invoke(IpcChannel.getTheme),
+  setThemePreference: (preference) => ipcRenderer.invoke(IpcChannel.setTheme, preference),
 }
 
 contextBridge.exposeInMainWorld('stackferry', api)

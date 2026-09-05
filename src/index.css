@@ -147,3 +147,44 @@
     @apply min-h-svh bg-background text-foreground;
   }
 }
+
+html.mica,
+html.mica body,
+html.mica #root {
+  background: transparent;
+}
+
+html.mica :is(
+  [data-slot="sidebar-wrapper"],
+  [data-slot="sidebar"],
+  [data-slot="sidebar-gap"],
+  [data-slot="sidebar-container"],
+  [data-slot="sidebar-inner"]
+) {
+  background-color: transparent;
+}
+
+html.mica [data-slot="sidebar-inner"] {
+  transition: background-color 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.mica [data-slot="sidebar-inner"] {
+    transition: none;
+  }
+}
+
+html.mica:is(
+  :has([data-slot="sheet-overlay"][data-open]:not([data-starting-style]):not([data-ending-style])),
+  :has([data-slot="dialog-overlay"][data-open]:not([data-starting-style]):not([data-ending-style])),
+  :has([data-slot="alert-dialog-overlay"][data-open]:not([data-starting-style]):not([data-ending-style]))
+)
+  :is(
+    [data-slot="sidebar-wrapper"],
+    [data-slot="sidebar"],
+    [data-slot="sidebar-gap"],
+    [data-slot="sidebar-container"],
+    [data-slot="sidebar-inner"]
+  ) {
+  background-color: var(--sidebar);
+}
