@@ -49,9 +49,14 @@ export function ProviderWorkspace({ session }: Props) {
                   key={provider.id}
                   provider={provider}
                   busy={session.busyId === provider.id}
+                  queued={session.routing.queue.includes(provider.id)}
+                  routingActive={session.routing.active}
                   onEnable={() => void session.enableProvider(provider.id)}
                   onEdit={() => session.openEdit(provider)}
                   onDelete={() => session.setDeleting(provider)}
+                  onQueueChange={(queued) => {
+                    void session.setProviderQueued(provider.id, queued)
+                  }}
                 />
               ))}
             </ItemGroup>

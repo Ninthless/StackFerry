@@ -18,18 +18,31 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item"
+import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import * as m from "@/paraglide/messages.js"
 
 type Props = {
   provider: ProviderListItem
   busy: boolean
+  queued: boolean
+  routingActive: boolean
   onEnable: () => void
   onEdit: () => void
   onDelete: () => void
+  onQueueChange: (queued: boolean) => void
 }
 
-export function ProviderCard({ provider, busy, onEnable, onEdit, onDelete }: Props) {
+export function ProviderCard({
+  provider,
+  busy,
+  queued,
+  routingActive,
+  onEnable,
+  onEdit,
+  onDelete,
+  onQueueChange,
+}: Props) {
   const official = provider.kind === "official"
   const description = official
     ? m.provider_official_description()
@@ -46,8 +59,30 @@ export function ProviderCard({ provider, busy, onEnable, onEdit, onDelete }: Pro
           <ItemDescription>{description}</ItemDescription>
         </ItemContent>
         <ItemActions className="ml-auto shrink-0">
+          {official ? null : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="flex items-center">
+                    <Switch
+                      size="sm"
+                      checked={queued}
+                      disabled={busy}
+                      onCheckedChange={onQueueChange}
+                    />
+                  </span>
+                }
+              />
+              <TooltipContent>{m.routing_queued()}</TooltipContent>
+            </Tooltip>
+          )}
+          {queued && !official && !provider.enabled ? (
+            <Badge variant="outline">{m.routing_badge_standby()}</Badge>
+          ) : null}
           {provider.enabled ? (
-            <Badge variant="secondary">{m.provider_enabled_badge()}</Badge>
+            <Badge variant="secondary">
+              {routingActive && !official ? m.routing_badge_current() : m.provider_enabled_badge()}
+            </Badge>
           ) : (
             <Button type="button" size="sm" disabled={busy} onClick={onEnable}>
               {busy ? m.provider_enabling() : m.provider_enable()}
@@ -78,6 +113,14 @@ export function ProviderCard({ provider, busy, onEnable, onEdit, onDelete }: Pro
           {provider.enabled ? null : (
             <ContextMenuItem disabled={busy} onClick={onEnable}>
               {busy ? m.provider_enabling() : m.provider_enable()}
+            </ContextMenuItem>
+          )}
+          {official ? null : (
+            <ContextMenuItem
+              disabled={busy}
+              onClick={() => onQueueChange(!queued)}
+            >
+              {m.routing_queued()}
             </ContextMenuItem>
           )}
           <ContextMenuItem onClick={onEdit}>

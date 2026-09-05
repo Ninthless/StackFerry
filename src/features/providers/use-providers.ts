@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
-import type { Preset, ProviderDraft, ProviderListItem } from "@shared/types"
+import type { Preset, ProviderDraft, ProviderListItem, RoutingState } from "@shared/types"
+import { DEFAULT_ROUTING_SETTINGS } from "@shared/routing"
 import { toast } from "@/components/ui/toast"
 import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
@@ -15,8 +16,21 @@ function tipError(description: string, id?: string): void {
   toast.add({ id, type: "error", description, priority: "high" })
 }
 
+const EMPTY_ROUTING: RoutingState = {
+  queue: [],
+  failureThreshold: DEFAULT_ROUTING_SETTINGS.failureThreshold,
+  recoveryWaitSeconds: DEFAULT_ROUTING_SETTINGS.recoveryWaitSeconds,
+  halfOpenSuccesses: DEFAULT_ROUTING_SETTINGS.halfOpenSuccesses,
+  logRetention: DEFAULT_ROUTING_SETTINGS.logRetention,
+  port: null,
+  active: false,
+  logs: [],
+  breakers: [],
+}
+
 export function useProviders() {
   const [providers, setProviders] = useState<ProviderListItem[]>([])
+  const [routing, setRouting] = useState<RoutingState>(EMPTY_ROUTING)
   const [presets, setPresets] = useState<Preset[]>([])
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<ProviderListItem | null>(null)
@@ -25,7 +39,12 @@ export function useProviders() {
 
   const refresh = useCallback(async () => {
     const api = desktopApi()
-    setProviders(await api.listProviders())
+    const [nextProviders, nextRouting] = await Promise.all([
+      api.listProviders(),
+      api.getRouting(),
+    ])
+    setProviders(nextProviders)
+    setRouting(nextRouting)
   }, [])
 
   useEffect(() => {
@@ -85,9 +104,12 @@ export function useProviders() {
     setEditorOpen(false)
     setEditing(null)
     if (rewriteLive) {
+      const status = await desktopApi().getStatus()
       toast.add({
-        type: "warning",
-        description: m.toast_enabled_description({ name: draft.name }),
+        type: status.needsRestart ? "warning" : undefined,
+        description: status.needsRestart
+          ? m.toast_enabled_description({ name: draft.name })
+          : m.toast_enabled_routed({ name: draft.name }),
       })
       return
     }
@@ -105,15 +127,29 @@ export function useProviders() {
     const provider = providers.find((item) => item.id === id)
     setBusyId(id)
     try {
-      await run(() => desktopApi().enableProvider(id))
+      let needsRestart = true
+      await run(async () => {
+        const status = await desktopApi().enableProvider(id)
+        needsRestart = status.needsRestart
+      })
       toast.add({
-        type: "warning",
-        description: m.toast_enabled_description({ name: provider?.name ?? "" }),
+        type: needsRestart ? "warning" : undefined,
+        description: needsRestart
+          ? m.toast_enabled_description({ name: provider?.name ?? "" })
+          : m.toast_enabled_routed({ name: provider?.name ?? "" }),
       })
     } catch {
       return
     } finally {
       setBusyId(null)
+    }
+  }
+
+  async function setProviderQueued(id: string, queued: boolean): Promise<void> {
+    try {
+      await run(() => desktopApi().setProviderQueued(id, queued))
+    } catch {
+      return
     }
   }
 
@@ -133,6 +169,7 @@ export function useProviders() {
 
   return {
     providers,
+    routing,
     presets,
     editorOpen,
     editing,
@@ -144,6 +181,7 @@ export function useProviders() {
     closeEditor,
     saveProvider,
     enableProvider,
+    setProviderQueued,
     confirmDelete,
   }
 }
