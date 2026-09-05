@@ -3,6 +3,7 @@ import path from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { paraglideVitePlugin } from '@inlang/paraglide-js'
 import { electronSimple } from 'vite-plugin-electron/multi-env'
 import { notBundle } from 'vite-plugin-electron/plugin'
 import pkg from './package.json'
@@ -27,6 +28,7 @@ export default defineConfig(({ command }) => {
       },
     },
     plugins: [
+      paraglideVitePlugin({ project: './project.inlang' }),
       react(),
       tailwindcss(),
       electronSimple({
