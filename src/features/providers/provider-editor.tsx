@@ -3,12 +3,16 @@ import { AlignLeft } from "lucide-react"
 import type { Preset, ProviderDraft, ProviderKind, ProviderListItem } from "@shared/types"
 import {
   formatToml,
+  isOverlayWireApi,
   overlayBaseUrl,
   overlayRequiresApiKey,
+  overlayWireApi,
   withOverlayBaseUrl,
+  withOverlayWireApi,
+  type OverlayWireApi,
 } from "@shared/provider-overlay"
 import { Button } from "@/components/ui/button"
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -26,6 +30,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { formatAppError } from "@/lib/format-app-error"
 import { presetLabel } from "@/lib/preset-label"
 import * as m from "@/paraglide/messages.js"
@@ -75,6 +80,7 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
       return false
     }
   }, [kind, tomlText])
+  const wireApi = useMemo(() => wireApiFromToml(tomlText), [tomlText])
 
   useEffect(() => {
     if (!open) return
@@ -198,6 +204,38 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
                       }}
                     />
                   </Field>
+                  <FieldSet>
+                    <FieldLegend variant="label">{m.field_wire_api()}</FieldLegend>
+                    <ToggleGroup
+                      value={[wireApi]}
+                      onValueChange={(value) => {
+                        const next = value[0]
+                        if (!isOverlayWireApi(next)) return
+                        try {
+                          setTomlText(withOverlayWireApi(tomlText, next))
+                          setError("")
+                        } catch {
+                          return
+                        }
+                      }}
+                      variant="outline"
+                    >
+                      <ToggleGroupItem value="responses">{m.field_wire_api_responses()}</ToggleGroupItem>
+                      <ToggleGroupItem value="chat">{m.field_wire_api_chat()}</ToggleGroupItem>
+                    </ToggleGroup>
+                    <Field>
+                      <FieldContent>
+                        <FieldTitle>
+                          {wireApi === "responses" ? m.field_wire_api_responses() : m.field_wire_api_chat()}
+                        </FieldTitle>
+                        <FieldDescription>
+                          {wireApi === "responses"
+                            ? m.field_wire_api_responses_description()
+                            : m.field_wire_api_chat_description()}
+                        </FieldDescription>
+                      </FieldContent>
+                    </Field>
+                  </FieldSet>
                   <Field>
                     <FieldLabel htmlFor={`${formId}-api-key`}>{m.field_api_key()}</FieldLabel>
                     <Input
@@ -253,4 +291,12 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
       </SheetContent>
     </Sheet>
   )
+}
+
+function wireApiFromToml(text: string): OverlayWireApi {
+  try {
+    return overlayWireApi(text)
+  } catch {
+    return "responses"
+  }
 }

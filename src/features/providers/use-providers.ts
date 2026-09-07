@@ -153,6 +153,17 @@ export function useProviders() {
     }
   }
 
+  function reorderProviders(next: ProviderListItem[]): void {
+    setProviders(next)
+    void desktopApi()
+      .reorderProviders(next.map((item) => item.id))
+      .then(setProviders)
+      .catch((reorderError) => {
+        tipError(formatAppError(reorderError))
+        void refresh()
+      })
+  }
+
   async function confirmDelete(): Promise<void> {
     if (!deleting) return
     const name = deleting.name
@@ -182,6 +193,7 @@ export function useProviders() {
     saveProvider,
     enableProvider,
     setProviderQueued,
+    reorderProviders,
     confirmDelete,
   }
 }

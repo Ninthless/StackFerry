@@ -1,5 +1,4 @@
 import { useRef } from "react"
-import type { ProviderListItem } from "@shared/types"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,8 +13,13 @@ import {
 import { Trash2 } from "lucide-react"
 import * as m from "@/paraglide/messages.js"
 
+type DeletableProvider = {
+  name: string
+  enabled: boolean
+}
+
 type Props = {
-  provider: ProviderListItem | null
+  provider: DeletableProvider | null
   onOpenChange: (open: boolean) => void
   onConfirm: () => Promise<void>
 }
