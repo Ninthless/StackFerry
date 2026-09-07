@@ -4,6 +4,7 @@ import {
   REASONING_EFFORTS,
   overlayBaseUrl,
   overlaySession,
+  syncedAutoCompactValue,
   withOverlaySession,
   type OverlaySession,
 } from "@shared/provider-overlay"
@@ -20,14 +21,7 @@ import {
 } from "@/components/ui/combobox"
 import { InputGroupAddon, InputGroupButton } from "@/components/ui/input-group"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { EffortScale } from "@/features/clis/effort-scale"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
@@ -55,10 +49,39 @@ function FieldHint({
   )
 }
 
+function reasoningHint(value: (typeof REASONING_EFFORTS)[number] | null): string {
+  switch (value) {
+    case "none":
+      return m.session_reasoning_hint_none()
+    case "minimal":
+      return m.session_reasoning_hint_minimal()
+    case "low":
+      return m.session_reasoning_hint_low()
+    case "medium":
+      return m.session_reasoning_hint_medium()
+    case "high":
+      return m.session_reasoning_hint_high()
+    case "xhigh":
+      return m.session_reasoning_hint_xhigh()
+    case "max":
+      return m.session_reasoning_hint_max()
+    case "ultra":
+      return m.session_reasoning_hint_ultra()
+    case "persistent":
+      return m.session_reasoning_hint_persistent()
+    default:
+      return m.session_reasoning_hint_default()
+  }
+}
+
 function reasoningItems() {
   return [
-    { label: m.session_reasoning_default(), value: null },
-    ...REASONING_EFFORTS.map((value) => ({ label: value, value })),
+    { label: m.session_reasoning_default(), value: null, hint: reasoningHint(null) },
+    ...REASONING_EFFORTS.map((value) => ({
+      label: value,
+      value,
+      hint: reasoningHint(value),
+    })),
   ]
 }
 
@@ -189,29 +212,18 @@ export function CodexSessionFields({
           label={m.session_reasoning()}
           hint={m.session_reasoning_description()}
         />
-        <Select
-          items={items}
-          value={session.reasoningEffort || null}
-          onValueChange={(value) => {
+        <EffortScale
+          id={`${formId}-reasoning`}
+          options={items}
+          value={session.reasoningEffort}
+          fasterLabel={m.session_reasoning_faster()}
+          deeperLabel={m.session_reasoning_deeper()}
+          onChange={(next) => {
             patchSession({
-              reasoningEffort:
-                typeof value === "string" && isReasoningOption(value) ? value : "",
+              reasoningEffort: isReasoningOption(next) ? next : "",
             })
           }}
-        >
-          <SelectTrigger id={`${formId}-reasoning`} className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false} side="bottom">
-            <SelectGroup>
-              {items.map((item) => (
-                <SelectItem key={item.value ?? "default"} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+        />
       </Field>
       <Field>
         <FieldHint
@@ -225,7 +237,19 @@ export function CodexSessionFields({
           inputMode="numeric"
           placeholder={m.session_context_placeholder()}
           value={session.contextWindow}
-          onChange={(event) => patchSession({ contextWindow: event.target.value })}
+          onChange={(event) => {
+            const contextWindow = event.target.value
+            const autoCompact = syncedAutoCompactValue(
+              contextWindow,
+              session.contextWindow,
+              session.autoCompact,
+            )
+            patchSession(
+              autoCompact === undefined
+                ? { contextWindow }
+                : { contextWindow, autoCompact },
+            )
+          }}
         />
       </Field>
       <Field>

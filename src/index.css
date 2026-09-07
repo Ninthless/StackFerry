@@ -1,3 +1,4 @@
+@layer theme, base, antd, components, utilities;
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -63,7 +64,7 @@
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
+  --accent: oklch(0.92 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
@@ -78,7 +79,7 @@
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent: oklch(0.92 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
@@ -98,7 +99,7 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  --accent: oklch(0.32 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
@@ -113,7 +114,7 @@
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent: oklch(0.32 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
@@ -159,8 +160,20 @@ html.mica :is(
   [data-slot="sidebar"],
   [data-slot="sidebar-gap"],
   [data-slot="sidebar-container"],
-  [data-slot="sidebar-inner"]
+  [data-slot="sidebar-inner"],
+  [data-slot="sidebar-header"],
+  [data-slot="sidebar-footer"],
+  [data-slot="sidebar-content"],
+  [data-slot="sidebar-group"]
 ) {
+  background-color: transparent;
+}
+
+html.mica [data-slot="sidebar-menu-button"] {
+  appearance: none;
+}
+
+html.mica [data-slot="sidebar-menu-button"]:not(:hover):not(:active):not([data-active]) {
   background-color: transparent;
 }
 
@@ -170,6 +183,42 @@ html.mica [data-slot="sidebar-inner"] {
 
 @media (prefers-reduced-motion: reduce) {
   html.mica [data-slot="sidebar-inner"] {
+    transition: none;
+  }
+}
+
+@utility effort-energy {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: var(--effort-canvas-opacity);
+  transition: opacity 0.08s ease;
+}
+
+@utility effort-thumb {
+  position: absolute;
+  top: 50%;
+  z-index: 6;
+  width: 28px;
+  height: 28px;
+  border: 0.5px solid rgb(0 0 0 / 0.08);
+  border-radius: 10px;
+  background: linear-gradient(170deg, #fff 0%, #f1f1f2 42%, #dedee1 100%);
+  box-shadow:
+    0 0.5px 1px rgb(0 0 0 / 0.18),
+    0 2px 6px rgb(0 0 0 / 0.25),
+    0 5px 12px rgb(0 0 0 / 0.12),
+    inset 0 0.5px rgb(255 255 255 / 0.85);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .effort-energy,
+  .effort-thumb {
     transition: none;
   }
 }
@@ -184,7 +233,11 @@ html.mica:is(
     [data-slot="sidebar"],
     [data-slot="sidebar-gap"],
     [data-slot="sidebar-container"],
-    [data-slot="sidebar-inner"]
+    [data-slot="sidebar-inner"],
+    [data-slot="sidebar-header"],
+    [data-slot="sidebar-footer"],
+    [data-slot="sidebar-content"],
+    [data-slot="sidebar-group"]
   ) {
   background-color: var(--sidebar);
 }
