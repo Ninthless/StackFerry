@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest'
 import {
   formatToml,
   overlayBaseUrl,
+  overlayNeedsRouter,
   overlayRequiresApiKey,
   overlaySession,
+  overlayWireApi,
   parseProviderOverlay,
   starterOverlayToml,
+  suggestedAutoCompactLimit,
+  syncedAutoCompactValue,
   withOverlayBaseUrl,
   withOverlaySession,
+  withOverlayWireApi,
 } from '../shared/provider-overlay'
 import { expectAppError } from './expect-app-error'
 
@@ -24,6 +29,17 @@ describe('provider overlay', () => {
     expect(overlay.tableKey).toBe('openrouter')
     expect(overlay.model).toBe('openai/gpt-5.4')
     expect(overlay.table.base_url).toBe('https://openrouter.ai/api/v1')
+    expect(overlay.table.wire_api).toBe('responses')
+    expect(overlay.table.http_headers).toEqual({
+      'x-openai-actor-authorization': 'custom',
+    })
+    expect(starterOverlayToml({
+      providerId: 'openrouter',
+      name: 'OpenRouter',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      model: 'openai/gpt-5.4',
+    })).toContain(`wire_api = "responses"
+http_headers = { "x-openai-actor-authorization" = "custom" }`)
     expect(overlayRequiresApiKey(starterOverlayToml({
       providerId: 'openrouter',
       name: 'OpenRouter',
@@ -170,6 +186,44 @@ wire_api = "responses"
     ).toBe('max')
   })
 
+  it('accepts chat wire_api and rejects unknown values', () => {
+    const text = `
+model_provider = "custom"
+
+[model_providers.custom]
+name = "Custom"
+base_url = "https://api.example.com/v1"
+wire_api = "chat"
+`
+    expect(parseProviderOverlay(text).table.wire_api).toBe('chat')
+    expect(overlayWireApi(text)).toBe('chat')
+    expect(overlayNeedsRouter(text)).toBe(true)
+    const starter = starterOverlayToml({
+      providerId: 'custom',
+      name: 'Custom',
+      baseUrl: 'https://api.example.com/v1',
+      model: 'gpt-5.4',
+    })
+    expect(overlayNeedsRouter(starter)).toBe(false)
+    const asChat = withOverlayWireApi(starter, 'chat')
+    expect(overlayWireApi(asChat)).toBe('chat')
+    expect(parseProviderOverlay(asChat).table.wire_api).toBe('chat')
+    expect(overlayWireApi(withOverlayWireApi(asChat, 'responses'))).toBe('responses')
+
+    expectAppError(
+      () =>
+        parseProviderOverlay(`
+model_provider = "custom"
+
+[model_providers.custom]
+name = "Custom"
+base_url = "https://api.example.com/v1"
+wire_api = "completions"
+`),
+      'overlay_wire_api',
+    )
+  })
+
   it('rejects unknown reasoning effort and amazon-bedrock as a custom id', () => {
     expectAppError(
       () =>
@@ -196,5 +250,22 @@ base_url = "https://bedrock.example/v1"
       'overlay_reserved_provider_id',
       { name: 'amazon-bedrock' },
     )
+  })
+
+  it('suggests auto-compact at 90% of the context window', () => {
+    expect(suggestedAutoCompactLimit(1_000_000)).toBe(900_000)
+    expect(suggestedAutoCompactLimit(272_000)).toBe(244_800)
+    expect(suggestedAutoCompactLimit(10)).toBe(9)
+    expect(suggestedAutoCompactLimit(11)).toBe(9)
+    expect(suggestedAutoCompactLimit(1)).toBe(1)
+  })
+
+  it('keeps auto-compact synced to context unless the user overrode it', () => {
+    expect(syncedAutoCompactValue('1000000', '', '')).toBe('900000')
+    expect(syncedAutoCompactValue('272000', '1000000', '900000')).toBe('244800')
+    expect(syncedAutoCompactValue('272000', '1000000', '800000')).toBeUndefined()
+    expect(syncedAutoCompactValue('', '1000000', '900000')).toBe('')
+    expect(syncedAutoCompactValue('', '1000000', '800000')).toBeUndefined()
+    expect(syncedAutoCompactValue('1000000', '', '500000')).toBeUndefined()
   })
 })

@@ -24,6 +24,19 @@ describe('circuit breaker', () => {
     expect(breaker.admit('a')).toBe(true)
   })
 
+  it('closes an open breaker immediately', () => {
+    const breaker = new CircuitBreaker(() => ({
+      failureThreshold: 1,
+      recoveryWaitMs: 30_000,
+      halfOpenSuccesses: 1,
+    }))
+    breaker.recordFailure('a')
+    expect(breaker.admit('a')).toBe(false)
+    breaker.close('a')
+    expect(breaker.snapshot(['a'])[0]?.state).toBe('closed')
+    expect(breaker.admit('a')).toBe(true)
+  })
+
   it('reopens from a failed half-open probe', () => {
     let now = 1
     const breaker = new CircuitBreaker(

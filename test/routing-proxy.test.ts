@@ -183,4 +183,64 @@ describe('routing proxy', () => {
       await second.close()
     }
   })
+
+  it('translates a chat completions stream into responses events', async () => {
+    const upstream = await listenFake('chat', async (req, res) => {
+      expect(req.method).toBe('POST')
+      expect(req.url).toBe('/v1/chat/completions')
+      expect(req.headers.authorization).toBe('Bearer chat-key')
+      expect(req.headers['x-openai-actor-authorization']).toBe('custom')
+      const chunks: Buffer[] = []
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      }
+      const payload = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+        messages?: unknown
+        stream?: boolean
+      }
+      expect(payload.stream).toBe(true)
+      expect(payload.messages).toEqual([{ role: 'user', content: 'hi' }])
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      res.write(
+        'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"hello"}}]}\n\n',
+      )
+      res.write(
+        'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+      )
+      res.write('data: [DONE]\n\n')
+      res.end()
+    })
+    try {
+      await withProxy(
+        [
+          {
+            id: 'chat',
+            baseUrl: upstream.url,
+            apiKey: 'chat-key',
+            wireApi: 'chat',
+            httpHeaders: { 'x-openai-actor-authorization': 'custom' },
+          },
+        ],
+        async (base) => {
+          const response = await fetch(`${base}/v1/responses`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              model: 'gpt-test',
+              input: 'hi',
+              stream: true,
+            }),
+          })
+          expect(response.status).toBe(200)
+          const text = await response.text()
+          expect(text).toContain('event: response.output_text.delta')
+          expect(text).toContain('hello')
+          expect(text).toContain('event: response.completed')
+          expect(upstream.hits).toBe(1)
+        },
+      )
+    } finally {
+      await upstream.close()
+    }
+  })
 })

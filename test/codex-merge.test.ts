@@ -62,6 +62,9 @@ describe('codex toml merge', () => {
       name: 'DeepSeek',
       base_url: 'https://api.deepseek.com/v1',
       wire_api: 'responses',
+      http_headers: {
+        'x-openai-actor-authorization': 'custom',
+      },
       experimental_bearer_token: 'sk-test',
     })
     expect(providers.deepseek).toBeUndefined()
@@ -177,7 +180,7 @@ ${overlayFor({
     expect(withoutSession.model_auto_compact_token_limit).toBeUndefined()
   })
 
-  it('rejects chat wire_api and reserved provider ids', () => {
+  it('rejects writing chat wire_api into a direct live provider and reserved ids', () => {
     expectAppError(
       () =>
         applyThirdPartyProvider(existing, {
@@ -252,5 +255,24 @@ ${overlayFor({
     expect(stringifyToml(next)).not.toContain('secret.example')
     expect(stringifyToml(next)).not.toContain('experimental_bearer_token')
     expect(stringifyToml(next)).not.toContain('localhost')
+  })
+
+  it('keeps the router live table on responses when the overlay is chat', () => {
+    const next = applyRouterProvider(existing, {
+      port: 17890,
+      tomlText: `model = "model-chat"
+model_provider = "provider_chat"
+
+[model_providers.provider_chat]
+name = "Chat"
+base_url = "https://chat.example/v1"
+wire_api = "chat"
+`,
+    })
+    const providers = next.model_providers as Record<string, Record<string, string>>
+    expect(providers.stackferry_router.wire_api).toBe('responses')
+    expect(providers.stackferry_router.base_url).toBe('http://127.0.0.1:17890/v1')
+    expect(stringifyToml(next)).not.toContain('wire_api = "chat"')
+    expect(stringifyToml(next)).not.toContain('chat.example')
   })
 })

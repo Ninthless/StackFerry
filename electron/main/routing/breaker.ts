@@ -59,6 +59,10 @@ export class CircuitBreaker {
     }
   }
 
+  close(id: string): void {
+    this.reset(this.ensure(id))
+  }
+
   snapshot(ids: string[]): RoutingBreakerView[] {
     return ids.map((id) => {
       const entry = this.ensure(id)

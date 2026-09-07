@@ -7,8 +7,10 @@ import {
   FIRST_BYTE_TIMEOUT_MS,
   modelFromBody,
   shouldFailoverHttp,
+  upstreamProxyPath,
   upstreamRequestUrl,
 } from './policy'
+import { translateChatResponse, translateResponsesRequest, type ChatTranslation } from './translate'
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024
 const HOP_BY_HOP = new Set([
@@ -29,7 +31,9 @@ export type UpstreamTarget = {
   id: string
   baseUrl: string
   apiKey: string
+  wireApi?: 'responses' | 'chat'
   queryParams?: Record<string, string>
+  httpHeaders?: Record<string, string>
 }
 
 export type RoutingProxyDeps = {
@@ -133,7 +137,7 @@ export class RoutingProxy {
       }
       const started = this.now()
       try {
-        const result = await this.forward(req, res, upstream, pathname, body)
+        const result = await this.forward(req, res, upstream, pathname, body, route)
         if (result.kind === 'streamed') {
           this.deps.recordSuccess(id)
           this.record(id, model, result.status, '', started)
@@ -175,9 +179,32 @@ export class RoutingProxy {
     upstream: UpstreamTarget,
     pathname: string,
     body: Buffer,
+    route: 'responses' | 'models',
   ): Promise<{ kind: 'streamed'; status: number } | { kind: 'passthrough' } & BufferedResponse | BufferedResponse & { kind: 'failover' }> {
-    const url = upstreamRequestUrl(upstream.baseUrl, pathname, upstream.queryParams)
-    const headers = outboundHeaders(incoming.headers, upstream.apiKey)
+    const wireApi = upstream.wireApi ?? 'responses'
+    const translateChat = wireApi === 'chat' && route === 'responses'
+    let outboundBody = body
+    let chatTranslation: ChatTranslation | null = null
+    if (translateChat && incoming.method !== 'GET' && incoming.method !== 'HEAD') {
+      try {
+        chatTranslation = translateResponsesRequest(body)
+        outboundBody = chatTranslation.body
+      } catch {
+        return {
+          kind: 'passthrough',
+          status: 400,
+          body: Buffer.from('{"error":{"message":"invalid request"}}'),
+          headers: { 'content-type': 'application/json' },
+          errorCode: '',
+        }
+      }
+    }
+    const url = upstreamRequestUrl(
+      upstream.baseUrl,
+      upstreamProxyPath(pathname, wireApi),
+      upstream.queryParams,
+    )
+    const headers = outboundHeaders(incoming.headers, upstream.apiKey, upstream.httpHeaders)
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), FIRST_BYTE_TIMEOUT_MS)
     const onClientClose = () => controller.abort()
@@ -186,7 +213,7 @@ export class RoutingProxy {
       const response = await (this.deps.fetch ?? fetch)(url, {
         method: incoming.method ?? 'GET',
         headers,
-        body: incoming.method === 'GET' || incoming.method === 'HEAD' ? undefined : new Uint8Array(body),
+        body: incoming.method === 'GET' || incoming.method === 'HEAD' ? undefined : new Uint8Array(outboundBody),
         signal: controller.signal,
       })
       if (shouldFailoverHttp(response.status)) {
@@ -196,7 +223,11 @@ export class RoutingProxy {
       if (!response.ok) {
         return { kind: 'passthrough', ...(await bufferResponse(response, '')) }
       }
-      const streamed = await pipeSuccess(response, outgoing, controller, timer)
+      const outbound =
+        chatTranslation && translateChat
+          ? await translateChatResponse(response, chatTranslation)
+          : response
+      const streamed = await pipeSuccess(outbound, outgoing, controller, timer)
       if (!streamed) {
         return {
           kind: 'failover',
@@ -206,7 +237,7 @@ export class RoutingProxy {
           errorCode: 'stream',
         }
       }
-      return { kind: 'streamed', status: response.status }
+      return { kind: 'streamed', status: outbound.status }
     } finally {
       clearTimeout(timer)
       incoming.off('close', onClientClose)
@@ -300,8 +331,17 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return chunks.length === 1 ? chunks[0] : Buffer.concat(chunks)
 }
 
-function outboundHeaders(source: IncomingMessage['headers'], apiKey: string): Record<string, string> {
+function outboundHeaders(
+  source: IncomingMessage['headers'],
+  apiKey: string,
+  extra?: Record<string, string>,
+): Record<string, string> {
   const headers = copyHeaders(source)
+  if (extra) {
+    for (const [key, value] of Object.entries(extra)) {
+      headers[key] = value
+    }
+  }
   if (apiKey) headers.authorization = `Bearer ${apiKey}`
   return headers
 }

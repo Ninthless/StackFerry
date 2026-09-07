@@ -1,11 +1,12 @@
 import {
   DEFAULT_ROUTING_SETTINGS,
   ROUTER_BIND_HOST,
+  isQueuePermutation,
   type RoutingSettings,
   type RoutingSettingsPatch,
   type RoutingState,
 } from '../../../shared/routing'
-import { isPlainObject, parseProviderOverlay } from '../../../shared/provider-overlay'
+import { isPlainObject, overlayNeedsRouter, parseProviderOverlay } from '../../../shared/provider-overlay'
 import type { StoredProvider } from '../providers/store'
 import type { ProviderStore } from '../providers/store'
 import {
@@ -15,7 +16,7 @@ import {
 } from '../codex/writer'
 import { CircuitBreaker } from './breaker'
 import { RequestLog } from './log'
-import { planAfterQueueChange, planEnable, planQuit, requestOrder } from './policy'
+import { displayQueue, planAfterQueueChange, planEnable, planQuit, requestOrder } from './policy'
 import { RoutingProxy, type UpstreamTarget } from './proxy'
 import { RoutingStore } from './store'
 
@@ -70,17 +71,35 @@ export class RoutingService {
 
   async snapshot(): Promise<RoutingState> {
     const settings = await this.refresh()
+    const queue = await this.viewQueue(settings)
     return {
       ...settings,
+      queue,
       active: this.live,
       port: this.proxy.getPort() ?? settings.port,
       logs: this.log.list(),
-      breakers: this.breaker.snapshot(settings.queue),
+      breakers: this.breaker.snapshot(queue),
     }
   }
 
   async setSettings(patch: RoutingSettingsPatch): Promise<RoutingState> {
     this.settings = await this.options.store.setSettings(patch)
+    return this.snapshot()
+  }
+
+  async setQueueOrder(ids: string[]): Promise<RoutingState> {
+    const settings = await this.refresh()
+    const current = await this.viewQueue(settings)
+    if (!Array.isArray(ids) || !isQueuePermutation(current, ids)) {
+      return this.snapshot()
+    }
+    this.settings = await this.options.store.setQueue(ids)
+    return this.snapshot()
+  }
+
+  async resetBreaker(id: string): Promise<RoutingState> {
+    if (typeof id !== 'string' || id.length === 0) return this.snapshot()
+    this.breaker.close(id)
     return this.snapshot()
   }
 
@@ -106,24 +125,21 @@ export class RoutingService {
   async enable(id: string): Promise<void> {
     const provider = await this.options.providers.peek(id)
     const settings = await this.refresh()
-    if (provider.kind === 'custom' && settings.queue.includes(id) && settings.queue[0] !== id) {
-      this.settings = await this.options.store.setQueue([
-        id,
-        ...settings.queue.filter((item) => item !== id),
-      ])
-    }
-    const queueLength = (this.settings ?? settings).queue.length
-    const plan = planEnable(provider.kind, queueLength, this.live)
+    const needsRouter = provider.kind === 'custom' && overlayNeedsRouter(provider.tomlText)
+    const plan = planEnable(provider.kind, settings.queue.length, this.live, needsRouter)
     await this.executeEnable(plan, provider)
     await this.options.providers.markEnabled(id)
     this.options.setNeedsRestart(plan.needsRestart)
   }
 
   async restoreOnQuit(): Promise<void> {
-    if (planQuit(this.live) === 'restore-direct') {
-      await this.restoreDirect(await this.peekActive())
-      this.live = false
+    const active = await this.peekActive()
+    const needsRouter = active?.kind === 'custom' && overlayNeedsRouter(active.tomlText)
+    const quit = planQuit(this.live, needsRouter)
+    if (quit === 'restore-direct') {
+      await this.restoreDirect(active)
     }
+    this.live = false
     await this.proxy.close()
   }
 
@@ -159,6 +175,7 @@ export class RoutingService {
       queueLength: settings.queue.length,
       routerLive: this.live,
       activeKind: active?.kind ?? null,
+      needsRouter: active?.kind === 'custom' && overlayNeedsRouter(active.tomlText),
     })
     if (plan.action === 'none') return
     if (plan.action === 'enter-router' && active?.kind === 'custom') {
@@ -182,7 +199,8 @@ export class RoutingService {
   private async reenterIfNeeded(): Promise<void> {
     const settings = await this.refresh()
     const active = await this.peekActive()
-    if (active?.kind !== 'custom' || settings.queue.length < 1) return
+    if (active?.kind !== 'custom') return
+    if (settings.queue.length < 1 && !overlayNeedsRouter(active.tomlText)) return
     const port = await this.ensureProxy()
     await enableRouterLiveConfig({
       ...this.homes(),
@@ -224,11 +242,20 @@ export class RoutingService {
   }
 
   private async candidates(): Promise<string[]> {
-    const settings = this.cached()
+    const [activeId, queue] = await this.routeParts(this.cached())
+    return requestOrder(activeId, queue)
+  }
+
+  private async viewQueue(settings: RoutingSettings): Promise<string[]> {
+    const [activeId, queue] = await this.routeParts(settings)
+    return displayQueue(activeId, queue, this.live)
+  }
+
+  private async routeParts(settings: RoutingSettings): Promise<[string | null, string[]]> {
     const providers = await this.options.providers.list()
     const customIds = new Set(providers.filter((item) => item.kind === 'custom').map((item) => item.id))
     const active = providers.find((item) => item.enabled && item.kind === 'custom')
-    return requestOrder(active?.id ?? null, settings.queue.filter((id) => customIds.has(id)))
+    return [active?.id ?? null, settings.queue.filter((id) => customIds.has(id))]
   }
 
   private async resolveUpstream(id: string): Promise<UpstreamTarget | null> {
@@ -248,7 +275,9 @@ export class RoutingService {
         id: provider.id,
         baseUrl,
         apiKey,
+        wireApi: overlay.table.wire_api === 'chat' ? 'chat' : 'responses',
         queryParams: stringRecord(overlay.table.query_params),
+        httpHeaders: stringRecord(overlay.table.http_headers),
       }
     } catch {
       return null

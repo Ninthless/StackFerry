@@ -3,6 +3,7 @@ import {
   ROUTER_PROVIDER_KEY,
   ROUTER_PROVIDER_NAME,
 } from '../../../shared/routing'
+import { AppError } from '../../../shared/app-error'
 import {
   isPlainObject,
   overlayUsesExternalAuth,
@@ -36,6 +37,9 @@ export function providerKey(id: string): string {
 
 export function applyThirdPartyProvider(doc: TomlTable, input: ThirdPartyLiveConfig): TomlTable {
   const overlay = parseProviderOverlay(input.tomlText)
+  if (overlay.table.wire_api === 'chat') {
+    throw new AppError('overlay_wire_api')
+  }
   const next = cloneDoc(doc)
   stripStackferryProviders(next)
   const key = providerKey(input.id)

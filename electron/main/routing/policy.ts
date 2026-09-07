@@ -14,9 +14,14 @@ export type QueuePlan =
   | { action: 'enter-router'; needsRestart: true }
   | { action: 'leave-router'; needsRestart: true }
 
-export function planEnable(kind: ProviderKind, queueLength: number, routerLive: boolean): EnablePlan {
+export function planEnable(
+  kind: ProviderKind,
+  queueLength: number,
+  routerLive: boolean,
+  needsRouter = false,
+): EnablePlan {
   if (kind === 'official') return { action: 'official', needsRestart: true }
-  if (queueLength < 1) return { action: 'direct', needsRestart: true }
+  if (queueLength < 1 && !needsRouter) return { action: 'direct', needsRestart: true }
   if (routerLive) return { action: 'pointer', needsRestart: false }
   return { action: 'router', needsRestart: true }
 }
@@ -25,18 +30,24 @@ export function planAfterQueueChange(input: {
   queueLength: number
   routerLive: boolean
   activeKind: ProviderKind | null
+  needsRouter?: boolean
 }): QueuePlan {
-  if (input.queueLength >= 1 && !input.routerLive && input.activeKind === 'custom') {
+  const stayOnRouter = input.queueLength >= 1 || Boolean(input.needsRouter)
+  if (stayOnRouter && !input.routerLive && input.activeKind === 'custom') {
     return { action: 'enter-router', needsRestart: true }
   }
-  if (input.queueLength < 1 && input.routerLive) {
+  if (!stayOnRouter && input.routerLive) {
     return { action: 'leave-router', needsRestart: true }
   }
   return { action: 'none' }
 }
 
-export function planQuit(routerLive: boolean): 'restore-direct' | 'none' {
-  return routerLive ? 'restore-direct' : 'none'
+export function planQuit(
+  routerLive: boolean,
+  needsRouter = false,
+): 'restore-direct' | 'keep-router' | 'none' {
+  if (!routerLive) return 'none'
+  return needsRouter ? 'keep-router' : 'restore-direct'
 }
 
 export function requestOrder(activeCustomId: string | null, queue: string[]): string[] {
@@ -47,9 +58,18 @@ export function requestOrder(activeCustomId: string | null, queue: string[]): st
     seen.add(id)
     ordered.push(id)
   }
-  if (activeCustomId) push(activeCustomId)
+  if (activeCustomId && !queue.includes(activeCustomId)) push(activeCustomId)
   for (const id of queue) push(id)
   return ordered
+}
+
+export function displayQueue(
+  activeCustomId: string | null,
+  queue: string[],
+  routerLive: boolean,
+): string[] {
+  if (queue.length === 0 && !routerLive) return []
+  return requestOrder(activeCustomId, queue)
 }
 
 export function shouldFailoverHttp(status: number): boolean {
@@ -61,6 +81,13 @@ export function classifyProxyPath(pathname: string): 'responses' | 'models' | nu
   if (normalized === '/v1/responses') return 'responses'
   if (normalized === '/v1/models') return 'models'
   return null
+}
+
+export function upstreamProxyPath(pathname: string, wireApi: 'responses' | 'chat'): string {
+  if (wireApi === 'chat' && classifyProxyPath(pathname) === 'responses') {
+    return '/v1/chat/completions'
+  }
+  return pathname
 }
 
 export function upstreamRequestUrl(

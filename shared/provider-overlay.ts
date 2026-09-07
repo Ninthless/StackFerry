@@ -53,6 +53,9 @@ export type OverlaySummary = {
   usesExternalAuth: boolean
 }
 
+export const OVERLAY_WIRE_APIS = ['responses', 'chat'] as const
+export type OverlayWireApi = (typeof OVERLAY_WIRE_APIS)[number]
+
 export function isPlainObject(value: unknown): value is TomlTable {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -100,7 +103,10 @@ export function starterOverlayToml(input: {
     },
   }
   if (input.model.trim()) doc.model = input.model.trim()
-  return stringifyToml(doc)
+  return stringifyToml(doc).replace(
+    /(wire_api = "responses"\n)/,
+    '$1http_headers = { "x-openai-actor-authorization" = "custom" }\n',
+  )
 }
 
 export function parseProviderOverlay(
@@ -148,10 +154,7 @@ export function parseProviderOverlay(
     throw new AppError('overlay_missing_base_url')
   }
 
-  const wireApi = table.wire_api
-  if (wireApi !== undefined && wireApi !== 'responses') {
-    throw new AppError('overlay_wire_api')
-  }
+  parseOverlayWireApi(table.wire_api)
 
   if (hasAuthTable(table) && hasInlineAuth(table)) {
     throw new AppError('overlay_auth_conflict')
@@ -202,6 +205,29 @@ export function overlayBaseUrl(text: string): string {
   }
 }
 
+export function overlayWireApi(text: string): OverlayWireApi {
+  try {
+    return parseOverlayWireApi(
+      parseProviderOverlay(text, { requireBaseUrl: false }).table.wire_api,
+    )
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'overlay_wire_api') throw error
+    return 'responses'
+  }
+}
+
+export function overlayNeedsRouter(text: string): boolean {
+  try {
+    return overlayWireApi(text) === 'chat'
+  } catch {
+    return false
+  }
+}
+
+export function isOverlayWireApi(value: unknown): value is OverlayWireApi {
+  return value === 'responses' || value === 'chat'
+}
+
 export function overlaySession(text: string): OverlaySession {
   try {
     const overlay = parseProviderOverlay(text, { requireBaseUrl: false })
@@ -222,6 +248,12 @@ export function withOverlayBaseUrl(text: string, baseUrl: string): string {
   })
 }
 
+export function withOverlayWireApi(text: string, wireApi: OverlayWireApi): string {
+  return patchOverlay(text, (overlay) => {
+    overlay.table.wire_api = wireApi
+  })
+}
+
 export function withOverlaySession(text: string, patch: Partial<OverlaySession>): string {
   return patchOverlay(text, (overlay) => {
     if (patch.model !== undefined) overlay.model = patch.model.trim()
@@ -235,6 +267,25 @@ export function withOverlaySession(text: string, patch: Partial<OverlaySession>)
   })
 }
 
+export function suggestedAutoCompactLimit(contextWindow: number): number {
+  return Math.max(1, Math.floor((contextWindow * 9) / 10))
+}
+
+export function syncedAutoCompactValue(
+  nextContextWindow: string,
+  previousContextWindow: string,
+  currentAutoCompact: string,
+): string | undefined {
+  const previous = parsedPositiveInt(previousContextWindow)
+  const compact = currentAutoCompact.trim()
+  const previousSuggested = previous == null ? null : String(suggestedAutoCompactLimit(previous))
+  if (compact !== '' && compact !== previousSuggested) return undefined
+
+  const next = parsedPositiveInt(nextContextWindow)
+  if (next == null) return compact === '' ? undefined : ''
+  return String(suggestedAutoCompactLimit(next))
+}
+
 function patchOverlay(text: string, mutate: (overlay: ProviderOverlay) => void): string {
   const overlay = parseProviderOverlay(text, { requireBaseUrl: false })
   mutate(overlay)
@@ -243,6 +294,12 @@ function patchOverlay(text: string, mutate: (overlay: ProviderOverlay) => void):
 
 export function overlayUsesExternalAuth(table: TomlTable): boolean {
   return Boolean(asTrimmedString(table.env_key) || hasAuthTable(table))
+}
+
+function parseOverlayWireApi(value: unknown): OverlayWireApi {
+  if (value === undefined || value === 'responses') return 'responses'
+  if (value === 'chat') return 'chat'
+  throw new AppError('overlay_wire_api')
 }
 
 function asTrimmedString(value: unknown): string {
@@ -273,12 +330,18 @@ function parsePositiveInt(value: unknown, key: string): number | null {
 }
 
 function parseOptionalPositiveInt(text: string, key: string): number | null {
+  const value = parsedPositiveInt(text)
+  if (text.trim() && value == null) {
+    throw new AppError('overlay_positive_int', { key })
+  }
+  return value
+}
+
+function parsedPositiveInt(text: string): number | null {
   const trimmed = text.trim()
   if (!trimmed) return null
   const value = Number(trimmed)
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new AppError('overlay_positive_int', { key })
-  }
+  if (!Number.isInteger(value) || value <= 0) return null
   return value
 }
 

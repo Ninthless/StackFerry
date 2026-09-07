@@ -54,6 +54,25 @@ export function isRoutingSettingsPatch(value: unknown): value is RoutingSettings
   })
 }
 
+export function moveQueueItem(queue: string[], id: string, direction: -1 | 1): string[] | null {
+  const index = queue.indexOf(id)
+  const nextIndex = index + direction
+  if (index < 0 || nextIndex < 0 || nextIndex >= queue.length) return null
+  const next = [...queue]
+  const [item] = next.splice(index, 1)
+  next.splice(nextIndex, 0, item)
+  return next
+}
+
+export function isQueuePermutation(current: string[], next: string[]): boolean {
+  if (current.length !== next.length) return false
+  const remaining = new Set(current)
+  for (const id of next) {
+    if (typeof id !== 'string' || !remaining.delete(id)) return false
+  }
+  return remaining.size === 0
+}
+
 function isPositiveInt(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0
 }
