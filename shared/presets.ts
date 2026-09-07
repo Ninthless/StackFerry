@@ -46,6 +46,18 @@ export const PRESETS: Preset[] = [
     requiresApiKey: true,
   },
   {
+    id: 'xfcode',
+    name: 'XFCode',
+    kind: 'custom',
+    tomlText: starterOverlayToml({
+      providerId: 'xfcode',
+      name: 'XFCode',
+      baseUrl: 'https://api.orangecc.cc/v1',
+      model: '',
+    }),
+    requiresApiKey: true,
+  },
+  {
     id: 'custom',
     name: 'Custom',
     kind: 'custom',
