@@ -1,25 +1,36 @@
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { existsSync } from 'node:fs'
 import { PRESETS } from '../../shared/presets'
+import { CLAUDE_PRESETS } from '../../shared/claude-presets'
 import { IpcChannel } from '../../shared/ipc'
 import { isLanguagePreference } from '../../shared/locale'
 import type { MicaState } from '../../shared/mica'
 import { isRoutingSettingsPatch, type RoutingSettingsPatch } from '../../shared/routing'
 import { isThemePreference, type ThemePreference } from '../../shared/theme'
-import type { AppStatus, LanguagePreference, ProviderDraft } from '../../shared/types'
+import type { AppStatus, ClaudeProviderDraft, LanguagePreference, ProviderDraft } from '../../shared/types'
+import { listClaudeModels, type ListClaudeModelsInput } from './claude/models'
+import type { ClaudeEnableService } from './claude/service'
+import type { ClaudeProviderStore } from './claude/store'
 import { codexAuthPath, codexConfigPath } from './codex/home'
 import { listProviderModels, type ListModelsInput } from './providers/models'
 import type { ProviderStore } from './providers/store'
 import type { RoutingService } from './routing/service'
+import { registerSkillIpc } from './skills/ipc'
+import type { SkillService } from './skills/service'
 
 type IpcContext = {
   store: ProviderStore
   routing: RoutingService
+  claudeStore: ClaudeProviderStore
+  claude: ClaudeEnableService
   getCodexHome: () => string
   backupRoot: string
   getNeedsRestart: () => boolean
   setNeedsRestart: (value: boolean) => void
   onChanged: () => void
+  onClaudeChanged: () => void
+  skills: SkillService
+  onSkillsChanged: () => void
   getLocalePreference: () => Promise<LanguagePreference>
   setLocalePreference: (preference: LanguagePreference) => Promise<LanguagePreference>
   getMicaState: () => Promise<MicaState>
@@ -30,6 +41,7 @@ type IpcContext = {
 
 export function registerIpc(context: IpcContext): void {
   let writeChain = Promise.resolve()
+  let claudeWriteChain = Promise.resolve()
 
   ipcMain.handle(IpcChannel.listProviders, () => context.store.list())
   ipcMain.handle(IpcChannel.listPresets, () => PRESETS)
@@ -53,6 +65,7 @@ export function registerIpc(context: IpcContext): void {
     await writeChain
     context.onChanged()
   })
+  ipcMain.handle(IpcChannel.reorderProviders, (_event, ids: string[]) => context.store.reorder(ids))
   ipcMain.handle(IpcChannel.enableProvider, async (_event, id: string) => {
     writeChain = writeChain.catch(() => undefined).then(() => enableProvider(context, id))
     return writeChain.then(() => readStatus(context))
@@ -119,6 +132,54 @@ export function registerIpc(context: IpcContext): void {
     context.onChanged()
     return next
   })
+  ipcMain.handle(IpcChannel.setQueueOrder, async (_event, ids: string[]) => {
+    if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string')) {
+      return context.routing.snapshot()
+    }
+    const next = await context.routing.setQueueOrder(ids)
+    context.onChanged()
+    return next
+  })
+  ipcMain.handle(IpcChannel.resetBreaker, async (_event, id: string) => {
+    if (typeof id !== 'string') {
+      return context.routing.snapshot()
+    }
+    const next = await context.routing.resetBreaker(id)
+    context.onChanged()
+    return next
+  })
+  ipcMain.handle(IpcChannel.listClaudeProviders, () => context.claudeStore.list())
+  ipcMain.handle(IpcChannel.listClaudePresets, () => CLAUDE_PRESETS)
+  ipcMain.handle(IpcChannel.addClaudeProvider, async (_event, draft: ClaudeProviderDraft) => {
+    const provider = await context.claudeStore.add(draft)
+    context.onClaudeChanged()
+    return provider
+  })
+  ipcMain.handle(IpcChannel.updateClaudeProvider, async (_event, id: string, draft: ClaudeProviderDraft) => {
+    const provider = await context.claudeStore.update(id, draft)
+    context.onClaudeChanged()
+    if ((await context.claudeStore.getActiveId()) === id) {
+      claudeWriteChain = claudeWriteChain.catch(() => undefined).then(() => enableClaudeProvider(context, id))
+      await claudeWriteChain
+    }
+    return provider
+  })
+  ipcMain.handle(IpcChannel.deleteClaudeProvider, async (_event, id: string) => {
+    await context.claudeStore.delete(id)
+    context.onClaudeChanged()
+  })
+  ipcMain.handle(IpcChannel.reorderClaudeProviders, (_event, ids: string[]) => {
+    return context.claudeStore.reorder(ids)
+  })
+  ipcMain.handle(IpcChannel.enableClaudeProvider, async (_event, id: string) => {
+    claudeWriteChain = claudeWriteChain.catch(() => undefined).then(() => enableClaudeProvider(context, id))
+    return claudeWriteChain.then(() => context.claude.status())
+  })
+  ipcMain.handle(IpcChannel.getClaudeStatus, () => context.claude.status())
+  ipcMain.handle(IpcChannel.listClaudeModels, (_event, input: ListClaudeModelsInput) => {
+    return listClaudeModels(context.claudeStore, input)
+  })
+  registerSkillIpc(context)
 }
 
 export function bindWindowState(win: BrowserWindow): void {
@@ -139,6 +200,12 @@ function senderWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
 export function broadcastChanged(): void {
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send(IpcChannel.changed)
+  }
+}
+
+export function broadcastClaudeChanged(): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send(IpcChannel.claudeChanged)
   }
 }
 
@@ -164,6 +231,21 @@ export async function seedOfficialProvider(store: ProviderStore): Promise<void> 
   if (providers.length > 0) return
   await store.add({
     name: 'Codex Official',
+    kind: 'official',
+    presetId: 'official',
+  })
+}
+
+export async function enableClaudeProvider(context: IpcContext, id: string): Promise<void> {
+  await context.claude.enable(id)
+  context.onClaudeChanged()
+}
+
+export async function seedOfficialClaudeProvider(store: ClaudeProviderStore): Promise<void> {
+  const providers = await store.list()
+  if (providers.length > 0) return
+  await store.add({
+    name: 'Claude Official',
     kind: 'official',
     presetId: 'official',
   })

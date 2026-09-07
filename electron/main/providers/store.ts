@@ -11,6 +11,7 @@ import {
   starterOverlayToml,
   summarizeProviderOverlay,
 } from '../../../shared/provider-overlay'
+import { orderByIds } from '../../../shared/id-order'
 import type { ProviderDraft, ProviderKind, ProviderListItem } from '../../../shared/types'
 import { atomicWriteFile } from '../codex/writer'
 
@@ -88,6 +89,15 @@ export class ProviderStore {
     provider.updatedAt = new Date().toISOString()
     await this.write(file)
     return this.toListItem(provider, file.activeProviderId)
+  }
+
+  async reorder(ids: string[]): Promise<ProviderListItem[]> {
+    const file = await this.read()
+    const next = orderByIds(file.providers, ids)
+    if (!next) throw new AppError('provider_order')
+    file.providers = next
+    await this.write(file)
+    return file.providers.map((provider) => this.toListItem(provider, file.activeProviderId))
   }
 
   async delete(id: string): Promise<void> {

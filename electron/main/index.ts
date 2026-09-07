@@ -6,14 +6,19 @@ import type { LanguagePreference } from '../../shared/locale'
 import { windowUsesMicaSurface } from '../../shared/mica'
 import type { ThemePreference } from '../../shared/theme'
 import { AppearanceStore } from './appearance-store'
+import { resolveClaudeDesktopLibraries, resolveClaudeHome } from './claude/home'
+import { ClaudeEnableService } from './claude/service'
+import { ClaudeProviderStore } from './claude/store'
 import { resolveCodexHome } from './codex/home'
 import { formatAppError } from './format-error'
 import { setMainLocale, m } from './i18n'
 import {
   bindWindowState,
   broadcastChanged,
+  broadcastClaudeChanged,
   enableProvider,
   registerIpc,
+  seedOfficialClaudeProvider,
   seedOfficialProvider,
 } from './ipc'
 import { LocaleStore } from './locale-store'
@@ -26,6 +31,8 @@ import {
 import { ProviderStore } from './providers/store'
 import { RoutingService } from './routing/service'
 import { RoutingStore } from './routing/store'
+import { broadcastSkillsChanged } from './skills/ipc'
+import { SkillService } from './skills/service'
 import { AppTray } from './tray'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -59,8 +66,10 @@ let win: BrowserWindow | null = null
 let isQuitting = false
 let needsRestart = false
 let store: ProviderStore | null = null
+let claudeStore: ClaudeProviderStore | null = null
 let routingStore: RoutingStore | null = null
 let routing: RoutingService | null = null
+let claude: ClaudeEnableService | null = null
 let localeStore: LocaleStore | null = null
 let appearanceStore: AppearanceStore | null = null
 let tray: AppTray | null = null
@@ -135,6 +144,7 @@ app.whenReady().then(async () => {
     Menu.setApplicationMenu(null)
   }
   store = new ProviderStore(path.join(app.getPath('userData'), 'providers.json'))
+  claudeStore = new ClaudeProviderStore(path.join(app.getPath('userData'), 'claude-providers.json'))
   routingStore = new RoutingStore(path.join(app.getPath('userData'), 'routing.json'))
   localeStore = new LocaleStore(path.join(app.getPath('userData'), 'locale.json'))
   appearanceStore = new AppearanceStore(path.join(app.getPath('userData'), 'appearance.json'))
@@ -153,9 +163,23 @@ app.whenReady().then(async () => {
       needsRestart = value
     },
   })
+  claude = new ClaudeEnableService({
+    store: claudeStore,
+    getClaudeHome: () => resolveClaudeHome(),
+    getDesktopLibraries: () => resolveClaudeDesktopLibraries(),
+    backupRoot: path.join(app.getPath('userData'), 'backups', 'claude'),
+  })
+  const skills = new SkillService({
+    userData: app.getPath('userData'),
+    getClaudeHome: () => resolveClaudeHome(),
+    getCodexHome: () => resolveCodexHome(),
+  })
   const ipcContext = {
     store,
     routing,
+    claudeStore: claudeStore!,
+    claude: claude!,
+    skills,
     getCodexHome: () => resolveCodexHome(),
     backupRoot: path.join(app.getPath('userData'), 'backups'),
     getNeedsRestart: () => needsRestart,
@@ -165,6 +189,12 @@ app.whenReady().then(async () => {
     onChanged: () => {
       broadcastChanged()
       void refreshTray()
+    },
+    onClaudeChanged: () => {
+      broadcastClaudeChanged()
+    },
+    onSkillsChanged: () => {
+      broadcastSkillsChanged()
     },
     getLocalePreference: () => localeStore!.getPreference(),
     setLocalePreference: async (preference: LanguagePreference) => {
@@ -203,6 +233,7 @@ app.whenReady().then(async () => {
   })
   registerIpc(ipcContext)
   await seedOfficialProvider(store)
+  await seedOfficialClaudeProvider(claudeStore)
   await routing.start()
   tray.create()
   await refreshTray()
