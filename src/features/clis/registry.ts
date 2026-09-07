@@ -1,24 +1,24 @@
-import type { LucideIcon } from "lucide-react"
-import { Bot, SquareTerminal } from "lucide-react"
+import type { ComponentType, HTMLAttributes } from "react"
+import { ClaudeIcon, CodexIcon } from "./cli-icons"
 
 export type CliId = "codex" | "claude-code"
 
 export type CliDefinition = {
   id: CliId
   name: string
-  icon: LucideIcon
+  icon: ComponentType<HTMLAttributes<HTMLSpanElement>>
 }
 
 export const clis: CliDefinition[] = [
   {
     id: "codex",
     name: "Codex",
-    icon: SquareTerminal,
+    icon: CodexIcon,
   },
   {
     id: "claude-code",
-    name: "Claude Code",
-    icon: Bot,
+    name: "Claude",
+    icon: ClaudeIcon,
   },
 ]
 
