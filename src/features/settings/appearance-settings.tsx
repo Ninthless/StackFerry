@@ -4,7 +4,6 @@ import { isTheme, useTheme } from "@/components/theme-provider"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -39,7 +38,6 @@ export function AppearanceSettings() {
       <Card>
         <CardHeader>
           <CardTitle>{m.appearance_legend()}</CardTitle>
-          <CardDescription>{m.appearance_description()}</CardDescription>
         </CardHeader>
         <CardContent>
           <FieldGroup>
@@ -72,7 +70,6 @@ export function AppearanceSettings() {
       <Card>
         <CardHeader>
           <CardTitle id={languageLabelId}>{m.language_legend()}</CardTitle>
-          <CardDescription>{m.language_description()}</CardDescription>
         </CardHeader>
         <CardContent>
           <ToggleGroup

@@ -3,7 +3,6 @@ import packageJson from "../../../package.json"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -18,7 +17,6 @@ export function AboutSettings() {
     <Card>
       <CardHeader>
         <CardTitle>{m.about_legend()}</CardTitle>
-        <CardDescription>{m.about_description()}</CardDescription>
       </CardHeader>
       <CardContent>
         <FieldGroup>

@@ -1,11 +1,12 @@
+import { useEffect, useId, useState } from "react"
 import { ScrollText } from "lucide-react"
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts"
 import type { RoutingLogEntry } from "@shared/routing"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
+  CardAction,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -22,7 +23,16 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
+import { Field, FieldLabel } from "@/components/ui/field"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -34,23 +44,72 @@ import {
 } from "@/components/ui/table"
 import * as m from "@/paraglide/messages.js"
 
+const LOG_REFRESH_KEY = "stackferry.log-refresh-seconds"
+const LOG_REFRESH_VALUES = [0, 2, 5, 10, 30] as const
+const DEFAULT_LOG_REFRESH = 5
+
 type Props = {
   logs: RoutingLogEntry[]
   names: Map<string, string>
+  onRefresh: () => Promise<void>
 }
 
-export function RoutingLogsCard({ logs, names }: Props) {
+export function RoutingLogsCard({ logs, names, onRefresh }: Props) {
+  const refreshId = useId()
+  const [refreshSeconds, setRefreshSeconds] = useState(readLogRefreshSeconds)
   const chartConfig = {
     ok: { label: m.routing_log_ok(), color: "var(--chart-2)" },
     fail: { label: m.routing_chart_fail(), color: "var(--chart-1)" },
   } satisfies ChartConfig
   const chartData = countByProvider(logs, names)
+  const refreshItems = LOG_REFRESH_VALUES.map((seconds) => ({
+    value: String(seconds),
+    label:
+      seconds === 0
+        ? m.routing_logs_refresh_off()
+        : m.routing_logs_refresh_n({ seconds }),
+  }))
+
+  useEffect(() => {
+    if (refreshSeconds <= 0) return
+    const timer = window.setInterval(() => {
+      void onRefresh()
+    }, refreshSeconds * 1000)
+    return () => window.clearInterval(timer)
+  }, [onRefresh, refreshSeconds])
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>{m.routing_logs()}</CardTitle>
-        <CardDescription>{m.routing_chart_description()}</CardDescription>
+        <CardAction>
+          <Field orientation="horizontal" className="w-fit">
+            <FieldLabel htmlFor={refreshId}>{m.routing_logs_refresh()}</FieldLabel>
+            <Select
+              items={refreshItems}
+              value={String(refreshSeconds)}
+              onValueChange={(value) => {
+                if (typeof value !== "string") return
+                const next = readLogRefreshSeconds(value)
+                setRefreshSeconds(next)
+                localStorage.setItem(LOG_REFRESH_KEY, String(next))
+              }}
+            >
+              <SelectTrigger id={refreshId} size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false} side="bottom">
+                <SelectGroup>
+                  {refreshItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         {logs.length === 0 ? (
@@ -100,7 +159,7 @@ export function RoutingLogsCard({ logs, names }: Props) {
                       <TableCell>{entry.model || "—"}</TableCell>
                       <TableCell>
                         <Badge variant={entry.errorCode ? "destructive" : "secondary"}>
-                          {entry.errorCode || m.routing_log_ok()}
+                          {entry.errorCode ? m.routing_log_fail() : m.routing_log_ok()}
                         </Badge>
                       </TableCell>
                       <TableCell>{entry.status || "—"}</TableCell>
@@ -115,6 +174,13 @@ export function RoutingLogsCard({ logs, names }: Props) {
       </CardContent>
     </Card>
   )
+}
+
+function readLogRefreshSeconds(raw?: string | null): number {
+  const stored = raw ?? (typeof localStorage === "undefined" ? null : localStorage.getItem(LOG_REFRESH_KEY))
+  const value = Number(stored)
+  if ((LOG_REFRESH_VALUES as readonly number[]).includes(value)) return value
+  return DEFAULT_LOG_REFRESH
 }
 
 function countByProvider(logs: RoutingLogEntry[], names: Map<string, string>) {

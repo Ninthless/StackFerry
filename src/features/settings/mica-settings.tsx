@@ -3,19 +3,18 @@ import type { MicaState } from "@shared/mica"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
 import {
   Field,
   FieldContent,
-  FieldDescription,
   FieldLabel,
 } from "@/components/ui/field"
 import { Switch } from "@/components/ui/switch"
 import { applyMicaDocument } from "@/lib/mica"
 import * as m from "@/paraglide/messages.js"
+import { HintTitle } from "./settings-hint"
 
 export function MicaSettings() {
   const formId = useId()
@@ -48,14 +47,14 @@ export function MicaSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{m.mica_legend()}</CardTitle>
-        <CardDescription>{m.mica_description()}</CardDescription>
+        <HintTitle hint={m.mica_description()}>
+          <CardTitle>{m.mica_legend()}</CardTitle>
+        </HintTitle>
       </CardHeader>
       <CardContent>
         <Field orientation="horizontal">
           <FieldContent>
             <FieldLabel htmlFor={switchId}>{m.mica_label()}</FieldLabel>
-            <FieldDescription>{m.mica_enabled_description()}</FieldDescription>
           </FieldContent>
           <Switch
             id={switchId}
