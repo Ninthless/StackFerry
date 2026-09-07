@@ -1,5 +1,5 @@
 import { useRef } from "react"
-import { ArrowLeftIcon, SettingsIcon } from "lucide-react"
+import { ArrowLeftIcon, CircleHelp, SettingsIcon, SparklesIcon } from "lucide-react"
 import { BrandMark } from "@/components/brand-mark"
 import { clis, defaultCliId, type CliId } from "@/features/clis/registry"
 import {
@@ -10,22 +10,23 @@ import * as m from "@/paraglide/messages.js"
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { registerBurstClick } from "./burst-click"
 
 const DEVTOOLS_CLICKS = 7
 const DEVTOOLS_CLICK_WINDOW_MS = 1000
 
-export type NavId = CliId | `settings:${SettingsSectionId}`
+export type NavId = CliId | "skills" | `settings:${SettingsSectionId}`
 
 type Props = {
   activeId: NavId
@@ -34,6 +35,19 @@ type Props = {
 
 function isSettingsNav(id: NavId): id is `settings:${SettingsSectionId}` {
   return id.startsWith("settings:")
+}
+
+function ClaudeDesktopHint() {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<SidebarMenuAction type="button" aria-label={m.field_hint()} />}
+      >
+        <CircleHelp />
+      </TooltipTrigger>
+      <TooltipContent side="right">{m.claude_hint_description()}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 export function AppSidebar({ activeId, onSelect }: Props) {
@@ -100,42 +114,62 @@ export function AppSidebar({ activeId, onSelect }: Props) {
             </SidebarGroupContent>
           </SidebarGroup>
         ) : (
-          <SidebarGroup>
-            <SidebarGroupLabel>{m.nav_cli()}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {clis.map((cli) => (
-                  <SidebarMenuItem key={cli.id}>
+          <>
+            <SidebarGroup>
+              <SidebarGroupLabel>{m.nav_cli()}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {clis.map((cli) => (
+                    <SidebarMenuItem key={cli.id}>
+                      <SidebarMenuButton
+                        isActive={cli.id === activeId}
+                        tooltip={cli.name}
+                        onClick={() => onSelect(cli.id)}
+                      >
+                        <cli.icon />
+                        <span>{cli.name}</span>
+                      </SidebarMenuButton>
+                      {cli.id === "claude-code" ? <ClaudeDesktopHint /> : null}
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <SidebarGroup>
+              <SidebarGroupLabel>{m.nav_skills()}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
                     <SidebarMenuButton
-                      isActive={cli.id === activeId}
-                      tooltip={cli.name}
-                      onClick={() => onSelect(cli.id)}
+                      isActive={activeId === "skills"}
+                      tooltip={m.nav_skills()}
+                      onClick={() => onSelect("skills")}
                     >
-                      <cli.icon />
-                      <span>{cli.name}</span>
+                      <SparklesIcon />
+                      <span>{m.nav_skills()}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <SidebarGroup className="mt-auto">
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      tooltip={m.nav_settings()}
+                      onClick={() => onSelect("settings:appearance")}
+                    >
+                      <SettingsIcon />
+                      <span>{m.nav_settings()}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </>
         )}
       </SidebarContent>
-      {settingsMode ? null : (
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip={m.nav_settings()}
-                onClick={() => onSelect("settings:appearance")}
-              >
-                <SettingsIcon />
-                <span>{m.nav_settings()}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
-      )}
       <SidebarRail />
     </Sidebar>
   )
