@@ -198,10 +198,11 @@ function ToastList() {
 function Toaster({
   children,
   toastManager = toast,
+  timeout = 2500,
   ...props
 }: ToastPrimitive.Provider.Props) {
   return (
-    <ToastProvider toastManager={toastManager} {...props}>
+    <ToastProvider timeout={timeout} toastManager={toastManager} {...props}>
       {children}
       <ToastPortal>
         <ToastViewport>
