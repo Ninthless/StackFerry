@@ -1,7 +1,24 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type CSSProperties } from "react"
 
 import { BLUR, COMPOSITE, ENERGY_SIMULATION, VERTEX } from "@/features/clis/effort-energy-shaders"
 import { cn } from "@/lib/utils"
+
+export const EFFORT_EMBER_PAD = {
+  left: 0,
+  right: 14,
+  y: 0,
+} as const
+
+// 画布比轨道更宽，u_ratio 必须按轨道宽度映射，否则火尾会对不齐滑块。
+export function paddedEnergyRatio(
+  progress: number,
+  canvasWidth: number,
+  pad: { left: number; right: number } = EFFORT_EMBER_PAD,
+): number {
+  const track = canvasWidth - pad.left - pad.right
+  if (canvasWidth <= 0 || track <= 0) return progress
+  return (pad.left + progress * track) / canvasWidth
+}
 
 type Props = {
   active: boolean
@@ -51,6 +68,7 @@ function createProgram(gl: WebGL2RenderingContext, source: string): WebGLProgram
 }
 
 export function EffortEnergy({ active, baseColor, color, intensity, light, ratio }: Props) {
+  const frameRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [generation, setGeneration] = useState(0)
   const values = useRef({ active, color, intensity, light, ratio })
@@ -62,6 +80,7 @@ export function EffortEnergy({ active, baseColor, color, intensity, light, ratio
 
   useEffect(() => {
     const canvas = canvasRef.current
+    const host = frameRef.current
     const gl = canvas?.getContext("webgl2", {
       preserveDrawingBuffer: false,
       antialias: false,
@@ -115,13 +134,13 @@ export function EffortEnergy({ active, baseColor, color, intensity, light, ratio
       }
       targets = []
     }
-    const makeTarget = (): Target => {
+    const makeTarget = (width: number, height: number): Target => {
       const framebuffer = gl.createFramebuffer()
       const texture = gl.createTexture()
       if (!framebuffer || !texture) throw new Error("Framebuffer allocation failed")
       gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer)
       gl.bindTexture(gl.TEXTURE_2D, texture)
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
@@ -129,21 +148,25 @@ export function EffortEnergy({ active, baseColor, color, intensity, light, ratio
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0)
       return { framebuffer, texture }
     }
-    const resize = (): void => {
+    const resize = (): boolean => {
+      const cssWidth = canvas.clientWidth
+      const cssHeight = canvas.clientHeight
+      if (cssWidth < 1 || cssHeight < 1) return false
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
-      const width = Math.max(1, Math.round(canvas.clientWidth * dpr))
-      const height = Math.max(1, Math.round(canvas.clientHeight * dpr))
-      if (canvas.width === width && canvas.height === height && targets.length > 0) return
+      const width = Math.max(1, Math.round(cssWidth * dpr))
+      const height = Math.max(1, Math.round(cssHeight * dpr))
+      if (canvas.width === width && canvas.height === height && targets.length > 0) return true
       canvas.width = width
       canvas.height = height
       destroyTargets()
-      targets = [makeTarget(), makeTarget(), makeTarget(), makeTarget()]
+      targets = [makeTarget(width, height), makeTarget(width, height), makeTarget(width, height), makeTarget(width, height)]
       for (const { framebuffer } of targets) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer)
         gl.clearColor(0, 0, 0, 0)
         gl.clear(gl.COLOR_BUFFER_BIT)
       }
       gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+      return true
     }
     const clearSimulation = (): void => {
       for (const { framebuffer } of targets.slice(0, 2)) {
@@ -154,7 +177,12 @@ export function EffortEnergy({ active, baseColor, color, intensity, light, ratio
     }
     const draw = (now: number): void => {
       if (!running) return
-      resize()
+      if (!resize()) {
+        inactive += 1
+        if (inactive < 150) frame = requestAnimationFrame(draw)
+        else running = false
+        return
+      }
       const state = values.current
       const effectActive = state.active
       const ratioChanged = Math.abs(state.ratio - previousRatio) > 0.0005
@@ -180,7 +208,7 @@ export function EffortEnergy({ active, baseColor, color, intensity, light, ratio
       gl.bindTexture(gl.TEXTURE_2D, back.texture)
       gl.uniform1i(sim.previous, 0)
       gl.uniform1f(sim.time, time)
-      gl.uniform1f(sim.ratio, state.ratio)
+      gl.uniform1f(sim.ratio, paddedEnergyRatio(state.ratio, canvas.clientWidth))
       gl.uniform1f(sim.intensity, state.intensity)
       gl.uniform1f(sim.elapsed, elapsed)
       gl.uniform1f(sim.cssWidth, canvas.clientWidth)
@@ -235,7 +263,7 @@ export function EffortEnergy({ active, baseColor, color, intensity, light, ratio
       resize()
       restart()
     })
-    observer.observe(canvas)
+    observer.observe(host ?? canvas)
     canvas.addEventListener("webglcontextlost", onContextLost)
     canvas.addEventListener("webglcontextrestored", onContextRestored)
     resize()
@@ -258,12 +286,26 @@ export function EffortEnergy({ active, baseColor, color, intensity, light, ratio
     }
   }, [generation])
 
+  // canvas 是替换元素，inset 拉不开宽高；外层普通盒子负责伸出轨道，画布只填满盒子。
   return (
-    <canvas
-      ref={canvasRef}
-      className={cn("effort-energy", light ? "mix-blend-normal" : "mix-blend-screen")}
-      data-base-color={baseColor}
+    <div
+      ref={frameRef}
+      className="effort-energy overflow-hidden rounded-[10px]"
       aria-hidden="true"
-    />
+      style={
+        {
+          top: -EFFORT_EMBER_PAD.y,
+          right: -EFFORT_EMBER_PAD.right,
+          bottom: -EFFORT_EMBER_PAD.y,
+          left: -EFFORT_EMBER_PAD.left,
+        } as CSSProperties
+      }
+    >
+      <canvas
+        ref={canvasRef}
+        className={cn("block size-full", light ? "mix-blend-normal" : "mix-blend-screen")}
+        data-base-color={baseColor}
+      />
+    </div>
   )
 }

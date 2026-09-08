@@ -184,5 +184,7 @@ void main(){
   vec3 lightMapped=pow(clamp(lightSource,0.0,1.0),vec3(0.92));
   float lightPeak=max(max(lightMapped.r,lightMapped.g),lightMapped.b);
   float lightAlpha=smoothstep(0.010,0.36,lightPeak)*0.82;
-  outputColor=u_light>0.5?vec4(lightMapped,lightAlpha):vec4(mapped,1.0);
+  float darkPeak=max(max(mapped.r,mapped.g),mapped.b);
+  float darkAlpha=smoothstep(0.002,0.14,darkPeak);
+  outputColor=u_light>0.5?vec4(lightMapped,lightAlpha):vec4(mapped,darkAlpha);
 }`

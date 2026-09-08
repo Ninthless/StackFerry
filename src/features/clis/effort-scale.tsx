@@ -69,7 +69,6 @@ export function EffortScale({
   const intensity = energyIntensity(progress)
   const dragging = drag !== null
   const active = dragging || settling
-  const energized = charged && (active || progress >= 0.9995)
   const current = options[Math.round(visual)] ?? options[index] ?? options[0]
   const dense = options.length > 6
   const dark = useDarkClass()
@@ -202,52 +201,56 @@ export function EffortScale({
           })}
         </div>
       )}
-      <div
-        ref={railRef}
-        id={id}
-        role="slider"
-        tabIndex={0}
-        aria-orientation="horizontal"
-        aria-valuemin={0}
-        aria-valuemax={last}
-        aria-valuenow={index}
-        aria-valuetext={current?.label}
-        data-dragging={dragging || undefined}
-        data-peak={peak || undefined}
-        className="group/effort relative isolate h-8 cursor-grab touch-none overflow-hidden rounded-[10px] border border-[color-mix(in_srgb,var(--border)_75%,#11121a)] outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing"
-        style={{ background: "var(--effort-track)" }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-        onKeyDown={handleKeyDown}
-      >
-        <div className="pointer-events-none absolute inset-x-3.5 inset-y-0 z-[2] flex items-center justify-between">
-          {options.map((option) => (
-            <i
-              key={option.value ?? "default"}
-              aria-hidden
-              className={cn("size-1 rounded-full bg-[#8c8592] dark:bg-[#51525a]", snap)}
-              style={{ opacity: peak ? 0 : "var(--effort-dots-opacity)" }}
-            />
-          ))}
-        </div>
-        <EffortEnergy
-          active={energized}
-          baseColor={track}
-          color={color}
-          intensity={intensity}
-          light={!dark}
-          ratio={progress}
-        />
+      <div className="relative">
         <div
-          aria-hidden
-          className={cn("effort-thumb", snap)}
-          style={{
-            left: travel,
-            transform: dragging ? "translate(-50%, -50%) scale(0.95)" : "translate(-50%, -50%)",
-          }}
-        />
+          ref={railRef}
+          id={id}
+          role="slider"
+          tabIndex={0}
+          aria-orientation="horizontal"
+          aria-valuemin={0}
+          aria-valuemax={last}
+          aria-valuenow={index}
+          aria-valuetext={current?.label}
+          data-dragging={dragging || undefined}
+          data-peak={peak || undefined}
+          className="group/effort relative isolate h-8 cursor-grab touch-none overflow-x-visible overflow-y-clip rounded-[10px] border border-[color-mix(in_srgb,var(--border)_75%,#11121a)] outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing"
+          style={{ background: "var(--effort-track)" }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onKeyDown={handleKeyDown}
+        >
+          <div className="pointer-events-none absolute inset-0 z-[2] overflow-hidden rounded-[inherit]">
+            <div className="absolute inset-x-3.5 inset-y-0 flex items-center justify-between">
+              {options.map((option) => (
+                <i
+                  key={option.value ?? "default"}
+                  aria-hidden
+                  className={cn("size-1 rounded-full bg-[#8c8592] dark:bg-[#51525a]", snap)}
+                  style={{ opacity: peak ? 0 : "var(--effort-dots-opacity)" }}
+                />
+              ))}
+            </div>
+          </div>
+          <EffortEnergy
+            active={charged || active}
+            baseColor={track}
+            color={color}
+            intensity={intensity}
+            light={!dark}
+            ratio={progress}
+          />
+          <div
+            aria-hidden
+            className={cn("effort-thumb", snap)}
+            style={{
+              left: travel,
+              transform: dragging ? "translate(-50%, -50%) scale(0.95)" : "translate(-50%, -50%)",
+            }}
+          />
+        </div>
       </div>
       <FieldDescription>{current?.hint}</FieldDescription>
     </div>
