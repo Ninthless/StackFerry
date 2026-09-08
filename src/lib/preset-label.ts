@@ -21,3 +21,8 @@ export function presetLabel(id: string, fallback: string): string {
 export function claudePresetLabel(id: string, fallback: string): string {
   return CLAUDE_PRESET_LABELS[id]?.() ?? fallback
 }
+
+export function grokPresetLabel(id: string, fallback: string): string {
+  if (id === "official") return m.preset_grok_official()
+  return CLAUDE_PRESET_LABELS[id]?.() ?? fallback
+}
