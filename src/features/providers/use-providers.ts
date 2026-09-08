@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
-import type { Preset, ProviderDraft, ProviderListItem, RoutingState } from "@shared/types"
-import { DEFAULT_ROUTING_SETTINGS } from "@shared/routing"
+import { emptyRoutingSnapshot, type RoutingLaneState } from "@shared/routing"
+import type { Preset, ProviderDraft, ProviderListItem } from "@shared/types"
 import { toast } from "@/components/ui/toast"
 import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
@@ -16,21 +16,11 @@ function tipError(description: string, id?: string): void {
   toast.add({ id, type: "error", description, priority: "high" })
 }
 
-const EMPTY_ROUTING: RoutingState = {
-  queue: [],
-  failureThreshold: DEFAULT_ROUTING_SETTINGS.failureThreshold,
-  recoveryWaitSeconds: DEFAULT_ROUTING_SETTINGS.recoveryWaitSeconds,
-  halfOpenSuccesses: DEFAULT_ROUTING_SETTINGS.halfOpenSuccesses,
-  logRetention: DEFAULT_ROUTING_SETTINGS.logRetention,
-  port: null,
-  active: false,
-  logs: [],
-  breakers: [],
-}
+const EMPTY_ROUTING = emptyRoutingSnapshot().lanes.codex
 
 export function useProviders() {
   const [providers, setProviders] = useState<ProviderListItem[]>([])
-  const [routing, setRouting] = useState<RoutingState>(EMPTY_ROUTING)
+  const [routing, setRouting] = useState<RoutingLaneState>(EMPTY_ROUTING)
   const [presets, setPresets] = useState<Preset[]>([])
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<ProviderListItem | null>(null)
@@ -44,7 +34,7 @@ export function useProviders() {
       api.getRouting(),
     ])
     setProviders(nextProviders)
-    setRouting(nextRouting)
+    setRouting(nextRouting.lanes.codex)
   }, [])
 
   useEffect(() => {
@@ -147,7 +137,7 @@ export function useProviders() {
 
   async function setProviderQueued(id: string, queued: boolean): Promise<void> {
     try {
-      await run(() => desktopApi().setProviderQueued(id, queued))
+      await run(() => desktopApi().setProviderQueued("codex", id, queued))
     } catch {
       return
     }

@@ -76,10 +76,13 @@ export function shouldFailoverHttp(status: number): boolean {
   return status === 429 || status >= 500
 }
 
-export function classifyProxyPath(pathname: string): 'responses' | 'models' | null {
+export type ProxyRoute = 'responses' | 'models' | 'messages'
+
+export function classifyProxyPath(pathname: string): ProxyRoute | null {
   const normalized = pathname.replace(/\/+$/, '') || '/'
   if (normalized === '/v1/responses') return 'responses'
   if (normalized === '/v1/models') return 'models'
+  if (normalized === '/v1/messages') return 'messages'
   return null
 }
 

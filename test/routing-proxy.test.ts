@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { CircuitBreaker } from '../electron/main/routing/breaker'
 import { RequestLog } from '../electron/main/routing/log'
 import { RoutingProxy, type UpstreamTarget } from '../electron/main/routing/proxy'
+import type { ProxyRoute } from '../electron/main/routing/policy'
 
 type FakeUpstream = {
   id: string
@@ -35,6 +36,7 @@ async function listenFake(
 async function withProxy(
   targets: UpstreamTarget[],
   run: (base: string, log: RequestLog) => Promise<void>,
+  routes?: readonly ProxyRoute[],
 ): Promise<void> {
   const log = new RequestLog(() => 20)
   const breaker = new CircuitBreaker(() => ({
@@ -49,6 +51,7 @@ async function withProxy(
     recordSuccess: (id) => breaker.recordSuccess(id),
     recordFailure: (id) => breaker.recordFailure(id),
     log: (entry) => log.append(entry),
+    routes,
   })
   const port = await proxy.listen('127.0.0.1', 0)
   try {
@@ -238,6 +241,34 @@ describe('routing proxy', () => {
           expect(text).toContain('event: response.completed')
           expect(upstream.hits).toBe(1)
         },
+      )
+    } finally {
+      await upstream.close()
+    }
+  })
+
+  it('forwards Anthropic messages with x-api-key and ignores Codex paths', async () => {
+    const upstream = await listenFake('claude', (req, res) => {
+      expect(req.headers['x-api-key']).toBe('sk-ant')
+      expect(req.headers.authorization).toBeUndefined()
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end('{"ok":true}')
+    })
+    try {
+      await withProxy(
+        [{ id: 'claude', baseUrl: upstream.url, apiKey: 'sk-ant', authScheme: 'x-api-key' }],
+        async (base) => {
+          const ok = await fetch(`${base}/v1/messages`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-api-key': 'placeholder' },
+            body: JSON.stringify({ model: 'claude-sonnet', messages: [] }),
+          })
+          expect(ok.status).toBe(200)
+          expect(await ok.text()).toBe('{"ok":true}')
+          const missing = await fetch(`${base}/v1/responses`, { method: 'POST', body: '{}' })
+          expect(missing.status).toBe(404)
+        },
+        ['messages', 'models'],
       )
     } finally {
       await upstream.close()

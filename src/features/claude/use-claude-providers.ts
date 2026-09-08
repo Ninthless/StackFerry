@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { emptyRoutingSnapshot, type RoutingLaneState } from "@shared/routing"
 import type { ClaudePreset, ClaudeProviderDraft, ClaudeProviderListItem } from "@shared/types"
 import { toast } from "@/components/ui/toast"
 import { formatAppError } from "@/lib/format-app-error"
@@ -15,8 +16,11 @@ function tipError(description: string, id?: string): void {
   toast.add({ id, type: "error", description, priority: "high" })
 }
 
+const EMPTY_ROUTING = emptyRoutingSnapshot().lanes["claude-code"]
+
 export function useClaudeProviders() {
   const [providers, setProviders] = useState<ClaudeProviderListItem[]>([])
+  const [routing, setRouting] = useState<RoutingLaneState>(EMPTY_ROUTING)
   const [presets, setPresets] = useState<ClaudePreset[]>([])
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<ClaudeProviderListItem | null>(null)
@@ -24,7 +28,13 @@ export function useClaudeProviders() {
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
-    setProviders(await desktopApi().listClaudeProviders())
+    const api = desktopApi()
+    const [nextProviders, nextRouting] = await Promise.all([
+      api.listClaudeProviders(),
+      api.getRouting(),
+    ])
+    setProviders(nextProviders)
+    setRouting(nextRouting.lanes["claude-code"])
   }, [])
 
   useEffect(() => {
@@ -83,13 +93,18 @@ export function useClaudeProviders() {
     const rewriteLive = wasEditing && editing?.enabled
     setEditorOpen(false)
     setEditing(null)
+    if (rewriteLive) {
+      const status = await desktopApi().getClaudeStatus()
+      toast.add({
+        type: status.needsRestart ? "warning" : undefined,
+        description: status.needsRestart
+          ? m.toast_claude_enabled({ name: draft.name })
+          : m.toast_enabled_routed({ name: draft.name }),
+      })
+      return
+    }
     toast.add({
-      type: rewriteLive ? "warning" : undefined,
-      description: rewriteLive
-        ? m.toast_claude_enabled({ name: draft.name })
-        : wasEditing
-          ? m.toast_provider_updated()
-          : m.toast_provider_added(),
+      description: wasEditing ? m.toast_provider_updated() : m.toast_provider_added(),
     })
   }
 
@@ -102,15 +117,29 @@ export function useClaudeProviders() {
     const provider = providers.find((item) => item.id === id)
     setBusyId(id)
     try {
-      await run(() => desktopApi().enableClaudeProvider(id))
+      let needsRestart = true
+      await run(async () => {
+        const status = await desktopApi().enableClaudeProvider(id)
+        needsRestart = status.needsRestart
+      })
       toast.add({
-        type: "warning",
-        description: m.toast_claude_enabled({ name: provider?.name ?? "" }),
+        type: needsRestart ? "warning" : undefined,
+        description: needsRestart
+          ? m.toast_claude_enabled({ name: provider?.name ?? "" })
+          : m.toast_enabled_routed({ name: provider?.name ?? "" }),
       })
     } catch {
       return
     } finally {
       setBusyId(null)
+    }
+  }
+
+  async function setProviderQueued(id: string, queued: boolean): Promise<void> {
+    try {
+      await run(() => desktopApi().setProviderQueued("claude-code", id, queued))
+    } catch {
+      return
     }
   }
 
@@ -140,6 +169,7 @@ export function useClaudeProviders() {
 
   return {
     providers,
+    routing,
     presets,
     editorOpen,
     editing,
@@ -151,6 +181,7 @@ export function useClaudeProviders() {
     closeEditor,
     saveProvider,
     enableProvider,
+    setProviderQueued,
     reorderProviders,
     confirmDelete,
   }

@@ -12,6 +12,10 @@ vi.mock('electron', () => ({
   },
 }))
 
+import { ClaudeEnableService } from '../electron/main/claude/service'
+import { ClaudeProviderStore } from '../electron/main/claude/store'
+import { GrokEnableService } from '../electron/main/grok/service'
+import { GrokProviderStore } from '../electron/main/grok/store'
 import { ProviderStore } from '../electron/main/providers/store'
 import { RoutingService } from '../electron/main/routing/service'
 import { RoutingStore } from '../electron/main/routing/store'
@@ -19,25 +23,50 @@ import { RoutingStore } from '../electron/main/routing/store'
 describe('enable vs failover queue', () => {
   it('does not enroll the previous provider when switching the enabled one', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-enable-queue-'))
-    const providers = new ProviderStore(path.join(dir, 'providers.json'))
-    const store = new RoutingStore(path.join(dir, 'routing.json'))
-    await writeFile(path.join(dir, 'providers.json'), `${JSON.stringify(providerFile(['a', 'b']), null, 2)}\n`)
-    await mkdir(path.join(dir, 'codex'), { recursive: true })
-    const routing = new RoutingService({
-      store,
-      providers,
-      getCodexHome: () => path.join(dir, 'codex'),
-      backupRoot: path.join(dir, 'backups'),
-      setNeedsRestart: () => undefined,
-    })
+    const { store, routing } = await harness(dir, ['a', 'b'])
 
     try {
-      await routing.enable('a')
-      expect((await store.get()).queue).toEqual([])
-      await routing.enable('b')
-      expect((await store.get()).queue).toEqual([])
+      await routing.enable('codex', 'a')
+      expect((await store.get()).lanes.codex.queue).toEqual([])
+      await routing.enable('codex', 'b')
+      expect((await store.get()).lanes.codex.queue).toEqual([])
       const view = await routing.snapshot()
-      expect(view.queue.includes('a')).toBe(false)
+      expect(view.lanes.codex.queue.includes('a')).toBe(false)
+    } finally {
+      await routing.restoreOnQuit()
+    }
+  })
+
+  it('promotes the dragged-to-front provider to current when routing is live', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-queue-promote-'))
+    const { store, routing, providers } = await harness(dir, ['a', 'b'])
+    await store.setQueue('codex', ['b'])
+
+    try {
+      await routing.enable('codex', 'a')
+      expect((await providers.list()).find((item) => item.enabled)?.id).toBe('a')
+      await routing.setQueueOrder('codex', ['b', 'a'])
+      expect((await store.get()).lanes.codex.queue).toEqual(['b', 'a'])
+      expect((await providers.list()).find((item) => item.enabled)?.id).toBe('b')
+      expect((await routing.snapshot()).lanes.codex.queue[0]).toBe('b')
+    } finally {
+      await routing.restoreOnQuit()
+    }
+  })
+
+  it('promotes the Grok queue head when routing is live', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-grok-queue-promote-'))
+    const { store, routing, grokStore } = await harness(dir, ['codex-a'], ['a', 'b'])
+    await store.setQueue('grok-build', ['b'])
+    await routing.snapshot()
+
+    try {
+      await routing.enable('grok-build', 'a')
+      expect((await grokStore.list()).find((item) => item.enabled)?.id).toBe('a')
+      await routing.setQueueOrder('grok-build', ['b', 'a'])
+      expect((await store.get()).lanes['grok-build'].queue).toEqual(['b', 'a'])
+      expect((await grokStore.list()).find((item) => item.enabled)?.id).toBe('b')
+      expect((await routing.snapshot()).lanes['grok-build'].queue[0]).toBe('b')
     } finally {
       await routing.restoreOnQuit()
     }
@@ -45,27 +74,74 @@ describe('enable vs failover queue', () => {
 
   it('leaves an explicit failover queue unchanged when enabling someone else', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-enable-keep-queue-'))
-    const providers = new ProviderStore(path.join(dir, 'providers.json'))
-    const store = new RoutingStore(path.join(dir, 'routing.json'))
-    await writeFile(path.join(dir, 'providers.json'), `${JSON.stringify(providerFile(['a', 'b', 'c']), null, 2)}\n`)
-    await store.setQueue(['c'])
-    await mkdir(path.join(dir, 'codex'), { recursive: true })
-    const routing = new RoutingService({
-      store,
-      providers,
-      getCodexHome: () => path.join(dir, 'codex'),
-      backupRoot: path.join(dir, 'backups'),
-      setNeedsRestart: () => undefined,
-    })
+    const { store, routing } = await harness(dir, ['a', 'b', 'c'])
+    await store.setQueue('codex', ['c'])
 
     try {
-      await routing.enable('b')
-      expect((await store.get()).queue).toEqual(['c'])
+      await routing.enable('codex', 'b')
+      expect((await store.get()).lanes.codex.queue).toEqual(['c'])
     } finally {
       await routing.restoreOnQuit()
     }
   })
 })
+
+async function harness(dir: string, ids: string[], grokIds: string[] = []) {
+  const providers = new ProviderStore(path.join(dir, 'providers.json'))
+  const claudeStore = new ClaudeProviderStore(path.join(dir, 'claude-providers.json'))
+  const grokStore = new GrokProviderStore(path.join(dir, 'grok-providers.json'))
+  const store = new RoutingStore(path.join(dir, 'routing.json'))
+  await writeFile(path.join(dir, 'providers.json'), `${JSON.stringify(providerFile(ids), null, 2)}\n`)
+  if (grokIds.length > 0) {
+    await writeFile(path.join(dir, 'grok-providers.json'), `${JSON.stringify(grokProviderFile(grokIds), null, 2)}\n`)
+  }
+  await mkdir(path.join(dir, 'codex'), { recursive: true })
+  await mkdir(path.join(dir, 'grok'), { recursive: true })
+  const claude = new ClaudeEnableService({
+    store: claudeStore,
+    getClaudeHome: () => path.join(dir, 'claude'),
+    getDesktopLibraries: () => [],
+    backupRoot: path.join(dir, 'backups', 'claude'),
+    isManaged: async () => false,
+  })
+  const grok = new GrokEnableService({
+    store: grokStore,
+    getGrokHome: () => path.join(dir, 'grok'),
+    backupRoot: path.join(dir, 'backups', 'grok'),
+    isManaged: () => false,
+  })
+  const routing = new RoutingService({
+    store,
+    providers,
+    claudeStore,
+    claude,
+    grokStore,
+    grok,
+    getCodexHome: () => path.join(dir, 'codex'),
+    backupRoot: path.join(dir, 'backups'),
+    setNeedsRestart: () => undefined,
+  })
+  return { store, routing, providers, grokStore }
+}
+
+function grokProviderFile(ids: string[]) {
+  return {
+    version: 1,
+    activeProviderId: null,
+    lastWriteAt: null,
+    providers: ids.map((id) => ({
+      id,
+      name: id,
+      kind: 'custom',
+      baseUrl: 'https://example.test/v1',
+      model: 'demo',
+      apiBackend: 'responses',
+      apiKeyPayload: Buffer.from('key').toString('base64'),
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })),
+  }
+}
 
 function providerFile(ids: string[]) {
   return {

@@ -3,12 +3,17 @@ import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   DEFAULT_ROUTING_SETTINGS,
+  ROUTING_LANE_IDS,
+  emptyLanePersist,
+  emptyRoutingSettings,
+  type RoutingLaneId,
+  type RoutingLanePersist,
   type RoutingSettings,
   type RoutingSettingsPatch,
 } from '../../../shared/routing'
 import { atomicWriteFile } from '../codex/writer'
 
-const STORE_VERSION = 1
+const STORE_VERSION = 2
 
 type RoutingFile = RoutingSettings & {
   version: number
@@ -21,9 +26,9 @@ export class RoutingStore {
     return this.toSettings(await this.read())
   }
 
-  async setQueue(queue: string[]): Promise<RoutingSettings> {
+  async setQueue(laneId: RoutingLaneId, queue: string[]): Promise<RoutingSettings> {
     const current = await this.read()
-    current.queue = uniqueIds(queue)
+    current.lanes[laneId] = { ...current.lanes[laneId], queue: uniqueIds(queue) }
     await this.write(current)
     return this.toSettings(current)
   }
@@ -43,32 +48,40 @@ export class RoutingStore {
     return this.toSettings(current)
   }
 
-  async setPort(port: number | null): Promise<RoutingSettings> {
+  async setPort(laneId: RoutingLaneId, port: number | null): Promise<RoutingSettings> {
     const current = await this.read()
-    current.port = normalizePort(port)
+    current.lanes[laneId] = { ...current.lanes[laneId], port: normalizePort(port) }
     await this.write(current)
     return this.toSettings(current)
   }
 
   private toSettings(file: RoutingFile): RoutingSettings {
+    const lanes = {} as Record<RoutingLaneId, RoutingLanePersist>
+    for (const id of ROUTING_LANE_IDS) {
+      const lane = file.lanes[id] ?? emptyLanePersist()
+      lanes[id] = { queue: [...lane.queue], port: lane.port }
+    }
     return {
-      queue: [...file.queue],
       failureThreshold: file.failureThreshold,
       recoveryWaitSeconds: file.recoveryWaitSeconds,
       halfOpenSuccesses: file.halfOpenSuccesses,
       logRetention: file.logRetention,
-      port: file.port,
+      lanes,
     }
   }
 
   private async read(): Promise<RoutingFile> {
     if (!existsSync(this.filePath)) return this.emptyFile()
     try {
-      const parsed = JSON.parse(await readFile(this.filePath, 'utf8')) as Partial<RoutingFile>
+      const parsed = JSON.parse(await readFile(this.filePath, 'utf8')) as Record<string, unknown>
       return {
         version: STORE_VERSION,
-        queue: uniqueIds(parsed.queue),
-        failureThreshold: clampInt(parsed.failureThreshold, 1, 20, DEFAULT_ROUTING_SETTINGS.failureThreshold),
+        failureThreshold: clampInt(
+          parsed.failureThreshold,
+          1,
+          20,
+          DEFAULT_ROUTING_SETTINGS.failureThreshold,
+        ),
         recoveryWaitSeconds: clampInt(
           parsed.recoveryWaitSeconds,
           1,
@@ -82,7 +95,7 @@ export class RoutingStore {
           DEFAULT_ROUTING_SETTINGS.halfOpenSuccesses,
         ),
         logRetention: clampInt(parsed.logRetention, 10, 200, DEFAULT_ROUTING_SETTINGS.logRetention),
-        port: normalizePort(parsed.port),
+        lanes: readLanes(parsed),
       }
     } catch {
       return this.emptyFile()
@@ -96,16 +109,28 @@ export class RoutingStore {
   }
 
   private emptyFile(): RoutingFile {
-    return {
-      version: STORE_VERSION,
-      queue: [],
-      failureThreshold: DEFAULT_ROUTING_SETTINGS.failureThreshold,
-      recoveryWaitSeconds: DEFAULT_ROUTING_SETTINGS.recoveryWaitSeconds,
-      halfOpenSuccesses: DEFAULT_ROUTING_SETTINGS.halfOpenSuccesses,
-      logRetention: DEFAULT_ROUTING_SETTINGS.logRetention,
-      port: null,
-    }
+    return { version: STORE_VERSION, ...emptyRoutingSettings() }
   }
+}
+
+function readLanes(parsed: Record<string, unknown>): Record<RoutingLaneId, RoutingLanePersist> {
+  const lanes = emptyRoutingSettings().lanes
+  if (isPlainObject(parsed.lanes)) {
+    for (const id of ROUTING_LANE_IDS) {
+      const raw = parsed.lanes[id]
+      if (!isPlainObject(raw)) continue
+      lanes[id] = {
+        queue: uniqueIds(raw.queue),
+        port: normalizePort(raw.port),
+      }
+    }
+    return lanes
+  }
+  lanes.codex = {
+    queue: uniqueIds(parsed.queue),
+    port: normalizePort(parsed.port),
+  }
+  return lanes
 }
 
 function uniqueIds(value: unknown): string[] {
@@ -134,4 +159,8 @@ function normalizePort(value: unknown): number | null {
     return null
   }
   return value
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

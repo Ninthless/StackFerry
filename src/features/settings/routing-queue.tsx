@@ -86,23 +86,29 @@ export function RoutingQueueField({
           <SortableOverlay
             dropAnimation={{ duration: 180, easing: "cubic-bezier(0.25, 1, 0.5, 1)", sideEffects: null }}
           >
-            {({ value }) => (
-              <Item
-                variant="outline"
-                size="sm"
-                className="flex-nowrap bg-background shadow-sm"
-                style={{ width: listRef.current?.offsetWidth }}
-              >
-                <ItemMedia>
-                  <Button type="button" variant="ghost" size="icon-sm">
-                    <GripVertical />
-                  </Button>
-                </ItemMedia>
-                <ItemContent>
-                  <ItemTitle>{names.get(String(value)) ?? String(value)}</ItemTitle>
-                </ItemContent>
-              </Item>
-            )}
+            {({ value }) => {
+              const id = String(value)
+              return (
+                <Item
+                  variant="outline"
+                  size="sm"
+                  className="flex-nowrap bg-background shadow-sm"
+                  style={{ width: listRef.current?.offsetWidth }}
+                >
+                  <ItemMedia>
+                    <Button type="button" variant="ghost" size="icon-sm">
+                      <GripVertical />
+                    </Button>
+                  </ItemMedia>
+                  <ItemContent>
+                    <ItemTitle>{names.get(id) ?? id}</ItemTitle>
+                  </ItemContent>
+                  <ItemActions>
+                    {id === currentId ? <Badge>{m.routing_badge_current()}</Badge> : null}
+                  </ItemActions>
+                </Item>
+              )
+            }}
           </SortableOverlay>
         </Sortable>
       )}

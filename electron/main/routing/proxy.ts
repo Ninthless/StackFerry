@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { RoutingLogEntry } from '../../../shared/routing'
+import type { ClaudeAuthScheme } from '../../../shared/types'
 import {
   classifyProxyPath,
   errorCodeForFailure,
@@ -9,6 +10,7 @@ import {
   shouldFailoverHttp,
   upstreamProxyPath,
   upstreamRequestUrl,
+  type ProxyRoute,
 } from './policy'
 import { translateChatResponse, translateResponsesRequest, type ChatTranslation } from './translate'
 
@@ -32,6 +34,7 @@ export type UpstreamTarget = {
   baseUrl: string
   apiKey: string
   wireApi?: 'responses' | 'chat'
+  authScheme?: ClaudeAuthScheme
   queryParams?: Record<string, string>
   httpHeaders?: Record<string, string>
 }
@@ -43,6 +46,7 @@ export type RoutingProxyDeps = {
   recordSuccess: (id: string) => void
   recordFailure: (id: string) => void
   log: (entry: Omit<RoutingLogEntry, 'at'> & { at?: string }) => void
+  routes?: readonly ProxyRoute[]
   now?: () => number
   fetch?: typeof fetch
 }
@@ -114,7 +118,8 @@ export class RoutingProxy {
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
     const route = classifyProxyPath(pathname)
-    if (!route) {
+    const allowed = this.deps.routes ?? (['responses', 'models'] as const)
+    if (!route || !allowed.includes(route)) {
       res.writeHead(404, { 'content-type': 'application/json' })
       res.end('{"error":{"message":"Not found"}}')
       return
@@ -179,7 +184,7 @@ export class RoutingProxy {
     upstream: UpstreamTarget,
     pathname: string,
     body: Buffer,
-    route: 'responses' | 'models',
+    route: ProxyRoute,
   ): Promise<{ kind: 'streamed'; status: number } | { kind: 'passthrough' } & BufferedResponse | BufferedResponse & { kind: 'failover' }> {
     const wireApi = upstream.wireApi ?? 'responses'
     const translateChat = wireApi === 'chat' && route === 'responses'
@@ -204,7 +209,7 @@ export class RoutingProxy {
       upstreamProxyPath(pathname, wireApi),
       upstream.queryParams,
     )
-    const headers = outboundHeaders(incoming.headers, upstream.apiKey, upstream.httpHeaders)
+    const headers = outboundHeaders(incoming.headers, upstream.apiKey, upstream.httpHeaders, upstream.authScheme)
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), FIRST_BYTE_TIMEOUT_MS)
     const onClientClose = () => controller.abort()
@@ -335,6 +340,7 @@ function outboundHeaders(
   source: IncomingMessage['headers'],
   apiKey: string,
   extra?: Record<string, string>,
+  authScheme?: ClaudeAuthScheme,
 ): Record<string, string> {
   const headers = copyHeaders(source)
   if (extra) {
@@ -342,7 +348,11 @@ function outboundHeaders(
       headers[key] = value
     }
   }
-  if (apiKey) headers.authorization = `Bearer ${apiKey}`
+  delete headers.authorization
+  delete headers['x-api-key']
+  if (!apiKey) return headers
+  if (authScheme === 'x-api-key') headers['x-api-key'] = apiKey
+  else headers.authorization = `Bearer ${apiKey}`
   return headers
 }
 

@@ -1,6 +1,12 @@
+import { CLI_TOOL_IDS, isCliToolId, type CliToolId } from './cli-tools'
+
 export const ROUTER_BIND_HOST = '127.0.0.1'
 export const ROUTER_PROVIDER_KEY = 'stackferry_router'
 export const ROUTER_PROVIDER_NAME = 'StackFerry Router'
+export const ROUTER_PLACEHOLDER_KEY = 'stackferry-router'
+
+export const ROUTING_LANE_IDS = CLI_TOOL_IDS
+export type RoutingLaneId = CliToolId
 
 export const DEFAULT_ROUTING_SETTINGS = {
   failureThreshold: 3,
@@ -11,13 +17,20 @@ export const DEFAULT_ROUTING_SETTINGS = {
 
 export type BreakerStateName = 'closed' | 'open' | 'halfOpen'
 
-export type RoutingSettings = {
-  queue: string[]
+export type RoutingPolicy = {
   failureThreshold: number
   recoveryWaitSeconds: number
   halfOpenSuccesses: number
   logRetention: number
+}
+
+export type RoutingLanePersist = {
+  queue: string[]
   port: number | null
+}
+
+export type RoutingSettings = RoutingPolicy & {
+  lanes: Record<RoutingLaneId, RoutingLanePersist>
 }
 
 export type RoutingSettingsPatch = {
@@ -40,10 +53,46 @@ export type RoutingBreakerView = {
   state: BreakerStateName
 }
 
-export type RoutingState = RoutingSettings & {
+export type RoutingLaneState = RoutingLanePersist & {
   active: boolean
   logs: RoutingLogEntry[]
   breakers: RoutingBreakerView[]
+}
+
+export type RoutingSnapshot = RoutingPolicy & {
+  lanes: Record<RoutingLaneId, RoutingLaneState>
+}
+
+export function isRoutingLaneId(value: unknown): value is RoutingLaneId {
+  return isCliToolId(value)
+}
+
+export function emptyLanePersist(): RoutingLanePersist {
+  return { queue: [], port: null }
+}
+
+export function emptyLaneState(): RoutingLaneState {
+  return { ...emptyLanePersist(), active: false, logs: [], breakers: [] }
+}
+
+function emptyLaneRecord<T>(make: () => T): Record<RoutingLaneId, T> {
+  const lanes = {} as Record<RoutingLaneId, T>
+  for (const id of ROUTING_LANE_IDS) lanes[id] = make()
+  return lanes
+}
+
+export function emptyRoutingSettings(): RoutingSettings {
+  return {
+    ...DEFAULT_ROUTING_SETTINGS,
+    lanes: emptyLaneRecord(emptyLanePersist),
+  }
+}
+
+export function emptyRoutingSnapshot(): RoutingSnapshot {
+  return {
+    ...DEFAULT_ROUTING_SETTINGS,
+    lanes: emptyLaneRecord(emptyLaneState),
+  }
 }
 
 export function isRoutingSettingsPatch(value: unknown): value is RoutingSettingsPatch {

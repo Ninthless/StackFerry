@@ -56,4 +56,32 @@ describe('ClaudeEnableService', () => {
       expect(appConfig.deploymentMode).toBe('3p')
     }
   })
+
+  it('points Code settings at the local router without using the upstream key', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-claude-router-'))
+    const store = {
+      peek: async () => provider,
+      decryptApiKey: () => 'gw-key',
+      markEnabled: async () => provider,
+      getLastWriteAt: async () => null,
+      getActiveId: async () => provider.id,
+    } as unknown as ClaudeProviderStore
+    const claudeHome = path.join(root, 'claude')
+    const service = new ClaudeEnableService({
+      store,
+      getClaudeHome: () => claudeHome,
+      getDesktopLibraries: () => [],
+      backupRoot: path.join(root, 'backups'),
+      isManaged: async () => false,
+    })
+
+    await service.writeRouter(provider, 18765)
+
+    const settings = JSON.parse(await readFile(path.join(claudeHome, 'settings.json'), 'utf8')) as {
+      env: Record<string, string>
+    }
+    expect(settings.env.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:18765')
+    expect(settings.env.ANTHROPIC_AUTH_TOKEN).toBe('stackferry-router')
+    expect(JSON.stringify(settings)).not.toContain('gw-key')
+  })
 })

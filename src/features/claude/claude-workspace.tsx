@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { DeleteProviderDialog } from "@/features/providers/delete-provider-dialog"
 import { ProviderListScroll } from "@/features/providers/provider-list-scroll"
 import { SortableAntdTable } from "@/features/providers/sortable-antd-table"
@@ -44,13 +45,53 @@ export function ClaudeWorkspace({ session }: Props) {
       {
         key: "actions",
         align: "right",
-        width: 180,
+        width: 220,
         render: (_value, provider) => {
+          const official = provider.kind === "official"
+          const queueIndex = session.routing.queue.indexOf(provider.id)
+          const queued = queueIndex >= 0
           const busy = session.busyId === provider.id
           return (
             <div className="flex items-center justify-end gap-2">
+              {official || provider.enabled ? null : queued ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Badge
+                        variant="secondary"
+                        className="cursor-pointer"
+                        onClick={() => void session.setProviderQueued(provider.id, false)}
+                      />
+                    }
+                  >
+                    {m.routing_queue_position({ position: queueIndex + 1 })}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {m.routing_queue_leave_hint({ position: queueIndex + 1 })}
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Badge
+                        variant="outline"
+                        className="cursor-pointer"
+                        onClick={() => void session.setProviderQueued(provider.id, true)}
+                      />
+                    }
+                  >
+                    {m.routing_queue_join()}
+                  </TooltipTrigger>
+                  <TooltipContent>{m.routing_queue_join_hint()}</TooltipContent>
+                </Tooltip>
+              )}
               {provider.enabled ? (
-                <Badge variant="secondary">{m.provider_enabled_badge()}</Badge>
+                <Badge variant="secondary">
+                  {session.routing.active && !official
+                    ? m.routing_badge_current()
+                    : m.provider_enabled_badge()}
+                </Badge>
               ) : (
                 <Button
                   size="sm"
@@ -69,6 +110,14 @@ export function ClaudeWorkspace({ session }: Props) {
                   <EllipsisVertical />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-auto min-w-36">
+                  {official || provider.enabled ? null : (
+                    <DropdownMenuItem
+                      disabled={busy}
+                      onClick={() => void session.setProviderQueued(provider.id, !queued)}
+                    >
+                      {queued ? m.routing_queue_leave() : m.routing_queue_join()}
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={() => session.openEdit(provider)}>
                     {m.provider_edit()}
                   </DropdownMenuItem>
