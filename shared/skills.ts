@@ -1,6 +1,6 @@
 import { AppError } from './app-error'
 
-export type SkillTarget = 'claude' | 'codex'
+export type SkillTarget = 'claude' | 'codex' | 'grok'
 
 export type SkillOrigin = {
   owner: string
@@ -45,7 +45,14 @@ export type SkillListItem = {
   repoLabel: string | null
 }
 
-export const SKILL_TARGETS: readonly SkillTarget[] = ['claude', 'codex']
+export type SkillImportCandidate = {
+  name: string
+  description: string
+  directory: string
+  installed: boolean
+}
+
+export const SKILL_TARGETS: readonly SkillTarget[] = ['claude', 'codex', 'grok']
 export const SKILL_NAME_MAX = 64
 export const SKILL_DESCRIPTION_MAX = 1024
 
@@ -61,7 +68,7 @@ export const DEFAULT_SKILL_REPOS: SkillRepo[] = [
 ]
 
 export function isSkillTarget(value: unknown): value is SkillTarget {
-  return value === 'claude' || value === 'codex'
+  return typeof value === 'string' && (SKILL_TARGETS as readonly string[]).includes(value)
 }
 
 export function isSkillName(value: string): boolean {
@@ -113,6 +120,80 @@ export function normalizeSkillRepo(draft: SkillRepoDraft): SkillRepo {
     throw new AppError('skill_repo_invalid')
   }
   return skillRepo(owner, name, branch, subdirectory)
+}
+
+export function parseSkillRepoInput(value: string): SkillRepo {
+  const trimmed = value.trim()
+  if (!trimmed) throw new AppError('skill_repo_invalid')
+  const ssh = parseGithubSsh(trimmed)
+  if (ssh) return normalizeSkillRepo(ssh)
+  const http = parseGithubHttp(trimmed)
+  if (http) return normalizeSkillRepo(http)
+  return normalizeSkillRepo(parseGithubShorthand(trimmed))
+}
+
+const GITHUB_TREE_KINDS = new Set(['tree', 'blob'])
+
+function parseGithubSsh(value: string): SkillRepoDraft | null {
+  const scp = /^git@github\.com:([^/]+)\/(.+?)(?:\.git)?$/i.exec(value)
+  if (scp) return { owner: scp[1] ?? '', name: scp[2] ?? '' }
+  const sshUrl = /^ssh:\/\/git@github\.com\/([^/]+)\/(.+?)(?:\.git)?$/i.exec(value)
+  if (sshUrl) return { owner: sshUrl[1] ?? '', name: sshUrl[2] ?? '' }
+  return null
+}
+
+function parseGithubHttp(value: string): SkillRepoDraft | null {
+  const candidate = coerceGithubHttp(value)
+  if (!candidate) return null
+  let parsed: URL
+  try {
+    parsed = new URL(candidate)
+  } catch {
+    throw new AppError('skill_repo_invalid')
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new AppError('skill_repo_invalid')
+  }
+  const host = parsed.hostname.replace(/^www\./i, '').toLowerCase()
+  if (host !== 'github.com') throw new AppError('skill_repo_invalid')
+  const parts = parsed.pathname.split('/').filter(Boolean).map(decodeGithubPart)
+  if (parts.length < 2) throw new AppError('skill_repo_invalid')
+  const owner = parts[0] ?? ''
+  const name = stripGitSuffix(parts[1] ?? '')
+  const kind = parts[2]
+  if (!kind || !GITHUB_TREE_KINDS.has(kind)) return { owner, name }
+  const ref = parts[3]
+  if (!ref) return { owner, name }
+  const rest = parts.slice(4)
+  const subdirectory = kind === 'blob' && rest.length > 0 ? rest.slice(0, -1) : rest
+  return { owner, name, branch: ref, subdirectory: subdirectory.join('/') }
+}
+
+function coerceGithubHttp(value: string): string | null {
+  if (/^https?:\/\//i.test(value)) return value
+  if (/^(www\.)?github\.com\//i.test(value)) return `https://${value}`
+  return null
+}
+
+function parseGithubShorthand(value: string): SkillRepoDraft {
+  const at = value.indexOf('@')
+  const repoPart = at > 0 ? value.slice(0, at) : value
+  const branch = at > 0 ? value.slice(at + 1) : undefined
+  const parts = repoPart.split('/').filter(Boolean)
+  if (parts.length !== 2) throw new AppError('skill_repo_invalid')
+  return { owner: parts[0] ?? '', name: stripGitSuffix(parts[1] ?? ''), branch }
+}
+
+function stripGitSuffix(name: string): string {
+  return name.replace(/\.git$/i, '')
+}
+
+function decodeGithubPart(part: string): string {
+  try {
+    return decodeURIComponent(part)
+  } catch {
+    throw new AppError('skill_repo_invalid')
+  }
 }
 
 export function githubArchiveUrl(repo: SkillRepo): string {

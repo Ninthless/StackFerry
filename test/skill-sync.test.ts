@@ -30,4 +30,21 @@ describe('skill sync', () => {
     await applySkillLink(ssot, destRoot, 'pdf')
     expect(await readFile(path.join(destRoot, 'pdf', 'SKILL.md'), 'utf8')).toBe('body')
   })
+
+  it('writes nested files even when the zip also has a directory marker', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-skill-dir-'))
+    const destDir = path.join(root, 'english-spec-first')
+    await writeSkillFiles(
+      destDir,
+      new Map([
+        ['SKILL.md', Buffer.from('body')],
+        ['agents', Buffer.from('')],
+        ['agents/openai.yaml', Buffer.from('name: openai\n')],
+      ]),
+    )
+    expect(await readFile(path.join(destDir, 'SKILL.md'), 'utf8')).toBe('body')
+    expect(await readFile(path.join(destDir, 'agents', 'openai.yaml'), 'utf8')).toBe('name: openai\n')
+    await expect(lstat(path.join(destDir, 'agents'))).resolves.toMatchObject({ isDirectory: expect.any(Function) })
+    expect((await lstat(path.join(destDir, 'agents'))).isDirectory()).toBe(true)
+  })
 })

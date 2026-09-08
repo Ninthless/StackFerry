@@ -2,6 +2,7 @@ import { mkdir, rm, symlink, lstat, cp, writeFile, readlink } from 'node:fs/prom
 import path from 'node:path'
 import { AppError } from '../../../shared/app-error'
 import { requireSkillName } from '../../../shared/skills'
+import { omitDirectoryEntries } from './github'
 import { isInsideDirectory, resolveInside } from './safe-path'
 
 export async function applySkillLink(
@@ -65,7 +66,7 @@ export async function copySkillDirectory(sourceDir: string, destDir: string): Pr
 export async function writeSkillFiles(destDir: string, files: Map<string, Uint8Array>): Promise<void> {
   await removePath(destDir)
   await mkdir(destDir, { recursive: true })
-  for (const [relative, bytes] of files) {
+  for (const [relative, bytes] of omitDirectoryEntries(files)) {
     const target = resolveInside(destDir, relative)
     await mkdir(path.dirname(target), { recursive: true })
     await writeFile(target, bytes)

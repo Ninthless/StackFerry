@@ -4,18 +4,17 @@ import path from 'node:path'
 import { AppError } from '../../../shared/app-error'
 import {
   normalizeSkillRepo,
-  requireSkillDescription,
   requireSkillName,
-  type SkillDraft,
-  type SkillDocument,
+  type SkillImportCandidate,
   type SkillListItem,
   type SkillRepo,
   type SkillRepoDraft,
   type SkillTarget,
 } from '../../../shared/skills'
-import { loadCatalogCache, loadRepoArchive, refreshCatalogRepos, saveCatalogCache } from './catalog'
+import { loadCatalogCache, loadRepoArchive, refreshCatalogRepos, saveCatalogCache, syncCatalogSkillHash } from './catalog'
 import { discoverSkills, unzipSkillArchive } from './github'
-import { hashSkillDirectory, readSkillFiles } from './hash'
+import { hashSkillDirectory } from './hash'
+import { grokSkillsRoot, resolveGrokHome } from '../grok/home'
 import {
   agentsSkillsRoot,
   claudeSkillsRoot,
@@ -27,8 +26,8 @@ import {
   skillsStorePath,
 } from './home'
 import { appliedTargets, mergeSkillList, originFromCache } from './list'
-import { serializeSkillMarkdown } from './parse'
-import { readSkillDocument, scanSkillRoot } from './scan'
+import { isInsideDirectory } from './safe-path'
+import { discoverImportableSkills, scanSkillRoot, type DiskSkill } from './scan'
 import { SkillStore } from './store'
 import { applySkillLink, copySkillDirectory, removePath, removeSkillLink, writeSkillFiles } from './sync'
 
@@ -38,6 +37,7 @@ export type SkillServiceDeps = {
   userData: string
   getClaudeHome: () => string
   getCodexHome: () => string
+  getGrokHome?: () => string
   homedir?: () => string
   platform?: NodeJS.Platform
   fetch?: typeof fetch
@@ -108,15 +108,14 @@ export class SkillService {
         if (current.orphan) await this.adopt(skillName)
         else await this.materializeFromCatalog(skillName, false)
       }
-      await applySkillLink(
-        skillSsotDirectory(this.deps.userData, skillName),
-        this.targetRoot(target),
-        skillName,
-        this.platform,
-      )
+      const ssot = skillSsotDirectory(this.deps.userData, skillName)
+      for (const root of this.targetRoots(target)) {
+        await applySkillLink(ssot, root, skillName, this.platform)
+      }
     } else {
-      await removeSkillLink(this.targetRoot(target), skillName)
-      if (target === 'codex') await removeSkillLink(this.legacyCodexRoot(), skillName)
+      for (const root of this.targetRoots(target)) {
+        await removeSkillLink(root, skillName)
+      }
     }
     const file = await this.store.read()
     if (file.installed[skillName]) {
@@ -140,40 +139,29 @@ export class SkillService {
     return (await this.store.setRepos(file.repos.filter((item) => item.id !== id))).repos
   }
 
-  async create(draft: SkillDraft): Promise<SkillListItem[]> {
-    const document = normalizeDocument(draft)
-    const ssot = skillSsotDirectory(this.deps.userData, document.name)
-    if ((await scanSkillRoot(skillsSsotRoot(this.deps.userData))).has(document.name)) {
-      throw new AppError('skill_exists')
+  async previewImport(root: string): Promise<SkillImportCandidate[]> {
+    const ssotRoot = skillsSsotRoot(this.deps.userData)
+    const installed = await scanSkillRoot(ssotRoot)
+    return (await discoverImportableSkills(root)).map((skill) => ({
+      name: skill.name,
+      description: skill.description,
+      directory: skill.directory,
+      installed: installed.has(skill.name) || isInsideDirectory(ssotRoot, skill.directory),
+    }))
+  }
+
+  async importDirectories(directories: string[]): Promise<SkillListItem[]> {
+    if (!Array.isArray(directories) || directories.some((item) => typeof item !== 'string')) {
+      throw new AppError('skill_import_invalid')
     }
-    await writeSkillFiles(ssot, markdownFiles(document))
-    await this.store.upsert(document.name, {
-      origin: null,
-      contentHash: await hashSkillDirectory(ssot),
-      appliedTo: [],
-    })
-    return this.merge()
-  }
-
-  async read(name: string): Promise<SkillDocument> {
-    return readSkillDocument(skillSsotDirectory(this.deps.userData, requireSkillName(name)))
-  }
-
-  async write(name: string, draft: SkillDraft): Promise<SkillListItem[]> {
-    const skillName = requireSkillName(name)
-    const document = normalizeDocument(draft)
-    if (document.name !== skillName) throw new AppError('skill_name_invalid')
-    const ssot = skillSsotDirectory(this.deps.userData, skillName)
-    const files = await readSkillFiles(ssot).catch(() => new Map<string, Uint8Array>())
-    files.set('SKILL.md', Buffer.from(serializeSkillMarkdown(document)))
-    await writeSkillFiles(ssot, files)
-    const current = (await this.store.read()).installed[skillName]
-    await this.store.upsert(skillName, {
-      origin: current?.origin ?? null,
-      contentHash: await hashSkillDirectory(ssot),
-      appliedTo: current?.appliedTo ?? [],
-    })
-    await this.resync(skillName, current?.appliedTo ?? [])
+    const unique = [...new Set(directories.map((item) => path.resolve(item)))]
+    for (const directory of unique) {
+      const skill = (await discoverImportableSkills(directory)).find(
+        (item) => path.resolve(item.directory) === directory,
+      )
+      if (!skill) throw new AppError('skill_import_invalid')
+      await this.importOne(skill)
+    }
     return this.merge()
   }
 
@@ -182,15 +170,10 @@ export class SkillService {
     const orphan =
       (await scanSkillRoot(this.claudeRoot())).get(skillName) ??
       (await scanSkillRoot(this.agentsRoot())).get(skillName) ??
-      (await scanSkillRoot(this.legacyCodexRoot())).get(skillName)
+      (await scanSkillRoot(this.legacyCodexRoot())).get(skillName) ??
+      (await scanSkillRoot(this.grokRoot())).get(skillName)
     if (!orphan) throw new AppError('skill_missing')
-    const ssot = skillSsotDirectory(this.deps.userData, skillName)
-    await copySkillDirectory(orphan.directory, ssot)
-    await this.store.upsert(skillName, {
-      origin: null,
-      contentHash: await hashSkillDirectory(ssot),
-      appliedTo: await this.liveAppliedTo(skillName),
-    })
+    await this.importOne(orphan)
     return this.merge()
   }
 
@@ -202,6 +185,7 @@ export class SkillService {
       claude: await scanSkillRoot(this.claudeRoot()),
       agents: await scanSkillRoot(this.agentsRoot()),
       legacy: await scanSkillRoot(this.legacyCodexRoot()),
+      grok: await scanSkillRoot(this.grokRoot()),
     })
   }
 
@@ -231,19 +215,23 @@ export class SkillService {
     if (!skill) throw new AppError('skill_missing')
     const ssot = skillSsotDirectory(this.deps.userData, skill.name)
     await writeSkillFiles(ssot, skill.files)
+    const originRecord = { ...origin, skillPath: skill.skillPath }
     const appliedTo = file.installed[name]?.appliedTo ?? []
     await this.store.upsert(skill.name, {
-      origin: { ...origin, skillPath: skill.skillPath },
+      origin: originRecord,
       contentHash: skill.contentHash,
       appliedTo,
     })
+    await syncCatalogSkillHash(skillsCachePath(this.deps.userData), originRecord, skill.contentHash)
     await this.resync(skill.name, appliedTo)
   }
 
   private async resync(name: string, appliedTo: SkillTarget[]): Promise<void> {
     const ssot = skillSsotDirectory(this.deps.userData, name)
     for (const target of appliedTo) {
-      await applySkillLink(ssot, this.targetRoot(target), name, this.platform)
+      for (const root of this.targetRoots(target)) {
+        await applySkillLink(ssot, root, name, this.platform)
+      }
     }
   }
 
@@ -251,6 +239,7 @@ export class SkillService {
     await removeSkillLink(this.claudeRoot(), name)
     await removeSkillLink(this.agentsRoot(), name)
     await removeSkillLink(this.legacyCodexRoot(), name)
+    await removeSkillLink(this.grokRoot(), name)
   }
 
   private async backupSkill(ssot: string, name: string): Promise<void> {
@@ -274,6 +263,7 @@ export class SkillService {
       await scanSkillRoot(this.claudeRoot()),
       await scanSkillRoot(this.agentsRoot()),
       await scanSkillRoot(this.legacyCodexRoot()),
+      await scanSkillRoot(this.grokRoot()),
     )
   }
 
@@ -289,19 +279,32 @@ export class SkillService {
     return legacyCodexSkillsRoot(this.deps.getCodexHome())
   }
 
-  private targetRoot(target: SkillTarget): string {
-    return target === 'claude' ? this.claudeRoot() : this.agentsRoot()
+  private grokRoot(): string {
+    return grokSkillsRoot(this.deps.getGrokHome?.() ?? resolveGrokHome(process.env, this.homedir))
   }
-}
 
-function normalizeDocument(draft: SkillDraft): SkillDocument {
-  return {
-    name: requireSkillName(draft.name),
-    description: requireSkillDescription(draft.description),
-    body: draft.body ?? '',
+  private targetRoots(target: SkillTarget): string[] {
+    if (target === 'claude') return [this.claudeRoot()]
+    if (target === 'grok') return [this.grokRoot()]
+    return [this.agentsRoot(), this.legacyCodexRoot()]
   }
-}
 
-function markdownFiles(document: SkillDocument): Map<string, Uint8Array> {
-  return new Map([['SKILL.md', Buffer.from(serializeSkillMarkdown(document))]])
+  private async importOne(source: DiskSkill): Promise<void> {
+    const ssotRoot = skillsSsotRoot(this.deps.userData)
+    const sourceDir = path.resolve(source.directory)
+    if (isInsideDirectory(ssotRoot, sourceDir)) return
+    if ((await scanSkillRoot(ssotRoot)).has(source.name)) return
+    const ssot = skillSsotDirectory(this.deps.userData, source.name)
+    await copySkillDirectory(sourceDir, ssot)
+    await this.store.upsert(source.name, {
+      origin: null,
+      contentHash: await hashSkillDirectory(ssot),
+      appliedTo: [],
+    })
+    for (const root of [this.claudeRoot(), this.agentsRoot(), this.legacyCodexRoot(), this.grokRoot()]) {
+      if (path.resolve(path.dirname(sourceDir)) !== path.resolve(root)) continue
+      await applySkillLink(ssot, root, source.name, this.platform)
+    }
+    await this.store.setAppliedTo(source.name, await this.liveAppliedTo(source.name))
+  }
 }

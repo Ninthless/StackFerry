@@ -9,10 +9,12 @@ export function appliedTargets(
   claude: Map<string, DiskSkill>,
   agents: Map<string, DiskSkill>,
   legacy: Map<string, DiskSkill>,
+  grok: Map<string, DiskSkill>,
 ): SkillTarget[] {
   const applied: SkillTarget[] = []
   if (claude.has(name)) applied.push('claude')
   if (agents.has(name) || legacy.has(name)) applied.push('codex')
+  if (grok.has(name)) applied.push('grok')
   return applied
 }
 
@@ -38,6 +40,7 @@ export async function mergeSkillList(options: {
   claude: Map<string, DiskSkill>
   agents: Map<string, DiskSkill>
   legacy: Map<string, DiskSkill>
+  grok: Map<string, DiskSkill>
 }): Promise<SkillListItem[]> {
   const byName = new Map<string, SkillListItem>()
   for (const repo of options.cache.repos) {
@@ -50,7 +53,7 @@ export async function mergeSkillList(options: {
     const record = options.file.installed[local.name]
     const existing = byName.get(local.name)
     const origin = record?.origin ?? existing?.origin ?? null
-    const appliedTo = appliedTargets(local.name, options.claude, options.agents, options.legacy)
+    const appliedTo = appliedTargets(local.name, options.claude, options.agents, options.legacy, options.grok)
     const remoteHash = remoteHashFor(options.cache, origin)
     const localHash = record?.contentHash || (await hashSkillDirectory(local.directory))
     byName.set(local.name, {
@@ -65,7 +68,12 @@ export async function mergeSkillList(options: {
       repoLabel: origin ? `${origin.owner}/${origin.repo}` : null,
     })
   }
-  for (const orphan of [...options.claude.values(), ...options.agents.values(), ...options.legacy.values()]) {
+  for (const orphan of [
+    ...options.claude.values(),
+    ...options.agents.values(),
+    ...options.legacy.values(),
+    ...options.grok.values(),
+  ]) {
     const current = byName.get(orphan.name)
     if (current?.installed) continue
     byName.set(orphan.name, {
@@ -74,7 +82,7 @@ export async function mergeSkillList(options: {
       description: orphan.description,
       installed: false,
       orphan: true,
-      appliedTo: appliedTargets(orphan.name, options.claude, options.agents, options.legacy),
+      appliedTo: appliedTargets(orphan.name, options.claude, options.agents, options.legacy, options.grok),
       updateAvailable: false,
       origin: current?.origin ?? null,
       repoLabel: current?.repoLabel ?? null,

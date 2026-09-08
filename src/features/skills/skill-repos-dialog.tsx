@@ -1,4 +1,5 @@
-import { useId, useState, type FormEvent } from "react"
+import { useEffect, useId, useState, type FormEvent } from "react"
+import { parseSkillRepoInput } from "@shared/skills"
 import type { SkillRepo, SkillRepoDraft } from "@shared/types"
 import { Button } from "@/components/ui/button"
 import {
@@ -9,9 +10,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Field, FieldLabel } from "@/components/ui/field"
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
 
 type Props = {
@@ -24,18 +28,28 @@ type Props = {
 
 export function SkillReposDialog({ open, repos, onOpenChange, onAdd, onRemove }: Props) {
   const formId = useId()
-  const [owner, setOwner] = useState("")
-  const [name, setName] = useState("")
-  const [branch, setBranch] = useState("main")
-  const [subdirectory, setSubdirectory] = useState("")
+  const [url, setUrl] = useState("")
+  const [error, setError] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setUrl("")
+    setError("")
+  }, [open])
 
   async function handleAdd(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
-    await onAdd({ owner, name, branch, subdirectory })
-    setOwner("")
-    setName("")
-    setBranch("main")
-    setSubdirectory("")
+    setSaving(true)
+    setError("")
+    try {
+      await onAdd(parseSkillRepoInput(url))
+      setUrl("")
+    } catch (submitError) {
+      setError(formatAppError(submitError))
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -46,49 +60,53 @@ export function SkillReposDialog({ open, repos, onOpenChange, onAdd, onRemove }:
           <DialogDescription>{m.skills_repo_description()}</DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-56">
-          <ul className="flex flex-col gap-2">
-            {repos.map((repo) => (
-              <li key={repo.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
-                <div className="min-w-0">
-                  <div className="truncate">{repo.owner}/{repo.name}</div>
-                  <div className="truncate text-sm text-muted-foreground">
-                    {repo.branch}
-                    {repo.subdirectory ? ` · ${repo.subdirectory}` : ""}
-                  </div>
-                </div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => void onRemove(repo.id)}>
-                  {m.skills_repo_remove()}
-                </Button>
-              </li>
-            ))}
-          </ul>
+          {repos.length === 0 ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>{m.skills_repo_empty_title()}</EmptyTitle>
+                <EmptyDescription>{m.skills_repo_empty_description()}</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <ItemGroup>
+              {repos.map((repo) => (
+                <Item key={repo.id} variant="outline" size="sm">
+                  <ItemContent>
+                    <ItemTitle>
+                      {repo.owner}/{repo.name}
+                    </ItemTitle>
+                    <ItemDescription>
+                      {repo.subdirectory ? `${repo.branch} · ${repo.subdirectory}` : repo.branch}
+                    </ItemDescription>
+                  </ItemContent>
+                  <ItemActions>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => void onRemove(repo.id)}>
+                      {m.skills_repo_remove()}
+                    </Button>
+                  </ItemActions>
+                </Item>
+              ))}
+            </ItemGroup>
+          )}
         </ScrollArea>
-        <form id={formId} className="grid gap-3" onSubmit={(event) => void handleAdd(event)}>
-          <div className="grid grid-cols-2 gap-3">
-            <Field>
-              <FieldLabel htmlFor={`${formId}-owner`}>{m.skills_repo_owner()}</FieldLabel>
-              <Input id={`${formId}-owner`} value={owner} onChange={(event) => setOwner(event.target.value)} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor={`${formId}-name`}>{m.skills_repo_name()}</FieldLabel>
-              <Input id={`${formId}-name`} value={name} onChange={(event) => setName(event.target.value)} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor={`${formId}-branch`}>{m.skills_repo_branch()}</FieldLabel>
-              <Input id={`${formId}-branch`} value={branch} onChange={(event) => setBranch(event.target.value)} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor={`${formId}-sub`}>{m.skills_repo_subdirectory()}</FieldLabel>
+        <form id={formId} onSubmit={(event) => void handleAdd(event)}>
+          <FieldGroup>
+            <Field data-invalid={error ? true : undefined}>
+              <FieldLabel htmlFor={`${formId}-url`}>{m.skills_repo_url()}</FieldLabel>
               <Input
-                id={`${formId}-sub`}
-                value={subdirectory}
-                onChange={(event) => setSubdirectory(event.target.value)}
+                id={`${formId}-url`}
+                value={url}
+                placeholder={m.skills_repo_url_placeholder()}
+                aria-invalid={error ? true : undefined}
+                onChange={(event) => setUrl(event.target.value)}
               />
+              <FieldDescription>{m.skills_repo_url_hint()}</FieldDescription>
+              {error ? <FieldError>{error}</FieldError> : null}
             </Field>
-          </div>
+          </FieldGroup>
         </form>
         <DialogFooter>
-          <Button form={formId} type="submit">
+          <Button form={formId} type="submit" disabled={saving}>
             {m.skills_repo_add()}
           </Button>
         </DialogFooter>

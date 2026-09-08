@@ -81,11 +81,13 @@ export function unzipSkillArchive(bytes: Uint8Array): ZipTree {
   if (oversized) throw new AppError('skill_zip_unsafe')
   const tree = new Map<string, Uint8Array>()
   for (const [rawName, content] of Object.entries(files)) {
-    const safe = assertSafeZipEntry(rawName)
-    if (!safe || safe.endsWith('/')) continue
+    const posix = rawName.replaceAll('\\', '/')
+    if (posix.endsWith('/')) continue
+    const safe = assertSafeZipEntry(posix)
+    if (!safe) continue
     tree.set(safe, content)
   }
-  return stripZipRoot(tree)
+  return omitDirectoryEntries(stripZipRoot(tree))
 }
 
 export function discoverSkills(tree: ZipTree, subdirectory = ''): DiscoveredSkill[] {
@@ -132,6 +134,16 @@ function filesUnder(tree: ZipTree, dir: string): Map<string, Uint8Array> {
     const relative = entry.slice(prefix.length)
     if (!relative || relative.split('/').some((part) => part.startsWith('.'))) continue
     files.set(relative, content)
+  }
+  return omitDirectoryEntries(files)
+}
+
+export function omitDirectoryEntries(tree: ZipTree): ZipTree {
+  const keys = [...tree.keys()]
+  const files = new Map<string, Uint8Array>()
+  for (const [name, content] of tree) {
+    if (keys.some((other) => other !== name && other.startsWith(`${name}/`))) continue
+    files.set(name, content)
   }
   return files
 }

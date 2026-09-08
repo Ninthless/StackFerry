@@ -8,7 +8,6 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -27,7 +26,6 @@ export type SkillRowActions = {
   update: (name: string) => Promise<void>
   adopt: (name: string) => Promise<void>
   install: (name: string) => Promise<void>
-  openEdit: (skill: SkillListItem) => Promise<void>
   setDeleting: (skill: SkillListItem | null) => void
 }
 
@@ -74,6 +72,13 @@ export const SkillRow = memo(function SkillRow({
             disabled={busy}
             onCheckedChange={(checked) => void actions.setTarget(skill.name, "codex", checked)}
           />
+          <TargetSwitch
+            label={m.skills_grok()}
+            hint={m.skills_grok_hint()}
+            checked={skill.appliedTo.includes("grok")}
+            disabled={busy}
+            onCheckedChange={(checked) => void actions.setTarget(skill.name, "grok", checked)}
+          />
         </ItemActions>
       ) : null}
       <ItemActions className="w-40 justify-end">
@@ -97,14 +102,6 @@ export const SkillRow = memo(function SkillRow({
                 <EllipsisVertical />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-auto min-w-36">
-                {skill.installed ? (
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem onClick={() => void actions.openEdit(skill)}>
-                      {m.skills_edit()}
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                ) : null}
-                {skill.installed ? <DropdownMenuSeparator /> : null}
                 <DropdownMenuGroup>
                   <DropdownMenuItem variant="destructive" onClick={() => actions.setDeleting(skill)}>
                     {m.skills_uninstall()}
@@ -131,17 +128,19 @@ export const SkillRow = memo(function SkillRow({
 
 function TargetSwitch({
   label,
+  hint,
   checked,
   disabled,
   onCheckedChange,
 }: {
   label: string
+  hint?: string
   checked: boolean
   disabled: boolean
   onCheckedChange: (checked: boolean) => void
 }) {
   return (
-    <label className="flex items-center gap-1.5">
+    <label className="flex items-center gap-1.5" title={hint}>
       <span className="text-xs text-muted-foreground">{label}</span>
       <Switch checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} />
     </label>

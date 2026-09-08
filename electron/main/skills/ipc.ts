@@ -1,6 +1,7 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { IpcChannel } from '../../../shared/ipc'
-import { isSkillTarget, type SkillDraft, type SkillRepoDraft, type SkillTarget } from '../../../shared/skills'
+import { isSkillTarget, type SkillRepoDraft, type SkillTarget } from '../../../shared/skills'
+import { m } from '../i18n'
 import type { SkillService } from './service'
 
 export type SkillIpcContext = {
@@ -88,17 +89,21 @@ export function registerSkillIpc(context: SkillIpcContext): void {
       return repos
     })
   })
-  ipcMain.handle(IpcChannel.createSkill, (_event, draft: SkillDraft) => {
-    return enqueue(async () => {
-      const items = await context.skills.create(draft)
-      context.onSkillsChanged()
-      return items
-    })
+  ipcMain.handle(IpcChannel.chooseSkillImport, async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const options = {
+      properties: ['openDirectory' as const],
+      title: m.skills_import(),
+    }
+    const result = window
+      ? await dialog.showOpenDialog(window, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths[0]) return null
+    return context.skills.previewImport(result.filePaths[0])
   })
-  ipcMain.handle(IpcChannel.readSkill, (_event, name: string) => context.skills.read(name))
-  ipcMain.handle(IpcChannel.writeSkill, (_event, name: string, draft: SkillDraft) => {
+  ipcMain.handle(IpcChannel.importSkills, (_event, directories: string[]) => {
     return enqueue(async () => {
-      const items = await context.skills.write(name, draft)
+      const items = await context.skills.importDirectories(directories)
       context.onSkillsChanged()
       return items
     })

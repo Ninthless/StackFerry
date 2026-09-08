@@ -97,6 +97,22 @@ export async function loadRepoArchive(options: {
 }
 
 export function remoteHashFor(cache: CatalogCache, origin: SkillOrigin | null): string | null {
+  return catalogSkill(cache, origin)?.contentHash ?? null
+}
+
+export async function syncCatalogSkillHash(
+  filePath: string,
+  origin: SkillOrigin,
+  contentHash: string,
+): Promise<void> {
+  const cache = await loadCatalogCache(filePath)
+  const skill = catalogSkill(cache, origin)
+  if (!skill || skill.contentHash === contentHash) return
+  skill.contentHash = contentHash
+  await saveCatalogCache(filePath, cache)
+}
+
+function catalogSkill(cache: CatalogCache, origin: SkillOrigin | null): CatalogSkill | null {
   if (!origin) return null
   const repo = cache.repos.find(
     (item) =>
@@ -106,10 +122,11 @@ export function remoteHashFor(cache: CatalogCache, origin: SkillOrigin | null): 
       item.subdirectory === origin.subdirectory,
   )
   if (!repo) return null
-  const skill =
+  return (
     repo.skills.find((item) => item.skillPath === origin.skillPath) ??
-    repo.skills.find((item) => item.name === origin.skillPath.split('/').pop())
-  return skill?.contentHash ?? null
+    repo.skills.find((item) => item.name === origin.skillPath.split('/').pop()) ??
+    null
+  )
 }
 
 function isCatalogRepo(value: CatalogRepo): value is CatalogRepo {

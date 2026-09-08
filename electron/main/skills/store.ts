@@ -116,7 +116,7 @@ function uniqueTargets(value: unknown): SkillTarget[] {
   return SKILL_TARGET_ORDER.filter((item) => seen.has(item))
 }
 
-const SKILL_TARGET_ORDER: SkillTarget[] = ['claude', 'codex']
+const SKILL_TARGET_ORDER: SkillTarget[] = ['claude', 'codex', 'grok']
 
 function uniqueRepos(value: unknown): SkillRepo[] {
   if (!Array.isArray(value)) return DEFAULT_SKILL_REPOS.map((repo) => ({ ...repo }))

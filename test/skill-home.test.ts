@@ -8,6 +8,7 @@ import {
   skillSsotDirectory,
   skillsSsotRoot,
 } from '../electron/main/skills/home'
+import { grokSkillsRoot } from '../electron/main/grok/home'
 
 describe('skill paths', () => {
   it('keeps SSOT under userData, not ~/.agents/skills', () => {
@@ -17,10 +18,11 @@ describe('skill paths', () => {
     expect(skillsSsotRoot(userData)).not.toBe(agentsSkillsRoot('/home/demo'))
   })
 
-  it('maps Claude and Codex user-level targets', () => {
+  it('maps Claude and both Codex user-level targets', () => {
     const home = os.platform() === 'win32' ? 'C:\\Users\\demo' : '/home/demo'
     expect(claudeSkillsRoot(path.join(home, '.claude'))).toBe(path.join(home, '.claude', 'skills'))
     expect(agentsSkillsRoot(home)).toBe(path.join(home, '.agents', 'skills'))
     expect(legacyCodexSkillsRoot(path.join(home, '.codex'))).toBe(path.join(home, '.codex', 'skills'))
+    expect(grokSkillsRoot(path.join(home, '.grok'))).toBe(path.join(home, '.grok', 'skills'))
   })
 })

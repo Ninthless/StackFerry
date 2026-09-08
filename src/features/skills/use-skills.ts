@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import type { SkillDocument, SkillDraft, SkillListItem, SkillRepo, SkillRepoDraft, SkillTarget } from "@shared/types"
+import type { SkillImportCandidate, SkillListItem, SkillRepo, SkillRepoDraft, SkillTarget } from "@shared/types"
 import { toast } from "@/components/ui/toast"
 import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
+import { filterSkills, isMarketStatus, MARKET_REPO_ALL, type MarketStatus } from "./filter"
 
 function desktopApi() {
   if (!window.stackferry) {
@@ -19,11 +20,12 @@ export function useSkills() {
   const [skills, setSkills] = useState<SkillListItem[]>([])
   const [repos, setRepos] = useState<SkillRepo[]>([])
   const [query, setQuery] = useState("")
+  const [status, setStatus] = useState<MarketStatus>("all")
+  const [repoId, setRepoId] = useState(MARKET_REPO_ALL)
   const [pane, setPane] = useState<"local" | "market">("local")
   const [busyId, setBusyId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
-  const [editorOpen, setEditorOpen] = useState(false)
-  const [editing, setEditing] = useState<SkillDocument | null>(null)
+  const [importCandidates, setImportCandidates] = useState<SkillImportCandidate[] | null>(null)
   const [deleting, setDeleting] = useState<SkillListItem | null>(null)
   const [reposOpen, setReposOpen] = useState(false)
 
@@ -55,10 +57,10 @@ export function useSkills() {
     ): Promise<void> => {
       try {
         const result = await action()
-        if (Array.isArray(result) && result.length && "installed" in result[0]) {
-          setSkills(result as SkillListItem[])
+        if (isSkillList(result)) {
+          setSkills(result)
         } else if (Array.isArray(result)) {
-          setRepos(result as SkillRepo[])
+          setRepos(result)
         } else {
           await refresh()
         }
@@ -73,8 +75,22 @@ export function useSkills() {
 
   const refreshCatalog = useCallback(async (): Promise<void> => {
     setRefreshing(true)
+    const toastId = "skills-refresh"
+    toast.add({
+      id: toastId,
+      type: "loading",
+      description: m.toast_skills_refreshing(),
+      timeout: 0,
+    })
     try {
-      await run(() => desktopApi().refreshSkills(), { toast: m.toast_skills_refreshed() })
+      await run(() => desktopApi().refreshSkills())
+      toast.add({
+        id: toastId,
+        type: "success",
+        description: m.toast_skills_refreshed(),
+      })
+    } catch {
+      toast.close(toastId)
     } finally {
       setRefreshing(false)
     }
@@ -144,45 +160,63 @@ export function useSkills() {
     setDeleting(null)
   }, [deleting, run])
 
-  const saveSkill = useCallback(
-    async (draft: SkillDraft): Promise<void> => {
-      if (editing) {
-        await run(() => desktopApi().writeSkill(editing.name, draft), {
-          toast: m.toast_skill_saved({ name: draft.name }),
-        })
-      } else {
-        await run(() => desktopApi().createSkill(draft), { toast: m.toast_skill_created({ name: draft.name }) })
+  const openImport = useCallback(async (): Promise<void> => {
+    try {
+      const candidates = await desktopApi().chooseSkillImport()
+      if (candidates === null) return
+      if (candidates.length === 0) {
+        tipError(m.error_skill_import_invalid())
+        return
       }
-      setEditorOpen(false)
-      setEditing(null)
+      setImportCandidates(candidates)
+    } catch (actionError) {
+      tipError(formatAppError(actionError))
+    }
+  }, [])
+
+  const confirmImport = useCallback(
+    async (directories: string[]): Promise<void> => {
+      await run(() => desktopApi().importSkills(directories), {
+        toast: m.toast_skills_imported({ count: directories.length }),
+      })
+      setImportCandidates(null)
     },
-    [editing, run],
+    [run],
   )
 
-  const openEdit = useCallback(async (skill: SkillListItem): Promise<void> => {
-    const document = await desktopApi().readSkill(skill.name)
-    setEditing(document)
-    setEditorOpen(true)
-  }, [])
-
-  const openCreate = useCallback((): void => {
-    setEditing(null)
-    setEditorOpen(true)
-  }, [])
-
-  const closeEditor = useCallback((): void => {
-    setEditorOpen(false)
-    setEditing(null)
+  const closeImport = useCallback((): void => {
+    setImportCandidates(null)
   }, [])
 
   const setSkillsPane = useCallback((next: "local" | "market"): void => {
     setPane(next)
     setQuery("")
+    setStatus("all")
+    setRepoId(MARKET_REPO_ALL)
   }, [])
+
+  const setMarketStatus = useCallback((next: string): void => {
+    if (isMarketStatus(next)) setStatus(next)
+  }, [])
+
+  const setMarketRepo = useCallback((next: string): void => {
+    setRepoId(next || MARKET_REPO_ALL)
+  }, [])
+
+  useEffect(() => {
+    if (repoId === MARKET_REPO_ALL) return
+    if (!repos.some((repo) => repo.id === repoId)) setRepoId(MARKET_REPO_ALL)
+  }, [repoId, repos])
 
   const addRepo = useCallback(
     async (draft: SkillRepoDraft): Promise<void> => {
-      await run(() => desktopApi().addSkillRepo(draft))
+      await run(() => desktopApi().addSkillRepo(draft), { toast: m.toast_skill_repo_added() })
+      setRefreshing(true)
+      try {
+        await run(() => desktopApi().refreshSkills())
+      } finally {
+        setRefreshing(false)
+      }
     },
     [run],
   )
@@ -194,19 +228,15 @@ export function useSkills() {
     [run],
   )
 
-  const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    return skills.filter((skill) => {
-      if (pane === "local") {
-        if (!skill.installed && !skill.orphan) return false
-      } else if (!skill.origin || skill.orphan) {
-        return false
-      }
-      if (!needle) return true
-      const haystack = `${skill.name} ${skill.description} ${skill.repoLabel ?? ""}`.toLowerCase()
-      return haystack.includes(needle)
-    })
-  }, [pane, query, skills])
+  const visible = useMemo(
+    () => filterSkills({ skills, pane, query, status, repoId }),
+    [pane, query, repoId, skills, status],
+  )
+
+  const sourceEmpty = useMemo(
+    () => filterSkills({ skills, pane, query: "", status: "all", repoId: MARKET_REPO_ALL }).length === 0,
+    [pane, skills],
+  )
 
   const updateCount = useMemo(
     () => skills.reduce((count, skill) => count + (skill.updateAvailable ? 1 : 0), 0),
@@ -215,16 +245,20 @@ export function useSkills() {
 
   return {
     skills: visible,
+    sourceEmpty,
     updateCount,
     repos,
     query,
     setQuery,
+    status,
+    setStatus: setMarketStatus,
+    repoId,
+    setRepoId: setMarketRepo,
     pane,
     setPane: setSkillsPane,
     busyId,
     refreshing,
-    editorOpen,
-    editing,
+    importCandidates,
     deleting,
     setDeleting,
     reposOpen,
@@ -236,13 +270,16 @@ export function useSkills() {
     setTarget,
     adopt,
     confirmDelete,
-    saveSkill,
-    openEdit,
-    openCreate,
-    closeEditor,
+    openImport,
+    confirmImport,
+    closeImport,
     addRepo,
     removeRepo,
   }
 }
 
 export type SkillsSession = ReturnType<typeof useSkills>
+
+function isSkillList(value: SkillListItem[] | SkillRepo[] | void): value is SkillListItem[] {
+  return Array.isArray(value) && value.length > 0 && "installed" in value[0]
+}

@@ -5,6 +5,7 @@ import {
   assertGithubArchiveUrl,
   githubArchiveUrl,
   normalizeSkillRepo,
+  parseSkillRepoInput,
   skillRepo,
 } from '../shared/skills'
 import { discoverSkills, unzipSkillArchive } from '../electron/main/skills/github'
@@ -30,6 +31,30 @@ describe('github archive urls', () => {
       AppError,
     )
   })
+
+  it('parses GitHub repository URLs, remotes, and owner/name shorthand', () => {
+    expect(parseSkillRepoInput('https://github.com/anthropics/skills')).toEqual(
+      skillRepo('anthropics', 'skills', 'main'),
+    )
+    expect(parseSkillRepoInput('https://github.com/anthropics/skills.git')).toEqual(
+      skillRepo('anthropics', 'skills', 'main'),
+    )
+    expect(parseSkillRepoInput('https://www.github.com/anthropics/skills/')).toEqual(
+      skillRepo('anthropics', 'skills', 'main'),
+    )
+    expect(parseSkillRepoInput('github.com/anthropics/skills/tree/main/skills')).toEqual(
+      skillRepo('anthropics', 'skills', 'main', 'skills'),
+    )
+    expect(parseSkillRepoInput('https://github.com/acme/skills/blob/main/skills/pdf/SKILL.md')).toEqual(
+      skillRepo('acme', 'skills', 'main', 'skills/pdf'),
+    )
+    expect(parseSkillRepoInput('git@github.com:anthropics/skills.git')).toEqual(
+      skillRepo('anthropics', 'skills', 'main'),
+    )
+    expect(parseSkillRepoInput('anthropics/skills@master')).toEqual(skillRepo('anthropics', 'skills', 'master'))
+    expect(() => parseSkillRepoInput('https://gitlab.com/acme/skills')).toThrow(AppError)
+    expect(() => parseSkillRepoInput('https://github.com/anthropics')).toThrow(AppError)
+  })
 })
 
 describe('zip extraction', () => {
@@ -51,5 +76,18 @@ describe('zip extraction', () => {
     expect(skills[0]?.name).toBe('pdf')
     expect(skills[0]?.files.has('SKILL.md')).toBe(true)
     expect(skills[0]?.files.has('scripts/run.sh')).toBe(true)
+  })
+
+  it('drops zip directory markers so nested skill files can be written', () => {
+    const bytes = zipSync({
+      'skills-main/english-spec-first/SKILL.md': strToU8(sampleMarkdown.replaceAll('pdf', 'english-spec-first')),
+      'skills-main/english-spec-first/agents/': new Uint8Array(),
+      'skills-main/english-spec-first/agents': new Uint8Array(),
+      'skills-main/english-spec-first/agents/openai.yaml': strToU8('name: openai\n'),
+    })
+    const skills = discoverSkills(unzipSkillArchive(bytes))
+    expect(skills).toHaveLength(1)
+    expect(skills[0]?.files.has('agents')).toBe(false)
+    expect(skills[0]?.files.has('agents/openai.yaml')).toBe(true)
   })
 })
