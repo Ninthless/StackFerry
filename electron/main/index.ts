@@ -10,15 +10,20 @@ import { resolveClaudeDesktopLibraries, resolveClaudeHome } from './claude/home'
 import { ClaudeEnableService } from './claude/service'
 import { ClaudeProviderStore } from './claude/store'
 import { resolveCodexHome } from './codex/home'
+import { resolveGrokHome } from './grok/home'
+import { GrokEnableService } from './grok/service'
+import { GrokProviderStore } from './grok/store'
 import { formatAppError } from './format-error'
 import { setMainLocale, m } from './i18n'
 import {
   bindWindowState,
   broadcastChanged,
   broadcastClaudeChanged,
+  broadcastGrokChanged,
   enableProvider,
   registerIpc,
   seedOfficialClaudeProvider,
+  seedOfficialGrokProvider,
   seedOfficialProvider,
 } from './ipc'
 import { LocaleStore } from './locale-store'
@@ -67,9 +72,11 @@ let isQuitting = false
 let needsRestart = false
 let store: ProviderStore | null = null
 let claudeStore: ClaudeProviderStore | null = null
+let grokStore: GrokProviderStore | null = null
 let routingStore: RoutingStore | null = null
 let routing: RoutingService | null = null
 let claude: ClaudeEnableService | null = null
+let grok: GrokEnableService | null = null
 let localeStore: LocaleStore | null = null
 let appearanceStore: AppearanceStore | null = null
 let tray: AppTray | null = null
@@ -145,6 +152,7 @@ app.whenReady().then(async () => {
   }
   store = new ProviderStore(path.join(app.getPath('userData'), 'providers.json'))
   claudeStore = new ClaudeProviderStore(path.join(app.getPath('userData'), 'claude-providers.json'))
+  grokStore = new GrokProviderStore(path.join(app.getPath('userData'), 'grok-providers.json'))
   routingStore = new RoutingStore(path.join(app.getPath('userData'), 'routing.json'))
   localeStore = new LocaleStore(path.join(app.getPath('userData'), 'locale.json'))
   appearanceStore = new AppearanceStore(path.join(app.getPath('userData'), 'appearance.json'))
@@ -154,33 +162,46 @@ app.whenReady().then(async () => {
     if (win && !win.isDestroyed()) applyWindowMica(win, micaPreference)
   })
   setMainLocale(await localeStore.resolveLocale())
-  routing = new RoutingService({
-    store: routingStore,
-    providers: store,
-    getCodexHome: () => resolveCodexHome(),
-    backupRoot: path.join(app.getPath('userData'), 'backups'),
-    setNeedsRestart: (value) => {
-      needsRestart = value
-    },
-  })
   claude = new ClaudeEnableService({
     store: claudeStore,
     getClaudeHome: () => resolveClaudeHome(),
     getDesktopLibraries: () => resolveClaudeDesktopLibraries(),
     backupRoot: path.join(app.getPath('userData'), 'backups', 'claude'),
   })
+  grok = new GrokEnableService({
+    store: grokStore,
+    getGrokHome: () => resolveGrokHome(),
+    backupRoot: path.join(app.getPath('userData'), 'backups', 'grok'),
+  })
+  routing = new RoutingService({
+    store: routingStore,
+    providers: store,
+    claudeStore,
+    claude,
+    grokStore,
+    grok,
+    getCodexHome: () => resolveCodexHome(),
+    backupRoot: path.join(app.getPath('userData'), 'backups'),
+    setNeedsRestart: (value) => {
+      needsRestart = value
+    },
+  })
   const skills = new SkillService({
     userData: app.getPath('userData'),
     getClaudeHome: () => resolveClaudeHome(),
     getCodexHome: () => resolveCodexHome(),
+    getGrokHome: () => resolveGrokHome(),
   })
   const ipcContext = {
     store,
     routing,
     claudeStore: claudeStore!,
     claude: claude!,
+    grokStore: grokStore!,
+    grok: grok!,
     skills,
     getCodexHome: () => resolveCodexHome(),
+    getGrokHome: () => resolveGrokHome(),
     backupRoot: path.join(app.getPath('userData'), 'backups'),
     getNeedsRestart: () => needsRestart,
     setNeedsRestart: (value: boolean) => {
@@ -192,6 +213,9 @@ app.whenReady().then(async () => {
     },
     onClaudeChanged: () => {
       broadcastClaudeChanged()
+    },
+    onGrokChanged: () => {
+      broadcastGrokChanged()
     },
     onSkillsChanged: () => {
       broadcastSkillsChanged()
@@ -234,6 +258,7 @@ app.whenReady().then(async () => {
   registerIpc(ipcContext)
   await seedOfficialProvider(store)
   await seedOfficialClaudeProvider(claudeStore)
+  await seedOfficialGrokProvider(grokStore)
   await routing.start()
   tray.create()
   await refreshTray()

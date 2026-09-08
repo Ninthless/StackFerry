@@ -1,9 +1,11 @@
+import type { CliToolId, CliToolStatus } from './cli-tools'
 import type { LanguagePreference } from './locale'
 import type { MicaState } from './mica'
-import type { RoutingSettingsPatch, RoutingState } from './routing'
+import type { RoutingSettingsPatch, RoutingSnapshot, RoutingLaneState } from './routing'
 import type {
   SkillDocument,
   SkillDraft,
+  SkillImportCandidate,
   SkillListItem,
   SkillRepo,
   SkillRepoDraft,
@@ -11,9 +13,12 @@ import type {
 } from './skills'
 import type { ThemePreference } from './theme'
 
+export type { CliInstallMethod, CliToolId, CliToolStatus } from './cli-tools'
+
 export type {
   SkillDocument,
   SkillDraft,
+  SkillImportCandidate,
   SkillListItem,
   SkillOrigin,
   SkillRepo,
@@ -21,7 +26,7 @@ export type {
   SkillTarget,
 } from './skills'
 
-export type { LanguagePreference, MicaState, RoutingSettingsPatch, RoutingState, ThemePreference }
+export type { LanguagePreference, MicaState, RoutingLaneState, RoutingSettingsPatch, RoutingSnapshot, ThemePreference }
 
 export type ProviderKind = 'official' | 'custom'
 
@@ -108,6 +113,56 @@ export type ClaudeAppStatus = {
   desktopLibrary: string
   lastWriteAt: string | null
   activeProviderId: string | null
+  needsRestart: boolean
+}
+
+export type GrokApiBackend = 'responses' | 'chat_completions'
+
+export type GrokPreset = {
+  id: string
+  name: string
+  kind: ProviderKind
+  baseUrl: string
+  model: string
+  apiBackend: GrokApiBackend
+  requiresApiKey: boolean
+}
+
+export type GrokProviderDraft = {
+  name: string
+  kind: ProviderKind
+  baseUrl?: string
+  model?: string
+  apiBackend?: GrokApiBackend
+  apiKey?: string
+  presetId?: string
+  effortLevel?: string
+  contextWindow?: string
+  autoCompact?: string
+  overlayJson?: string
+}
+
+export type GrokProviderListItem = {
+  id: string
+  name: string
+  kind: ProviderKind
+  baseUrl: string
+  model: string
+  apiBackend: GrokApiBackend
+  effortLevel: string
+  contextWindow: string
+  autoCompact: string
+  overlayJson: string
+  hasApiKey: boolean
+  enabled: boolean
+}
+
+export type GrokAppStatus = {
+  grokHome: string
+  configExists: boolean
+  lastWriteAt: string | null
+  activeProviderId: string | null
+  needsRestart: boolean
 }
 
 export type StackferryApi = {
@@ -138,11 +193,11 @@ export type StackferryApi = {
   setMicaPreference: (enabled: boolean) => Promise<MicaState>
   getThemePreference: () => Promise<ThemePreference>
   setThemePreference: (preference: ThemePreference) => Promise<ThemePreference>
-  getRouting: () => Promise<RoutingState>
-  setRoutingSettings: (patch: RoutingSettingsPatch) => Promise<RoutingState>
-  setProviderQueued: (id: string, queued: boolean) => Promise<RoutingState>
-  setQueueOrder: (ids: string[]) => Promise<RoutingState>
-  resetBreaker: (id: string) => Promise<RoutingState>
+  getRouting: () => Promise<RoutingSnapshot>
+  setRoutingSettings: (patch: RoutingSettingsPatch) => Promise<RoutingSnapshot>
+  setProviderQueued: (cliId: CliToolId, id: string, queued: boolean) => Promise<RoutingSnapshot>
+  setQueueOrder: (cliId: CliToolId, ids: string[]) => Promise<RoutingSnapshot>
+  resetBreaker: (cliId: CliToolId, id: string) => Promise<RoutingSnapshot>
   listClaudeProviders: () => Promise<ClaudeProviderListItem[]>
   listClaudePresets: () => Promise<ClaudePreset[]>
   addClaudeProvider: (draft: ClaudeProviderDraft) => Promise<ClaudeProviderListItem>
@@ -158,6 +213,20 @@ export type StackferryApi = {
     authScheme?: ClaudeAuthScheme
   }) => Promise<string[]>
   onClaudeChanged: (listener: () => void) => () => void
+  listGrokProviders: () => Promise<GrokProviderListItem[]>
+  listGrokPresets: () => Promise<GrokPreset[]>
+  addGrokProvider: (draft: GrokProviderDraft) => Promise<GrokProviderListItem>
+  updateGrokProvider: (id: string, draft: GrokProviderDraft) => Promise<GrokProviderListItem>
+  deleteGrokProvider: (id: string) => Promise<void>
+  reorderGrokProviders: (ids: string[]) => Promise<GrokProviderListItem[]>
+  enableGrokProvider: (id: string) => Promise<GrokAppStatus>
+  getGrokStatus: () => Promise<GrokAppStatus>
+  listGrokModels: (input: {
+    baseUrl: string
+    apiKey?: string
+    providerId?: string
+  }) => Promise<string[]>
+  onGrokChanged: (listener: () => void) => () => void
   listSkills: () => Promise<SkillListItem[]>
   refreshSkills: () => Promise<SkillListItem[]>
   installSkill: (name: string) => Promise<SkillListItem[]>
@@ -169,9 +238,12 @@ export type StackferryApi = {
   listSkillRepos: () => Promise<SkillRepo[]>
   addSkillRepo: (draft: SkillRepoDraft) => Promise<SkillRepo[]>
   removeSkillRepo: (id: string) => Promise<SkillRepo[]>
-  createSkill: (draft: SkillDraft) => Promise<SkillListItem[]>
-  readSkill: (name: string) => Promise<SkillDocument>
-  writeSkill: (name: string, draft: SkillDraft) => Promise<SkillListItem[]>
   adoptSkill: (name: string) => Promise<SkillListItem[]>
+  chooseSkillImport: () => Promise<SkillImportCandidate[] | null>
+  importSkills: (directories: string[]) => Promise<SkillListItem[]>
   onSkillsChanged: (listener: () => void) => () => void
+  listCliTools: () => Promise<CliToolStatus[]>
+  installCliTool: (id: CliToolId) => Promise<CliToolStatus[]>
+  updateCliTool: (id: CliToolId) => Promise<CliToolStatus[]>
+  uninstallCliTool: (id: CliToolId) => Promise<CliToolStatus[]>
 }

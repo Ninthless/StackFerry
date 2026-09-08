@@ -40,9 +40,9 @@ const api: StackferryApi = {
   setThemePreference: (preference) => ipcRenderer.invoke(IpcChannel.setTheme, preference),
   getRouting: () => ipcRenderer.invoke(IpcChannel.getRouting),
   setRoutingSettings: (patch) => ipcRenderer.invoke(IpcChannel.setRoutingSettings, patch),
-  setProviderQueued: (id, queued) => ipcRenderer.invoke(IpcChannel.setProviderQueued, id, queued),
-  setQueueOrder: (ids) => ipcRenderer.invoke(IpcChannel.setQueueOrder, ids),
-  resetBreaker: (id) => ipcRenderer.invoke(IpcChannel.resetBreaker, id),
+  setProviderQueued: (cliId, id, queued) => ipcRenderer.invoke(IpcChannel.setProviderQueued, cliId, id, queued),
+  setQueueOrder: (cliId, ids) => ipcRenderer.invoke(IpcChannel.setQueueOrder, cliId, ids),
+  resetBreaker: (cliId, id) => ipcRenderer.invoke(IpcChannel.resetBreaker, cliId, id),
   listClaudeProviders: () => ipcRenderer.invoke(IpcChannel.listClaudeProviders),
   listClaudePresets: () => ipcRenderer.invoke(IpcChannel.listClaudePresets),
   addClaudeProvider: (draft) => ipcRenderer.invoke(IpcChannel.addClaudeProvider, draft),
@@ -61,6 +61,22 @@ const api: StackferryApi = {
       ipcRenderer.removeListener(IpcChannel.claudeChanged, wrapped)
     }
   },
+  listGrokProviders: () => ipcRenderer.invoke(IpcChannel.listGrokProviders),
+  listGrokPresets: () => ipcRenderer.invoke(IpcChannel.listGrokPresets),
+  addGrokProvider: (draft) => ipcRenderer.invoke(IpcChannel.addGrokProvider, draft),
+  updateGrokProvider: (id, draft) => ipcRenderer.invoke(IpcChannel.updateGrokProvider, id, draft),
+  deleteGrokProvider: (id) => ipcRenderer.invoke(IpcChannel.deleteGrokProvider, id),
+  reorderGrokProviders: (ids) => ipcRenderer.invoke(IpcChannel.reorderGrokProviders, ids),
+  enableGrokProvider: (id) => ipcRenderer.invoke(IpcChannel.enableGrokProvider, id),
+  getGrokStatus: () => ipcRenderer.invoke(IpcChannel.getGrokStatus),
+  listGrokModels: (input) => ipcRenderer.invoke(IpcChannel.listGrokModels, input),
+  onGrokChanged: (listener) => {
+    const wrapped = () => listener()
+    ipcRenderer.on(IpcChannel.grokChanged, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IpcChannel.grokChanged, wrapped)
+    }
+  },
   listSkills: () => ipcRenderer.invoke(IpcChannel.listSkills),
   refreshSkills: () => ipcRenderer.invoke(IpcChannel.refreshSkills),
   installSkill: (name) => ipcRenderer.invoke(IpcChannel.installSkill, name),
@@ -74,10 +90,13 @@ const api: StackferryApi = {
   listSkillRepos: () => ipcRenderer.invoke(IpcChannel.listSkillRepos),
   addSkillRepo: (draft) => ipcRenderer.invoke(IpcChannel.addSkillRepo, draft),
   removeSkillRepo: (id) => ipcRenderer.invoke(IpcChannel.removeSkillRepo, id),
-  createSkill: (draft) => ipcRenderer.invoke(IpcChannel.createSkill, draft),
-  readSkill: (name) => ipcRenderer.invoke(IpcChannel.readSkill, name),
-  writeSkill: (name, draft) => ipcRenderer.invoke(IpcChannel.writeSkill, name, draft),
   adoptSkill: (name) => ipcRenderer.invoke(IpcChannel.adoptSkill, name),
+  chooseSkillImport: () => ipcRenderer.invoke(IpcChannel.chooseSkillImport),
+  importSkills: (directories) => ipcRenderer.invoke(IpcChannel.importSkills, directories),
+  listCliTools: () => ipcRenderer.invoke(IpcChannel.listCliTools),
+  installCliTool: (id) => ipcRenderer.invoke(IpcChannel.installCliTool, id),
+  updateCliTool: (id) => ipcRenderer.invoke(IpcChannel.updateCliTool, id),
+  uninstallCliTool: (id) => ipcRenderer.invoke(IpcChannel.uninstallCliTool, id),
   onSkillsChanged: (listener) => {
     const wrapped = () => listener()
     ipcRenderer.on(IpcChannel.skillsChanged, wrapped)

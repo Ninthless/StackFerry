@@ -1,7 +1,8 @@
 import type { ComponentType, HTMLAttributes } from "react"
-import { ClaudeIcon, CodexIcon } from "./cli-icons"
+import type { CliToolId } from "@shared/cli-tools"
+import { ClaudeIcon, CodexIcon, GrokIcon } from "./cli-icons"
 
-export type CliId = "codex" | "claude-code"
+export type CliId = CliToolId
 
 export type CliDefinition = {
   id: CliId
@@ -19,6 +20,11 @@ export const clis: CliDefinition[] = [
     id: "claude-code",
     name: "Claude",
     icon: ClaudeIcon,
+  },
+  {
+    id: "grok-build",
+    name: "Grok",
+    icon: GrokIcon,
   },
 ]
 

@@ -1,8 +1,10 @@
 import { type CSSProperties, type ReactNode, useState } from "react"
-import { Plus, Store } from "lucide-react"
+import { FolderInput, Plus, Store } from "lucide-react"
 import { ClaudeWorkspace } from "@/features/claude/claude-workspace"
 import { useClaudeProviders } from "@/features/claude/use-claude-providers"
 import { cliById, defaultCliId } from "@/features/clis/registry"
+import { GrokWorkspace } from "@/features/grok/grok-workspace"
+import { useGrokProviders } from "@/features/grok/use-grok-providers"
 import { ProviderWorkspace } from "@/features/providers/provider-workspace"
 import { useProviders } from "@/features/providers/use-providers"
 import { SettingsPage } from "@/features/settings/settings-page"
@@ -81,6 +83,27 @@ function CodexView() {
   )
 }
 
+function GrokView() {
+  const session = useGrokProviders()
+  const cli = cliById("grok-build")
+
+  return (
+    <>
+      <AppTitlebar
+        title={cli.name}
+        action={
+          <Button className="app-region-no-drag" type="button" onClick={session.openCreate}>
+            <Plus data-icon="inline-start" />
+            {m.action_add()}
+          </Button>
+        }
+      />
+      <Separator />
+      <GrokWorkspace session={session} />
+    </>
+  )
+}
+
 function SkillsView() {
   const session = useSkills()
 
@@ -90,9 +113,9 @@ function SkillsView() {
         title={m.nav_skills()}
         action={
           <div className="flex items-center gap-2">
-            <Button className="app-region-no-drag" type="button" onClick={session.openCreate}>
-              <Plus data-icon="inline-start" />
-              {m.skills_create()}
+            <Button className="app-region-no-drag" type="button" onClick={() => void session.openImport()}>
+              <FolderInput data-icon="inline-start" />
+              {m.skills_import()}
             </Button>
             <Button
               className="app-region-no-drag"
@@ -143,6 +166,9 @@ export function AppShell() {
         </KeepAlivePane>
         <KeepAlivePane active={navId === "claude-code"}>
           <ClaudeCodeView />
+        </KeepAlivePane>
+        <KeepAlivePane active={navId === "grok-build"}>
+          <GrokView />
         </KeepAlivePane>
         <KeepAlivePane active={navId === "skills"}>
           <SkillsView />

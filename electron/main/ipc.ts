@@ -2,19 +2,32 @@ import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { existsSync } from 'node:fs'
 import { PRESETS } from '../../shared/presets'
 import { CLAUDE_PRESETS } from '../../shared/claude-presets'
+import { CLI_TOOL_IDS, type CliToolId } from '../../shared/cli-tools'
+import { GROK_PRESETS } from '../../shared/grok-presets'
 import { IpcChannel } from '../../shared/ipc'
 import { isLanguagePreference } from '../../shared/locale'
 import type { MicaState } from '../../shared/mica'
-import { isRoutingSettingsPatch, type RoutingSettingsPatch } from '../../shared/routing'
+import { isRoutingSettingsPatch, isRoutingLaneId, type RoutingSettingsPatch } from '../../shared/routing'
 import { isThemePreference, type ThemePreference } from '../../shared/theme'
-import type { AppStatus, ClaudeProviderDraft, LanguagePreference, ProviderDraft } from '../../shared/types'
+import type {
+  AppStatus,
+  ClaudeProviderDraft,
+  GrokProviderDraft,
+  LanguagePreference,
+  ProviderDraft,
+} from '../../shared/types'
 import { listClaudeModels, type ListClaudeModelsInput } from './claude/models'
 import type { ClaudeEnableService } from './claude/service'
 import type { ClaudeProviderStore } from './claude/store'
+import { grokConfigPath } from './grok/home'
+import { listGrokModels, type ListGrokModelsInput } from './grok/models'
+import type { GrokEnableService } from './grok/service'
+import type { GrokProviderStore } from './grok/store'
 import { codexAuthPath, codexConfigPath } from './codex/home'
 import { listProviderModels, type ListModelsInput } from './providers/models'
 import type { ProviderStore } from './providers/store'
 import type { RoutingService } from './routing/service'
+import { registerCliToolIpc } from './cli-tools/ipc'
 import { registerSkillIpc } from './skills/ipc'
 import type { SkillService } from './skills/service'
 
@@ -23,12 +36,16 @@ type IpcContext = {
   routing: RoutingService
   claudeStore: ClaudeProviderStore
   claude: ClaudeEnableService
+  grokStore: GrokProviderStore
+  grok: GrokEnableService
   getCodexHome: () => string
+  getGrokHome: () => string
   backupRoot: string
   getNeedsRestart: () => boolean
   setNeedsRestart: (value: boolean) => void
   onChanged: () => void
   onClaudeChanged: () => void
+  onGrokChanged: () => void
   skills: SkillService
   onSkillsChanged: () => void
   getLocalePreference: () => Promise<LanguagePreference>
@@ -40,8 +57,7 @@ type IpcContext = {
 }
 
 export function registerIpc(context: IpcContext): void {
-  let writeChain = Promise.resolve()
-  let claudeWriteChain = Promise.resolve()
+  const writeChains = emptyWriteChains()
 
   ipcMain.handle(IpcChannel.listProviders, () => context.store.list())
   ipcMain.handle(IpcChannel.listPresets, () => PRESETS)
@@ -54,21 +70,21 @@ export function registerIpc(context: IpcContext): void {
     const provider = await context.store.update(id, draft)
     context.onChanged()
     if ((await context.store.getActiveId()) === id) {
-      writeChain = writeChain.catch(() => undefined).then(() => enableProvider(context, id))
-      await writeChain
+      writeChains.codex = enqueue(writeChains.codex, () => enableProvider(context, id))
+      await writeChains.codex
     }
     return provider
   })
   ipcMain.handle(IpcChannel.deleteProvider, async (_event, id: string) => {
     await context.store.delete(id)
-    writeChain = writeChain.catch(() => undefined).then(() => context.routing.removeDeleted(id))
-    await writeChain
+    writeChains.codex = enqueue(writeChains.codex, () => context.routing.removeDeleted('codex', id))
+    await writeChains.codex
     context.onChanged()
   })
   ipcMain.handle(IpcChannel.reorderProviders, (_event, ids: string[]) => context.store.reorder(ids))
   ipcMain.handle(IpcChannel.enableProvider, async (_event, id: string) => {
-    writeChain = writeChain.catch(() => undefined).then(() => enableProvider(context, id))
-    return writeChain.then(() => readStatus(context))
+    writeChains.codex = enqueue(writeChains.codex, () => enableProvider(context, id))
+    return writeChains.codex.then(() => readStatus(context))
   })
   ipcMain.handle(IpcChannel.listModels, (_event, input: ListModelsInput) => {
     return listProviderModels(context.store, input)
@@ -119,33 +135,35 @@ export function registerIpc(context: IpcContext): void {
     }
     const next = await context.routing.setSettings(patch)
     context.onChanged()
+    context.onClaudeChanged()
+    context.onGrokChanged()
     return next
   })
-  ipcMain.handle(IpcChannel.setProviderQueued, async (_event, id: string, queued: boolean) => {
-    if (typeof id !== 'string' || typeof queued !== 'boolean') {
+  ipcMain.handle(IpcChannel.setProviderQueued, async (_event, cliId: unknown, id: string, queued: boolean) => {
+    if (!isRoutingLaneId(cliId) || typeof id !== 'string' || typeof queued !== 'boolean') {
       return context.routing.snapshot()
     }
-    writeChain = writeChain.catch(() => undefined).then(async () => {
-      await context.routing.setQueued(id, queued)
+    writeChains[cliId] = enqueue(writeChains[cliId], async () => {
+      await context.routing.setQueued(cliId, id, queued)
     })
-    const next = await writeChain.then(() => context.routing.snapshot())
-    context.onChanged()
+    const next = await writeChains[cliId].then(() => context.routing.snapshot())
+    notifyLane(context, cliId)
     return next
   })
-  ipcMain.handle(IpcChannel.setQueueOrder, async (_event, ids: string[]) => {
-    if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string')) {
+  ipcMain.handle(IpcChannel.setQueueOrder, async (_event, cliId: unknown, ids: string[]) => {
+    if (!isRoutingLaneId(cliId) || !Array.isArray(ids) || ids.some((id) => typeof id !== 'string')) {
       return context.routing.snapshot()
     }
-    const next = await context.routing.setQueueOrder(ids)
-    context.onChanged()
+    const next = await context.routing.setQueueOrder(cliId, ids)
+    notifyLane(context, cliId)
     return next
   })
-  ipcMain.handle(IpcChannel.resetBreaker, async (_event, id: string) => {
-    if (typeof id !== 'string') {
+  ipcMain.handle(IpcChannel.resetBreaker, async (_event, cliId: unknown, id: string) => {
+    if (!isRoutingLaneId(cliId) || typeof id !== 'string') {
       return context.routing.snapshot()
     }
-    const next = await context.routing.resetBreaker(id)
-    context.onChanged()
+    const next = await context.routing.resetBreaker(cliId, id)
+    notifyLane(context, cliId)
     return next
   })
   ipcMain.handle(IpcChannel.listClaudeProviders, () => context.claudeStore.list())
@@ -159,27 +177,71 @@ export function registerIpc(context: IpcContext): void {
     const provider = await context.claudeStore.update(id, draft)
     context.onClaudeChanged()
     if ((await context.claudeStore.getActiveId()) === id) {
-      claudeWriteChain = claudeWriteChain.catch(() => undefined).then(() => enableClaudeProvider(context, id))
-      await claudeWriteChain
+      writeChains['claude-code'] = enqueue(writeChains['claude-code'], () => enableClaudeProvider(context, id))
+      await writeChains['claude-code']
     }
     return provider
   })
   ipcMain.handle(IpcChannel.deleteClaudeProvider, async (_event, id: string) => {
     await context.claudeStore.delete(id)
+    writeChains['claude-code'] = enqueue(writeChains['claude-code'], () => {
+      return context.routing.removeDeleted('claude-code', id)
+    })
+    await writeChains['claude-code']
     context.onClaudeChanged()
   })
   ipcMain.handle(IpcChannel.reorderClaudeProviders, (_event, ids: string[]) => {
     return context.claudeStore.reorder(ids)
   })
   ipcMain.handle(IpcChannel.enableClaudeProvider, async (_event, id: string) => {
-    claudeWriteChain = claudeWriteChain.catch(() => undefined).then(() => enableClaudeProvider(context, id))
-    return claudeWriteChain.then(() => context.claude.status())
+    writeChains['claude-code'] = enqueue(writeChains['claude-code'], () => enableClaudeProvider(context, id))
+    return writeChains['claude-code'].then(async () => {
+      const status = await context.claude.status()
+      return { ...status, needsRestart: context.getNeedsRestart() }
+    })
   })
-  ipcMain.handle(IpcChannel.getClaudeStatus, () => context.claude.status())
+  ipcMain.handle(IpcChannel.getClaudeStatus, async () => {
+    const status = await context.claude.status()
+    return { ...status, needsRestart: context.getNeedsRestart() }
+  })
   ipcMain.handle(IpcChannel.listClaudeModels, (_event, input: ListClaudeModelsInput) => {
     return listClaudeModels(context.claudeStore, input)
   })
+  ipcMain.handle(IpcChannel.listGrokProviders, () => context.grokStore.list())
+  ipcMain.handle(IpcChannel.listGrokPresets, () => GROK_PRESETS)
+  ipcMain.handle(IpcChannel.addGrokProvider, async (_event, draft: GrokProviderDraft) => {
+    const provider = await context.grokStore.add(draft)
+    context.onGrokChanged()
+    return provider
+  })
+  ipcMain.handle(IpcChannel.updateGrokProvider, async (_event, id: string, draft: GrokProviderDraft) => {
+    const provider = await context.grokStore.update(id, draft)
+    context.onGrokChanged()
+    if ((await context.grokStore.getActiveId()) === id) {
+      writeChains['grok-build'] = enqueue(writeChains['grok-build'], () => enableGrokProvider(context, id))
+      await writeChains['grok-build']
+    }
+    return provider
+  })
+  ipcMain.handle(IpcChannel.deleteGrokProvider, async (_event, id: string) => {
+    await context.grokStore.delete(id)
+    writeChains['grok-build'] = enqueue(writeChains['grok-build'], () => {
+      return context.routing.removeDeleted('grok-build', id)
+    })
+    await writeChains['grok-build']
+    context.onGrokChanged()
+  })
+  ipcMain.handle(IpcChannel.reorderGrokProviders, (_event, ids: string[]) => context.grokStore.reorder(ids))
+  ipcMain.handle(IpcChannel.enableGrokProvider, async (_event, id: string) => {
+    writeChains['grok-build'] = enqueue(writeChains['grok-build'], () => enableGrokProvider(context, id))
+    return writeChains['grok-build'].then(() => readGrokStatus(context))
+  })
+  ipcMain.handle(IpcChannel.getGrokStatus, () => readGrokStatus(context))
+  ipcMain.handle(IpcChannel.listGrokModels, (_event, input: ListGrokModelsInput) => {
+    return listGrokModels(context.grokStore, input)
+  })
   registerSkillIpc(context)
+  registerCliToolIpc()
 }
 
 export function bindWindowState(win: BrowserWindow): void {
@@ -209,8 +271,28 @@ export function broadcastClaudeChanged(): void {
   }
 }
 
+export function broadcastGrokChanged(): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send(IpcChannel.grokChanged)
+  }
+}
+
+function emptyWriteChains(): Record<CliToolId, Promise<void>> {
+  return Object.fromEntries(CLI_TOOL_IDS.map((id) => [id, Promise.resolve()])) as Record<CliToolId, Promise<void>>
+}
+
+function enqueue(chain: Promise<void>, work: () => Promise<void>): Promise<void> {
+  return chain.catch(() => undefined).then(work)
+}
+
+function notifyLane(context: IpcContext, cliId: CliToolId): void {
+  if (cliId === 'codex') context.onChanged()
+  else if (cliId === 'claude-code') context.onClaudeChanged()
+  else context.onGrokChanged()
+}
+
 export async function enableProvider(context: IpcContext, id: string): Promise<void> {
-  await context.routing.enable(id)
+  await context.routing.enable('codex', id)
   context.onChanged()
 }
 
@@ -237,7 +319,7 @@ export async function seedOfficialProvider(store: ProviderStore): Promise<void> 
 }
 
 export async function enableClaudeProvider(context: IpcContext, id: string): Promise<void> {
-  await context.claude.enable(id)
+  await context.routing.enable('claude-code', id)
   context.onClaudeChanged()
 }
 
@@ -246,6 +328,31 @@ export async function seedOfficialClaudeProvider(store: ClaudeProviderStore): Pr
   if (providers.length > 0) return
   await store.add({
     name: 'Claude Official',
+    kind: 'official',
+    presetId: 'official',
+  })
+}
+
+export async function enableGrokProvider(context: IpcContext, id: string): Promise<void> {
+  await context.routing.enable('grok-build', id)
+  context.onGrokChanged()
+}
+
+export async function readGrokStatus(context: IpcContext) {
+  const status = await context.grok.status()
+  return {
+    ...status,
+    grokHome: context.getGrokHome(),
+    configExists: existsSync(grokConfigPath(context.getGrokHome())),
+    needsRestart: context.getNeedsRestart(),
+  }
+}
+
+export async function seedOfficialGrokProvider(store: GrokProviderStore): Promise<void> {
+  const providers = await store.list()
+  if (providers.length > 0) return
+  await store.add({
+    name: 'Grok Official',
     kind: 'official',
     presetId: 'official',
   })
