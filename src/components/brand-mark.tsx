@@ -8,7 +8,7 @@ export function BrandMark({ className }: Props) {
   return (
     <img
       alt="StackFerry"
-      src="/ship-mark.svg"
+      src={`${import.meta.env.BASE_URL}ship-mark.svg`}
       className={cn("size-8 shrink-0 overflow-hidden rounded-lg bg-black object-contain p-2", className)}
     />
   )
