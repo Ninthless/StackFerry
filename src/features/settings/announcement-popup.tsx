@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
-import { latestUnreadAnnouncement } from "@shared/app-releases"
+import { unreadAnnouncements } from "@shared/app-releases"
 import type { AnnouncementItem, AnnouncementSnapshot } from "@shared/types"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -15,9 +16,35 @@ import { toast } from "@/components/ui/toast"
 import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
 
+const DEV_PREVIEW: AnnouncementSnapshot = {
+  unreadCount: 2,
+  items: [
+    {
+      id: "dev-preview-2",
+      title: "测试公告2",
+      body: "测试公告2",
+      htmlUrl: "https://ninthless.github.io/",
+      tag: "更测试公告2",
+      publishedAt: "2026-09-09T03:14:10.475Z",
+      prerelease: true,
+      unread: true,
+    },
+    {
+      id: "dev-preview-1",
+      title: "测试公告",
+      body: "你好",
+      htmlUrl: "",
+      tag: "更新",
+      publishedAt: "2026-09-09T03:13:34.134Z",
+      prerelease: true,
+      unread: true,
+    },
+  ],
+}
+
 export function AnnouncementPopup() {
-  const [item, setItem] = useState<AnnouncementItem | null>(null)
-  const [moreCount, setMoreCount] = useState(0)
+  const [items, setItems] = useState<AnnouncementItem[]>([])
+  const [index, setIndex] = useState(0)
   const [acking, setAcking] = useState(false)
 
   useEffect(() => {
@@ -25,40 +52,42 @@ export function AnnouncementPopup() {
     if (!api) return
     void (async () => {
       try {
-        show(await api.refreshAnnouncements())
+        setItems(unreadAnnouncements(await api.refreshAnnouncements()))
+        setIndex(0)
       } catch {
-        // 启动拉取失败时不弹窗；关于页仍会显示错误。
+        if (import.meta.env.DEV) {
+          setItems(unreadAnnouncements(DEV_PREVIEW))
+          setIndex(0)
+        }
       }
     })()
   }, [])
 
-  function show(snapshot: AnnouncementSnapshot): void {
-    const unread = latestUnreadAnnouncement(snapshot)
-    if (!unread) {
-      setItem(null)
-      setMoreCount(0)
-      return
-    }
-    setItem(unread)
-    setMoreCount(Math.max(0, snapshot.unreadCount - 1))
-  }
+  const item = items[index] ?? null
+  const remaining = Math.max(0, items.length - index - 1)
+  const last = remaining === 0
 
   function dismiss(): void {
     if (acking) return
-    setItem(null)
-    setMoreCount(0)
+    setItems([])
+    setIndex(0)
+  }
+
+  function next(): void {
+    if (acking || last) return
+    setIndex((current) => current + 1)
   }
 
   async function ack(): Promise<void> {
     const api = window.stackferry
-    const current = item
-    if (!api || !current) {
+    if (!api) {
       dismiss()
       return
     }
     setAcking(true)
     try {
-      show(await api.markAnnouncementRead(current.id))
+      setItems(unreadAnnouncements(await api.markAllAnnouncementsRead()))
+      setIndex(0)
     } catch (error) {
       toast.add({ type: "error", description: formatAppError(error), priority: "high" })
     } finally {
@@ -67,9 +96,7 @@ export function AnnouncementPopup() {
   }
 
   const meta = item
-    ? [item.tag, item.publishedAt ? item.publishedAt.slice(0, 10) : ""]
-        .filter(Boolean)
-        .join(" · ")
+    ? [item.tag, item.publishedAt ? item.publishedAt.slice(0, 10) : ""].filter(Boolean).join(" · ")
     : ""
 
   return (
@@ -79,11 +106,18 @@ export function AnnouncementPopup() {
           <DialogTitle>{item?.title ?? ""}</DialogTitle>
           <DialogDescription>
             {meta}
-            {moreCount > 0 ? ` · ${m.announcements_popup_more({ count: moreCount })}` : ""}
+            {remaining > 0 ? `${meta ? " · " : ""}${m.announcements_popup_more({ count: remaining })}` : ""}
           </DialogDescription>
         </DialogHeader>
         <ScrollArea key={item?.id} className="max-h-80">
-          <pre className="text-sm whitespace-pre-wrap">{item?.body ?? ""}</pre>
+          <div className="flex flex-col gap-2">
+            {item?.prerelease ? (
+              <Badge variant="secondary" className="w-fit">
+                {m.announcements_prerelease()}
+              </Badge>
+            ) : null}
+            {item?.body ? <pre className="text-sm whitespace-pre-wrap">{item.body}</pre> : null}
+          </div>
         </ScrollArea>
         <DialogFooter>
           <Button type="button" variant="outline" disabled={acking} onClick={dismiss}>
@@ -99,9 +133,15 @@ export function AnnouncementPopup() {
               {m.announcements_open_github()}
             </Button>
           ) : null}
-          <Button type="button" disabled={acking} onClick={() => void ack()}>
-            {m.announcements_popup_ack()}
-          </Button>
+          {last ? (
+            <Button type="button" disabled={acking} onClick={() => void ack()}>
+              {m.announcements_popup_ack()}
+            </Button>
+          ) : (
+            <Button type="button" disabled={acking} onClick={next}>
+              {m.announcements_popup_next()}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

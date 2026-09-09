@@ -47,7 +47,6 @@ export class AppReleaseService {
 
   async refreshAnnouncements(): Promise<AnnouncementSnapshot> {
     const items = parseAnnouncementFeed(await this.options.fetchReleases())
-    await this.options.store.seedIfEmpty(items.map((item) => item.id))
     this.releases = items
     return this.withUnread(items)
   }

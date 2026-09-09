@@ -1,7 +1,8 @@
 import { AppError } from './app-error'
 
-// 自有服务器上的公告 JSON，必须是 https://。留空则不拉取。
-export const APP_ANNOUNCEMENTS_URL = ''
+// 自有公告源，必须是 https://。部署 noticeboard 后填
+// https://<host>/v1/apps/stackferry/announcements.json ；留空则不拉取。
+export const APP_ANNOUNCEMENTS_URL = 'https://notice.ninthless.top/v1/apps/stackferry/announcements.json'
 export const ANNOUNCEMENTS_PAGE_SIZE = 20
 
 export const APP_UPDATE_PHASES = [
@@ -74,8 +75,8 @@ function parseAnnouncementEntry(entry: unknown): AppRelease | null {
         ? rawId.trim()
         : ''
   if (!id) return null
-  const htmlUrl = typeof row.htmlUrl === 'string' ? row.htmlUrl.trim() : ''
-  if (htmlUrl && !isAnnouncementFeedUrl(htmlUrl)) return null
+  const rawHtmlUrl = typeof row.htmlUrl === 'string' ? row.htmlUrl.trim() : ''
+  const htmlUrl = rawHtmlUrl && isAnnouncementFeedUrl(rawHtmlUrl) ? rawHtmlUrl : ''
   const title = typeof row.title === 'string' ? row.title.trim() : ''
   const tag = typeof row.tag === 'string' ? row.tag.trim() : ''
   return {
@@ -97,8 +98,12 @@ export function announcementSnapshot(items: AppRelease[], seenIds: ReadonlySet<s
   }
 }
 
+export function unreadAnnouncements(snapshot: AnnouncementSnapshot): AnnouncementItem[] {
+  return snapshot.items.filter((item) => item.unread)
+}
+
 export function latestUnreadAnnouncement(snapshot: AnnouncementSnapshot): AnnouncementItem | null {
-  return snapshot.items.find((item) => item.unread) ?? null
+  return unreadAnnouncements(snapshot)[0] ?? null
 }
 
 export function emptyAnnouncementSnapshot(): AnnouncementSnapshot {

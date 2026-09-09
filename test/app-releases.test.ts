@@ -9,6 +9,7 @@ import {
   isAnnouncementFeedUrl,
   latestUnreadAnnouncement,
   parseAnnouncementFeed,
+  unreadAnnouncements,
 } from '../shared/app-releases'
 import electronUpdater from 'electron-updater'
 import { fetchAnnouncementFeed } from '../electron/main/releases/feed'
@@ -56,6 +57,15 @@ describe('announcement feed parsing', () => {
         prerelease: false,
       },
       {
+        id: '1',
+        tag: '',
+        title: 'Gateway notice',
+        body: 'Notes',
+        htmlUrl: '',
+        publishedAt: '2026-09-01T00:00:00Z',
+        prerelease: false,
+      },
+      {
         id: '3',
         tag: '',
         title: '3',
@@ -82,7 +92,9 @@ describe('announcement feed parsing', () => {
       sampleAnnouncement,
       { ...sampleAnnouncement, id: '41', title: 'Older' },
     ])
-    expect(latestUnreadAnnouncement(announcementSnapshot(items, new Set()))?.id).toBe('42')
+    const unread = announcementSnapshot(items, new Set())
+    expect(unreadAnnouncements(unread).map((item) => item.id)).toEqual(['42', '41'])
+    expect(latestUnreadAnnouncement(unread)?.id).toBe('42')
     expect(latestUnreadAnnouncement(announcementSnapshot(items, new Set(['42'])))?.id).toBe('41')
     expect(latestUnreadAnnouncement(announcementSnapshot(items, new Set(['42', '41'])))).toBeNull()
   })
@@ -189,7 +201,7 @@ describe('app release service', () => {
     expect(service.snapshot().phase).toBe('idle')
   })
 
-  it('seeds first announcements as read and later ones as unread', async () => {
+  it('treats unseen announcements as unread until marked', async () => {
     let payload: unknown = [sampleAnnouncement]
     const service = await createService({
       packaged: false,
@@ -198,7 +210,7 @@ describe('app release service', () => {
       fetchReleases: async () => payload,
     })
     const first = await service.refreshAnnouncements()
-    expect(first.unreadCount).toBe(0)
+    expect(first.unreadCount).toBe(1)
     expect(first.items).toHaveLength(1)
     payload = [
       {
@@ -210,9 +222,10 @@ describe('app release service', () => {
       sampleAnnouncement,
     ]
     const second = await service.refreshAnnouncements()
-    expect(second.unreadCount).toBe(1)
+    expect(second.unreadCount).toBe(2)
     expect(second.items[0]?.id).toBe('99')
-    expect((await service.markAnnouncementRead('99')).unreadCount).toBe(0)
+    expect((await service.markAnnouncementRead('99')).unreadCount).toBe(1)
+    expect((await service.markAllAnnouncementsRead()).unreadCount).toBe(0)
   })
 })
 
