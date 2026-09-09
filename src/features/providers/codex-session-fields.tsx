@@ -224,6 +224,7 @@ export function CodexSessionFields({
         />
         <EffortScale
           id={`${formId}-reasoning`}
+          tone="codex"
           options={items}
           value={session.reasoningEffort}
           fasterLabel={m.session_reasoning_faster()}

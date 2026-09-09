@@ -56,6 +56,7 @@ export function GrokSessionFields({ formId, overlayToml, onOverlayChange, onErro
         </HintLabel>
         <EffortScale
           id={`${formId}-effort`}
+          tone="grok"
           options={items}
           value={session.effortLevel}
           fasterLabel={m.session_reasoning_faster()}
