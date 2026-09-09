@@ -59,10 +59,31 @@ describe('claude desktop merge', () => {
       { id: 'other-profile', name: 'Bedrock' },
     ])
     expect(next.profile.inferenceModels).toBeUndefined()
+    expect(next.profile.modelDiscoveryEnabled).toBeUndefined()
     expect(next.profile.inferenceGatewayAuthScheme).toBe('x-api-key')
   })
 
-  it('marks the pinned model as 1M when the session window is at least one million', () => {
+  it('writes the configured list with the default first', () => {
+    const next = applyDesktopGateway(
+      { appliedId: null, entries: [] },
+      {
+        name: 'Corp Gateway',
+        baseUrl: 'https://gateway.example/v1',
+        apiKey: 'gw-key',
+        authScheme: 'bearer',
+        model: 'gw-sonnet',
+        models: ['gw-opus', 'gw-sonnet', 'gw-haiku'],
+      },
+    )
+    expect(next.profile.modelDiscoveryEnabled).toBeUndefined()
+    expect(next.profile.inferenceModels?.map((item) => item.name)).toEqual([
+      'gw-sonnet',
+      'gw-opus',
+      'gw-haiku',
+    ])
+  })
+
+  it('marks only the default model as 1M when the session window is at least one million', () => {
     const next = applyDesktopGateway(
       { appliedId: null, entries: [] },
       {
@@ -71,16 +92,14 @@ describe('claude desktop merge', () => {
         apiKey: 'gw-key',
         authScheme: 'bearer',
         model: 'alias-1m',
+        models: ['alias-1m', 'other'],
         supports1m: true,
       },
     )
+    expect(next.profile.modelDiscoveryEnabled).toBeUndefined()
     expect(next.profile.inferenceModels).toEqual([
-      {
-        name: 'alias-1m',
-        labelOverride: 'alias-1m',
-        supports1m: true,
-        prefer1m: true,
-      },
+      { name: 'alias-1m', labelOverride: 'alias-1m', supports1m: true, prefer1m: true },
+      { name: 'other', labelOverride: 'other' },
     ])
   })
 

@@ -83,10 +83,12 @@ export type ClaudeProviderDraft = {
   kind: ProviderKind
   baseUrl?: string
   model?: string
+  models?: string[]
   authScheme?: ClaudeAuthScheme
   apiKey?: string
   presetId?: string
   effortLevel?: string
+  permissionMode?: string
   contextWindow?: string
   autoCompact?: string
   overlayJson?: string
@@ -98,8 +100,10 @@ export type ClaudeProviderListItem = {
   kind: ProviderKind
   baseUrl: string
   model: string
+  models: string[]
   authScheme: ClaudeAuthScheme
   effortLevel: string
+  permissionMode: string
   contextWindow: string
   autoCompact: string
   overlayJson: string

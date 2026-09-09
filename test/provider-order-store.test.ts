@@ -34,6 +34,7 @@ describe('provider list order', () => {
     const store = new ClaudeProviderStore(file)
     const listed = await store.reorder(['b', 'c', 'official'])
     expect(listed.map((item) => item.id)).toEqual(['b', 'c', 'official'])
+    expect(listed.find((item) => item.id === 'b')?.models).toEqual(['demo'])
     const persisted = JSON.parse(await readFile(file, 'utf8')) as { providers: { id: string }[] }
     expect(persisted.providers.map((item) => item.id)).toEqual(['b', 'c', 'official'])
     await expect(store.reorder(['missing'])).rejects.toMatchObject({ code: 'provider_order' })
@@ -72,6 +73,7 @@ function claudeFile(ids: string[]) {
       model: id === 'official' ? '' : 'demo',
       authScheme: 'bearer',
       effortLevel: '',
+      permissionMode: '',
       contextWindow: '',
       autoCompact: '',
       overlayJson: '',

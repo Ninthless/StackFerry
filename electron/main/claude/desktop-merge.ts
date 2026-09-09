@@ -1,4 +1,5 @@
 import { AppError } from '../../../shared/app-error'
+import { persistClaudeModels } from '../../../shared/claude-models'
 import type { ClaudeAuthScheme } from '../../../shared/types'
 
 export const STACKFERRY_DESKTOP_PROFILE_ID = '5f00c1a0-de5f-4000-8000-537461636b46'
@@ -20,6 +21,7 @@ export type DesktopGatewayConfig = {
   apiKey: string
   authScheme: ClaudeAuthScheme
   model: string
+  models?: string[]
   supports1m?: boolean
 }
 
@@ -88,16 +90,21 @@ export function applyDesktopOfficial(meta: DesktopMeta): DesktopMeta {
 }
 
 export function buildDesktopGatewayProfile(provider: DesktopGatewayConfig): DesktopGatewayProfile {
-  const model = provider.model.trim()
-  return {
+  // 只写入配置的网关 ID；空列表省略 inferenceModels。不要再注入 Claude Code 别名。
+  const { models: names } = persistClaudeModels(provider.model, provider.models)
+  const profile: DesktopGatewayProfile = {
     inferenceProvider: 'gateway',
     inferenceCredentialKind: 'static',
     inferenceGatewayBaseUrl: provider.baseUrl,
     inferenceGatewayApiKey: provider.apiKey,
     inferenceGatewayAuthScheme: provider.authScheme,
     disableDeploymentModeChooser: true,
-    ...(model ? { inferenceModels: [desktopInferenceModel(model, provider.supports1m)] } : {}),
   }
+  if (names.length === 0) return profile
+  profile.inferenceModels = names.map((name, index) =>
+    desktopInferenceModel(name, Boolean(provider.supports1m) && index === 0),
+  )
+  return profile
 }
 
 function desktopInferenceModel(model: string, supports1m: boolean | undefined): DesktopInferenceModel {

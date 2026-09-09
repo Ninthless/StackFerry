@@ -10,6 +10,8 @@ export const MANAGED_CODE_ENV_KEYS = [
   'CLAUDE_CODE_MAX_CONTEXT_TOKENS',
   'CLAUDE_CODE_EFFORT_LEVEL',
   'CLAUDE_CODE_AUTO_COMPACT_WINDOW',
+  'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS',
+  'CLAUDE_CODE_ATTRIBUTION_HEADER',
 ] as const
 
 export const MANAGED_CODE_ROOT_KEYS = ['effortLevel', 'autoCompactWindow'] as const
@@ -47,10 +49,15 @@ export function applyCodeGateway(
   } else {
     delete env.CLAUDE_CODE_MAX_CONTEXT_TOKENS
   }
+  // 第三方网关常因实验 beta 字段 400；attribution 块在非 api.anthropic.com 上会进 cache key。
+  // 不写 DISABLE_PROMPT_CACHING：基础 cache_control 应继续发给上游。
+  env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = '1'
+  env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
   if (session.effortLevel) root.effortLevel = session.effortLevel
   else delete root.effortLevel
   if (session.autoCompact != null) root.autoCompactWindow = session.autoCompact
   else delete root.autoCompactWindow
+  applyPermissionMode(root, session.permissionMode)
   root.env = env
   return root
 }
@@ -64,6 +71,7 @@ export function applyCodeOfficial(current: unknown): Record<string, unknown> {
   for (const key of MANAGED_CODE_ROOT_KEYS) {
     delete root[key]
   }
+  applyPermissionMode(root, '')
   if (Object.keys(env).length === 0) delete root.env
   else root.env = env
   return root
@@ -75,6 +83,19 @@ export function parseCodeSettings(text: string): unknown {
   } catch {
     throw new AppError('claude_settings_corrupt')
   }
+}
+
+function applyPermissionMode(root: Record<string, unknown>, mode: string): void {
+  // 只改 defaultMode；allow / ask / deny 仍由用户或 overlay 持有。
+  const current = isPlainObject(root.permissions) ? { ...root.permissions } : {}
+  if (mode) {
+    current.defaultMode = mode
+    root.permissions = current
+    return
+  }
+  delete current.defaultMode
+  if (Object.keys(current).length === 0) delete root.permissions
+  else root.permissions = current
 }
 
 function applyOverlay(root: Record<string, unknown>, overlay: Record<string, unknown>): void {

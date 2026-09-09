@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { ANTHROPIC_API_VERSION, claudeModelsHeaders, claudeModelsUrl } from '../shared/claude-models'
+import {
+  ANTHROPIC_API_VERSION,
+  claudeModelsHeaders,
+  claudeModelsUrl,
+  persistClaudeModels,
+  uniqueClaudeModelIds,
+} from '../shared/claude-models'
 import { expectAppError } from './expect-app-error'
 
 describe('claude models url', () => {
@@ -31,6 +37,42 @@ describe('claude models url', () => {
     expectAppError(() => claudeModelsUrl(''), 'models_missing_base_url')
     expectAppError(() => claudeModelsUrl('not-a-url'), 'models_invalid_url')
     expectAppError(() => claudeModelsUrl('file:///tmp'), 'models_unsupported_protocol')
+  })
+})
+
+describe('unique claude model ids', () => {
+  it('keeps order and drops blanks and duplicates', () => {
+    expect(uniqueClaudeModelIds(['  gw-sonnet ', '', 'gw-opus', 'gw-sonnet'])).toEqual([
+      'gw-sonnet',
+      'gw-opus',
+    ])
+  })
+})
+
+describe('persist claude models', () => {
+  it('puts the default first and ignores non-strings', () => {
+    expect(persistClaudeModels(' gw-sonnet ', ['gw-opus', 'gw-sonnet', 1, '  '])).toEqual({
+      model: 'gw-sonnet',
+      models: ['gw-sonnet', 'gw-opus'],
+    })
+  })
+
+  it('uses the first listed id when the default is empty', () => {
+    expect(persistClaudeModels('', ['gw-opus', 'gw-sonnet'])).toEqual({
+      model: 'gw-opus',
+      models: ['gw-opus', 'gw-sonnet'],
+    })
+  })
+
+  it('migrates a legacy single model to a one-item list', () => {
+    expect(persistClaudeModels('gw-sonnet', undefined)).toEqual({
+      model: 'gw-sonnet',
+      models: ['gw-sonnet'],
+    })
+  })
+
+  it('keeps both empty when nothing is configured', () => {
+    expect(persistClaudeModels('', [])).toEqual({ model: '', models: [] })
   })
 })
 

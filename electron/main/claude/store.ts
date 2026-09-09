@@ -5,7 +5,8 @@ import path from 'node:path'
 import { safeStorage } from 'electron'
 import { AppError } from '../../../shared/app-error'
 import { findClaudePreset, isClaudeAuthScheme } from '../../../shared/claude-presets'
-import { persistClaudeSession } from '../../../shared/claude-session'
+import { persistClaudeModels } from '../../../shared/claude-models'
+import { hydrateClaudeOverlay, persistClaudeSession } from '../../../shared/claude-session'
 import { orderByIds } from '../../../shared/id-order'
 import type {
   ClaudeAuthScheme,
@@ -24,8 +25,10 @@ export type StoredClaudeProvider = {
   kind: ProviderKind
   baseUrl: string
   model: string
+  models: string[]
   authScheme: ClaudeAuthScheme
   effortLevel: string
+  permissionMode: string
   contextWindow: string
   autoCompact: string
   overlayJson: string
@@ -57,12 +60,13 @@ export class ClaudeProviderStore {
     }
     const now = new Date().toISOString()
     const session = this.sessionFields(kind, draft)
+    const persistedModels = this.persistModels(kind, draft)
     const provider: StoredClaudeProvider = {
       id: kind === 'official' ? OFFICIAL_ID : randomUUID(),
       name: this.requireName(draft.name),
       kind,
       baseUrl: kind === 'official' ? '' : this.requireBaseUrl(draft.baseUrl),
-      model: kind === 'official' ? '' : (draft.model ?? '').trim(),
+      ...persistedModels,
       authScheme: kind === 'official' ? 'bearer' : this.requireAuthScheme(draft.authScheme),
       ...session,
       apiKeyPayload: this.encryptApiKey(kind, draft.apiKey),
@@ -81,7 +85,7 @@ export class ClaudeProviderStore {
     provider.name = this.requireName(draft.name)
     if (provider.kind === 'custom') {
       provider.baseUrl = this.requireBaseUrl(draft.baseUrl)
-      provider.model = (draft.model ?? '').trim()
+      Object.assign(provider, this.persistModels(provider.kind, draft))
       provider.authScheme = this.requireAuthScheme(draft.authScheme)
       Object.assign(provider, this.sessionFields(provider.kind, draft))
       if (draft.apiKey?.trim()) {
@@ -153,8 +157,10 @@ export class ClaudeProviderStore {
       kind: provider.kind,
       baseUrl: provider.baseUrl,
       model: provider.model,
+      models: provider.models,
       authScheme: provider.authScheme,
       effortLevel: provider.effortLevel,
+      permissionMode: provider.permissionMode,
       contextWindow: provider.contextWindow,
       autoCompact: provider.autoCompact,
       overlayJson: provider.overlayJson,
@@ -196,18 +202,38 @@ export class ClaudeProviderStore {
 
   private sessionFields(kind: ProviderKind, draft: ClaudeProviderDraft) {
     if (kind === 'official') {
-      return { effortLevel: '', contextWindow: '', autoCompact: '', overlayJson: '' }
+      return { effortLevel: '', permissionMode: '', contextWindow: '', autoCompact: '', overlayJson: '' }
     }
     return persistClaudeSession(draft)
   }
 
+  private persistModels(kind: ProviderKind, draft: ClaudeProviderDraft): { model: string; models: string[] } {
+    if (kind === 'official') return { model: '', models: [] }
+    return persistClaudeModels(draft.model, draft.models)
+  }
+
   private normalizeProvider(provider: StoredClaudeProvider): StoredClaudeProvider {
+    const persisted = persistClaudeModels(provider.model, provider.models)
+    const effortLevel = typeof provider.effortLevel === 'string' ? provider.effortLevel : ''
+    const permissionMode = typeof provider.permissionMode === 'string' ? provider.permissionMode : ''
+    const contextWindow = typeof provider.contextWindow === 'string' ? provider.contextWindow : ''
+    const autoCompact = typeof provider.autoCompact === 'string' ? provider.autoCompact : ''
+    const overlaySource = typeof provider.overlayJson === 'string' ? provider.overlayJson : ''
     return {
       ...provider,
-      effortLevel: typeof provider.effortLevel === 'string' ? provider.effortLevel : '',
-      contextWindow: typeof provider.contextWindow === 'string' ? provider.contextWindow : '',
-      autoCompact: typeof provider.autoCompact === 'string' ? provider.autoCompact : '',
-      overlayJson: typeof provider.overlayJson === 'string' ? provider.overlayJson : '',
+      ...persisted,
+      effortLevel,
+      permissionMode,
+      contextWindow,
+      autoCompact,
+      overlayJson: hydrateClaudeOverlay(overlaySource, {
+        baseUrl: typeof provider.baseUrl === 'string' ? provider.baseUrl : '',
+        model: persisted.model,
+        effortLevel,
+        permissionMode,
+        contextWindow,
+        autoCompact,
+      }),
     }
   }
 

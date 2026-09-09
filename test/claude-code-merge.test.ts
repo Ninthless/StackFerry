@@ -23,6 +23,8 @@ describe('claude code merge', () => {
       ANTHROPIC_BASE_URL: 'https://gateway.example/v1',
       ANTHROPIC_AUTH_TOKEN: 'token-a',
       ANTHROPIC_MODEL: 'claude-sonnet-4-6',
+      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
     })
   })
 
@@ -42,6 +44,8 @@ describe('claude code merge', () => {
     expect(next.env).toEqual({
       ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
       ANTHROPIC_API_KEY: 'sk-ant',
+      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
     })
   })
 
@@ -68,6 +72,9 @@ describe('claude code merge', () => {
             KEEP_ME: 'from-overlay',
             ANTHROPIC_AUTH_TOKEN: 'stolen',
             CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1',
+            CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '0',
+            CLAUDE_CODE_ATTRIBUTION_HEADER: '1',
+            DISABLE_PROMPT_CACHING: '1',
           },
         }),
       },
@@ -83,6 +90,9 @@ describe('claude code merge', () => {
       ANTHROPIC_AUTH_TOKEN: 'token-a',
       ANTHROPIC_MODEL: 'alias-1m',
       CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1000000',
+      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+      DISABLE_PROMPT_CACHING: '1',
     })
   })
 
@@ -110,12 +120,69 @@ describe('claude code merge', () => {
     expect(next.env).toEqual({
       ANTHROPIC_BASE_URL: 'https://gateway.example/v1',
       ANTHROPIC_AUTH_TOKEN: 'token-a',
+      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
     })
+  })
+
+  it('writes permissions.defaultMode without replacing allow or deny rules', () => {
+    const next = applyCodeGateway(
+      {
+        permissions: { allow: ['Bash(npm *)'], deny: ['WebFetch'] },
+      },
+      {
+        baseUrl: 'https://gateway.example/v1',
+        apiKey: 'token-a',
+        authScheme: 'bearer',
+        model: 'claude-sonnet-4-6',
+        permissionMode: 'acceptEdits',
+      },
+    )
+
+    expect(next.permissions).toEqual({
+      allow: ['Bash(npm *)'],
+      deny: ['WebFetch'],
+      defaultMode: 'acceptEdits',
+    })
+  })
+
+  it('lets the session defaultMode replace an overlay defaultMode', () => {
+    const next = applyCodeGateway(
+      {},
+      {
+        baseUrl: 'https://gateway.example/v1',
+        apiKey: 'token-a',
+        authScheme: 'bearer',
+        model: '',
+        permissionMode: 'plan',
+        overlayJson: JSON.stringify({
+          permissions: { allow: ['Read'], defaultMode: 'auto' },
+        }),
+      },
+    )
+
+    expect(next.permissions).toEqual({ allow: ['Read'], defaultMode: 'plan' })
+  })
+
+  it('clears defaultMode when unset and drops an empty permissions object', () => {
+    const next = applyCodeGateway(
+      {
+        permissions: { defaultMode: 'auto' },
+      },
+      {
+        baseUrl: 'https://gateway.example/v1',
+        apiKey: 'token-a',
+        authScheme: 'bearer',
+        model: '',
+      },
+    )
+
+    expect(next.permissions).toBeUndefined()
   })
 
   it('strips managed session keys on official restore', () => {
     const next = applyCodeOfficial({
-      permissions: { deny: ['WebFetch'] },
+      permissions: { deny: ['WebFetch'], defaultMode: 'auto' },
       effortLevel: 'high',
       autoCompactWindow: 500000,
       env: {
@@ -127,6 +194,8 @@ describe('claude code merge', () => {
         CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1000000',
         CLAUDE_CODE_EFFORT_LEVEL: 'high',
         CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000',
+        CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
+        CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
       },
     })
 

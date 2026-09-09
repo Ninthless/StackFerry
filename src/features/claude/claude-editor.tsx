@@ -7,8 +7,15 @@ import type {
   ClaudeProviderListItem,
   ProviderKind,
 } from "@shared/types"
+import { persistClaudeModels } from "@shared/claude-models"
 import { isClaudeAuthScheme } from "@shared/claude-presets"
-import { formatClaudeOverlayJson } from "@shared/claude-session"
+import {
+  claudeOverlayFields,
+  formatClaudeOverlayJson,
+  hydrateClaudeOverlay,
+  parseClaudeOverlayJson,
+  withClaudeOverlayFields,
+} from "@shared/claude-session"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -41,6 +48,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { formatAppError } from "@/lib/format-app-error"
 import { claudePresetLabel } from "@/lib/preset-label"
+import { HintLabel } from "@/features/settings/settings-hint"
 import * as m from "@/paraglide/messages.js"
 import { ClaudeModelField } from "./claude-model-field"
 import { ClaudeSessionFields } from "./claude-session-fields"
@@ -60,11 +68,9 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
   const [name, setName] = useState("")
   const [baseUrl, setBaseUrl] = useState("")
   const [model, setModel] = useState("")
+  const [models, setModels] = useState<string[]>([])
   const [authScheme, setAuthScheme] = useState<ClaudeAuthScheme>("bearer")
   const [apiKey, setApiKey] = useState("")
-  const [effortLevel, setEffortLevel] = useState("")
-  const [contextWindow, setContextWindow] = useState("")
-  const [autoCompact, setAutoCompact] = useState("")
   const [overlayJson, setOverlayJson] = useState("")
   const [error, setError] = useState("")
   const [pending, setPending] = useState(false)
@@ -88,47 +94,89 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
       ? m.action_saving()
       : m.action_save()
   const requiresApiKey = kind === "custom" && (!displayedEditing || !displayedEditing.hasApiKey)
+  const overlayFields = claudeOverlayFields(overlayJson)
+  const liveBaseUrl = overlayFields.baseUrl
+  const liveModel = overlayFields.model
 
   useEffect(() => {
     if (!open) return
     setError("")
     setApiKey("")
     if (editing) {
+      const persisted = persistClaudeModels(editing.model, editing.models)
       setPresetId(editing.kind === "official" ? "official" : "custom")
       setName(editing.name)
       setBaseUrl(editing.baseUrl)
-      setModel(editing.model)
+      setModel(persisted.model)
+      setModels(persisted.models)
       setAuthScheme(editing.authScheme)
-      setEffortLevel(editing.effortLevel)
-      setContextWindow(editing.contextWindow)
-      setAutoCompact(editing.autoCompact)
-      setOverlayJson(editing.overlayJson)
+      setOverlayJson(
+        editing.kind === "custom"
+          ? seedOverlay(editing.overlayJson, {
+              baseUrl: editing.baseUrl,
+              model: persisted.model,
+              effortLevel: editing.effortLevel,
+              permissionMode: editing.permissionMode,
+              contextWindow: editing.contextWindow,
+              autoCompact: editing.autoCompact,
+            })
+          : "",
+      )
       return
     }
     const initial = presets.find((preset) => preset.id === "custom") ?? presets[0]
     setPresetId(initial?.id ?? "custom")
+    const persisted = persistClaudeModels(initial?.model, undefined)
     setName(initial?.name ?? "")
     setBaseUrl(initial?.baseUrl ?? "")
-    setModel(initial?.model ?? "")
+    setModel(persisted.model)
+    setModels(persisted.models)
     setAuthScheme(initial?.authScheme ?? "bearer")
-    setEffortLevel("")
-    setContextWindow("")
-    setAutoCompact("")
-    setOverlayJson("")
+    setOverlayJson(
+      initial?.kind === "custom"
+        ? seedOverlay("", {
+            baseUrl: initial.baseUrl,
+            model: persisted.model,
+            effortLevel: "",
+            permissionMode: "",
+            contextWindow: "",
+            autoCompact: "",
+          })
+        : "",
+    )
   }, [open, editing, presets])
 
   function applyPreset(nextPresetId: string): void {
     const preset = presets.find((item) => item.id === nextPresetId)
     setPresetId(nextPresetId)
     if (!preset || displayedEditing) return
+    const persisted = persistClaudeModels(preset.model, undefined)
     setName(preset.name)
     setBaseUrl(preset.baseUrl)
-    setModel(preset.model)
+    setModel(persisted.model)
+    setModels(persisted.models)
     setAuthScheme(preset.authScheme)
-    setEffortLevel("")
-    setContextWindow("")
-    setAutoCompact("")
-    setOverlayJson("")
+    setOverlayJson(
+      preset.kind === "custom"
+        ? seedOverlay("", {
+            baseUrl: preset.baseUrl,
+            model: persisted.model,
+            effortLevel: "",
+            permissionMode: "",
+            contextWindow: "",
+            autoCompact: "",
+          })
+        : "",
+    )
+  }
+
+  function patchOverlay(patch: Parameters<typeof withClaudeOverlayFields>[1]): void {
+    try {
+      setOverlayJson(withClaudeOverlayFields(overlayJson, patch))
+      setError("")
+    } catch {
+      return
+    }
   }
 
   function handleFormatOverlay(): void {
@@ -148,13 +196,15 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
       await onSubmit({
         name,
         kind,
-        baseUrl: kind === "custom" ? baseUrl : undefined,
-        model: kind === "custom" ? model : undefined,
+        baseUrl: kind === "custom" ? liveBaseUrl || baseUrl : undefined,
+        model: kind === "custom" ? liveModel || model : undefined,
+        models: kind === "custom" ? models : undefined,
         authScheme: kind === "custom" ? authScheme : undefined,
         apiKey: apiKey.trim() ? apiKey : undefined,
-        effortLevel: kind === "custom" ? effortLevel : undefined,
-        contextWindow: kind === "custom" ? contextWindow : undefined,
-        autoCompact: kind === "custom" ? autoCompact : undefined,
+        effortLevel: kind === "custom" ? overlayFields.effortLevel : undefined,
+        permissionMode: kind === "custom" ? overlayFields.permissionMode : undefined,
+        contextWindow: kind === "custom" ? overlayFields.contextWindow : undefined,
+        autoCompact: kind === "custom" ? overlayFields.autoCompact : undefined,
         overlayJson: kind === "custom" ? overlayJson : undefined,
         presetId: editing ? undefined : presetId,
       })
@@ -225,8 +275,11 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
                       autoComplete="url"
                       inputMode="url"
                       placeholder="https://llm-gateway.example.com"
-                      value={baseUrl}
-                      onChange={(event) => setBaseUrl(event.target.value)}
+                      value={liveBaseUrl}
+                      onChange={(event) => {
+                        setBaseUrl(event.target.value)
+                        patchOverlay({ baseUrl: event.target.value })
+                      }}
                     />
                   </Field>
                   <FieldSet>
@@ -271,29 +324,30 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
                   <ClaudeModelField
                     formId={formId}
                     open={open}
-                    baseUrl={baseUrl}
+                    baseUrl={liveBaseUrl || baseUrl}
                     apiKey={apiKey}
                     authScheme={authScheme}
                     providerId={displayedEditing?.id}
-                    model={model}
-                    onModelChange={setModel}
+                    model={liveModel}
+                    models={models}
+                    onModelChange={(next) => {
+                      setModel(next)
+                      patchOverlay({ model: next })
+                    }}
+                    onModelsChange={setModels}
                     onError={setError}
                   />
                   <ClaudeSessionFields
                     formId={formId}
-                    effortLevel={effortLevel}
-                    contextWindow={contextWindow}
-                    autoCompact={autoCompact}
-                    onEffortChange={setEffortLevel}
-                    onContextChange={(next, compact) => {
-                      setContextWindow(next)
-                      if (compact !== undefined) setAutoCompact(compact)
-                    }}
-                    onAutoCompactChange={setAutoCompact}
+                    overlayJson={overlayJson}
+                    onOverlayChange={setOverlayJson}
+                    onError={setError}
                   />
                   <Field data-invalid={error ? true : undefined}>
-                    <Field orientation="horizontal">
-                      <FieldLabel htmlFor={`${formId}-overlay`}>{m.claude_field_overlay()}</FieldLabel>
+                    <Field orientation="horizontal" className="justify-between">
+                      <HintLabel htmlFor={`${formId}-overlay`} hint={m.claude_field_overlay_description()}>
+                        {m.claude_field_overlay()}
+                      </HintLabel>
                       <Button type="button" variant="outline" size="sm" onClick={handleFormatOverlay}>
                         <AlignLeft data-icon="inline-start" />
                         {m.action_format()}
@@ -303,9 +357,18 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
                       id={`${formId}-overlay`}
                       value={overlayJson}
                       invalid={Boolean(error)}
-                      onChange={setOverlayJson}
+                      onChange={(next) => {
+                        setOverlayJson(next)
+                        try {
+                          parseClaudeOverlayJson(next)
+                        } catch {
+                          return
+                        }
+                        const parsed = claudeOverlayFields(next)
+                        setBaseUrl(parsed.baseUrl)
+                        setModel(parsed.model)
+                      }}
                     />
-                    <FieldDescription>{m.claude_field_overlay_description()}</FieldDescription>
                   </Field>
                 </>
               ) : null}
@@ -326,4 +389,15 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
       </SheetContent>
     </Sheet>
   )
+}
+
+function seedOverlay(
+  overlayJson: string,
+  columns: Parameters<typeof hydrateClaudeOverlay>[1],
+): string {
+  try {
+    return hydrateClaudeOverlay(overlayJson, columns)
+  } catch {
+    return overlayJson
+  }
 }

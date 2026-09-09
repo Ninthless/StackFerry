@@ -1,33 +1,50 @@
 import {
   CLAUDE_EFFORT_LEVELS,
+  CLAUDE_PERMISSION_MODES,
+  claudeOverlayFields,
   isClaudeEffortLevel,
+  isClaudePermissionMode,
   syncedClaudeAutoCompact,
+  withClaudeOverlayFields,
 } from "@shared/claude-session"
 import { Field } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { EffortScale } from "@/features/clis/effort-scale"
 import { HintLabel } from "@/features/settings/settings-hint"
+import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
 
 type Props = {
   formId: string
-  effortLevel: string
-  contextWindow: string
-  autoCompact: string
-  onEffortChange: (value: string) => void
-  onContextChange: (contextWindow: string, autoCompact?: string) => void
-  onAutoCompactChange: (value: string) => void
+  overlayJson: string
+  onOverlayChange: (value: string) => void
+  onError: (message: string) => void
 }
 
 export function ClaudeSessionFields({
   formId,
-  effortLevel,
-  contextWindow,
-  autoCompact,
-  onEffortChange,
-  onContextChange,
-  onAutoCompactChange,
+  overlayJson,
+  onOverlayChange,
+  onError,
 }: Props) {
+  const fields = claudeOverlayFields(overlayJson)
+
+  function patchFields(patch: Parameters<typeof withClaudeOverlayFields>[1]): void {
+    try {
+      onOverlayChange(withClaudeOverlayFields(overlayJson, patch))
+      onError("")
+    } catch (error) {
+      onError(formatAppError(error))
+    }
+  }
   const items = [
     { label: m.session_reasoning_default(), value: null, hint: m.session_reasoning_hint_default() },
     ...CLAUDE_EFFORT_LEVELS.map((value) => ({
@@ -45,12 +62,13 @@ export function ClaudeSessionFields({
         </HintLabel>
         <EffortScale
           id={`${formId}-effort`}
+          tone="claude"
           options={items}
-          value={effortLevel}
+          value={fields.effortLevel}
           fasterLabel={m.session_reasoning_faster()}
           deeperLabel={m.session_reasoning_deeper()}
           onChange={(next) => {
-            onEffortChange(isClaudeEffortLevel(next) ? next : "")
+            patchFields({ effortLevel: isClaudeEffortLevel(next) ? next : "" })
           }}
         />
       </Field>
@@ -63,12 +81,12 @@ export function ClaudeSessionFields({
           name="contextWindow"
           inputMode="numeric"
           placeholder={m.claude_session_context_placeholder()}
-          value={contextWindow}
+          value={fields.contextWindow}
           onChange={(event) => {
             const next = event.target.value
-            const compact = syncedClaudeAutoCompact(next, contextWindow, autoCompact)
-            if (compact === undefined) onContextChange(next)
-            else onContextChange(next, compact)
+            const compact = syncedClaudeAutoCompact(next, fields.contextWindow, fields.autoCompact)
+            if (compact === undefined) patchFields({ contextWindow: next })
+            else patchFields({ contextWindow: next, autoCompact: compact })
           }}
         />
       </Field>
@@ -81,12 +99,49 @@ export function ClaudeSessionFields({
           name="autoCompact"
           inputMode="numeric"
           placeholder={m.claude_session_compact_placeholder()}
-          value={autoCompact}
-          onChange={(event) => onAutoCompactChange(event.target.value)}
+          value={fields.autoCompact}
+          onChange={(event) => patchFields({ autoCompact: event.target.value })}
         />
+      </Field>
+      <Field>
+        <HintLabel htmlFor={`${formId}-permission`} hint={m.claude_session_permission_description()}>
+          {m.claude_session_permission()}
+        </HintLabel>
+        <Select
+          items={claudePermissionItems()}
+          value={fields.permissionMode || UNSET_PERMISSION}
+          onValueChange={(value) => {
+            if (typeof value !== "string") return
+            patchFields({
+              permissionMode: isClaudePermissionMode(value) ? value : "",
+            })
+          }}
+        >
+          <SelectTrigger id={`${formId}-permission`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false} side="bottom">
+            <SelectGroup>
+              {claudePermissionItems().map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
       </Field>
     </>
   )
+}
+
+const UNSET_PERMISSION = "__unset__"
+
+function claudePermissionItems() {
+  return [
+    { label: m.session_reasoning_default(), value: UNSET_PERMISSION },
+    ...CLAUDE_PERMISSION_MODES.map((value) => ({ label: value, value })),
+  ]
 }
 
 function claudeEffortHint(value: (typeof CLAUDE_EFFORT_LEVELS)[number]): string {

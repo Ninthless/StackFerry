@@ -12,8 +12,10 @@ const provider: StoredClaudeProvider = {
   kind: 'custom',
   baseUrl: 'https://gateway.example/v1',
   model: 'claude-sonnet-4-6',
+  models: ['gw-opus', 'claude-sonnet-4-6'],
   authScheme: 'bearer',
   effortLevel: '',
+  permissionMode: '',
   contextWindow: '',
   autoCompact: '',
   overlayJson: '',
@@ -49,11 +51,19 @@ describe('ClaudeEnableService', () => {
       const meta = JSON.parse(await readFile(path.join(library, '_meta.json'), 'utf8')) as {
         appliedId: string
       }
+      const profile = JSON.parse(
+        await readFile(path.join(library, `${STACKFERRY_DESKTOP_PROFILE_ID}.json`), 'utf8'),
+      ) as { inferenceModels: { name: string }[]; modelDiscoveryEnabled?: boolean }
       const appConfig = JSON.parse(
         await readFile(path.join(path.dirname(library), 'claude_desktop_config.json'), 'utf8'),
       ) as { deploymentMode: string }
       expect(meta.appliedId).toBe(STACKFERRY_DESKTOP_PROFILE_ID)
       expect(appConfig.deploymentMode).toBe('3p')
+      expect(profile.modelDiscoveryEnabled).toBeUndefined()
+      expect(profile.inferenceModels.map((item) => item.name)).toEqual([
+        'claude-sonnet-4-6',
+        'gw-opus',
+      ])
     }
   })
 
@@ -82,6 +92,9 @@ describe('ClaudeEnableService', () => {
     }
     expect(settings.env.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:18765')
     expect(settings.env.ANTHROPIC_AUTH_TOKEN).toBe('stackferry-router')
+    expect(settings.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS).toBe('1')
+    expect(settings.env.CLAUDE_CODE_ATTRIBUTION_HEADER).toBe('0')
+    expect(settings.env.DISABLE_PROMPT_CACHING).toBeUndefined()
     expect(JSON.stringify(settings)).not.toContain('gw-key')
   })
 })
