@@ -188,6 +188,7 @@ export class RoutingProxy {
   ): Promise<{ kind: 'streamed'; status: number } | { kind: 'passthrough' } & BufferedResponse | BufferedResponse & { kind: 'failover' }> {
     const wireApi = upstream.wireApi ?? 'responses'
     const translateChat = wireApi === 'chat' && route === 'responses'
+    // Claude /v1/messages 必须原样转发：JSON 重写会丢掉 cache_control 和 thinking signature。
     let outboundBody = body
     let chatTranslation: ChatTranslation | null = null
     if (translateChat && incoming.method !== 'GET' && incoming.method !== 'HEAD') {

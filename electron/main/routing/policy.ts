@@ -73,6 +73,7 @@ export function displayQueue(
 }
 
 export function shouldFailoverHttp(status: number): boolean {
+  // 只换上游处理限流和上游故障。400 字段错误换了仍会失败，还会打穿 prompt cache。
   return status === 429 || status >= 500
 }
 

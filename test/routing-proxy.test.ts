@@ -247,6 +247,85 @@ describe('routing proxy', () => {
     }
   })
 
+  it('forwards Claude messages bytes and beta headers without rewriting', async () => {
+    const body = JSON.stringify({
+      model: 'claude-sonnet',
+      system: [{ type: 'text', text: 'sys', cache_control: { type: 'ephemeral' } }],
+      messages: [
+        {
+          role: 'assistant',
+          content: [{ type: 'thinking', thinking: 't', signature: 'sig-1' }],
+        },
+      ],
+    })
+    const upstream = await listenFake('claude', async (req, res) => {
+      expect(req.headers['anthropic-beta']).toBe('prompt-caching-2024-07-31')
+      expect(req.headers['anthropic-version']).toBe('2023-06-01')
+      const chunks: Buffer[] = []
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      }
+      expect(Buffer.concat(chunks).toString('utf8')).toBe(body)
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      res.write('event: ping\n\n')
+      res.end()
+    })
+    try {
+      await withProxy(
+        [{ id: 'claude', baseUrl: upstream.url, apiKey: 'sk-ant', authScheme: 'x-api-key' }],
+        async (base) => {
+          const response = await fetch(`${base}/v1/messages`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'anthropic-beta': 'prompt-caching-2024-07-31',
+              'anthropic-version': '2023-06-01',
+            },
+            body,
+          })
+          expect(response.status).toBe(200)
+          expect(await response.text()).toContain('event: ping')
+        },
+        ['messages'],
+      )
+    } finally {
+      await upstream.close()
+    }
+  })
+
+  it('does not fail over Claude extra-input 400s and keeps the error body', async () => {
+    const first = await listenFake('one', (_req, res) => {
+      res.writeHead(400, { 'content-type': 'application/json' })
+      res.end('{"error":{"message":"Extra inputs are not permitted"}}')
+    })
+    const second = await listenFake('two', (_req, res) => {
+      res.writeHead(200)
+      res.end('nope')
+    })
+    try {
+      await withProxy(
+        [
+          { id: 'one', baseUrl: first.url, apiKey: 'k1', authScheme: 'x-api-key' },
+          { id: 'two', baseUrl: second.url, apiKey: 'k2', authScheme: 'x-api-key' },
+        ],
+        async (base) => {
+          const response = await fetch(`${base}/v1/messages`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{}',
+          })
+          expect(response.status).toBe(400)
+          expect(await response.text()).toBe('{"error":{"message":"Extra inputs are not permitted"}}')
+          expect(second.hits).toBe(0)
+        },
+        ['messages'],
+      )
+    } finally {
+      await first.close()
+      await second.close()
+    }
+  })
+
   it('forwards Anthropic messages with x-api-key and ignores Codex paths', async () => {
     const upstream = await listenFake('claude', (req, res) => {
       expect(req.headers['x-api-key']).toBe('sk-ant')

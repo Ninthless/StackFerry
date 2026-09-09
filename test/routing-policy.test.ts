@@ -70,6 +70,7 @@ describe('routing policy', () => {
   it('fails over on 429 and 5xx only', () => {
     expect(shouldFailoverHttp(429)).toBe(true)
     expect(shouldFailoverHttp(502)).toBe(true)
+    expect(shouldFailoverHttp(529)).toBe(true)
     expect(shouldFailoverHttp(400)).toBe(false)
     expect(shouldFailoverHttp(401)).toBe(false)
     expect(shouldFailoverHttp(200)).toBe(false)
