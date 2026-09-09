@@ -66,4 +66,13 @@ export const IpcChannel = {
   installCliTool: 'cliTools:install',
   updateCliTool: 'cliTools:update',
   uninstallCliTool: 'cliTools:uninstall',
+  getAppUpdate: 'appUpdate:get',
+  checkAppUpdate: 'appUpdate:check',
+  downloadAppUpdate: 'appUpdate:download',
+  installAppUpdate: 'appUpdate:install',
+  appUpdateChanged: 'appUpdate:changed',
+  listAnnouncements: 'announcements:list',
+  refreshAnnouncements: 'announcements:refresh',
+  markAnnouncementRead: 'announcements:markRead',
+  markAllAnnouncementsRead: 'announcements:markAllRead',
 } as const

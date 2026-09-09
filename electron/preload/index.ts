@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IpcChannel } from '../../shared/ipc'
-import type { ClaudeProviderDraft, ProviderDraft, StackferryApi } from '../../shared/types'
+import type { AppUpdateStatus, ClaudeProviderDraft, ProviderDraft, StackferryApi } from '../../shared/types'
 
 const api: StackferryApi = {
   showWindowControls: process.platform !== 'darwin',
@@ -98,6 +98,21 @@ const api: StackferryApi = {
   installCliTool: (id) => ipcRenderer.invoke(IpcChannel.installCliTool, id),
   updateCliTool: (id) => ipcRenderer.invoke(IpcChannel.updateCliTool, id),
   uninstallCliTool: (id) => ipcRenderer.invoke(IpcChannel.uninstallCliTool, id),
+  getAppUpdate: () => ipcRenderer.invoke(IpcChannel.getAppUpdate),
+  checkAppUpdate: () => ipcRenderer.invoke(IpcChannel.checkAppUpdate),
+  downloadAppUpdate: () => ipcRenderer.invoke(IpcChannel.downloadAppUpdate),
+  installAppUpdate: () => ipcRenderer.invoke(IpcChannel.installAppUpdate),
+  onAppUpdateChanged: (listener) => {
+    const wrapped = (_event: unknown, status: AppUpdateStatus) => listener(status)
+    ipcRenderer.on(IpcChannel.appUpdateChanged, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IpcChannel.appUpdateChanged, wrapped)
+    }
+  },
+  listAnnouncements: () => ipcRenderer.invoke(IpcChannel.listAnnouncements),
+  refreshAnnouncements: () => ipcRenderer.invoke(IpcChannel.refreshAnnouncements),
+  markAnnouncementRead: (id) => ipcRenderer.invoke(IpcChannel.markAnnouncementRead, id),
+  markAllAnnouncementsRead: () => ipcRenderer.invoke(IpcChannel.markAllAnnouncementsRead),
   onSkillsChanged: (listener) => {
     const wrapped = () => listener()
     ipcRenderer.on(IpcChannel.skillsChanged, wrapped)

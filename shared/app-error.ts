@@ -40,6 +40,7 @@ export const APP_ERROR_CODES = [
   'claude_desktop_config_corrupt',
   'claude_desktop_managed_policy',
   'claude_effort',
+  'claude_permission',
   'claude_overlay_json',
   'claude_overlay_object',
   'claude_overlay_env',
@@ -70,6 +71,13 @@ export const APP_ERROR_CODES = [
   'cli_timeout',
   'cli_method_unsupported',
   'cli_npm_missing',
+  'announcement_invalid',
+  'announcement_http',
+  'announcement_timeout',
+  'app_update_check_failed',
+  'app_update_download_failed',
+  'app_update_not_downloaded',
+  'app_update_unsupported',
 ] as const
 
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number]

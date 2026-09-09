@@ -28,6 +28,8 @@ import { listProviderModels, type ListModelsInput } from './providers/models'
 import type { ProviderStore } from './providers/store'
 import type { RoutingService } from './routing/service'
 import { registerCliToolIpc } from './cli-tools/ipc'
+import { registerReleaseIpc } from './releases/ipc'
+import type { AppReleaseService } from './releases/service'
 import { registerSkillIpc } from './skills/ipc'
 import type { SkillService } from './skills/service'
 
@@ -47,6 +49,7 @@ type IpcContext = {
   onClaudeChanged: () => void
   onGrokChanged: () => void
   skills: SkillService
+  releases: AppReleaseService
   onSkillsChanged: () => void
   getLocalePreference: () => Promise<LanguagePreference>
   setLocalePreference: (preference: LanguagePreference) => Promise<LanguagePreference>
@@ -242,6 +245,7 @@ export function registerIpc(context: IpcContext): void {
   })
   registerSkillIpc(context)
   registerCliToolIpc()
+  registerReleaseIpc(context.releases)
 }
 
 export function bindWindowState(win: BrowserWindow): void {

@@ -1,3 +1,8 @@
+import type {
+  AnnouncementItem,
+  AnnouncementSnapshot,
+  AppUpdateStatus,
+} from './app-releases'
 import type { CliToolId, CliToolStatus } from './cli-tools'
 import type { LanguagePreference } from './locale'
 import type { MicaState } from './mica'
@@ -13,6 +18,11 @@ import type {
 } from './skills'
 import type { ThemePreference } from './theme'
 
+export type {
+  AnnouncementItem,
+  AnnouncementSnapshot,
+  AppUpdateStatus,
+} from './app-releases'
 export type { CliInstallMethod, CliToolId, CliToolStatus } from './cli-tools'
 
 export type {
@@ -253,4 +263,13 @@ export type StackferryApi = {
   installCliTool: (id: CliToolId) => Promise<CliToolStatus[]>
   updateCliTool: (id: CliToolId) => Promise<CliToolStatus[]>
   uninstallCliTool: (id: CliToolId) => Promise<CliToolStatus[]>
+  getAppUpdate: () => Promise<AppUpdateStatus>
+  checkAppUpdate: () => Promise<AppUpdateStatus>
+  downloadAppUpdate: () => Promise<AppUpdateStatus>
+  installAppUpdate: () => Promise<AppUpdateStatus>
+  onAppUpdateChanged: (listener: (status: AppUpdateStatus) => void) => () => void
+  listAnnouncements: () => Promise<AnnouncementSnapshot>
+  refreshAnnouncements: () => Promise<AnnouncementSnapshot>
+  markAnnouncementRead: (id: string) => Promise<AnnouncementSnapshot>
+  markAllAnnouncementsRead: () => Promise<AnnouncementSnapshot>
 }

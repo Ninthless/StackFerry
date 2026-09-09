@@ -34,6 +34,10 @@ import {
   solidWindowBackground,
 } from './mica'
 import { ProviderStore } from './providers/store'
+import { fetchAnnouncementFeed } from './releases/feed'
+import { AppReleaseService } from './releases/service'
+import { AnnouncementStore } from './releases/store'
+import { createElectronUpdateFeed } from './releases/updater'
 import { RoutingService } from './routing/service'
 import { RoutingStore } from './routing/store'
 import { broadcastSkillsChanged } from './skills/ipc'
@@ -192,6 +196,15 @@ app.whenReady().then(async () => {
     getCodexHome: () => resolveCodexHome(),
     getGrokHome: () => resolveGrokHome(),
   })
+  const releases = new AppReleaseService({
+    currentVersion: app.getVersion(),
+    packaged: app.isPackaged,
+    platform: process.platform,
+    store: new AnnouncementStore(path.join(app.getPath('userData'), 'announcements.json')),
+    fetchReleases: () => fetchAnnouncementFeed(),
+    feed: app.isPackaged && process.platform === 'win32' ? createElectronUpdateFeed() : null,
+    prepareQuit: prepareQuitForUpdate,
+  })
   const ipcContext = {
     store,
     routing,
@@ -200,6 +213,7 @@ app.whenReady().then(async () => {
     grokStore: grokStore!,
     grok: grok!,
     skills,
+    releases,
     getCodexHome: () => resolveCodexHome(),
     getGrokHome: () => resolveGrokHome(),
     backupRoot: path.join(app.getPath('userData'), 'backups'),
@@ -278,18 +292,20 @@ app.on('before-quit', (event) => {
   void restoreThenQuit()
 })
 
+async function prepareQuitForUpdate(): Promise<void> {
+  if (quitRestored) return
+  quitRestored = true
+  isQuitting = true
+  await routing?.restoreOnQuit()
+}
+
 async function restoreThenQuit(): Promise<void> {
   if (quitRestored) {
     app.quit()
     return
   }
-  quitRestored = true
-  isQuitting = true
-  try {
-    await routing?.restoreOnQuit()
-  } finally {
-    app.quit()
-  }
+  await prepareQuitForUpdate()
+  app.quit()
 }
 
 app.on('second-instance', () => {
