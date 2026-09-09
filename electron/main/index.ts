@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, Menu, nativeTheme, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
+import { resolveAppIconPath, resolveIconDir, resolveTrayIconPath } from './app-icon'
 import type { LanguagePreference } from '../../shared/locale'
 import { windowUsesMicaSurface } from '../../shared/mica'
 import type { ThemePreference } from '../../shared/theme'
@@ -58,7 +59,13 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   ? path.join(process.env.APP_ROOT, 'public')
   : RENDERER_DIST
 
-const publicDir = process.env.VITE_PUBLIC ?? path.join(process.env.APP_ROOT, 'public')
+const iconDir = resolveIconDir({
+  appRoot: process.env.APP_ROOT,
+  packaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+})
+const appIconPath = resolveAppIconPath(iconDir, process.platform)
+const trayIconPath = resolveTrayIconPath(iconDir, process.platform)
 
 if (process.platform === 'win32' && os.release().startsWith('6.1')) {
   app.disableHardwareAcceleration()
@@ -104,7 +111,7 @@ async function createWindow(): Promise<void> {
     ...(windowUsesMicaSurface(mica) ? { backgroundMaterial: 'mica' as const } : {}),
     roundedCorners: true,
     hasShadow: true,
-    icon: path.join(publicDir, 'icon.png'),
+    icon: appIconPath,
     ...windowChromeOptions(process.platform),
     webPreferences: {
       preload,
@@ -264,7 +271,7 @@ app.whenReady().then(async () => {
     },
   }
   tray = new AppTray({
-    iconPath: path.join(publicDir, 'icon.png'),
+    iconPath: trayIconPath,
     onShow: () => showWindow(),
     onQuit: () => {
       void restoreThenQuit()

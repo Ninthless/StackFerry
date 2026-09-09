@@ -10,8 +10,21 @@
     "dist-electron",
     "dist"
   ],
+  "extraResources": [
+    {
+      "from": "public",
+      "to": "icons",
+      "filter": [
+        "icon.png",
+        "icon.ico",
+        "tray-icon.png",
+        "tray-icon-Template.png",
+        "tray-icon-Template@2x.png"
+      ]
+    }
+  ],
   "win": {
-    "icon": "public/icon.png",
+    "icon": "public/icon.ico",
     "target": [
       {
         "target": "nsis",
