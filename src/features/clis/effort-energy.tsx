@@ -1,24 +1,7 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { BLUR, COMPOSITE, ENERGY_SIMULATION, VERTEX } from "@/features/clis/effort-energy-shaders"
 import { cn } from "@/lib/utils"
-
-export const EFFORT_EMBER_PAD = {
-  left: 0,
-  right: 14,
-  y: 0,
-} as const
-
-// 画布比轨道更宽，u_ratio 必须按轨道宽度映射，否则火尾会对不齐滑块。
-export function paddedEnergyRatio(
-  progress: number,
-  canvasWidth: number,
-  pad: { left: number; right: number } = EFFORT_EMBER_PAD,
-): number {
-  const track = canvasWidth - pad.left - pad.right
-  if (canvasWidth <= 0 || track <= 0) return progress
-  return (pad.left + progress * track) / canvasWidth
-}
 
 type Props = {
   active: boolean
@@ -68,7 +51,6 @@ function createProgram(gl: WebGL2RenderingContext, source: string): WebGLProgram
 }
 
 export function EffortEnergy({ active, baseColor, color, intensity, light, ratio }: Props) {
-  const frameRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [generation, setGeneration] = useState(0)
   const values = useRef({ active, color, intensity, light, ratio })
@@ -80,7 +62,6 @@ export function EffortEnergy({ active, baseColor, color, intensity, light, ratio
 
   useEffect(() => {
     const canvas = canvasRef.current
-    const host = frameRef.current
     const gl = canvas?.getContext("webgl2", {
       preserveDrawingBuffer: false,
       antialias: false,
@@ -208,7 +189,7 @@ export function EffortEnergy({ active, baseColor, color, intensity, light, ratio
       gl.bindTexture(gl.TEXTURE_2D, back.texture)
       gl.uniform1i(sim.previous, 0)
       gl.uniform1f(sim.time, time)
-      gl.uniform1f(sim.ratio, paddedEnergyRatio(state.ratio, canvas.clientWidth))
+      gl.uniform1f(sim.ratio, state.ratio)
       gl.uniform1f(sim.intensity, state.intensity)
       gl.uniform1f(sim.elapsed, elapsed)
       gl.uniform1f(sim.cssWidth, canvas.clientWidth)
@@ -263,7 +244,7 @@ export function EffortEnergy({ active, baseColor, color, intensity, light, ratio
       resize()
       restart()
     })
-    observer.observe(host ?? canvas)
+    observer.observe(canvas)
     canvas.addEventListener("webglcontextlost", onContextLost)
     canvas.addEventListener("webglcontextrestored", onContextRestored)
     resize()
@@ -286,26 +267,12 @@ export function EffortEnergy({ active, baseColor, color, intensity, light, ratio
     }
   }, [generation])
 
-  // canvas 是替换元素，inset 拉不开宽高；外层普通盒子负责伸出轨道，画布只填满盒子。
   return (
-    <div
-      ref={frameRef}
-      className="effort-energy overflow-hidden rounded-[10px]"
+    <canvas
+      ref={canvasRef}
+      className={cn("effort-energy", light ? "mix-blend-normal" : "mix-blend-screen")}
+      data-base-color={baseColor}
       aria-hidden="true"
-      style={
-        {
-          top: -EFFORT_EMBER_PAD.y,
-          right: -EFFORT_EMBER_PAD.right,
-          bottom: -EFFORT_EMBER_PAD.y,
-          left: -EFFORT_EMBER_PAD.left,
-        } as CSSProperties
-      }
-    >
-      <canvas
-        ref={canvasRef}
-        className={cn("block size-full", light ? "mix-blend-normal" : "mix-blend-screen")}
-        data-base-color={baseColor}
-      />
-    </div>
+    />
   )
 }

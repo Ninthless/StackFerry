@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react"
 import { FieldDescription } from "@/components/ui/field"
 import { EffortEnergy } from "@/features/clis/effort-energy"
-import { energyIntensity, effortTone, effortTrack } from "@/features/clis/effort-tone"
+import { energyIntensity, effortTone, effortTrack, type EffortToneId } from "@/features/clis/effort-tone"
 import { cn } from "@/lib/utils"
 
 export type EffortOption = {
@@ -12,6 +12,7 @@ export type EffortOption = {
 
 type Props = {
   id: string
+  tone: EffortToneId
   options: EffortOption[]
   value: string
   fasterLabel: string
@@ -19,9 +20,9 @@ type Props = {
   onChange: (value: string) => void
 }
 
-const INSET = 14
 const SETTLE_MS = 620
 const SETTLE_PEAK_MS = 1840
+const THUMB_INSET = 14
 
 function optionIndex(options: EffortOption[], value: string): number {
   const found = options.findIndex((option) => (option.value ?? "") === value)
@@ -30,8 +31,8 @@ function optionIndex(options: EffortOption[], value: string): number {
 
 function fromClientX(clientX: number, rail: HTMLElement, last: number): number {
   const rect = rail.getBoundingClientRect()
-  const width = Math.max(rect.width - INSET * 2, 1)
-  const raw = ((clientX - rect.left - INSET) / width) * last
+  const width = Math.max(rect.width - THUMB_INSET * 2, 1)
+  const raw = ((clientX - rect.left - THUMB_INSET) / width) * last
   return Math.min(last, Math.max(0, raw))
 }
 
@@ -49,6 +50,7 @@ function useDarkClass(): boolean {
 
 export function EffortScale({
   id,
+  tone,
   options,
   value,
   fasterLabel,
@@ -68,12 +70,12 @@ export function EffortScale({
   const peak = progress >= 0.99
   const intensity = energyIntensity(progress)
   const dragging = drag !== null
-  const active = dragging || settling
+  const energized = progress > 0 && (dragging || settling || progress >= 0.9995)
   const current = options[Math.round(visual)] ?? options[index] ?? options[0]
   const dense = options.length > 6
   const dark = useDarkClass()
-  const color = effortTone(dark)
-  const track = effortTrack(dark)
+  const color = effortTone(tone, dark)
+  const track = effortTrack(tone, dark)
 
   useEffect(() => () => window.clearTimeout(settleTimer.current), [])
 
@@ -97,7 +99,6 @@ export function EffortScale({
     const next = fromClientX(event.clientX, rail, last)
     dragRef.current = next
     setDrag(next)
-    commitIndex(Math.round(next))
   }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>): void {
@@ -129,6 +130,8 @@ export function EffortScale({
     releasePointer(event)
     dragRef.current = null
     setDrag(null)
+    window.clearTimeout(settleTimer.current)
+    setSettling(false)
   }
 
   function choose(next: number): void {
@@ -147,7 +150,7 @@ export function EffortScale({
     choose(next)
   }
 
-  const travel = `calc(${INSET}px + ${progress} * (100% - ${INSET * 2}px))`
+  const travel = `calc(${THUMB_INSET}px + ${progress} * (100% - ${THUMB_INSET * 2}px))`
   const snap = cn(
     "motion-reduce:transition-none group-data-[dragging]/effort:transition-none",
     "transition-[left,width,opacity,transform] duration-300 ease-[cubic-bezier(0.22,1.18,0.36,1)]",
@@ -171,14 +174,8 @@ export function EffortScale({
           <span className="text-right text-muted-foreground">{deeperLabel}</span>
         </div>
       ) : (
-        <div className="relative h-4">
+        <div className="flex justify-between gap-1 px-0.5">
           {options.map((option, optionIndexValue) => {
-            const edge =
-              optionIndexValue === 0
-                ? "translateX(0)"
-                : optionIndexValue === last
-                  ? "translateX(-100%)"
-                  : "translateX(-50%)"
             const selected = optionIndexValue === Math.round(visual)
             return (
               <button
@@ -186,13 +183,9 @@ export function EffortScale({
                 type="button"
                 tabIndex={-1}
                 className={cn(
-                  "absolute max-w-16 truncate text-[10px] leading-4 text-muted-foreground",
-                  selected && "max-w-none font-semibold text-foreground",
+                  "min-w-0 truncate px-0 text-[10px] leading-4 font-medium text-muted-foreground",
+                  selected && "font-semibold text-foreground",
                 )}
-                style={{
-                  left: `calc(${INSET}px + ${optionIndexValue / last} * (100% - ${INSET * 2}px))`,
-                  transform: edge,
-                }}
                 onClick={() => choose(optionIndexValue)}
               >
                 {option.label}
@@ -214,7 +207,7 @@ export function EffortScale({
           aria-valuetext={current?.label}
           data-dragging={dragging || undefined}
           data-peak={peak || undefined}
-          className="group/effort relative isolate h-8 cursor-grab touch-none overflow-x-visible overflow-y-clip rounded-[10px] border border-[color-mix(in_srgb,var(--border)_75%,#11121a)] outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing"
+          className="group/effort relative isolate h-[28px] cursor-grab touch-none overflow-hidden rounded-[9px] border border-[color-mix(in_srgb,var(--border)_75%,#11121a)] outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing"
           style={{ background: "var(--effort-track)" }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -222,20 +215,18 @@ export function EffortScale({
           onPointerCancel={handlePointerCancel}
           onKeyDown={handleKeyDown}
         >
-          <div className="pointer-events-none absolute inset-0 z-[2] overflow-hidden rounded-[inherit]">
-            <div className="absolute inset-x-3.5 inset-y-0 flex items-center justify-between">
-              {options.map((option) => (
-                <i
-                  key={option.value ?? "default"}
-                  aria-hidden
-                  className={cn("size-1 rounded-full bg-[#8c8592] dark:bg-[#51525a]", snap)}
-                  style={{ opacity: peak ? 0 : "var(--effort-dots-opacity)" }}
-                />
-              ))}
-            </div>
+          <div className="pointer-events-none absolute inset-x-3.5 inset-y-0 z-[2] flex items-center justify-between">
+            {options.map((option) => (
+              <i
+                key={option.value ?? "default"}
+                aria-hidden
+                className={cn("size-1 rounded-full bg-[#8c8592] dark:bg-[#51525a]", snap)}
+                style={{ opacity: peak ? 0 : "var(--effort-dots-opacity)" }}
+              />
+            ))}
           </div>
           <EffortEnergy
-            active={charged || active}
+            active={energized}
             baseColor={track}
             color={color}
             intensity={intensity}
