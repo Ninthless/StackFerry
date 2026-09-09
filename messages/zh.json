@@ -408,7 +408,7 @@
   "toast_app_update_checking": "正在检查更新…",
   "toast_app_update_available": "发现版本 {version}。",
   "toast_app_update_none": "没有可用更新。",
-  "toast_app_update_downloaded": "更新已下载完成。",
+  "toast_app_update_downloaded": "更新已下载完成，请前往关于页面安装",
   "toast_announcements_refreshing": "正在刷新公告…",
   "toast_announcements_refreshed": "公告已更新。",
   "announcements_legend": "公告",

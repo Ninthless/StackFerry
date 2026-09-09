@@ -1,5 +1,6 @@
 import electronUpdater, { type AppUpdater } from 'electron-updater'
 import { AppError } from '../../../shared/app-error'
+import { normalizeAppReleaseNotes } from '../../../shared/app-releases'
 
 // electron-updater 6 是 CommonJS：ESM 具名导入 autoUpdater 会在运行时失败。autoUpdater 是 getter，模块顶层读取会立刻构造更新器。
 const { NsisUpdater } = electronUpdater
@@ -28,10 +29,9 @@ export function createElectronUpdateFeed(updater: AppUpdater = electronUpdater.a
       try {
         const result = await configured.checkForUpdates()
         if (!result?.isUpdateAvailable) return null
-        const notes = result.updateInfo.releaseNotes
         return {
           version: result.updateInfo.version,
-          releaseNotes: typeof notes === 'string' ? notes : null,
+          releaseNotes: normalizeAppReleaseNotes(result.updateInfo.releaseNotes),
         }
       } catch (error) {
         throw wrapUpdateError('app_update_check_failed', error)

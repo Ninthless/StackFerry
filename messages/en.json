@@ -408,7 +408,7 @@
   "toast_app_update_checking": "Checking for updates…",
   "toast_app_update_available": "Version {version} is available.",
   "toast_app_update_none": "No update is available.",
-  "toast_app_update_downloaded": "The update finished downloading.",
+  "toast_app_update_downloaded": "Update downloaded. Open About to install.",
   "toast_announcements_refreshing": "Refreshing announcements…",
   "toast_announcements_refreshed": "Announcements updated.",
   "announcements_legend": "Announcements",

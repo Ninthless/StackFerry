@@ -128,3 +128,47 @@ export function initialAppUpdateStatus(
     totalBytes: 0,
   }
 }
+
+// electron-updater's GitHub provider returns rendered HTML (or a versioned note
+// array). The UI shows release notes as plain text, so normalize at the feed.
+export function normalizeAppReleaseNotes(notes: unknown): string | null {
+  if (typeof notes === 'string') return plainReleaseNotes(notes)
+  if (!Array.isArray(notes)) return null
+  const parts: string[] = []
+  for (const entry of notes) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue
+    const row = entry as Record<string, unknown>
+    const version = typeof row.version === 'string' ? row.version.trim() : ''
+    const note = typeof row.note === 'string' ? plainReleaseNotes(row.note) : null
+    if (!note) continue
+    parts.push(version ? `${version}\n${note}` : note)
+  }
+  return parts.length > 0 ? parts.join('\n\n') : null
+}
+
+function plainReleaseNotes(raw: string): string | null {
+  const text = decodeHtmlEntities(
+    raw
+      .replace(/\r\n?/g, '\n')
+      .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, ''),
+  )
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  return text || null
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code: string) => String.fromCodePoint(Number.parseInt(code, 16)))
+}

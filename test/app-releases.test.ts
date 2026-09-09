@@ -8,6 +8,7 @@ import {
   initialAppUpdateStatus,
   isAnnouncementFeedUrl,
   latestUnreadAnnouncement,
+  normalizeAppReleaseNotes,
   parseAnnouncementFeed,
   unreadAnnouncements,
 } from '../shared/app-releases'
@@ -31,6 +32,31 @@ describe('electron-updater module', () => {
     expect(typeof electronUpdater.MacUpdater).toBe('function')
     expect(typeof electronUpdater.AppImageUpdater).toBe('function')
     expect('autoUpdater' in electronUpdater).toBe(true)
+  })
+})
+
+describe('normalizeAppReleaseNotes', () => {
+  it('strips GitHub HTML into plain text', () => {
+    expect(
+      normalizeAppReleaseNotes(
+        '<p><strong>Full Changelog</strong>: <a class="commit-link" href="https://github.com/Ninthless/StackFerry/compare/v1.0.0...v1.0.1"><tt>v1.0.0...v1.0.1</tt></a></p>',
+      ),
+    ).toBe('Full Changelog: v1.0.0...v1.0.1')
+  })
+
+  it('joins versioned changelog entries', () => {
+    expect(
+      normalizeAppReleaseNotes([
+        { version: '1.0.1', note: '<p>Fix brand mark</p>' },
+        { version: '1.0.0', note: 'First Electron release' },
+      ]),
+    ).toBe('1.0.1\nFix brand mark\n\n1.0.0\nFirst Electron release')
+  })
+
+  it('returns null for empty HTML or unsupported shapes', () => {
+    expect(normalizeAppReleaseNotes('<p></p>')).toBeNull()
+    expect(normalizeAppReleaseNotes(null)).toBeNull()
+    expect(normalizeAppReleaseNotes({ note: 'x' })).toBeNull()
   })
 })
 
