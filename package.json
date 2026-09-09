@@ -1,6 +1,7 @@
 {
   "name": "stackferry",
   "productName": "StackFerry",
+  "desktopName": "stackferry",
   "version": "0.1.0",
   "private": true,
   "description": "Electron desktop app for switching Codex CLI providers.",
@@ -16,6 +17,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && electron-builder",
+    "build:win": "vite build && electron-builder --win",
+    "build:mac": "vite build && electron-builder --mac",
+    "build:linux": "vite build && electron-builder --linux",
     "preview": "vite preview",
     "i18n": "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide",
     "test": "pnpm i18n && vitest run",

@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.stackferry.app",
   "productName": "StackFerry",
+  "executableName": "stackferry",
   "asar": true,
   "directories": {
     "output": "release/${version}"
@@ -38,6 +39,36 @@
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,
     "deleteAppDataOnUninstall": false
+  },
+  "mac": {
+    "icon": "public/icon.png",
+    "category": "public.app-category.developer-tools",
+    "identity": "-",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "artifactName": "${productName}_${version}_${arch}.${ext}"
+  },
+  "linux": {
+    "icon": "public/icon.png",
+    "category": "Development",
+    "desktop": {
+      "entry": {
+        "StartupWMClass": "stackferry"
+      }
+    },
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "artifactName": "${productName}_${version}_${arch}.${ext}"
   },
   "publish": {
     "provider": "github",
