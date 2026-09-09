@@ -9,7 +9,7 @@ export function BrandMark({ className }: Props) {
     <img
       alt="StackFerry"
       src="/ship-mark.svg"
-      className={cn("size-8 shrink-0 rounded-lg bg-black object-contain p-2", className)}
+      className={cn("size-8 shrink-0 overflow-hidden rounded-lg bg-black object-contain p-2", className)}
     />
   )
 }
