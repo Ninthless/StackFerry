@@ -74,15 +74,27 @@ export function knownSearchDirs(ctx: PathContext): string[] {
       path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0'),
     ]
   }
-  return [
+  const posix = [
     path.join(home, '.local', 'bin'),
     path.join(home, '.grok', 'bin'),
-    '/opt/homebrew/bin',
+    path.join(home, '.npm-global', 'bin'),
+    path.join(home, '.volta', 'bin'),
     '/usr/local/bin',
     '/usr/bin',
     '/bin',
-    path.join(home, '.npm-global', 'bin'),
+  ]
+  if (platform === 'darwin') {
+    return [
+      ...posix,
+      '/opt/homebrew/bin',
+      path.join(home, 'Library', 'pnpm'),
+    ]
+  }
+  return [
+    ...posix,
+    path.join(home, '.linuxbrew', 'bin'),
     '/home/linuxbrew/.linuxbrew/bin',
+    '/snap/bin',
   ]
 }
 
@@ -102,6 +114,9 @@ export function knownToolPaths(name: 'npm' | 'brew' | 'winget' | 'powershell' | 
   }
   if (name === 'sh') return ['/bin/sh']
   if (name === 'winget') return [path.join(ctx.localAppData, 'Microsoft', 'WindowsApps', 'winget.exe')]
+  if (name === 'brew') {
+    return ['/opt/homebrew/bin/brew', '/usr/local/bin/brew', '/home/linuxbrew/.linuxbrew/bin/brew']
+  }
   return []
 }
 

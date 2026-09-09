@@ -18,11 +18,22 @@ export function grokSkillsRoot(grokHome: string): string {
   return path.join(grokHome, 'skills')
 }
 
-export function grokManagedConfigPaths(grokHome: string): string[] {
-  return [
+export function grokManagedConfigPaths(
+  grokHome: string,
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const files = [
     path.join(grokHome, 'managed_config.toml'),
     path.join(grokHome, 'requirements.toml'),
-    path.join('/etc', 'grok', 'managed_config.toml'),
-    path.join('/etc', 'grok', 'requirements.toml'),
   ]
+  if (platform === 'win32') {
+    const programData = env.ProgramData?.trim() || 'C:\\ProgramData'
+    files.push(path.join(programData, 'grok', 'managed_config.toml'))
+    files.push(path.join(programData, 'grok', 'requirements.toml'))
+    return files
+  }
+  files.push(path.join('/etc', 'grok', 'managed_config.toml'))
+  files.push(path.join('/etc', 'grok', 'requirements.toml'))
+  return files
 }

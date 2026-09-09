@@ -16,6 +16,7 @@ import {
 import {
   expandWindowsEnv,
   isProtectedConfigPath,
+  knownSearchDirs,
   knownToolPaths,
   nativeUninstallTargets,
   parseRegPathQuery,
@@ -84,12 +85,19 @@ describe('classifyInstallMethod', () => {
 describe('reconstructSearchDirs', () => {
   it('puts known install locations before PATH entries', () => {
     const dirs = reconstructSearchDirs(demoPathContext())
-    const known = win
-      ? path.join(home, '.local', 'bin')
-      : path.join(home, '.local', 'bin')
+    const known = path.join(home, '.local', 'bin')
     expect(dirs[0]).toBe(known)
     expect(dirs).toContain(path.join(home, '.grok', 'bin'))
     expect(dirs).toContain(win ? 'C:\\Windows\\System32' : '/usr/bin')
+  })
+
+  it('includes Homebrew on macOS and Linuxbrew on Linux', () => {
+    const mac = knownSearchDirs(demoPathContext({ platform: 'darwin', home: '/Users/demo' }))
+    expect(mac).toContain('/opt/homebrew/bin')
+    expect(mac).toContain(path.join('/Users/demo', 'Library', 'pnpm'))
+    const linux = knownSearchDirs(demoPathContext({ platform: 'linux', home: '/home/demo' }))
+    expect(linux).toContain('/home/linuxbrew/.linuxbrew/bin')
+    expect(linux).toContain('/snap/bin')
   })
 })
 
@@ -190,6 +198,14 @@ describe('winget lookup', () => {
     })
     expect(knownToolPaths('winget', ctx)).toEqual([
       path.join(ctx.localAppData, 'Microsoft', 'WindowsApps', 'winget.exe'),
+    ])
+  })
+
+  it('resolves Homebrew at Apple Silicon, Intel, and Linuxbrew paths', () => {
+    expect(knownToolPaths('brew', demoPathContext())).toEqual([
+      '/opt/homebrew/bin/brew',
+      '/usr/local/bin/brew',
+      '/home/linuxbrew/.linuxbrew/bin/brew',
     ])
   })
 
