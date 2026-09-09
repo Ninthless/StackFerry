@@ -1,6 +1,11 @@
 import { ROUTER_BIND_HOST, ROUTER_PROVIDER_KEY, ROUTER_PROVIDER_NAME } from '../../../shared/routing'
 import { GROK_OFFICIAL_DEFAULT_MODEL } from '../../../shared/grok-presets'
-import { parseGrokSession, type GrokSessionInput } from '../../../shared/grok-session'
+import {
+  GROK_OVERLAY_ROOT_TABLES,
+  parseGrokSession,
+  type GrokSession,
+  type GrokSessionInput,
+} from '../../../shared/grok-session'
 import { isPlainObject, parseToml, stringifyToml, type TomlTable } from '../../../shared/provider-overlay'
 import type { GrokApiBackend } from '../../../shared/types'
 
@@ -17,6 +22,8 @@ const OWNED_MODEL_KEYS = new Set([
 ])
 
 const AUX_MODEL_KEYS = ['web_search', 'session_summary', 'image_description'] as const
+const OWNED_MODELS_PIN_KEYS = new Set(['default', ...AUX_MODEL_KEYS])
+const OWNED_UI_PIN_KEYS = new Set(['fork_secondary_model', 'permission_mode'])
 
 export type { TomlTable }
 export { parseToml, stringifyToml }
@@ -58,9 +65,11 @@ export function applyDirectModel(doc: TomlTable, input: GrokDirectLiveConfig): T
   const next = cloneDoc(doc)
   stripStackferryOwned(next)
   unpinByokAuth(next)
+  const session = parseGrokSession(input)
+  if (session.overlay) applyOverlayRoot(next, session.overlay)
   const key = grokModelKey(input.id)
-  ensureModelTable(next)[key] = directTable(input)
-  pinLiveModel(next, key, input)
+  ensureModelTable(next)[key] = directTable(input, session)
+  pinLiveModel(next, key, session)
   return next
 }
 
@@ -78,6 +87,8 @@ export function applyRouterModel(doc: TomlTable, input: GrokRouterLiveConfig): T
   const next = cloneDoc(doc)
   stripStackferryOwned(next)
   unpinByokAuth(next)
+  const session = parseGrokSession(input)
+  if (session.overlay) applyOverlayRoot(next, session.overlay)
   const table: TomlTable = {
     name: ROUTER_PROVIDER_NAME,
     model: input.model,
@@ -85,13 +96,13 @@ export function applyRouterModel(doc: TomlTable, input: GrokRouterLiveConfig): T
     api_backend: 'responses',
     api_key: 'stackferry-router',
   }
-  applySession(table, input)
+  applySession(table, session)
   ensureModelTable(next)[ROUTER_PROVIDER_KEY] = table
-  pinLiveModel(next, ROUTER_PROVIDER_KEY, input)
+  pinLiveModel(next, ROUTER_PROVIDER_KEY, session)
   return next
 }
 
-function directTable(input: GrokDirectLiveConfig): TomlTable {
+function directTable(input: GrokDirectLiveConfig, session: GrokSession): TomlTable {
   const table: TomlTable = {
     name: input.name,
     model: input.model,
@@ -99,15 +110,14 @@ function directTable(input: GrokDirectLiveConfig): TomlTable {
     api_backend: input.apiBackend,
   }
   if (input.apiKey.trim()) table.api_key = input.apiKey.trim()
-  applySession(table, input)
+  applySession(table, session)
   return table
 }
 
-function applySession(table: TomlTable, input: GrokSessionInput): void {
-  const session = parseGrokSession(input)
+function applySession(table: TomlTable, session: GrokSession): void {
   if (session.overlay) {
     for (const [key, value] of Object.entries(session.overlay)) {
-      if (OWNED_MODEL_KEYS.has(key)) continue
+      if (GROK_OVERLAY_ROOT_TABLES.has(key) || OWNED_MODEL_KEYS.has(key)) continue
       table[key] = structuredClone(value)
     }
   }
@@ -117,6 +127,28 @@ function applySession(table: TomlTable, input: GrokSessionInput): void {
   }
   if (session.contextWindow != null) table.context_window = session.contextWindow
   if (session.autoCompact != null) table.auto_compact_threshold_percent = session.autoCompact
+}
+
+function applyOverlayRoot(doc: TomlTable, overlay: TomlTable): void {
+  mergeOverlayTable(doc, 'models', overlay.models, OWNED_MODELS_PIN_KEYS)
+  mergeOverlayTable(doc, 'ui', overlay.ui, OWNED_UI_PIN_KEYS)
+  mergeOverlayTable(doc, 'permission', overlay.permission, new Set())
+}
+
+function mergeOverlayTable(
+  doc: TomlTable,
+  key: string,
+  incoming: unknown,
+  skip: Set<string>,
+): void {
+  if (!isPlainObject(incoming)) return
+  const entries = Object.entries(incoming).filter(([field]) => !skip.has(field))
+  if (entries.length === 0) return
+  const next: TomlTable = isPlainObject(doc[key]) ? { ...doc[key] } : {}
+  for (const [field, value] of entries) {
+    next[field] = structuredClone(value)
+  }
+  doc[key] = next
 }
 
 function ensureModelTable(doc: TomlTable): TomlTable {
@@ -144,13 +176,16 @@ function ensureUiTable(doc: TomlTable): TomlTable {
 }
 
 // 内置 web_search / 摘要 / fork 默认走 grok.com 会话；钉到当前 BYOK 模型，避免 Custom 主会话仍弹出 /login。
-function pinLiveModel(doc: TomlTable, key: string, input: GrokSessionInput): void {
+function pinLiveModel(doc: TomlTable, key: string, session: GrokSession): void {
   const models = ensureModelsTable(doc)
   models.default = key
   for (const field of AUX_MODEL_KEYS) models[field] = key
-  const effort = parseGrokSession(input).effortLevel
-  if (effort) models.default_reasoning_effort = effort
-  ensureUiTable(doc).fork_secondary_model = key
+  if (session.effortLevel) models.default_reasoning_effort = session.effortLevel
+  const ui = ensureUiTable(doc)
+  ui.fork_secondary_model = key
+  // Grok 的 permission_mode 是用户级 [ui] 键，不能写到 [model.*]。
+  if (session.permissionMode) ui.permission_mode = session.permissionMode
+  else delete ui.permission_mode
 }
 
 function unpinLiveModel(doc: TomlTable): void {

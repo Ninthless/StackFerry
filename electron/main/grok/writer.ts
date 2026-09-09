@@ -4,6 +4,7 @@ import path from 'node:path'
 import { AppError } from '../../../shared/app-error'
 import { atomicWriteFile } from '../codex/writer'
 import { grokConfigPath } from './home'
+import type { GrokSessionInput } from '../../../shared/grok-session'
 import {
   applyDirectModel,
   applyOfficialModel,
@@ -11,7 +12,6 @@ import {
   parseToml,
   stringifyToml,
   type GrokDirectLiveConfig,
-  type GrokRouterLiveConfig,
 } from './merge'
 
 export type EnableResult = {
@@ -39,14 +39,16 @@ export async function enableGrokOfficialConfig(options: {
   })
 }
 
-export async function enableGrokRouterConfig(options: {
-  grokHome: string
-  backupRoot: string
-  port: number
-  model: string
-}): Promise<EnableResult> {
-  const input: GrokRouterLiveConfig = { port: options.port, model: options.model }
-  return writeMerged(options.grokHome, options.backupRoot, (current) => applyRouterModel(current, input))
+export async function enableGrokRouterConfig(
+  options: {
+    grokHome: string
+    backupRoot: string
+    port: number
+    model: string
+  } & GrokSessionInput,
+): Promise<EnableResult> {
+  const { grokHome, backupRoot, ...input } = options
+  return writeMerged(grokHome, backupRoot, (current) => applyRouterModel(current, input))
 }
 
 async function writeMerged(

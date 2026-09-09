@@ -19,9 +19,10 @@ import {
 function liveSession(provider: StoredGrokProvider) {
   return {
     effortLevel: provider.effortLevel,
+    permissionMode: provider.permissionMode,
     contextWindow: provider.contextWindow,
     autoCompact: provider.autoCompact,
-    overlayJson: provider.overlayJson,
+    overlayToml: provider.overlayToml,
   }
 }
 

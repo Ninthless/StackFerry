@@ -1,29 +1,35 @@
-import { GROK_EFFORT_LEVELS, isGrokEffortLevel } from "@shared/grok-session"
+import {
+  GROK_EFFORT_LEVELS,
+  GROK_PERMISSION_MODES,
+  grokOverlaySession,
+  isGrokEffortLevel,
+  isGrokPermissionMode,
+  withGrokOverlaySession,
+} from "@shared/grok-session"
 import { Field } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { EffortScale } from "@/features/clis/effort-scale"
 import { HintLabel } from "@/features/settings/settings-hint"
+import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
 
 type Props = {
   formId: string
-  effortLevel: string
-  contextWindow: string
-  autoCompact: string
-  onEffortChange: (value: string) => void
-  onContextChange: (value: string) => void
-  onAutoCompactChange: (value: string) => void
+  overlayToml: string
+  onOverlayChange: (value: string) => void
+  onError: (message: string) => void
 }
 
-export function GrokSessionFields({
-  formId,
-  effortLevel,
-  contextWindow,
-  autoCompact,
-  onEffortChange,
-  onContextChange,
-  onAutoCompactChange,
-}: Props) {
+export function GrokSessionFields({ formId, overlayToml, onOverlayChange, onError }: Props) {
+  const session = grokOverlaySession(overlayToml)
   const items = [
     { label: m.session_reasoning_default(), value: null, hint: m.session_reasoning_hint_default() },
     ...GROK_EFFORT_LEVELS.map((value) => ({
@@ -32,6 +38,15 @@ export function GrokSessionFields({
       hint: grokEffortHint(value),
     })),
   ]
+
+  function patchSession(patch: Parameters<typeof withGrokOverlaySession>[1]): void {
+    try {
+      onOverlayChange(withGrokOverlaySession(overlayToml, patch))
+      onError("")
+    } catch (error) {
+      onError(formatAppError(error))
+    }
+  }
 
   return (
     <>
@@ -42,11 +57,13 @@ export function GrokSessionFields({
         <EffortScale
           id={`${formId}-effort`}
           options={items}
-          value={effortLevel}
+          value={session.effortLevel}
           fasterLabel={m.session_reasoning_faster()}
           deeperLabel={m.session_reasoning_deeper()}
           onChange={(next) => {
-            onEffortChange(isGrokEffortLevel(next) ? next : "")
+            patchSession({
+              effortLevel: isGrokEffortLevel(next) ? next : "",
+            })
           }}
         />
       </Field>
@@ -59,8 +76,8 @@ export function GrokSessionFields({
           name="contextWindow"
           inputMode="numeric"
           placeholder={m.grok_session_context_placeholder()}
-          value={contextWindow}
-          onChange={(event) => onContextChange(event.target.value)}
+          value={session.contextWindow}
+          onChange={(event) => patchSession({ contextWindow: event.target.value })}
         />
       </Field>
       <Field>
@@ -72,12 +89,49 @@ export function GrokSessionFields({
           name="autoCompact"
           inputMode="numeric"
           placeholder={m.grok_session_compact_placeholder()}
-          value={autoCompact}
-          onChange={(event) => onAutoCompactChange(event.target.value)}
+          value={session.autoCompact}
+          onChange={(event) => patchSession({ autoCompact: event.target.value })}
         />
+      </Field>
+      <Field>
+        <HintLabel htmlFor={`${formId}-permission`} hint={m.grok_session_permission_description()}>
+          {m.grok_session_permission()}
+        </HintLabel>
+        <Select
+          items={grokPermissionItems()}
+          value={session.permissionMode || UNSET_PERMISSION}
+          onValueChange={(value) => {
+            if (typeof value !== "string") return
+            patchSession({
+              permissionMode: isGrokPermissionMode(value) ? value : "",
+            })
+          }}
+        >
+          <SelectTrigger id={`${formId}-permission`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false} side="bottom">
+            <SelectGroup>
+              {grokPermissionItems().map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
       </Field>
     </>
   )
+}
+
+const UNSET_PERMISSION = "__unset__"
+
+function grokPermissionItems() {
+  return [
+    { label: m.session_reasoning_default(), value: UNSET_PERMISSION },
+    ...GROK_PERMISSION_MODES.map((value) => ({ label: value, value })),
+  ]
 }
 
 function grokEffortHint(value: (typeof GROK_EFFORT_LEVELS)[number]): string {

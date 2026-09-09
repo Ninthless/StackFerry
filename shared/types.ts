@@ -141,9 +141,10 @@ export type GrokProviderDraft = {
   apiKey?: string
   presetId?: string
   effortLevel?: string
+  permissionMode?: string
   contextWindow?: string
   autoCompact?: string
-  overlayJson?: string
+  overlayToml?: string
 }
 
 export type GrokProviderListItem = {
@@ -154,9 +155,10 @@ export type GrokProviderListItem = {
   model: string
   apiBackend: GrokApiBackend
   effortLevel: string
+  permissionMode: string
   contextWindow: string
   autoCompact: string
-  overlayJson: string
+  overlayToml: string
   hasApiKey: boolean
   enabled: boolean
 }

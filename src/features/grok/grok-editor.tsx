@@ -2,7 +2,14 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "rea
 import { AlignLeft } from "lucide-react"
 import type { GrokApiBackend, GrokPreset, GrokProviderDraft, GrokProviderListItem, ProviderKind } from "@shared/types"
 import { isGrokApiBackend } from "@shared/grok-presets"
-import { formatGrokOverlayJson } from "@shared/grok-session"
+import {
+  formatGrokOverlayToml,
+  grokOverlayIdentity,
+  hydrateGrokOverlay,
+  parseGrokOverlayToml,
+  withGrokOverlayIdentity,
+  type GrokOverlayIdentity,
+} from "@shared/grok-session"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -29,8 +36,9 @@ import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/com
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { formatAppError } from "@/lib/format-app-error"
 import { grokPresetLabel } from "@/lib/preset-label"
+import { HintLabel } from "@/features/settings/settings-hint"
 import * as m from "@/paraglide/messages.js"
-import { JsonEditor } from "@/features/claude/json-editor"
+import { TomlEditor } from "@/features/providers/toml-editor"
 import { GrokModelField } from "./grok-model-field"
 import { GrokSessionFields } from "./grok-session-fields"
 
@@ -50,10 +58,7 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
   const [model, setModel] = useState("")
   const [apiBackend, setApiBackend] = useState<GrokApiBackend>("responses")
   const [apiKey, setApiKey] = useState("")
-  const [effortLevel, setEffortLevel] = useState("")
-  const [contextWindow, setContextWindow] = useState("")
-  const [autoCompact, setAutoCompact] = useState("")
-  const [overlayJson, setOverlayJson] = useState("")
+  const [overlayToml, setOverlayToml] = useState("")
   const [error, setError] = useState("")
   const [pending, setPending] = useState(false)
 
@@ -76,6 +81,11 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
       ? m.action_saving()
       : m.action_save()
   const requiresApiKey = kind === "custom" && (!displayedEditing || !displayedEditing.hasApiKey)
+  const identity = grokOverlayIdentity(overlayToml)
+  const liveName = kind === "custom" ? identity.name : name
+  const liveBaseUrl = identity.baseUrl
+  const liveModel = identity.model
+  const liveBackend = isGrokApiBackend(identity.apiBackend) ? identity.apiBackend : apiBackend
 
   useEffect(() => {
     if (!open) return
@@ -87,10 +97,20 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
       setBaseUrl(editing.baseUrl)
       setModel(editing.model)
       setApiBackend(editing.apiBackend)
-      setEffortLevel(editing.effortLevel)
-      setContextWindow(editing.contextWindow)
-      setAutoCompact(editing.autoCompact)
-      setOverlayJson(editing.overlayJson)
+      setOverlayToml(
+        editing.kind === "custom"
+          ? seedOverlay(editing.overlayToml, {
+              name: editing.name,
+              model: editing.model,
+              baseUrl: editing.baseUrl,
+              apiBackend: editing.apiBackend,
+              effortLevel: editing.effortLevel,
+              permissionMode: editing.permissionMode,
+              contextWindow: editing.contextWindow,
+              autoCompact: editing.autoCompact,
+            })
+          : "",
+      )
       return
     }
     const initial = presets.find((preset) => preset.id === "custom") ?? presets[0]
@@ -99,10 +119,20 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
     setBaseUrl(initial?.baseUrl ?? "")
     setModel(initial?.model ?? "")
     setApiBackend(initial?.apiBackend ?? "responses")
-    setEffortLevel("")
-    setContextWindow("")
-    setAutoCompact("")
-    setOverlayJson("")
+    setOverlayToml(
+      initial?.kind === "custom"
+        ? seedOverlay("", {
+            name: initial.name,
+            model: initial.model,
+            baseUrl: initial.baseUrl,
+            apiBackend: initial.apiBackend,
+            effortLevel: "",
+            permissionMode: "",
+            contextWindow: "",
+            autoCompact: "",
+          })
+        : "",
+    )
   }, [open, editing, presets])
 
   function applyPreset(nextPresetId: string): void {
@@ -113,15 +143,34 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
     setBaseUrl(preset.baseUrl)
     setModel(preset.model)
     setApiBackend(preset.apiBackend)
-    setEffortLevel("")
-    setContextWindow("")
-    setAutoCompact("")
-    setOverlayJson("")
+    setOverlayToml(
+      preset.kind === "custom"
+        ? seedOverlay("", {
+            name: preset.name,
+            model: preset.model,
+            baseUrl: preset.baseUrl,
+            apiBackend: preset.apiBackend,
+            effortLevel: "",
+            permissionMode: "",
+            contextWindow: "",
+            autoCompact: "",
+          })
+        : "",
+    )
+  }
+
+  function patchIdentity(patch: Partial<GrokOverlayIdentity>): void {
+    try {
+      setOverlayToml(withGrokOverlayIdentity(overlayToml, patch))
+      setError("")
+    } catch {
+      return
+    }
   }
 
   function handleFormatOverlay(): void {
     try {
-      setOverlayJson(formatGrokOverlayJson(overlayJson))
+      setOverlayToml(formatGrokOverlayToml(overlayToml))
       setError("")
     } catch (formatError) {
       setError(formatAppError(formatError))
@@ -134,16 +183,13 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
     setError("")
     try {
       await onSubmit({
-        name,
+        name: liveName || name,
         kind,
-        baseUrl: kind === "custom" ? baseUrl : undefined,
-        model: kind === "custom" ? model : undefined,
-        apiBackend: kind === "custom" ? apiBackend : undefined,
+        baseUrl: kind === "custom" ? liveBaseUrl || baseUrl : undefined,
+        model: kind === "custom" ? liveModel || model : undefined,
+        apiBackend: kind === "custom" ? liveBackend : undefined,
         apiKey: apiKey.trim() ? apiKey : undefined,
-        effortLevel: kind === "custom" ? effortLevel : undefined,
-        contextWindow: kind === "custom" ? contextWindow : undefined,
-        autoCompact: kind === "custom" ? autoCompact : undefined,
-        overlayJson: kind === "custom" ? overlayJson : undefined,
+        overlayToml: kind === "custom" ? overlayToml : undefined,
         presetId: editing ? undefined : presetId,
       })
     } catch (submitError) {
@@ -194,8 +240,12 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
                   name="name"
                   required
                   autoComplete="off"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  value={liveName}
+                  onChange={(event) => {
+                    const next = event.target.value
+                    setName(next)
+                    if (kind === "custom") patchIdentity({ name: next })
+                  }}
                 />
               </Field>
               {kind === "custom" ? (
@@ -210,17 +260,22 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
                       autoComplete="url"
                       inputMode="url"
                       placeholder="https://api.example.com/v1"
-                      value={baseUrl}
-                      onChange={(event) => setBaseUrl(event.target.value)}
+                      value={liveBaseUrl}
+                      onChange={(event) => {
+                        setBaseUrl(event.target.value)
+                        patchIdentity({ baseUrl: event.target.value })
+                      }}
                     />
                   </Field>
                   <FieldSet>
                     <FieldLegend variant="label">{m.grok_field_api_backend()}</FieldLegend>
                     <ToggleGroup
-                      value={[apiBackend]}
+                      value={[liveBackend]}
                       onValueChange={(value) => {
                         const next = value[0]
-                        if (isGrokApiBackend(next)) setApiBackend(next)
+                        if (!isGrokApiBackend(next)) return
+                        setApiBackend(next)
+                        patchIdentity({ apiBackend: next })
                       }}
                       variant="outline"
                     >
@@ -230,10 +285,10 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
                     <Field>
                       <FieldContent>
                         <FieldTitle>
-                          {apiBackend === "responses" ? m.grok_backend_responses() : m.grok_backend_chat()}
+                          {liveBackend === "responses" ? m.grok_backend_responses() : m.grok_backend_chat()}
                         </FieldTitle>
                         <FieldDescription>
-                          {apiBackend === "responses"
+                          {liveBackend === "responses"
                             ? m.grok_backend_responses_description()
                             : m.grok_backend_chat_description()}
                         </FieldDescription>
@@ -256,37 +311,50 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
                   <GrokModelField
                     formId={formId}
                     open={open}
-                    baseUrl={baseUrl}
+                    baseUrl={liveBaseUrl}
                     apiKey={apiKey}
                     providerId={displayedEditing?.id}
-                    model={model}
-                    onModelChange={setModel}
+                    model={liveModel}
+                    onModelChange={(next) => {
+                      setModel(next)
+                      patchIdentity({ model: next })
+                    }}
                     onError={setError}
                   />
                   <GrokSessionFields
                     formId={formId}
-                    effortLevel={effortLevel}
-                    contextWindow={contextWindow}
-                    autoCompact={autoCompact}
-                    onEffortChange={setEffortLevel}
-                    onContextChange={setContextWindow}
-                    onAutoCompactChange={setAutoCompact}
+                    overlayToml={overlayToml}
+                    onOverlayChange={setOverlayToml}
+                    onError={setError}
                   />
                   <Field data-invalid={error ? true : undefined}>
-                    <Field orientation="horizontal">
-                      <FieldLabel htmlFor={`${formId}-overlay`}>{m.grok_field_overlay()}</FieldLabel>
+                    <Field orientation="horizontal" className="justify-between">
+                      <HintLabel htmlFor={`${formId}-overlay`} hint={m.grok_field_overlay_description()}>
+                        {m.grok_field_overlay()}
+                      </HintLabel>
                       <Button type="button" variant="outline" size="sm" onClick={handleFormatOverlay}>
                         <AlignLeft data-icon="inline-start" />
                         {m.action_format()}
                       </Button>
                     </Field>
-                    <JsonEditor
+                    <TomlEditor
                       id={`${formId}-overlay`}
-                      value={overlayJson}
+                      value={overlayToml}
                       invalid={Boolean(error)}
-                      onChange={setOverlayJson}
+                      onChange={(next) => {
+                        setOverlayToml(next)
+                        try {
+                          parseGrokOverlayToml(next)
+                        } catch {
+                          return
+                        }
+                        const parsed = grokOverlayIdentity(next)
+                        setName(parsed.name)
+                        setBaseUrl(parsed.baseUrl)
+                        setModel(parsed.model)
+                        if (isGrokApiBackend(parsed.apiBackend)) setApiBackend(parsed.apiBackend)
+                      }}
                     />
-                    <FieldDescription>{m.grok_field_overlay_description()}</FieldDescription>
                   </Field>
                 </>
               ) : null}
@@ -307,4 +375,15 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
       </SheetContent>
     </Sheet>
   )
+}
+
+function seedOverlay(
+  overlayToml: string,
+  columns: Parameters<typeof hydrateGrokOverlay>[1],
+): string {
+  try {
+    return hydrateGrokOverlay(overlayToml, columns)
+  } catch {
+    return overlayToml
+  }
 }

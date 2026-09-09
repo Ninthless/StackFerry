@@ -124,7 +124,16 @@ describe('grok config merge', () => {
         effortLevel: 'high',
         contextWindow: '200000',
         autoCompact: '80',
-        overlayJson: '{"extra_headers":{"x-foo":"bar"},"temperature":0.2,"api_key":"ignored"}',
+        overlayToml: `temperature = 0.2
+api_key = "ignored"
+name = "Stolen"
+model = "stolen"
+base_url = "https://stolen.example/v1"
+api_backend = "chat_completions"
+
+[extra_headers]
+x-foo = "bar"
+`,
       },
     )
     const key = grokModelKey('sess-1')
@@ -135,6 +144,10 @@ describe('grok config merge', () => {
     })
     expect(next.model).toMatchObject({
       [key]: {
+        name: 'Custom',
+        model: 'demo',
+        base_url: 'https://gateway.test/v1',
+        api_backend: 'responses',
         api_key: 'secret',
         reasoning_effort: 'high',
         supports_reasoning_effort: true,
@@ -144,6 +157,136 @@ describe('grok config merge', () => {
         temperature: 0.2,
       },
     })
+  })
+
+  it('writes ui.permission_mode and clears it when unset', () => {
+    const withMode = applyDirectModel(
+      { ui: { theme: 'auto' } },
+      {
+        id: 'perm-1',
+        name: 'Custom',
+        model: 'demo',
+        baseUrl: 'https://gateway.test/v1',
+        apiBackend: 'responses',
+        apiKey: 'secret',
+        permissionMode: 'always-approve',
+      },
+    )
+    const key = grokModelKey('perm-1')
+    expect(withMode.ui).toEqual({
+      theme: 'auto',
+      fork_secondary_model: key,
+      permission_mode: 'always-approve',
+    })
+    expect(withMode.model?.[key]).not.toHaveProperty('permission_mode')
+
+    const cleared = applyDirectModel(withMode, {
+      id: 'perm-2',
+      name: 'Custom',
+      model: 'demo',
+      baseUrl: 'https://gateway.test/v1',
+      apiBackend: 'responses',
+      apiKey: 'secret',
+    })
+    expect(cleared.ui).toEqual({
+      theme: 'auto',
+      fork_secondary_model: grokModelKey('perm-2'),
+    })
+  })
+
+  it('merges overlay root tables and skips session-owned keys', () => {
+    const next = applyDirectModel(
+      {
+        ui: { theme: 'auto' },
+        models: { default: 'kept-elsewhere' },
+        permission: { deny: ['bash'] },
+      },
+      {
+        id: 'over-1',
+        name: 'Custom',
+        model: 'demo',
+        baseUrl: 'https://gateway.test/v1',
+        apiBackend: 'responses',
+        apiKey: 'secret',
+        permissionMode: 'ask',
+        overlayToml: `
+[models]
+max_retries = 3
+default = "ignored"
+
+[ui]
+vim_mode = true
+
+[permission]
+allow = ["read"]
+`,
+      },
+    )
+    const key = grokModelKey('over-1')
+    expect(next.models).toMatchObject({
+      default: key,
+      max_retries: 3,
+    })
+    expect(next.ui).toEqual({
+      theme: 'auto',
+      vim_mode: true,
+      fork_secondary_model: key,
+      permission_mode: 'ask',
+    })
+    expect(next.permission).toEqual({
+      deny: ['bash'],
+      allow: ['read'],
+    })
+
+    const cleared = applyDirectModel(next, {
+      id: 'over-2',
+      name: 'Custom',
+      model: 'demo',
+      baseUrl: 'https://gateway.test/v1',
+      apiBackend: 'responses',
+      apiKey: 'secret',
+      overlayToml: '[ui]\nvim_mode = true\n',
+    })
+    expect(cleared.ui).toEqual({
+      theme: 'auto',
+      vim_mode: true,
+      fork_secondary_model: grokModelKey('over-2'),
+    })
+  })
+
+  it('applies overlay session keys when store columns are empty', () => {
+    const next = applyDirectModel(
+      {},
+      {
+        id: 'over-sess',
+        name: 'Custom',
+        model: 'demo',
+        baseUrl: 'https://gateway.test/v1',
+        apiBackend: 'responses',
+        apiKey: 'secret',
+        overlayToml: `reasoning_effort = "high"
+context_window = 200000
+auto_compact_threshold_percent = 80
+
+[ui]
+permission_mode = "auto"
+`,
+      },
+    )
+    const key = grokModelKey('over-sess')
+    expect(next.models).toMatchObject({
+      default: key,
+      default_reasoning_effort: 'high',
+    })
+    expect(next.model).toMatchObject({
+      [key]: {
+        reasoning_effort: 'high',
+        supports_reasoning_effort: true,
+        context_window: 200000,
+        auto_compact_threshold_percent: 80,
+      },
+    })
+    expect(next.ui).toMatchObject({ permission_mode: 'auto' })
   })
 
   it('keeps session fields on the router model table', () => {

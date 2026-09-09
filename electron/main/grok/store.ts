@@ -5,7 +5,12 @@ import path from 'node:path'
 import { safeStorage } from 'electron'
 import { AppError } from '../../../shared/app-error'
 import { findGrokPreset, isGrokApiBackend } from '../../../shared/grok-presets'
-import { persistGrokSession } from '../../../shared/grok-session'
+import {
+  grokOverlaySession,
+  hydrateGrokOverlay,
+  migrateGrokOverlayText,
+  persistGrokSession,
+} from '../../../shared/grok-session'
 import { orderByIds } from '../../../shared/id-order'
 import type { GrokApiBackend, GrokProviderDraft, GrokProviderListItem, ProviderKind } from '../../../shared/types'
 import { atomicWriteFile } from '../codex/writer'
@@ -21,9 +26,10 @@ export type StoredGrokProvider = {
   model: string
   apiBackend: GrokApiBackend
   effortLevel: string
+  permissionMode: string
   contextWindow: string
   autoCompact: string
-  overlayJson: string
+  overlayToml: string
   apiKeyPayload: string
   createdAt: string
   updatedAt: string
@@ -164,9 +170,10 @@ export class GrokProviderStore {
       model: provider.model,
       apiBackend: provider.apiBackend,
       effortLevel: provider.effortLevel,
+      permissionMode: provider.permissionMode,
       contextWindow: provider.contextWindow,
       autoCompact: provider.autoCompact,
-      overlayJson: provider.overlayJson,
+      overlayToml: provider.overlayToml,
       hasApiKey: Boolean(provider.apiKeyPayload),
       enabled: provider.id === activeProviderId,
     }
@@ -239,19 +246,38 @@ export class GrokProviderStore {
 
   private sessionFields(kind: ProviderKind, draft: GrokProviderDraft) {
     if (kind === 'official') {
-      return { effortLevel: '', contextWindow: '', autoCompact: '', overlayJson: '' }
+      return { effortLevel: '', permissionMode: '', contextWindow: '', autoCompact: '', overlayToml: '' }
     }
     return persistGrokSession(draft)
   }
 
-  private normalizeProvider(provider: StoredGrokProvider): StoredGrokProvider {
+  private normalizeProvider(
+    provider: StoredGrokProvider & { overlayJson?: string },
+  ): StoredGrokProvider {
+    const { overlayJson, overlayToml, ...rest } = provider
+    const overlaySource = typeof overlayToml === 'string' ? overlayToml : overlayJson
+    const columns = {
+      effortLevel: typeof rest.effortLevel === 'string' ? rest.effortLevel : '',
+      permissionMode: typeof rest.permissionMode === 'string' ? rest.permissionMode : '',
+      contextWindow: typeof rest.contextWindow === 'string' ? rest.contextWindow : '',
+      autoCompact: typeof rest.autoCompact === 'string' ? rest.autoCompact : '',
+    }
+    const nextOverlay = hydrateGrokOverlay(migrateGrokOverlayText(overlaySource), {
+      name: typeof rest.name === 'string' ? rest.name : '',
+      model: typeof rest.model === 'string' ? rest.model : '',
+      baseUrl: typeof rest.baseUrl === 'string' ? rest.baseUrl : '',
+      apiBackend: isGrokApiBackend(rest.apiBackend) ? rest.apiBackend : 'responses',
+      ...columns,
+    })
+    const session = grokOverlaySession(nextOverlay)
     return {
-      ...provider,
-      apiBackend: isGrokApiBackend(provider.apiBackend) ? provider.apiBackend : 'responses',
-      effortLevel: typeof provider.effortLevel === 'string' ? provider.effortLevel : '',
-      contextWindow: typeof provider.contextWindow === 'string' ? provider.contextWindow : '',
-      autoCompact: typeof provider.autoCompact === 'string' ? provider.autoCompact : '',
-      overlayJson: typeof provider.overlayJson === 'string' ? provider.overlayJson : '',
+      ...rest,
+      apiBackend: isGrokApiBackend(rest.apiBackend) ? rest.apiBackend : 'responses',
+      effortLevel: session.effortLevel || columns.effortLevel,
+      permissionMode: session.permissionMode || columns.permissionMode,
+      contextWindow: session.contextWindow || columns.contextWindow,
+      autoCompact: session.autoCompact || columns.autoCompact,
+      overlayToml: nextOverlay,
     }
   }
 
