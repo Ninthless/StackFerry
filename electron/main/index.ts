@@ -20,6 +20,8 @@ import {
   broadcastChanged,
   broadcastClaudeChanged,
   broadcastGrokChanged,
+  enableClaudeProvider,
+  enableGrokProvider,
   enableProvider,
   registerIpc,
   seedOfficialClaudeProvider,
@@ -146,8 +148,12 @@ function showWindow(): void {
 }
 
 async function refreshTray(): Promise<void> {
-  if (!store || !tray) return
-  tray.update(await store.list())
+  if (!store || !claudeStore || !grokStore || !tray) return
+  tray.update({
+    codex: await store.list(),
+    claude: await claudeStore.list(),
+    grok: await grokStore.list(),
+  })
 }
 
 app.whenReady().then(async () => {
@@ -227,9 +233,11 @@ app.whenReady().then(async () => {
     },
     onClaudeChanged: () => {
       broadcastClaudeChanged()
+      void refreshTray()
     },
     onGrokChanged: () => {
       broadcastGrokChanged()
+      void refreshTray()
     },
     onSkillsChanged: () => {
       broadcastSkillsChanged()
@@ -261,11 +269,14 @@ app.whenReady().then(async () => {
     onQuit: () => {
       void restoreThenQuit()
     },
-    onEnable: async (id) => {
+    onEnable: async (cliId, id) => {
       try {
-        await enableProvider(ipcContext, id)
+        if (cliId === 'claude-code') await enableClaudeProvider(ipcContext, id)
+        else if (cliId === 'grok-build') await enableGrokProvider(ipcContext, id)
+        else await enableProvider(ipcContext, id)
       } catch (error) {
         dialog.showErrorBox(m.tray_enable_failed(), formatAppError(error))
+        void refreshTray()
       }
     },
   })
