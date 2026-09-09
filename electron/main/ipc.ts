@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { BrowserWindow, ipcMain, systemPreferences, type IpcMainInvokeEvent } from 'electron'
 import { existsSync } from 'node:fs'
 import { PRESETS } from '../../shared/presets'
 import { CLAUDE_PRESETS } from '../../shared/claude-presets'
@@ -32,6 +32,7 @@ import { registerReleaseIpc } from './releases/ipc'
 import type { AppReleaseService } from './releases/service'
 import { registerSkillIpc } from './skills/ipc'
 import type { SkillService } from './skills/service'
+import { titleBarDoubleClickAction } from './window-chrome'
 
 type IpcContext = {
   store: ProviderStore
@@ -109,6 +110,22 @@ export function registerIpc(context: IpcContext): void {
   })
   ipcMain.handle(IpcChannel.windowClose, (event) => {
     senderWindow(event)?.close()
+  })
+  ipcMain.handle(IpcChannel.windowTitleBarDoubleClick, (event) => {
+    const win = senderWindow(event)
+    if (!win) return
+    const appleAction =
+      process.platform === 'darwin'
+        ? systemPreferences.getUserDefault('AppleActionOnDoubleClick', 'string')
+        : ''
+    const action = titleBarDoubleClickAction(process.platform, appleAction)
+    if (action === 'none') return
+    if (action === 'minimize') {
+      win.minimize()
+      return
+    }
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
   })
   ipcMain.handle(IpcChannel.windowIsMaximized, (event) => {
     return senderWindow(event)?.isMaximized() ?? false

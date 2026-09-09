@@ -68,6 +68,14 @@ export function AppSidebar({ activeId, onSelect }: Props) {
 
   return (
     <Sidebar className="app-region-no-drag" collapsible="icon" variant="sidebar">
+      {window.stackferry?.usesMacChrome ? (
+        <div
+          className="app-region-drag h-10 w-full shrink-0"
+          onDoubleClick={() => {
+            void window.stackferry?.windowTitleBarDoubleClick()
+          }}
+        />
+      ) : null}
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>

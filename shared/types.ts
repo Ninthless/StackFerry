@@ -183,6 +183,7 @@ export type GrokAppStatus = {
 
 export type StackferryApi = {
   showWindowControls: boolean
+  usesMacChrome: boolean
   listProviders: () => Promise<ProviderListItem[]>
   listPresets: () => Promise<Preset[]>
   addProvider: (draft: ProviderDraft) => Promise<ProviderListItem>
@@ -200,6 +201,7 @@ export type StackferryApi = {
   windowMinimize: () => Promise<void>
   windowToggleMaximize: () => Promise<void>
   windowClose: () => Promise<void>
+  windowTitleBarDoubleClick: () => Promise<void>
   isWindowMaximized: () => Promise<boolean>
   onWindowMaximizedChange: (listener: (maximized: boolean) => void) => () => void
   onChanged: (listener: () => void) => () => void

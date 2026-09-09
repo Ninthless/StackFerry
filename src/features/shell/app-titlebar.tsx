@@ -12,7 +12,7 @@ export function AppTitlebar({ title, action }: Props) {
     <header
       className="app-region-drag bg-background flex h-10 w-full shrink-0 items-center select-none"
       onDoubleClick={() => {
-        void window.stackferry?.windowToggleMaximize()
+        void window.stackferry?.windowTitleBarDoubleClick()
       }}
     >
       <div className="flex h-full min-w-0 flex-1 items-center gap-2 px-2">

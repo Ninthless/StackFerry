@@ -153,11 +153,17 @@ function KeepAlivePane({ active, children }: { active: boolean; children: ReactN
 export function AppShell() {
   const [navId, setNavId] = useState<NavId>(defaultCliId)
   const settingsSection = settingsSectionFromNav(navId)
+  const macChrome = window.stackferry?.usesMacChrome === true
 
   return (
     <SidebarProvider
       className="h-svh overflow-hidden"
-      style={{ "--sidebar-width": "13rem" } as CSSProperties}
+      style={
+        {
+          "--sidebar-width": "13rem",
+          ...(macChrome ? { "--sidebar-width-icon": "4.5rem" } : {}),
+        } as CSSProperties
+      }
     >
       <AppSidebar activeId={navId} onSelect={setNavId} />
       <SidebarInset className="min-h-0 overflow-hidden bg-background">

@@ -12,6 +12,7 @@ export const IpcChannel = {
   windowMinimize: 'window:minimize',
   windowToggleMaximize: 'window:toggle-maximize',
   windowClose: 'window:close',
+  windowTitleBarDoubleClick: 'window:titlebar-double-click',
   windowIsMaximized: 'window:is-maximized',
   windowMaximizedChanged: 'window:maximized-changed',
   changed: 'providers:changed',

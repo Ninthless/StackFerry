@@ -4,6 +4,7 @@ import type { AppUpdateStatus, ClaudeProviderDraft, ProviderDraft, StackferryApi
 
 const api: StackferryApi = {
   showWindowControls: process.platform !== 'darwin',
+  usesMacChrome: process.platform === 'darwin',
   listProviders: () => ipcRenderer.invoke(IpcChannel.listProviders),
   listPresets: () => ipcRenderer.invoke(IpcChannel.listPresets),
   addProvider: (draft) => ipcRenderer.invoke(IpcChannel.addProvider, draft),
@@ -17,6 +18,7 @@ const api: StackferryApi = {
   windowMinimize: () => ipcRenderer.invoke(IpcChannel.windowMinimize),
   windowToggleMaximize: () => ipcRenderer.invoke(IpcChannel.windowToggleMaximize),
   windowClose: () => ipcRenderer.invoke(IpcChannel.windowClose),
+  windowTitleBarDoubleClick: () => ipcRenderer.invoke(IpcChannel.windowTitleBarDoubleClick),
   isWindowMaximized: () => ipcRenderer.invoke(IpcChannel.windowIsMaximized),
   onWindowMaximizedChange: (listener) => {
     const wrapped = (_event: unknown, maximized: boolean) => listener(maximized)

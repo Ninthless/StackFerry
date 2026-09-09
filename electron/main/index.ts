@@ -45,6 +45,7 @@ import { RoutingStore } from './routing/store'
 import { broadcastSkillsChanged } from './skills/ipc'
 import { SkillService } from './skills/service'
 import { AppTray } from './tray'
+import { windowChromeOptions } from './window-chrome'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -104,8 +105,7 @@ async function createWindow(): Promise<void> {
     roundedCorners: true,
     hasShadow: true,
     icon: path.join(publicDir, 'icon.png'),
-    autoHideMenuBar: true,
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    ...windowChromeOptions(process.platform),
     webPreferences: {
       preload,
       sandbox: true,
