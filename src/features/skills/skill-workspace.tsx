@@ -161,10 +161,15 @@ export function SkillWorkspace({ session }: Props) {
                 if (typeof value === "string") session.setRepoId(value)
               }}
             >
-              <SelectTrigger size="sm">
+              <SelectTrigger size="sm" className="max-w-none *:data-[slot=select-value]:line-clamp-none">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false} side="bottom">
+              <SelectContent
+                align="start"
+                alignItemWithTrigger={false}
+                side="bottom"
+                className="w-max min-w-(--anchor-width) overflow-x-visible"
+              >
                 <SelectGroup>
                   {repoItems.map((item) => (
                     <SelectItem key={item.value} value={item.value}>
