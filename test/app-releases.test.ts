@@ -26,8 +26,10 @@ const sampleAnnouncement = {
 }
 
 describe('electron-updater module', () => {
-  it('exposes NsisUpdater on the CommonJS default export', () => {
+  it('exposes platform updaters on the CommonJS default export', () => {
     expect(typeof electronUpdater.NsisUpdater).toBe('function')
+    expect(typeof electronUpdater.MacUpdater).toBe('function')
+    expect(typeof electronUpdater.AppImageUpdater).toBe('function')
     expect('autoUpdater' in electronUpdater).toBe(true)
   })
 })
@@ -170,12 +172,17 @@ describe('announcement store', () => {
 })
 
 describe('app release service', () => {
-  it('starts unpackaged or unsupported without a feed', async () => {
+  it('starts unpackaged without a feed and idle on packaged Windows and Linux', async () => {
     expect(initialAppUpdateStatus('0.1.0', false, 'win32').phase).toBe('unpackaged')
+    expect(initialAppUpdateStatus('0.1.0', true, 'win32').phase).toBe('idle')
+    expect(initialAppUpdateStatus('0.1.0', true, 'linux').phase).toBe('idle')
     expect(initialAppUpdateStatus('0.1.0', true, 'darwin').phase).toBe('unsupported')
-    const service = await createService({ packaged: false, platform: 'win32', feed: null })
-    expect((await service.check()).phase).toBe('unpackaged')
-    await expect(service.download()).rejects.toMatchObject({ code: 'app_update_unsupported' })
+    expect(initialAppUpdateStatus('0.1.0', true, 'freebsd').phase).toBe('unsupported')
+    const unpackaged = await createService({ packaged: false, platform: 'win32', feed: null })
+    expect((await unpackaged.check()).phase).toBe('unpackaged')
+    await expect(unpackaged.download()).rejects.toMatchObject({ code: 'app_update_unsupported' })
+    const mac = await createService({ packaged: true, platform: 'darwin', feed: null })
+    expect((await mac.check()).phase).toBe('unsupported')
   })
 
   it('checks, downloads, and refuses install before ready', async () => {

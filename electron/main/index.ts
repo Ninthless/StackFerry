@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
 import { resolveAppIconPath, resolveIconDir, resolveTrayIconPath } from './app-icon'
+import { isPackagedUpdatePlatform } from '../../shared/app-releases'
 import type { LanguagePreference } from '../../shared/locale'
 import { windowUsesMicaSurface } from '../../shared/mica'
 import type { ThemePreference } from '../../shared/theme'
@@ -215,7 +216,7 @@ app.whenReady().then(async () => {
     platform: process.platform,
     store: new AnnouncementStore(path.join(app.getPath('userData'), 'announcements.json')),
     fetchReleases: () => fetchAnnouncementFeed(),
-    feed: app.isPackaged && process.platform === 'win32' ? createElectronUpdateFeed() : null,
+    feed: app.isPackaged && isPackagedUpdatePlatform(process.platform) ? createElectronUpdateFeed() : null,
     prepareQuit: prepareQuitForUpdate,
   })
   const ipcContext = {

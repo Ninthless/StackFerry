@@ -110,13 +110,17 @@ export function emptyAnnouncementSnapshot(): AnnouncementSnapshot {
   return { items: [], unreadCount: 0 }
 }
 
+export function isPackagedUpdatePlatform(platform: string): boolean {
+  return platform === 'win32' || platform === 'linux'
+}
+
 export function initialAppUpdateStatus(
   currentVersion: string,
   packaged: boolean,
   platform: string,
 ): AppUpdateStatus {
   return {
-    phase: packaged ? (platform === 'win32' ? 'idle' : 'unsupported') : 'unpackaged',
+    phase: packaged ? (isPackagedUpdatePlatform(platform) ? 'idle' : 'unsupported') : 'unpackaged',
     currentVersion,
     availableVersion: null,
     releaseNotes: null,
