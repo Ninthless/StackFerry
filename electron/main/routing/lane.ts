@@ -211,7 +211,7 @@ export class RoutingLane {
 
   private async viewQueue(queue: string[]): Promise<string[]> {
     const [activeId, filtered] = await this.routeParts(queue)
-    return displayQueue(activeId, filtered, this.live)
+    return displayQueue(activeId, filtered)
   }
 
   private async routeParts(queue: string[]): Promise<[string | null, string[]]> {

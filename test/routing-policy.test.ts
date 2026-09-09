@@ -51,12 +51,10 @@ describe('routing policy', () => {
     expect(requestOrder(null, ['b', 'c'])).toEqual(['b', 'c'])
   })
 
-  it('shows the enabled provider in the routing list once failover is live', () => {
-    expect(displayQueue('active', [], false)).toEqual([])
-    expect(displayQueue('active', [], true)).toEqual(['active'])
-    expect(displayQueue('active', ['b', 'c'], false)).toEqual(['active', 'b', 'c'])
-    expect(displayQueue('active', ['b', 'c'], true)).toEqual(['active', 'b', 'c'])
-    expect(displayQueue(null, ['b', 'c'], true)).toEqual(['b', 'c'])
+  it('lists the enabled provider in the routing queue only when failover backups exist', () => {
+    expect(displayQueue('active', [])).toEqual([])
+    expect(displayQueue('active', ['b', 'c'])).toEqual(['active', 'b', 'c'])
+    expect(displayQueue(null, ['b', 'c'])).toEqual(['b', 'c'])
   })
 
   it('moves a queued provider up or down without changing membership', () => {

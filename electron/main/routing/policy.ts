@@ -63,12 +63,8 @@ export function requestOrder(activeCustomId: string | null, queue: string[]): st
   return ordered
 }
 
-export function displayQueue(
-  activeCustomId: string | null,
-  queue: string[],
-  routerLive: boolean,
-): string[] {
-  if (queue.length === 0 && !routerLive) return []
+export function displayQueue(activeCustomId: string | null, queue: string[]): string[] {
+  if (queue.length === 0) return []
   return requestOrder(activeCustomId, queue)
 }
 

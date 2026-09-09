@@ -88,7 +88,7 @@ export function ProviderWorkspace({ session }: Props) {
               )}
               {provider.enabled ? (
                 <Badge variant="secondary">
-                  {session.routing.active && !official
+                  {session.routing.queue.length > 0 && !official
                     ? m.routing_badge_current()
                     : m.provider_enabled_badge()}
                 </Badge>

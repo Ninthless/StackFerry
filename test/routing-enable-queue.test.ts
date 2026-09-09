@@ -72,6 +72,20 @@ describe('enable vs failover queue', () => {
     }
   })
 
+  it('does not show a Grok chat provider as failover when the queue is empty', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-grok-chat-display-'))
+    const { store, routing } = await harness(dir, [], ['a'], 'chat_completions')
+
+    try {
+      await routing.enable('grok-build', 'a')
+      expect((await store.get()).lanes['grok-build'].queue).toEqual([])
+      expect((await routing.snapshot()).lanes['grok-build'].queue).toEqual([])
+      expect((await routing.snapshot()).lanes['grok-build'].active).toBe(true)
+    } finally {
+      await routing.restoreOnQuit()
+    }
+  })
+
   it('leaves an explicit failover queue unchanged when enabling someone else', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-enable-keep-queue-'))
     const { store, routing } = await harness(dir, ['a', 'b', 'c'])
@@ -86,14 +100,22 @@ describe('enable vs failover queue', () => {
   })
 })
 
-async function harness(dir: string, ids: string[], grokIds: string[] = []) {
+async function harness(
+  dir: string,
+  ids: string[],
+  grokIds: string[] = [],
+  grokBackend: 'responses' | 'chat_completions' = 'responses',
+) {
   const providers = new ProviderStore(path.join(dir, 'providers.json'))
   const claudeStore = new ClaudeProviderStore(path.join(dir, 'claude-providers.json'))
   const grokStore = new GrokProviderStore(path.join(dir, 'grok-providers.json'))
   const store = new RoutingStore(path.join(dir, 'routing.json'))
   await writeFile(path.join(dir, 'providers.json'), `${JSON.stringify(providerFile(ids), null, 2)}\n`)
   if (grokIds.length > 0) {
-    await writeFile(path.join(dir, 'grok-providers.json'), `${JSON.stringify(grokProviderFile(grokIds), null, 2)}\n`)
+    await writeFile(
+      path.join(dir, 'grok-providers.json'),
+      `${JSON.stringify(grokProviderFile(grokIds, grokBackend), null, 2)}\n`,
+    )
   }
   await mkdir(path.join(dir, 'codex'), { recursive: true })
   await mkdir(path.join(dir, 'grok'), { recursive: true })
@@ -124,7 +146,7 @@ async function harness(dir: string, ids: string[], grokIds: string[] = []) {
   return { store, routing, providers, grokStore }
 }
 
-function grokProviderFile(ids: string[]) {
+function grokProviderFile(ids: string[], apiBackend: 'responses' | 'chat_completions' = 'responses') {
   return {
     version: 1,
     activeProviderId: null,
@@ -135,7 +157,7 @@ function grokProviderFile(ids: string[]) {
       kind: 'custom',
       baseUrl: 'https://example.test/v1',
       model: 'demo',
-      apiBackend: 'responses',
+      apiBackend,
       apiKeyPayload: Buffer.from('key').toString('base64'),
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',

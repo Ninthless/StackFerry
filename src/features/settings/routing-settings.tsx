@@ -278,6 +278,7 @@ function LanePanel({
   const names = new Map(providers.map((provider) => [provider.id, provider.name]))
   const breakerById = new Map(lane.breakers.map((item) => [item.providerId, item.state]))
   const currentId = lane.queue[0] ?? null
+  const failover = lane.active && lane.queue.length > 0
   const copy = laneCopy(cliId)
 
   return (
@@ -285,10 +286,10 @@ function LanePanel({
       <FieldGroup>
         <Alert>
           <HintTitle hint={copy.hint}>
-            <AlertTitle>{lane.active ? m.routing_active() : m.routing_inactive()}</AlertTitle>
+            <AlertTitle>{failover ? m.routing_active() : m.routing_inactive()}</AlertTitle>
           </HintTitle>
           <AlertDescription>
-            {lane.active ? copy.active : m.routing_inactive_description()}
+            {failover ? copy.active : m.routing_inactive_description()}
           </AlertDescription>
         </Alert>
         <RoutingQueueField
