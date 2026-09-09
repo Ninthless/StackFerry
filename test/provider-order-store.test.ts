@@ -71,6 +71,7 @@ function claudeFile(ids: string[]) {
       kind: id === 'official' ? 'official' : 'custom',
       baseUrl: id === 'official' ? '' : 'https://example.test',
       model: id === 'official' ? '' : 'demo',
+      models: id === 'official' ? [] : ['demo'],
       authScheme: 'bearer',
       effortLevel: '',
       permissionMode: '',
