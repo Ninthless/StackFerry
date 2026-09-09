@@ -8,7 +8,7 @@ pnpm test
 pnpm dev
 ```
 
-需要 Node `>=22.12` 与 pnpm 11。当前机器上 `pnpm build` 只打本机平台。没有 Mac、也没有 Apple 证书时，用 GitHub Actions 打三端包：推送 `v*` 标签会发布到 GitHub Releases；也可在 Actions 里手动跑 `Release` 工作流，只上传构建产物。
+需要 Node `>=22.12` 与 pnpm 11。当前机器上 `pnpm build` 只打本机平台。没有 Mac、也没有 Apple 证书时，用 GitHub Actions 打三端包：把 `package.json` 的 `version` 改好后推送对应 `v*` 标签（例如 `1.0.0` 推 `v1.0.0`），会发布到 GitHub Releases 并成为 Latest。Windows / Linux 应用内更新读这个 Latest 上的 `latest.yml` / `latest-linux.yml`。也可在 Actions 里手动跑 `Release` 工作流，只上传构建产物、不发版。
 
 ```bash
 pnpm build:win    # NSIS

@@ -4,12 +4,16 @@
   "productName": "StackFerry",
   "executableName": "stackferry",
   "asar": true,
+  "compression": "maximum",
+  "electronLanguages": ["en-US", "zh-CN"],
   "directories": {
     "output": "release/${version}"
   },
   "files": [
     "dist-electron",
-    "dist"
+    "dist",
+    "!**/*.map",
+    "!dist-electron/**/*.{png,ico,svg}"
   ],
   "extraResources": [
     {
