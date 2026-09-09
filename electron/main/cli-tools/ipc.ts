@@ -17,6 +17,7 @@ export function registerCliToolIpc(service = new CliToolService()): void {
   }
 
   ipcMain.handle(IpcChannel.listCliTools, () => service.list())
+  ipcMain.handle(IpcChannel.checkCliToolUpdates, () => enqueue(() => service.checkUpdates()))
   ipcMain.handle(IpcChannel.installCliTool, (_event, id: unknown) => {
     if (!isCliToolId(id)) throw new AppError('cli_not_found')
     return enqueue(() => service.install(id))

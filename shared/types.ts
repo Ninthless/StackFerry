@@ -243,6 +243,7 @@ export type StackferryApi = {
   importSkills: (directories: string[]) => Promise<SkillListItem[]>
   onSkillsChanged: (listener: () => void) => () => void
   listCliTools: () => Promise<CliToolStatus[]>
+  checkCliToolUpdates: () => Promise<CliToolStatus[]>
   installCliTool: (id: CliToolId) => Promise<CliToolStatus[]>
   updateCliTool: (id: CliToolId) => Promise<CliToolStatus[]>
   uninstallCliTool: (id: CliToolId) => Promise<CliToolStatus[]>

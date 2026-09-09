@@ -5,8 +5,12 @@ import { CLI_INSTALL_URLS, nativeInstallArgs, packageManagerArgs } from '../elec
 import { classifyInstallMethod, parseCliVersion, parseWhereOutput } from '../electron/main/cli-tools/detect'
 import {
   brewCaskOutdatedAvailable,
+  cliVersionOutdated,
+  grokNativeOutdated,
   grokNativeUpdateAvailable,
+  npmLatestUrl,
   npmOutdatedAvailable,
+  parseNpmLatestVersion,
   wingetUpgradeAvailable,
 } from '../electron/main/cli-tools/outdated'
 import {
@@ -247,5 +251,19 @@ describe('outdated parsers', () => {
   it('parses grok update --check', () => {
     expect(grokNativeUpdateAvailable('Grok Build - v1.0.10 (latest: 1.0.13) [stable]\n')).toBe(true)
     expect(grokNativeUpdateAvailable('Grok Build - v1.0.13 (latest: 1.0.13) [stable]\n')).toBe(false)
+    expect(grokNativeOutdated('Grok Build - v1.0.10 (latest: 1.0.13) [stable]\n')).toEqual({
+      available: true,
+      latestVersion: '1.0.13',
+    })
+  })
+
+  it('compares installed CLI versions against npm latest metadata', () => {
+    expect(npmLatestUrl('@openai/codex')).toBe('https://registry.npmjs.org/@openai%2Fcodex/latest')
+    expect(parseNpmLatestVersion('{"version":"0.50.0"}')).toBe('0.50.0')
+    expect(parseNpmLatestVersion('{')).toBeNull()
+    expect(cliVersionOutdated('2.1.211 (Claude Code)', '2.1.263')).toBe(true)
+    expect(cliVersionOutdated('v1.0.13', '1.0.13')).toBe(false)
+    expect(cliVersionOutdated('1.0.10', '1.0.13')).toBe(true)
+    expect(cliVersionOutdated(null, '1.0.13')).toBe(false)
   })
 })

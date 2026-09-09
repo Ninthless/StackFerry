@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { Tag } from "antd"
 import { Trash2 } from "lucide-react"
 import type { CliToolId, CliToolStatus } from "@shared/types"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Item,
   ItemActions,
@@ -41,27 +42,70 @@ export function CliSettings() {
   const [error, setError] = useState("")
   const [busyId, setBusyId] = useState<CliToolId | null>(null)
   const [busyAction, setBusyAction] = useState<BusyAction | null>(null)
+  const [checking, setChecking] = useState(false)
   const [uninstalling, setUninstalling] = useState<CliToolStatus | null>(null)
 
-  const refresh = useCallback(async (): Promise<void> => {
+  const refresh = useCallback(async (): Promise<boolean> => {
     const api = window.stackferry
     if (!api) {
       setError(m.error_desktop_only())
-      return
+      setLoading(false)
+      return false
     }
     try {
       setTools(await api.listCliTools())
       setError("")
+      return true
     } catch (loadError) {
       setError(formatAppError(loadError))
+      return false
     } finally {
       setLoading(false)
     }
   }, [])
 
+  const checkUpdates = useCallback(async (manual: boolean): Promise<void> => {
+    const api = window.stackferry
+    if (!api) {
+      if (manual) setError(m.error_desktop_only())
+      return
+    }
+    setChecking(true)
+    const toastId = "cli-check-updates"
+    if (manual) {
+      toast.add({
+        id: toastId,
+        type: "loading",
+        description: m.toast_cli_checking(),
+        timeout: 0,
+      })
+    }
+    try {
+      const next = await api.checkCliToolUpdates()
+      setTools(next)
+      if (manual) {
+        const count = next.filter((tool) => tool.updateAvailable).length
+        toast.add({
+          id: toastId,
+          type: "success",
+          description: count > 0 ? m.toast_cli_checked_some({ count }) : m.toast_cli_checked_none(),
+        })
+      }
+    } catch (checkError) {
+      if (manual) {
+        toast.close(toastId)
+        toast.add({ type: "error", description: formatAppError(checkError), priority: "high" })
+      }
+    } finally {
+      setChecking(false)
+    }
+  }, [])
+
   useEffect(() => {
-    void refresh()
-  }, [refresh])
+    void (async () => {
+      if (await refresh()) await checkUpdates(false)
+    })()
+  }, [refresh, checkUpdates])
 
   async function run(id: CliToolId, action: BusyAction, work: () => Promise<CliToolStatus[]>): Promise<void> {
     const name = cliById(id).name
@@ -93,6 +137,18 @@ export function CliSettings() {
           <HintTitle hint={m.cli_description()}>
             <CardTitle>{m.cli_legend()}</CardTitle>
           </HintTitle>
+          <CardAction>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={loading || checking || busyId !== null}
+              onClick={() => void checkUpdates(true)}
+            >
+              {checking ? <Spinner data-icon="inline-start" /> : null}
+              {checking ? m.cli_checking_updates() : m.cli_check_updates()}
+            </Button>
+          </CardAction>
         </CardHeader>
         <CardContent>
           {error ? (
@@ -114,6 +170,7 @@ export function CliSettings() {
                   tool={tool}
                   busy={busyId === tool.id}
                   busyAction={busyId === tool.id ? busyAction : null}
+                  checking={checking}
                   onInstall={() => {
                     const api = window.stackferry
                     if (!api) return
@@ -152,6 +209,7 @@ function CliToolRow({
   tool,
   busy,
   busyAction,
+  checking,
   onInstall,
   onUpdate,
   onUninstall,
@@ -159,6 +217,7 @@ function CliToolRow({
   tool: CliToolStatus
   busy: boolean
   busyAction: BusyAction | null
+  checking: boolean
   onInstall: () => void
   onUpdate: () => void
   onUninstall: () => void
@@ -166,6 +225,7 @@ function CliToolRow({
   const cli = cliById(tool.id)
   const Icon = cli.icon
   const managed = tool.method !== null && tool.method !== "unknown"
+  const locked = busy || checking
 
   return (
     <Item variant="outline" className="flex-nowrap">
@@ -177,6 +237,11 @@ function CliToolRow({
           <span>{cli.name}</span>
           {tool.installed && tool.version ? <Badge variant="secondary">{tool.version}</Badge> : null}
           {tool.method ? <Badge variant="outline">{methodLabel(tool.method)}</Badge> : null}
+          {tool.updateAvailable ? (
+            <Tag color="warning" title={tool.latestVersion ?? undefined}>
+              {m.cli_update_available()}
+            </Tag>
+          ) : null}
         </ItemTitle>
         <ItemDescription title={tool.path ?? undefined}>{rowDescription(tool)}</ItemDescription>
       </ItemContent>
@@ -187,7 +252,7 @@ function CliToolRow({
               {tool.updateAvailable ? (
                 <BusyButton
                   busy={busy && busyAction === "update"}
-                  disabled={busy}
+                  disabled={locked}
                   label={m.cli_update()}
                   busyLabel={m.cli_updating()}
                   onClick={onUpdate}
@@ -195,7 +260,7 @@ function CliToolRow({
               ) : null}
               <BusyButton
                 busy={busy && busyAction === "uninstall"}
-                disabled={busy}
+                disabled={locked}
                 variant="destructive"
                 label={m.cli_uninstall()}
                 busyLabel={m.cli_uninstalling()}
@@ -206,7 +271,7 @@ function CliToolRow({
         ) : (
           <BusyButton
             busy={busy && busyAction === "install"}
-            disabled={busy}
+            disabled={locked}
             label={m.cli_install()}
             busyLabel={m.cli_installing()}
             onClick={onInstall}

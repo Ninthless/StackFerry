@@ -94,6 +94,7 @@ const api: StackferryApi = {
   chooseSkillImport: () => ipcRenderer.invoke(IpcChannel.chooseSkillImport),
   importSkills: (directories) => ipcRenderer.invoke(IpcChannel.importSkills, directories),
   listCliTools: () => ipcRenderer.invoke(IpcChannel.listCliTools),
+  checkCliToolUpdates: () => ipcRenderer.invoke(IpcChannel.checkCliToolUpdates),
   installCliTool: (id) => ipcRenderer.invoke(IpcChannel.installCliTool, id),
   updateCliTool: (id) => ipcRenderer.invoke(IpcChannel.updateCliTool, id),
   uninstallCliTool: (id) => ipcRenderer.invoke(IpcChannel.uninstallCliTool, id),

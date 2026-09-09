@@ -13,6 +13,7 @@ export type CliToolStatus = {
   path: string | null
   method: CliInstallMethod | null
   updateAvailable: boolean
+  latestVersion: string | null
 }
 
 export function isCliToolId(value: unknown): value is CliToolId {

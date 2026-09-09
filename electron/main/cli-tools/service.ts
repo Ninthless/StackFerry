@@ -14,9 +14,26 @@ import {
 import { resolveClaudeHome } from '../claude/home'
 import { resolveCodexHome } from '../codex/home'
 import { resolveGrokHome } from '../grok/home'
-import { nativeInstallArgs, packageManagerArgs, INSTALL_TIMEOUT_MS, VERSION_TIMEOUT_MS, type PackageManager, type ToolName } from './commands'
+import {
+  CLI_NPM_PACKAGES,
+  INSTALL_TIMEOUT_MS,
+  VERSION_TIMEOUT_MS,
+  nativeInstallArgs,
+  packageManagerArgs,
+  type PackageManager,
+  type ToolName,
+} from './commands'
 import { candidateBinaries, classifyInstallMethod, firstExisting, parseCliVersion, parseWhereOutput } from './detect'
-import { packageManagerCheckArgs, packageOutdated, grokNativeUpdateAvailable, CHECK_TIMEOUT_MS } from './outdated'
+import {
+  CHECK_TIMEOUT_MS,
+  cliVersionOutdated,
+  grokNativeOutdated,
+  npmLatestUrl,
+  packageManagerCheckArgs,
+  packageOutdatedResult,
+  parseNpmLatestVersion,
+  type CliOutdated,
+} from './outdated'
 import {
   binaryBaseName,
   expandWindowsEnv,
@@ -42,11 +59,15 @@ export class CliToolService {
     return Promise.all(CLI_TOOL_IDS.map((id) => this.inspect(id)))
   }
 
+  async checkUpdates(): Promise<CliToolStatus[]> {
+    return Promise.all(CLI_TOOL_IDS.map((id) => this.inspect(id, { check: true })))
+  }
+
   async install(id: CliToolId): Promise<CliToolStatus[]> {
     requireId(id)
     const current = await this.inspect(id)
     if (!current.installed) await this.runNativeInstall(id)
-    return this.list()
+    return this.checkUpdates()
   }
 
   async update(id: CliToolId): Promise<CliToolStatus[]> {
@@ -62,7 +83,7 @@ export class CliToolService {
     } else {
       await this.runPackageManager(id, method, 'update')
     }
-    return this.list()
+    return this.checkUpdates()
   }
 
   async uninstall(id: CliToolId): Promise<CliToolStatus[]> {
@@ -74,19 +95,34 @@ export class CliToolService {
     return this.list()
   }
 
-  private async inspect(id: CliToolId): Promise<CliToolStatus> {
+  private async inspect(id: CliToolId, options?: { check?: boolean }): Promise<CliToolStatus> {
     const dirs = await this.searchDirs()
     let binary = firstExisting(candidateBinaries(id, dirs, process.platform), isRunnable)
     if (!binary) binary = await this.whichBinary(id)
-    if (!binary) return { id, installed: false, version: null, path: null, method: null, updateAvailable: false }
+    if (!binary) {
+      return {
+        id,
+        installed: false,
+        version: null,
+        path: null,
+        method: null,
+        updateAvailable: false,
+        latestVersion: null,
+      }
+    }
     const method = classifyInstallMethod(binary, { home: os.homedir(), grokHome: resolveGrokHome() })
+    const version = await this.readVersion(binary)
+    const outdated = options?.check
+      ? await this.hasUpdate(id, method, binary, version)
+      : { available: false, latestVersion: null }
     return {
       id,
       installed: true,
-      version: await this.readVersion(binary),
+      version,
       path: binary,
       method,
-      updateAvailable: await this.hasUpdate(id, method, binary),
+      updateAvailable: outdated.available,
+      latestVersion: outdated.latestVersion,
     }
   }
 
@@ -106,23 +142,41 @@ export class CliToolService {
     id: CliToolId,
     method: CliInstallMethod,
     binary: string | null,
-  ): Promise<boolean> {
+    version: string | null,
+  ): Promise<CliOutdated> {
+    const none = { available: false, latestVersion: null }
     if (id === 'grok-build' && method === 'native' && binary) {
       try {
         const { stdout } = await this.runExecCapture(binary, ['update', '--check'], CHECK_TIMEOUT_MS)
-        return grokNativeUpdateAvailable(stdout)
+        return grokNativeOutdated(stdout)
       } catch {
-        return false
+        return none
       }
     }
-    if (method === 'native' || method === 'unknown') return false
+    if (method === 'native') {
+      const latestVersion = await this.npmRegistryLatest(id)
+      return { available: cliVersionOutdated(version, latestVersion), latestVersion }
+    }
+    if (method === 'unknown') return none
     try {
       const spec = packageManagerCheckArgs(id, method)
       const file = await this.resolveTool(spec.tool)
       const { stdout } = await this.runExecCapture(file, spec.args, spec.timeoutMs)
-      return packageOutdated(method, stdout, id)
+      return packageOutdatedResult(method, stdout, id)
     } catch {
-      return false
+      return none
+    }
+  }
+
+  private async npmRegistryLatest(id: CliToolId): Promise<string | null> {
+    const pkg = CLI_NPM_PACKAGES[id]
+    if (!pkg) return null
+    try {
+      const response = await fetch(npmLatestUrl(pkg), { signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) })
+      if (!response.ok) return null
+      return parseNpmLatestVersion(await response.text())
+    } catch {
+      return null
     }
   }
 

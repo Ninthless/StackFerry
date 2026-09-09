@@ -62,6 +62,7 @@ export const IpcChannel = {
   importSkills: 'skills:import',
   skillsChanged: 'skills:changed',
   listCliTools: 'cliTools:list',
+  checkCliToolUpdates: 'cliTools:checkUpdates',
   installCliTool: 'cliTools:install',
   updateCliTool: 'cliTools:update',
   uninstallCliTool: 'cliTools:uninstall',
