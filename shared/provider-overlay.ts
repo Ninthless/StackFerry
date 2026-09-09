@@ -22,6 +22,9 @@ export const REASONING_EFFORTS = [
 ] as const
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number]
 
+export const APPROVAL_POLICIES = ['untrusted', 'on-request', 'never'] as const
+export type ApprovalPolicy = (typeof APPROVAL_POLICIES)[number]
+
 const ALLOWED_TOP_LEVEL = new Set([
   'model',
   'model_provider',
@@ -29,6 +32,7 @@ const ALLOWED_TOP_LEVEL = new Set([
   'model_reasoning_effort',
   'model_context_window',
   'model_auto_compact_token_limit',
+  'approval_policy',
 ])
 
 export type ProviderOverlay = {
@@ -36,6 +40,7 @@ export type ProviderOverlay = {
   reasoningEffort: string
   contextWindow: number | null
   autoCompact: number | null
+  approvalPolicy: string
   tableKey: string
   table: TomlTable
 }
@@ -45,6 +50,7 @@ export type OverlaySession = {
   reasoningEffort: string
   contextWindow: string
   autoCompact: string
+  approvalPolicy: string
 }
 
 export type OverlaySummary = {
@@ -165,6 +171,7 @@ export function parseProviderOverlay(
     reasoningEffort: parseReasoningEffort(doc.model_reasoning_effort),
     contextWindow: parsePositiveInt(doc.model_context_window, 'model_context_window'),
     autoCompact: parsePositiveInt(doc.model_auto_compact_token_limit, 'model_auto_compact_token_limit'),
+    approvalPolicy: parseApprovalPolicy(doc.approval_policy),
     tableKey,
     table: { ...table },
   }
@@ -181,6 +188,7 @@ export function serializeProviderOverlay(overlay: ProviderOverlay): string {
   if (overlay.reasoningEffort) doc.model_reasoning_effort = overlay.reasoningEffort
   if (overlay.contextWindow != null) doc.model_context_window = overlay.contextWindow
   if (overlay.autoCompact != null) doc.model_auto_compact_token_limit = overlay.autoCompact
+  if (overlay.approvalPolicy) doc.approval_policy = overlay.approvalPolicy
   return stringifyToml(doc)
 }
 
@@ -236,9 +244,10 @@ export function overlaySession(text: string): OverlaySession {
       reasoningEffort: overlay.reasoningEffort,
       contextWindow: overlay.contextWindow == null ? '' : String(overlay.contextWindow),
       autoCompact: overlay.autoCompact == null ? '' : String(overlay.autoCompact),
+      approvalPolicy: overlay.approvalPolicy,
     }
   } catch {
-    return { model: '', reasoningEffort: '', contextWindow: '', autoCompact: '' }
+    return { model: '', reasoningEffort: '', contextWindow: '', autoCompact: '', approvalPolicy: '' }
   }
 }
 
@@ -264,6 +273,7 @@ export function withOverlaySession(text: string, patch: Partial<OverlaySession>)
     if (patch.autoCompact !== undefined) {
       overlay.autoCompact = parseOptionalPositiveInt(patch.autoCompact, 'model_auto_compact_token_limit')
     }
+    if (patch.approvalPolicy !== undefined) overlay.approvalPolicy = parseApprovalPolicy(patch.approvalPolicy)
   })
 }
 
@@ -306,6 +316,10 @@ function asTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+export function isApprovalPolicy(value: string): value is ApprovalPolicy {
+  return (APPROVAL_POLICIES as readonly string[]).includes(value)
+}
+
 function isReasoningEffort(value: string): value is ReasoningEffort {
   return (REASONING_EFFORTS as readonly string[]).includes(value)
 }
@@ -319,6 +333,17 @@ function parseReasoningEffort(value: unknown): string {
     })
   }
   return effort
+}
+
+function parseApprovalPolicy(value: unknown): string {
+  const policy = asTrimmedString(value)
+  if (!policy) return ''
+  if (!isApprovalPolicy(policy)) {
+    throw new AppError('overlay_invalid_approval', {
+      allowed: APPROVAL_POLICIES.join(' / '),
+    })
+  }
+  return policy
 }
 
 function parsePositiveInt(value: unknown, key: string): number | null {

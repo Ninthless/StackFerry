@@ -368,5 +368,9 @@
   "error_cli_spawn_failed": "无法执行安装命令：{detail}",
   "error_cli_timeout": "CLI 安装或卸载超时。",
   "error_cli_method_unsupported": "无法识别该 CLI 的安装来源，因此不能自动更新或卸载。",
-  "error_cli_npm_missing": "未找到 npm，无法通过 npm 更新或卸载该 CLI。"
+  "error_cli_npm_missing": "未找到 npm，无法通过 npm 更新或卸载该 CLI。",
+  "field_toml_description": "此片段会合并到 ~/.codex/config.toml。上方会话字段会改这里的 model、model_reasoning_effort、model_context_window、model_auto_compact_token_limit 和 approval_policy。自定义供应商写入 [model_providers.<id>] 表。name、experimental_bearer_token 与 model_provider 在覆盖片段之后写入，并优先生效。",
+  "session_permission": "审批策略",
+  "session_permission_description": "对应 config.toml 的 approval_policy。Codex 使用 untrusted、on-request 或 never。选择「默认」时不写入该字段。sandbox_mode 不在此管理。",
+  "error_overlay_invalid_approval": "approval_policy 仅支持 {allowed}"
 }

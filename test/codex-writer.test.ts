@@ -14,7 +14,7 @@ describe('codex live writer', () => {
     await mkdir(codexHome, { recursive: true })
     await writeFile(
       path.join(codexHome, 'config.toml'),
-      'approval_policy = "on-request"\nmodel = "kept-model"\n',
+      'notify = ["keep"]\napproval_policy = "on-request"\nmodel = "kept-model"\n',
     )
     await writeFile(path.join(codexHome, 'auth.json'), originalAuth)
 
@@ -37,7 +37,8 @@ wire_api = "responses"
     })
 
     const afterFirst = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
-    expect(afterFirst).toContain('approval_policy = "on-request"')
+    expect(afterFirst).toContain('notify = [ "keep" ]')
+    expect(afterFirst).not.toContain('approval_policy')
     expect(afterFirst).toContain('model = "model-a"')
     expect(afterFirst).toContain('base_url = "https://a.example/v1"')
     expect(afterFirst).toContain('experimental_bearer_token = "key-a"')
@@ -68,7 +69,8 @@ wire_api = "responses"
     await enableOfficialLiveConfig({ codexHome, backupRoot })
     const afterOfficial = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
     expect(afterOfficial).toContain('model_provider = "openai"')
-    expect(afterOfficial).toContain('approval_policy = "on-request"')
+    expect(afterOfficial).toContain('notify = [ "keep" ]')
+    expect(afterOfficial).not.toContain('approval_policy')
     expect(afterOfficial).not.toContain('experimental_bearer_token')
     expect(await readFile(path.join(codexHome, 'auth.json'), 'utf8')).toBe(originalAuth)
   })

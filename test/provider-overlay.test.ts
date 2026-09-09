@@ -80,7 +80,7 @@ args = ["read", "op://Codex/key"]
     expectAppError(
       () =>
         parseProviderOverlay(`
-approval_policy = "never"
+notify = ["notify-send"]
 model_provider = "custom"
 
 [model_providers.custom]
@@ -88,7 +88,7 @@ name = "Custom"
 base_url = "https://api.example.com/v1"
 `),
       'overlay_unsupported_top_level',
-      { key: 'approval_policy' },
+      { key: 'notify' },
     )
 
     expectAppError(
@@ -156,6 +156,7 @@ wire_api = "responses"
       reasoningEffort: 'high',
       contextWindow: '1000000',
       autoCompact: '900000',
+      approvalPolicy: '',
     })
     expect(parseProviderOverlay(updated).table.wire_api).toBe('responses')
     expect(overlayBaseUrl(updated)).toBe('https://api.example.com/v1')
@@ -168,6 +169,36 @@ wire_api = "responses"
     expect(overlaySession(cleared).reasoningEffort).toBe('')
     expect(cleared).not.toContain('model_reasoning_effort')
     expect(cleared).not.toContain('model_context_window')
+  })
+
+  it('reads and writes approval_policy and rejects unknown values', () => {
+    const starter = starterOverlayToml({
+      providerId: 'custom',
+      name: 'Custom',
+      baseUrl: 'https://api.example.com/v1',
+      model: 'gpt-5.4',
+    })
+    const updated = withOverlaySession(starter, { approvalPolicy: 'never' })
+    expect(overlaySession(updated).approvalPolicy).toBe('never')
+    expect(parseProviderOverlay(updated).approvalPolicy).toBe('never')
+    expect(updated).toContain('approval_policy = "never"')
+
+    const cleared = withOverlaySession(updated, { approvalPolicy: '' })
+    expect(overlaySession(cleared).approvalPolicy).toBe('')
+    expect(cleared).not.toContain('approval_policy')
+
+    expectAppError(
+      () =>
+        parseProviderOverlay(`
+approval_policy = "yolo"
+model_provider = "custom"
+
+[model_providers.custom]
+name = "Custom"
+base_url = "https://api.example.com/v1"
+`),
+      'overlay_invalid_approval',
+    )
   })
 
   it('accepts max and ultra reasoning effort', () => {

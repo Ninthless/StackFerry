@@ -33,6 +33,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { formatAppError } from "@/lib/format-app-error"
 import { presetLabel } from "@/lib/preset-label"
+import { HintLabel } from "@/features/settings/settings-hint"
 import * as m from "@/paraglide/messages.js"
 import { TomlEditor } from "./toml-editor"
 import { CodexSessionFields } from "./codex-session-fields"
@@ -258,8 +259,10 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
                     onError={setError}
                   />
                   <Field data-invalid={error ? true : undefined}>
-                    <Field orientation="horizontal">
-                      <FieldLabel htmlFor={`${formId}-toml`}>{m.field_toml()}</FieldLabel>
+                    <Field orientation="horizontal" className="justify-between">
+                      <HintLabel htmlFor={`${formId}-toml`} hint={m.field_toml_description()}>
+                        {m.field_toml()}
+                      </HintLabel>
                       <Button type="button" variant="outline" size="sm" onClick={handleFormatToml}>
                         <AlignLeft data-icon="inline-start" />
                         {m.action_format()}

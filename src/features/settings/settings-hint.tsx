@@ -12,7 +12,7 @@ export function HintIcon({ hint }: { hint: string }) {
         <CircleHelp />
         <span className="sr-only">{m.field_hint()}</span>
       </TooltipTrigger>
-      <TooltipContent>{hint}</TooltipContent>
+      <TooltipContent className="max-w-sm text-left whitespace-normal">{hint}</TooltipContent>
     </Tooltip>
   )
 }

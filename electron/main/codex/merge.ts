@@ -111,6 +111,7 @@ function applySessionKeys(doc: TomlTable, overlay: ReturnType<typeof parseProvid
   setOrDelete(doc, 'model_reasoning_effort', overlay.reasoningEffort || undefined)
   setOrDelete(doc, 'model_context_window', overlay.contextWindow ?? undefined)
   setOrDelete(doc, 'model_auto_compact_token_limit', overlay.autoCompact ?? undefined)
+  setOrDelete(doc, 'approval_policy', overlay.approvalPolicy || undefined)
 }
 
 function setOrDelete(doc: TomlTable, key: string, value: string | number | undefined): void {

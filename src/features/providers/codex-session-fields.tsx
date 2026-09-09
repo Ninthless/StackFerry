@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react"
 import { CheckCircle2Icon, CircleHelp, Download, InfoIcon } from "lucide-react"
 import {
+  APPROVAL_POLICIES,
   REASONING_EFFORTS,
+  isApprovalPolicy,
   overlayBaseUrl,
   overlaySession,
   syncedAutoCompactValue,
@@ -21,6 +23,14 @@ import {
 } from "@/components/ui/combobox"
 import { InputGroupAddon, InputGroupButton } from "@/components/ui/input-group"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { EffortScale } from "@/features/clis/effort-scale"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { formatAppError } from "@/lib/format-app-error"
@@ -267,8 +277,47 @@ export function CodexSessionFields({
           onChange={(event) => patchSession({ autoCompact: event.target.value })}
         />
       </Field>
+      <Field>
+        <FieldHint
+          htmlFor={`${formId}-permission`}
+          label={m.session_permission()}
+          hint={m.session_permission_description()}
+        />
+        <Select
+          items={approvalItems()}
+          value={session.approvalPolicy || UNSET_PERMISSION}
+          onValueChange={(value) => {
+            if (typeof value !== "string") return
+            patchSession({
+              approvalPolicy: isApprovalPolicy(value) ? value : "",
+            })
+          }}
+        >
+          <SelectTrigger id={`${formId}-permission`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false} side="bottom">
+            <SelectGroup>
+              {approvalItems().map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </Field>
     </>
   )
+}
+
+const UNSET_PERMISSION = "__unset__"
+
+function approvalItems() {
+  return [
+    { label: m.session_reasoning_default(), value: UNSET_PERMISSION },
+    ...APPROVAL_POLICIES.map((value) => ({ label: value, value })),
+  ]
 }
 
 function isReasoningOption(value: string): value is (typeof REASONING_EFFORTS)[number] {

@@ -12,6 +12,7 @@ export const APP_ERROR_CODES = [
   'overlay_wire_api',
   'overlay_auth_conflict',
   'overlay_invalid_reasoning',
+  'overlay_invalid_approval',
   'overlay_positive_int',
   'models_missing_base_url',
   'models_invalid_url',

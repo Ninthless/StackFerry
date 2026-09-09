@@ -50,7 +50,7 @@ describe('codex toml merge', () => {
       apiKey: 'sk-test',
     })
     const key = providerKey('11111111-1111-1111-1111-111111111111')
-    expect(next.approval_policy).toBe('on-request')
+    expect(next.approval_policy).toBeUndefined()
     expect(next.notify).toEqual(['notify-send'])
     expect(next.sandbox_mode).toBe('workspace-write')
     expect(next.model_provider).toBe(key)
@@ -137,7 +137,7 @@ describe('codex toml merge', () => {
     })
     const official = applyOfficialProvider(thirdParty)
     expect(official.model_provider).toBe('openai')
-    expect(official.approval_policy).toBe('on-request')
+    expect(official.approval_policy).toBeUndefined()
     expect(official.mcp_servers).toEqual({ docs: { command: 'docs-mcp' } })
     expect(official.model_providers).toBeUndefined()
     expect(stringifyToml(official)).not.toContain('experimental_bearer_token')
@@ -215,6 +215,37 @@ wire_api = "chat"
       'overlay_reserved_provider_id',
       { name: 'openai' },
     )
+  })
+
+  it('writes approval_policy from the overlay and clears it when omitted', () => {
+    const withPolicy = applyThirdPartyProvider(existing, {
+      id: 'policy',
+      name: 'Policy',
+      tomlText: `approval_policy = "never"
+${overlayFor({
+        providerId: 'provider_policy',
+        name: 'Policy',
+        baseUrl: 'https://policy.example/v1',
+        model: 'model-policy',
+      })}`,
+      apiKey: 'key-policy',
+    })
+    expect(withPolicy.approval_policy).toBe('never')
+    expect(withPolicy.sandbox_mode).toBe('workspace-write')
+
+    const withoutPolicy = applyThirdPartyProvider(withPolicy, {
+      id: 'no-policy',
+      name: 'No Policy',
+      tomlText: overlayFor({
+        providerId: 'provider_no_policy',
+        name: 'No Policy',
+        baseUrl: 'https://nopolicy.example/v1',
+        model: 'model-no-policy',
+      }),
+      apiKey: 'key-no-policy',
+    })
+    expect(withoutPolicy.approval_policy).toBeUndefined()
+    expect(withoutPolicy.sandbox_mode).toBe('workspace-write')
   })
 
   it('writes max reasoning effort from the overlay', () => {

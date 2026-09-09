@@ -368,5 +368,9 @@
   "error_cli_spawn_failed": "Could not run the install command: {detail}",
   "error_cli_timeout": "The CLI install or uninstall timed out.",
   "error_cli_method_unsupported": "The CLI install source is unknown, so it cannot be updated or uninstalled automatically.",
-  "error_cli_npm_missing": "npm was not found, so this CLI cannot be updated or uninstalled with npm."
+  "error_cli_npm_missing": "npm was not found, so this CLI cannot be updated or uninstalled with npm.",
+  "field_toml_description": "This fragment is merged into ~/.codex/config.toml. The session fields above edit model, model_reasoning_effort, model_context_window, model_auto_compact_token_limit, and approval_policy here. The custom provider is the [model_providers.<id>] table. name, experimental_bearer_token, and model_provider are written after the overlay and take precedence.",
+  "session_permission": "Approval policy",
+  "session_permission_description": "Maps to approval_policy in config.toml. Codex uses untrusted, on-request, or never. Selecting Default leaves the field unset. sandbox_mode is not managed here.",
+  "error_overlay_invalid_approval": "approval_policy only supports {allowed}"
 }
