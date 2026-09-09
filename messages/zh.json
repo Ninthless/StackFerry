@@ -396,6 +396,8 @@
   "app_update_install_title": "安装此更新？",
   "app_update_install_description": "StackFerry 将退出并安装 {version}。未保存的 CLI 工作不会自动恢复。",
   "app_update_available": "有可用更新",
+  "app_update_popup_title": "发现新版本",
+  "app_update_popup_description": "StackFerry {version} 已发布。可稍后在关于页下载。",
   "app_update_ready": "更新已下载。安装后将重启。",
   "app_update_up_to_date": "已是最新版本。",
   "app_update_unpackaged": "应用内更新仅适用于已打包的 Windows 安装包。",

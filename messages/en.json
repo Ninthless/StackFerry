@@ -396,6 +396,8 @@
   "app_update_install_title": "Install this update?",
   "app_update_install_description": "StackFerry will quit and install {version}. Unsaved CLI work is not restored automatically.",
   "app_update_available": "Update available",
+  "app_update_popup_title": "Update available",
+  "app_update_popup_description": "StackFerry {version} is available. You can download it later from About.",
   "app_update_ready": "The update is downloaded. Install it to restart.",
   "app_update_up_to_date": "You are on the latest version.",
   "app_update_unpackaged": "In-app updates are available only in packaged Windows builds.",

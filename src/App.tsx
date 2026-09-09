@@ -2,6 +2,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toast"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { AnnouncementPopup } from "@/features/settings/announcement-popup"
+import { AppUpdatePopup } from "@/features/settings/app-update-popup"
 import { AppShell } from "@/features/shell/app-shell"
 import { AntdApp } from "@/lib/antd-app"
 
@@ -12,6 +13,7 @@ export default function App() {
         <TooltipProvider>
           <Toaster>
             <AnnouncementPopup />
+            <AppUpdatePopup />
             <AppShell />
           </Toaster>
         </TooltipProvider>

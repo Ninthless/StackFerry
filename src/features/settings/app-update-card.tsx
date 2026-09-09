@@ -65,9 +65,7 @@ export function AppUpdateCard() {
     if (!api) return
     const unsub = api.onAppUpdateChanged(setStatus)
     void (async () => {
-      const current = await api.getAppUpdate()
-      setStatus(current)
-      if (current.phase === "idle") await check(false)
+      setStatus(await api.getAppUpdate())
     })()
     return unsub
   }, [check])
