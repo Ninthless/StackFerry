@@ -35,7 +35,7 @@ describe('grok config merge', () => {
     })
     expect(next.grok_com_config).toBeUndefined()
     expect(next.stackferry).toBeUndefined()
-    expect(next.model).toMatchObject({
+    expect(next.model).toEqual({
       'my-byok': { base_url: 'https://example.test/v1', model: 'kept' },
       [key]: {
         name: 'Custom',
@@ -82,6 +82,109 @@ describe('grok config merge', () => {
     expect(official.stackferry).toBeUndefined()
   })
 
+  it('overrides a built-in catalog id without adding a Custom picker entry', () => {
+    const next = applyDirectModel(
+      {},
+      {
+        id: 'aaaa-bbbb',
+        name: 'Custom',
+        model: 'grok-4.6',
+        baseUrl: 'https://gateway.test/v1',
+        apiBackend: 'chat_completions',
+        apiKey: 'secret',
+      },
+    )
+    expect(next.models).toMatchObject({
+      default: 'grok-4.6',
+      web_search: 'grok-4.6',
+    })
+    expect(next.model).toEqual({
+      'grok-4.6': {
+        model: 'grok-4.6',
+        base_url: 'https://gateway.test/v1',
+        api_backend: 'chat_completions',
+        api_key: 'secret',
+      },
+    })
+    expect(next.model).not.toHaveProperty(grokModelKey('aaaa-bbbb'))
+    expect(next.stackferry).toEqual({ owned: ['grok-4.6'] })
+    expect(stringifyToml(next)).toContain('[model."grok-4.6"]')
+
+    const switched = applyDirectModel(next, {
+      id: 'cccc-dddd',
+      name: 'Other',
+      model: 'grok-4.5',
+      baseUrl: 'https://gateway.test/v1',
+      apiBackend: 'responses',
+      apiKey: 'secret',
+    })
+    expect(switched.model).not.toHaveProperty('grok-4.6')
+    expect(switched.model).toEqual({
+      'grok-4.5': {
+        model: 'grok-4.5',
+        base_url: 'https://gateway.test/v1',
+        api_backend: 'responses',
+        api_key: 'secret',
+      },
+    })
+
+    const official = applyOfficialModel(next, 'grok-build')
+    expect(official.model).toBeUndefined()
+    expect(official.stackferry).toBeUndefined()
+    expect(official.models).toEqual({ default: 'grok-build' })
+  })
+
+  it('writes Custom only when the model is not in the grok catalog', () => {
+    const live = applyDirectModel(
+      {},
+      {
+        id: 'aaaa-bbbb',
+        name: 'Custom',
+        model: 'grok-4.6',
+        baseUrl: 'https://gateway.test/v1',
+        apiBackend: 'responses',
+        apiKey: 'secret',
+      },
+    )
+    const custom = applyDirectModel(live, {
+      id: 'cccc-dddd',
+      name: 'Custom',
+      model: 'my-proxy',
+      baseUrl: 'https://gateway.test/v1',
+      apiBackend: 'responses',
+      apiKey: 'secret',
+    })
+    const key = grokModelKey('cccc-dddd')
+    expect(custom.model).not.toHaveProperty('grok-4.6')
+    expect(custom.stackferry).toBeUndefined()
+    expect(custom.models).toMatchObject({ default: key })
+    expect(custom.model).toEqual({
+      [key]: {
+        name: 'Custom',
+        model: 'my-proxy',
+        base_url: 'https://gateway.test/v1',
+        api_backend: 'responses',
+        api_key: 'secret',
+      },
+    })
+  })
+
+  it('keeps failover on the router table instead of overlaying the catalog', () => {
+    const next = applyRouterModel({}, { port: 41234, model: 'grok-4.6' })
+    expect(next.models).toMatchObject({ default: ROUTER_PROVIDER_KEY })
+    expect(next.model).toEqual({
+      [ROUTER_PROVIDER_KEY]: {
+        name: 'StackFerry Router',
+        base_url: 'http://127.0.0.1:41234/v1',
+        api_backend: 'responses',
+        api_key: 'stackferry-router',
+        model: 'grok-4.6',
+      },
+    })
+    expect(next.model).not.toHaveProperty('grok-4.6')
+    expect(next.stackferry).toBeUndefined()
+  })
+
   it('points the default model at the local router', () => {
     const next = applyRouterModel({ models: { default: 'grok-build' } }, { port: 41234, model: 'demo' })
     expect(next.models).toMatchObject({
@@ -89,10 +192,12 @@ describe('grok config merge', () => {
       web_search: ROUTER_PROVIDER_KEY,
     })
     expect(next.grok_com_config).toBeUndefined()
-    expect(next.model).toMatchObject({
+    expect(next.model).toEqual({
       [ROUTER_PROVIDER_KEY]: {
+        name: 'StackFerry Router',
         base_url: 'http://127.0.0.1:41234/v1',
         api_backend: 'responses',
+        api_key: 'stackferry-router',
         model: 'demo',
       },
     })
@@ -178,7 +283,9 @@ x-foo = "bar"
       fork_secondary_model: key,
       permission_mode: 'always-approve',
     })
-    expect(withMode.model?.[key]).not.toHaveProperty('permission_mode')
+    expect(Object.values(withMode.model ?? {})).toEqual([
+      expect.not.objectContaining({ permission_mode: expect.anything() }),
+    ])
 
     const cleared = applyDirectModel(withMode, {
       id: 'perm-2',

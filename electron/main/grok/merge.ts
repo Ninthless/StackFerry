@@ -67,8 +67,7 @@ export function applyDirectModel(doc: TomlTable, input: GrokDirectLiveConfig): T
   unpinByokAuth(next)
   const session = parseGrokSession(input)
   if (session.overlay) applyOverlayRoot(next, session.overlay)
-  const key = grokModelKey(input.id)
-  ensureModelTable(next)[key] = directTable(input, session)
+  const key = attachDirectModel(next, input, directTable(input, session))
   pinLiveModel(next, key, session)
   return next
 }
@@ -76,9 +75,9 @@ export function applyDirectModel(doc: TomlTable, input: GrokDirectLiveConfig): T
 export function applyOfficialModel(doc: TomlTable, previousDefault = ''): TomlTable {
   const next = cloneDoc(doc)
   const fromLegacyMeta = leftoverPreviousDefault(next)
-  stripStackferryOwned(next)
+  const owned = stripStackferryOwned(next)
   unpinByokAuth(next)
-  unpinLiveModel(next)
+  unpinLiveModel(next, owned)
   setDefaultModel(next, previousDefault || fromLegacyMeta || GROK_OFFICIAL_DEFAULT_MODEL)
   return next
 }
@@ -151,6 +150,29 @@ function mergeOverlayTable(
   doc[key] = next
 }
 
+// Grok 内置 / 预取 catalog 以 grok- 开头。同名 [model.*] 覆盖那一项，不必再挂 Custom。
+function grokCatalogKey(model: string): string {
+  const key = model.trim()
+  if (!key || isStackferryModelKey(key) || key === ROUTER_PROVIDER_KEY) return ''
+  if (key === 'grok' || key.startsWith('grok-') || key.startsWith('grok.')) return key
+  return ''
+}
+
+function attachDirectModel(doc: TomlTable, input: GrokDirectLiveConfig, table: TomlTable): string {
+  const models = ensureModelTable(doc)
+  const catalog = grokCatalogKey(input.model)
+  if (catalog) {
+    const overlay = { ...table }
+    delete overlay.name
+    models[catalog] = overlay
+    doc[STACKFERRY_META_TABLE] = { owned: [catalog] }
+    return catalog
+  }
+  const key = grokModelKey(input.id)
+  models[key] = table
+  return key
+}
+
 function ensureModelTable(doc: TomlTable): TomlTable {
   const existing = doc.model
   if (isPlainObject(existing)) return existing
@@ -188,11 +210,12 @@ function pinLiveModel(doc: TomlTable, key: string, session: GrokSession): void {
   else delete ui.permission_mode
 }
 
-function unpinLiveModel(doc: TomlTable): void {
+function unpinLiveModel(doc: TomlTable, owned: Set<string> = new Set()): void {
+  const isOwnedPin = (value: string) => isStackferryModelKey(value) || owned.has(value)
   const models = doc.models
   if (isPlainObject(models)) {
     for (const field of AUX_MODEL_KEYS) {
-      if (typeof models[field] === 'string' && isStackferryModelKey(models[field])) {
+      if (typeof models[field] === 'string' && isOwnedPin(models[field])) {
         delete models[field]
       }
     }
@@ -201,22 +224,41 @@ function unpinLiveModel(doc: TomlTable): void {
   if (
     isPlainObject(ui) &&
     typeof ui.fork_secondary_model === 'string' &&
-    isStackferryModelKey(ui.fork_secondary_model)
+    isOwnedPin(ui.fork_secondary_model)
   ) {
     delete ui.fork_secondary_model
   }
   if (isPlainObject(ui) && Object.keys(ui).length === 0) delete doc.ui
 }
 
-function stripStackferryOwned(doc: TomlTable): void {
+function stripStackferryOwned(doc: TomlTable): Set<string> {
+  const owned = ownedCatalogKeys(doc)
   const models = doc.model
   if (isPlainObject(models)) {
     for (const key of Object.keys(models)) {
-      if (isStackferryModelKey(key)) delete models[key]
+      if (!isStackferryModelKey(key)) continue
+      const table = models[key]
+      if (isPlainObject(table) && typeof table.model === 'string') {
+        const catalog = grokCatalogKey(table.model)
+        if (catalog) owned.add(catalog)
+      }
+      delete models[key]
     }
+    for (const key of owned) delete models[key]
     if (Object.keys(models).length === 0) delete doc.model
   }
   delete doc[STACKFERRY_META_TABLE]
+  return owned
+}
+
+function ownedCatalogKeys(doc: TomlTable): Set<string> {
+  const owned = new Set<string>()
+  const meta = doc[STACKFERRY_META_TABLE]
+  if (!isPlainObject(meta) || !Array.isArray(meta.owned)) return owned
+  for (const key of meta.owned) {
+    if (typeof key === 'string' && key.trim()) owned.add(key.trim())
+  }
+  return owned
 }
 
 function leftoverPreviousDefault(doc: TomlTable): string {
