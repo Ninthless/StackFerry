@@ -1,5 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
-import { formatAnnouncementPublishedAt } from "@shared/app-releases"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import {
+  formatAnnouncementPublishedAt,
+  latestUnreadAnnouncement,
+  nextUnreadAnnouncement,
+} from "@shared/app-releases"
 import type { AnnouncementItem, AnnouncementSnapshot } from "@shared/types"
 import { toast } from "@/components/ui/toast"
 import { formatAppError } from "@/lib/format-app-error"
@@ -31,8 +35,9 @@ type AnnouncementSession = {
   selected: AnnouncementItem | null
   refresh: (manual: boolean) => Promise<void>
   openItem: (item: AnnouncementItem) => Promise<void>
+  nextItem: () => void
   closeItem: () => void
-  markAllRead: () => Promise<void>
+  markAllRead: () => Promise<boolean>
 }
 
 const AnnouncementContext = createContext<AnnouncementSession | null>(null)
@@ -43,13 +48,22 @@ export function AnnouncementProvider({ children }: { children: ReactNode }) {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState("")
   const [selected, setSelected] = useState<AnnouncementItem | null>(null)
+  const prompted = useRef(false)
+
+  const promptUnread = useCallback((next: AnnouncementSnapshot) => {
+    if (prompted.current) return
+    prompted.current = true
+    setSelected((current) => current ?? latestUnreadAnnouncement(next))
+  }, [])
 
   const refresh = useCallback(async (manual: boolean) => {
     const api = window.stackferry
     if (!api) {
-      setSnapshot(import.meta.env.DEV ? DEV_PREVIEW : EMPTY)
+      const next = import.meta.env.DEV ? DEV_PREVIEW : EMPTY
+      setSnapshot(next)
       setError(import.meta.env.DEV ? "" : m.error_desktop_only())
       setLoading(false)
+      promptUnread(next)
       return
     }
     setRefreshing(true)
@@ -61,6 +75,7 @@ export function AnnouncementProvider({ children }: { children: ReactNode }) {
       const next = await api.refreshAnnouncements()
       setSnapshot(next)
       setError("")
+      promptUnread(next)
       if (manual) toast.add({ id: toastId, type: "success", description: m.toast_announcements_refreshed() })
     } catch (refreshError) {
       const message = formatAppError(refreshError)
@@ -70,12 +85,13 @@ export function AnnouncementProvider({ children }: { children: ReactNode }) {
         toast.add({ type: "error", description: message, priority: "high" })
       } else if (import.meta.env.DEV) {
         setSnapshot(DEV_PREVIEW)
+        promptUnread(DEV_PREVIEW)
       }
     } finally {
       setRefreshing(false)
       setLoading(false)
     }
-  }, [])
+  }, [promptUnread])
 
   useEffect(() => {
     void refresh(false)
@@ -104,6 +120,13 @@ export function AnnouncementProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const nextItem = useCallback(() => {
+    setSelected((current) => {
+      if (!current) return current
+      return nextUnreadAnnouncement(snapshot, current.id) ?? current
+    })
+  }, [snapshot])
+
   const markAllRead = useCallback(async () => {
     const api = window.stackferry
     if (!api) {
@@ -111,12 +134,14 @@ export function AnnouncementProvider({ children }: { children: ReactNode }) {
         items: current.items.map((item) => ({ ...item, unread: false })),
         unreadCount: 0,
       }))
-      return
+      return true
     }
     try {
       setSnapshot(await api.markAllAnnouncementsRead())
+      return true
     } catch (markError) {
       toast.add({ type: "error", description: formatAppError(markError), priority: "high" })
+      return false
     }
   }, [])
 
@@ -129,12 +154,13 @@ export function AnnouncementProvider({ children }: { children: ReactNode }) {
       selected,
       refresh,
       openItem,
+      nextItem,
       closeItem() {
         setSelected(null)
       },
       markAllRead,
     }),
-    [error, loading, markAllRead, openItem, refresh, refreshing, selected, snapshot],
+    [error, loading, markAllRead, nextItem, openItem, refresh, refreshing, selected, snapshot],
   )
 
   return <AnnouncementContext.Provider value={value}>{children}</AnnouncementContext.Provider>

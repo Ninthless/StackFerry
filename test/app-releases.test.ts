@@ -10,6 +10,7 @@ import {
   initialAppUpdateStatus,
   isAnnouncementFeedUrl,
   latestUnreadAnnouncement,
+  nextUnreadAnnouncement,
   normalizeAppReleaseNotes,
   parseAnnouncementFeed,
   unreadAnnouncements,
@@ -159,6 +160,9 @@ describe('announcement feed parsing', () => {
         announcementSnapshot(items, new Set(items.map(announcementIdentity))),
       ),
     ).toBeNull()
+    expect(nextUnreadAnnouncement(unread, '42')?.id).toBe('41')
+    expect(nextUnreadAnnouncement(unread, '41')).toBeNull()
+    expect(nextUnreadAnnouncement(unread, 'missing')).toBeNull()
   })
 })
 

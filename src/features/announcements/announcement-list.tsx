@@ -23,14 +23,23 @@ export function AnnouncementList({ items, onSelect }: Props) {
           key={item.id}
           size="xs"
           variant="outline"
+          className="overflow-hidden"
           render={<button type="button" />}
           onClick={() => onSelect(item)}
         >
-          <ItemContent className="min-w-0">
-            <ItemTitle>
-              <span className="truncate">{item.title}</span>
-              {item.unread ? <Badge variant="destructive">{m.announcements_unread()}</Badge> : null}
-              {item.prerelease ? <Badge variant="secondary">{m.announcements_prerelease()}</Badge> : null}
+          <ItemContent className="min-w-0 overflow-hidden">
+            <ItemTitle className="w-full min-w-0 max-w-full">
+              <span className="min-w-0 flex-1 truncate">{item.title}</span>
+              {item.unread ? (
+                <Badge variant="destructive" className="shrink-0">
+                  {m.announcements_unread()}
+                </Badge>
+              ) : null}
+              {item.prerelease ? (
+                <Badge variant="secondary" className="shrink-0">
+                  {m.announcements_prerelease()}
+                </Badge>
+              ) : null}
             </ItemTitle>
             <ItemDescription>{announcementMeta(item)}</ItemDescription>
           </ItemContent>

@@ -123,6 +123,16 @@ export function latestUnreadAnnouncement(snapshot: AnnouncementSnapshot): Announ
   return unreadAnnouncements(snapshot)[0] ?? null
 }
 
+export function nextUnreadAnnouncement(
+  snapshot: AnnouncementSnapshot,
+  currentId: string,
+): AnnouncementItem | null {
+  const unread = unreadAnnouncements(snapshot)
+  const index = unread.findIndex((item) => item.id === currentId)
+  if (index < 0) return null
+  return unread[index + 1] ?? null
+}
+
 export function emptyAnnouncementSnapshot(): AnnouncementSnapshot {
   return { items: [], unreadCount: 0 }
 }
