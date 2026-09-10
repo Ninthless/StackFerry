@@ -49,6 +49,8 @@ jobs:
           case "${{ matrix.os }}" in
             windows-latest)
               test -f release/*/latest.yml
+              test -f release/*/latest-arm64.yml
+              ls release/*/*.exe
               ;;
             ubuntu-latest)
               test -f release/*/latest-linux.yml
