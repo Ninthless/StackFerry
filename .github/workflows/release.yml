@@ -649,7 +649,20 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: StackFerry ${{ github.ref_name }}
           prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: "false"
           body_path: ${{ steps.release-notes.outputs.path }}
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Attach trampoline latest.json to GitHub Latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -f release-assets/latest.json
+          LATEST_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          if [ "$LATEST_TAG" = "$GITHUB_REF_NAME" ]; then
+            echo "Trampoline release became GitHub Latest; Electron updater would lose latest.yml" >&2
+            exit 1
+          fi
+          gh release upload "$LATEST_TAG" release-assets/latest.json --clobber

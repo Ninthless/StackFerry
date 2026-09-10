@@ -1,13 +1,59 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-04T09:34:00Z",
+  "generatedAt": "2026-09-10T06:00:00Z",
   "announcements": [
+    {
+      "id": "2026-09-electron-migrate",
+      "category": "maintenance",
+      "severity": "critical",
+      "publishedAt": "2026-09-10T06:00:00Z",
+      "expiresAt": null,
+      "minAppVersion": null,
+      "maxAppVersion": "0.1.28",
+      "platforms": ["windows", "macos", "linux"],
+      "channels": ["stable"],
+      "relatedVersion": "0.1.28",
+      "locales": {
+        "zh": {
+          "title": "请安装新版 StackFerry",
+          "summary": "桌面端已经换新。请从 GitHub Latest 下载 Electron 安装包。",
+          "body": "当前 GitHub Latest 已是新桌面端（Electron 1.0.3）。应用内更新无法把这一版 Tauri 客户端直接换成新软件，请打开 GitHub Latest 下载对应系统的安装包。\n\n本应用数据目录里的供应商列表不会自动迁移。~/.codex、~/.claude、~/.grok 里的 CLI 配置可以继续用。\n\nWindows 和 Linux 可以先和新版并存，再卸载这一份。macOS 安装包未签名，第一次打开可能被 Gatekeeper 拦截。"
+        },
+        "en": {
+          "title": "Install the new StackFerry",
+          "summary": "This desktop app has been rebuilt. Download the Electron installer from GitHub Latest.",
+          "body": "GitHub Latest now hosts the new desktop app (Electron 1.0.3). In-app update cannot replace this Tauri build with that installer, so open GitHub Latest and download the package for your OS.\n\nProvider settings live in this app’s data folder and will not copy themselves over. CLI config in ~/.codex, ~/.claude, and ~/.grok is unchanged.\n\nWindows and Linux can install the new build alongside this one, then uninstall this copy. macOS builds are unsigned; Gatekeeper may block the first launch."
+        },
+        "zh-TW": {
+          "title": "請安裝新版 StackFerry",
+          "summary": "桌面端已經換新。請從 GitHub Latest 下載 Electron 安裝包。",
+          "body": "目前 GitHub Latest 已是新桌面端（Electron 1.0.3）。應用程式內更新無法把這一版 Tauri 用戶端直接換成新軟體，請打開 GitHub Latest 下載對應系統的安裝包。\n\n本應用資料目錄裡的供應商清單不會自動遷移。~/.codex、~/.claude、~/.grok 裡的 CLI 設定可以繼續使用。\n\nWindows 與 Linux 可以先與新版並存，再解除安裝這一份。macOS 安裝包未簽名，第一次開啟可能被 Gatekeeper 攔截。"
+        },
+        "ja": {
+          "title": "新しい StackFerry をインストールしてください",
+          "summary": "デスクトップ版は作り直されました。GitHub Latest から Electron インストーラーをダウンロードしてください。",
+          "body": "GitHub Latest は新しいデスクトップ版（Electron 1.0.3）です。アプリ内更新では、この Tauri 版を新しいインストーラーに置き換えられません。GitHub Latest を開いて、お使いの OS 用パッケージをダウンロードしてください。\n\nこのアプリのデータフォルダーにあるプロバイダー一覧は自動では移行されません。~/.codex、~/.claude、~/.grok の CLI 設定はそのまま使えます。\n\nWindows と Linux では新版と併存してから、このコピーをアンインストールできます。macOS ビルドは未署名のため、初回起動が Gatekeeper にブロックされる場合があります。"
+        }
+      },
+      "actions": [
+        {
+          "type": "external",
+          "url": "https://github.com/Ninthless/StackFerry/releases/latest",
+          "label": {
+            "zh": "下载新版 StackFerry",
+            "en": "Download new StackFerry",
+            "zh-TW": "下載新版 StackFerry",
+            "ja": "新しい StackFerry をダウンロード"
+          }
+        }
+      ]
+    },
     {
       "id": "2026-09-stackferry-rebuild",
       "category": "maintenance",
       "severity": "important",
       "publishedAt": "2026-09-04T09:34:00Z",
-      "expiresAt": null,
+      "expiresAt": "2026-09-10T00:00:00Z",
       "minAppVersion": null,
       "maxAppVersion": null,
       "platforms": ["windows", "macos", "linux"],
