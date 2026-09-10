@@ -43,6 +43,12 @@ export function requireCliPackage(map: Partial<Record<CliToolId, string>>, id: C
   return value
 }
 
+// Homebrew cask 只在 macOS 上存在；Linuxbrew 没有等价的 cask 安装面。
+export function requireBrewCask(id: CliToolId, platform: NodeJS.Platform): string {
+  if (platform !== 'darwin') throw new AppError('cli_method_unsupported')
+  return requireCliPackage(CLI_BREW_CASKS, id)
+}
+
 export type PackageManager = 'npm' | 'homebrew' | 'winget'
 
 export type ToolName = 'npm' | 'brew' | 'winget' | 'powershell' | 'sh'
@@ -71,6 +77,7 @@ export function packageManagerArgs(
   id: CliToolId,
   method: PackageManager,
   action: 'update' | 'uninstall',
+  platform: NodeJS.Platform = process.platform,
 ): { tool: 'npm' | 'brew' | 'winget'; args: string[]; timeoutMs: number } {
   const timeoutMs = action === 'uninstall' ? UNINSTALL_TIMEOUT_MS : INSTALL_TIMEOUT_MS
   if (method === 'npm') {
@@ -82,7 +89,7 @@ export function packageManagerArgs(
     }
   }
   if (method === 'homebrew') {
-    const cask = requireCliPackage(CLI_BREW_CASKS, id)
+    const cask = requireBrewCask(id, platform)
     return {
       tool: 'brew',
       args: action === 'update' ? ['upgrade', '--cask', cask] : ['uninstall', '--cask', cask],

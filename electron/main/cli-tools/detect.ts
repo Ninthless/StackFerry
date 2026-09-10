@@ -4,7 +4,7 @@ import { binaryNames, grokNativeBinaries, normalizeFsPath } from './paths'
 
 export function classifyInstallMethod(
   binaryPath: string,
-  ctx: { home: string; grokHome?: string },
+  ctx: { home: string; grokHome?: string; npmPrefix?: string | null },
 ): CliInstallMethod {
   const n = normalizeFsPath(binaryPath)
   const home = normalizeFsPath(ctx.home)
@@ -32,18 +32,31 @@ export function classifyInstallMethod(
 
   if (n.includes('/microsoft/winget/') || n.includes('/microsoft/windowsapps/')) return 'winget'
 
+  if (ctx.npmPrefix && isUnderNormalized(ctx.npmPrefix, binaryPath)) return 'npm'
+
   if (
     n.includes('/node_modules/') ||
     n.includes('/roaming/npm/') ||
     n.includes('/.nvm/') ||
+    n.includes('/nvm/') ||
+    n.includes('/nvm4w/') ||
     n.includes('/fnm/') ||
     n.includes('/volta/') ||
+    n.includes('/nodejs') ||
+    n.includes('/npm-global/') ||
+    n.includes('/.npm-global/') ||
     /\/npm\/[^/]+\.(cmd|exe)$/.test(n)
   ) {
     return 'npm'
   }
 
   return 'unknown'
+}
+
+function isUnderNormalized(root: string, target: string): boolean {
+  const prefix = normalizeFsPath(root)
+  const value = normalizeFsPath(target)
+  return value === prefix || value.startsWith(`${prefix}/`)
 }
 
 export function parseCliVersion(stdout: string): string | null {

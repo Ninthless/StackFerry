@@ -1,8 +1,8 @@
 import type { CliToolId } from '../../../shared/cli-tools'
 import {
-  CLI_BREW_CASKS,
   CLI_NPM_PACKAGES,
   CLI_WINGET_IDS,
+  requireBrewCask,
   requireCliPackage,
   type PackageManager,
 } from './commands'
@@ -12,6 +12,7 @@ export const CHECK_TIMEOUT_MS = 20_000
 export function packageManagerCheckArgs(
   id: CliToolId,
   method: PackageManager,
+  platform: NodeJS.Platform = process.platform,
 ): { tool: 'npm' | 'brew' | 'winget'; args: string[]; timeoutMs: number } {
   if (method === 'npm') {
     return {
@@ -23,7 +24,7 @@ export function packageManagerCheckArgs(
   if (method === 'homebrew') {
     return {
       tool: 'brew',
-      args: ['outdated', '--cask', '--json=v2', requireCliPackage(CLI_BREW_CASKS, id)],
+      args: ['outdated', '--cask', '--json=v2', requireBrewCask(id, platform)],
       timeoutMs: CHECK_TIMEOUT_MS,
     }
   }
@@ -96,10 +97,15 @@ export function packageOutdated(method: PackageManager, stdout: string, id: CliT
   return packageOutdatedResult(method, stdout, id).available
 }
 
-export function packageOutdatedResult(method: PackageManager, stdout: string, id: CliToolId): CliOutdated {
+export function packageOutdatedResult(
+  method: PackageManager,
+  stdout: string,
+  id: CliToolId,
+  platform: NodeJS.Platform = process.platform,
+): CliOutdated {
   if (method === 'npm') return npmOutdatedResult(stdout, requireCliPackage(CLI_NPM_PACKAGES, id))
   if (method === 'homebrew') {
-    return brewCaskOutdatedResult(stdout, requireCliPackage(CLI_BREW_CASKS, id))
+    return brewCaskOutdatedResult(stdout, requireBrewCask(id, platform))
   }
   return {
     available: wingetUpgradeAvailable(stdout, requireCliPackage(CLI_WINGET_IDS, id)),

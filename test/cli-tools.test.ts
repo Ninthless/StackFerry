@@ -15,6 +15,7 @@ import {
 } from '../electron/main/cli-tools/outdated'
 import {
   expandWindowsEnv,
+  isInside,
   isProtectedConfigPath,
   knownSearchDirs,
   knownToolPaths,
@@ -61,6 +62,14 @@ describe('classifyInstallMethod', () => {
     ).toBe('native')
     expect(classifyInstallMethod(path.join(appData, 'npm', 'codex.cmd'), { home })).toBe('npm')
     expect(
+      classifyInstallMethod(path.join(home, 'scoop', 'apps', 'nodejs-lts', 'current', 'bin', 'codex.cmd'), { home }),
+    ).toBe('npm')
+    expect(classifyInstallMethod('C:\\Program Files\\nodejs\\codex.cmd', { home })).toBe('npm')
+    expect(classifyInstallMethod(path.join(appData, 'nvm', 'v22.20.0', 'codex.cmd'), { home })).toBe('npm')
+    expect(
+      classifyInstallMethod('D:\\tools\\npm-global\\codex.cmd', { home, npmPrefix: 'D:\\tools\\npm-global' }),
+    ).toBe('npm')
+    expect(
       classifyInstallMethod(path.join(localAppData, 'Microsoft', 'WindowsApps', 'codex.exe'), { home }),
     ).toBe('winget')
     expect(classifyInstallMethod(path.join(home, 'bin', 'codex'), { home })).toBe('unknown')
@@ -98,6 +107,15 @@ describe('reconstructSearchDirs', () => {
     const linux = knownSearchDirs(demoPathContext({ platform: 'linux', home: '/home/demo' }))
     expect(linux).toContain('/home/linuxbrew/.linuxbrew/bin')
     expect(linux).toContain('/snap/bin')
+    expect(linux).toContain(path.join('/home/demo', '.local', 'share', 'pnpm'))
+    const windows = knownSearchDirs(
+      demoPathContext({
+        platform: 'win32',
+        home: 'C:\\Users\\demo',
+        localAppData: 'C:\\Users\\demo\\AppData\\Local',
+      }),
+    )
+    expect(windows).toContain(path.join('C:\\Users\\demo\\AppData\\Local', 'pnpm'))
   })
 })
 
@@ -131,6 +149,13 @@ describe('native uninstall targets', () => {
     expect(isProtectedConfigPath(path.join(homes.codexHome, 'packages', 'standalone'), homes)).toBe(false)
     expect(isProtectedConfigPath(path.join(homes.grokHome, 'config.toml'), homes)).toBe(true)
     expect(isProtectedConfigPath(path.join(homes.grokHome, 'bin', 'grok'), homes)).toBe(false)
+  })
+
+  it.skipIf(!win)('treats Windows config paths as case-insensitive', () => {
+    const homes = demoHomes()
+    expect(isInside(homes.codexHome, homes.codexHome.toUpperCase())).toBe(true)
+    expect(isProtectedConfigPath(path.join(homes.codexHome.toUpperCase(), 'config.toml'), homes)).toBe(true)
+    expect(isProtectedConfigPath(path.join(homes.grokHome.toUpperCase(), 'bin', 'grok'), homes)).toBe(false)
   })
 })
 
@@ -184,6 +209,13 @@ describe('install commands', () => {
     ])
     expect(packageManagerArgs('grok-build', 'winget', 'update').args).toContain('xAI.GrokBuild')
     expect(() => packageManagerArgs('grok-build', 'homebrew', 'update')).toThrow(AppError)
+    expect(packageManagerArgs('claude-code', 'homebrew', 'update', 'darwin').args).toEqual([
+      'upgrade',
+      '--cask',
+      'claude-code',
+    ])
+    expect(() => packageManagerArgs('claude-code', 'homebrew', 'update', 'linux')).toThrow(AppError)
+    expect(() => packageManagerArgs('claude-code', 'homebrew', 'update', 'win32')).toThrow(AppError)
   })
 })
 

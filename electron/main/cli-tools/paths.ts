@@ -69,6 +69,7 @@ export function knownSearchDirs(ctx: PathContext): string[] {
       path.join(home, '.grok', 'bin'),
       nativeCodexWindowsBinDir(localAppData),
       path.join(appData, 'npm'),
+      path.join(localAppData, 'pnpm'),
       path.join(localAppData, 'Microsoft', 'WindowsApps'),
       path.join(systemRoot, 'System32'),
       path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0'),
@@ -92,6 +93,7 @@ export function knownSearchDirs(ctx: PathContext): string[] {
   }
   return [
     ...posix,
+    path.join(home, '.local', 'share', 'pnpm'),
     path.join(home, '.linuxbrew', 'bin'),
     '/home/linuxbrew/.linuxbrew/bin',
     '/snap/bin',
@@ -177,6 +179,11 @@ export function nativeUninstallTargets(id: CliToolId, ctx: PathContext & ConfigH
 }
 
 export function isInside(root: string, target: string): boolean {
+  if (process.platform === 'win32') {
+    const nRoot = normalizeFsPath(path.resolve(root))
+    const nTarget = normalizeFsPath(path.resolve(target))
+    return nTarget === nRoot || nTarget.startsWith(`${nRoot}/`)
+  }
   const resolvedRoot = path.resolve(root)
   const resolvedTarget = path.resolve(target)
   return resolvedTarget === resolvedRoot || resolvedTarget.startsWith(resolvedRoot + path.sep)
@@ -186,13 +193,22 @@ export function isInside(root: string, target: string): boolean {
 export function isProtectedConfigPath(target: string, homes: ConfigHomes): boolean {
   const resolved = path.resolve(target)
   if (isInside(homes.claudeHome, resolved)) return true
-  if (resolved === path.resolve(path.join(homes.home, '.claude.json'))) return true
-  const grokBins = new Set(grokNativeBinaries(homes.grokHome).map((item) => path.resolve(item)))
-  if (grokBins.has(resolved)) return false
+  if (sameResolvedPath(resolved, path.join(homes.home, '.claude.json'))) return true
+  const grokBins = grokNativeBinaries(homes.grokHome)
+  if (grokBins.some((item) => sameResolvedPath(resolved, item))) return false
   if (isInside(homes.grokHome, resolved)) return true
   const standalone = path.resolve(homes.codexHome, 'packages', 'standalone')
-  if (resolved === standalone || isInside(standalone, resolved)) return false
+  if (sameResolvedPath(resolved, standalone) || isInside(standalone, resolved)) return false
   return isInside(homes.codexHome, resolved)
+}
+
+function sameResolvedPath(left: string, right: string): boolean {
+  const resolvedLeft = path.resolve(left)
+  const resolvedRight = path.resolve(right)
+  if (process.platform === 'win32') {
+    return normalizeFsPath(resolvedLeft) === normalizeFsPath(resolvedRight)
+  }
+  return resolvedLeft === resolvedRight
 }
 
 export function parseRegPathQuery(stdout: string): string | null {

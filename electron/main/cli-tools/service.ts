@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { existsSync, rmSync, statSync } from 'node:fs'
+import { existsSync, realpathSync, rmSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -56,11 +56,11 @@ type ExecError = NodeJS.ErrnoException & { killed?: boolean; stdout?: string; st
 
 export class CliToolService {
   async list(): Promise<CliToolStatus[]> {
-    return Promise.all(CLI_TOOL_IDS.map((id) => this.inspect(id)))
+    return this.inspectAll()
   }
 
   async checkUpdates(): Promise<CliToolStatus[]> {
-    return Promise.all(CLI_TOOL_IDS.map((id) => this.inspect(id, { check: true })))
+    return this.inspectAll({ check: true })
   }
 
   async install(id: CliToolId): Promise<CliToolStatus[]> {
@@ -95,7 +95,15 @@ export class CliToolService {
     return this.list()
   }
 
-  private async inspect(id: CliToolId, options?: { check?: boolean }): Promise<CliToolStatus> {
+  private async inspectAll(options?: { check?: boolean }): Promise<CliToolStatus[]> {
+    const npmPrefix = await this.readNpmPrefix()
+    return Promise.all(CLI_TOOL_IDS.map((id) => this.inspect(id, { ...options, npmPrefix })))
+  }
+
+  private async inspect(
+    id: CliToolId,
+    options?: { check?: boolean; npmPrefix?: string | null },
+  ): Promise<CliToolStatus> {
     const dirs = await this.searchDirs()
     let binary = firstExisting(candidateBinaries(id, dirs, process.platform), isRunnable)
     if (!binary) binary = await this.whichBinary(id)
@@ -110,7 +118,12 @@ export class CliToolService {
         latestVersion: null,
       }
     }
-    const method = classifyInstallMethod(binary, { home: os.homedir(), grokHome: resolveGrokHome() })
+    const npmPrefix = options?.npmPrefix !== undefined ? options.npmPrefix : await this.readNpmPrefix()
+    const method = classifyInstallMethod(resolveRealPath(binary), {
+      home: os.homedir(),
+      grokHome: resolveGrokHome(),
+      npmPrefix: npmPrefix ? resolveRealPath(npmPrefix) : null,
+    })
     const version = await this.readVersion(binary)
     const outdated = options?.check
       ? await this.hasUpdate(id, method, binary, version)
@@ -130,6 +143,18 @@ export class CliToolService {
     const current = await this.inspect(id)
     if (!current.installed) throw new AppError('cli_not_found')
     return current
+  }
+
+  private async readNpmPrefix(): Promise<string | null> {
+    try {
+      const file = await this.resolveTool('npm')
+      const captured = await this.runExecCapture(file, ['prefix', '-g'], VERSION_TIMEOUT_MS)
+      if (captured.error) return null
+      const prefix = captured.stdout.trim().split(/\r?\n/, 1)[0]?.trim()
+      return prefix || null
+    } catch {
+      return null
+    }
   }
 
   private async runNativeInstall(id: CliToolId): Promise<void> {
@@ -159,10 +184,11 @@ export class CliToolService {
     }
     if (method === 'unknown') return none
     try {
-      const spec = packageManagerCheckArgs(id, method)
+      const platform = this.pathContext().platform
+      const spec = packageManagerCheckArgs(id, method, platform)
       const file = await this.resolveTool(spec.tool)
       const { stdout } = await this.runExecCapture(file, spec.args, spec.timeoutMs)
-      return packageOutdatedResult(method, stdout, id)
+      return packageOutdatedResult(method, stdout, id, platform)
     } catch {
       return none
     }
@@ -185,7 +211,7 @@ export class CliToolService {
     method: PackageManager,
     action: 'update' | 'uninstall',
   ): Promise<void> {
-    const spec = packageManagerArgs(id, method, action)
+    const spec = packageManagerArgs(id, method, action, this.pathContext().platform)
     const file = await this.resolveTool(spec.tool)
     await this.runExec(file, spec.args, spec.timeoutMs)
   }
@@ -404,6 +430,14 @@ function isRunnable(file: string): boolean {
     return statSync(file).isFile()
   } catch {
     return false
+  }
+}
+
+function resolveRealPath(file: string): string {
+  try {
+    return realpathSync(file)
+  } catch {
+    return file
   }
 }
 
