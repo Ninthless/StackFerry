@@ -1,7 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ElectronMigrateDialog } from "@/app/overlays/ElectronMigrateDialog";
-import { ELECTRON_DOWNLOAD_URL, ELECTRON_MIGRATE_DISMISSED_KEY } from "@/lib/electronMigrate";
+import {
+  ELECTRON_DOWNLOAD_URL,
+  ELECTRON_MIGRATE_DISMISSED_KEY,
+} from "@/lib/electronMigrate";
 
 const openExternal = vi.fn().mockResolvedValue(undefined);
 
@@ -19,7 +22,9 @@ describe("ElectronMigrateDialog", () => {
 
   it("opens the Electron GitHub Latest download", async () => {
     render(<ElectronMigrateDialog />);
-    fireEvent.click(screen.getByRole("button", { name: "electronMigrate.download" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "electronMigrate.download" }),
+    );
     await waitFor(() => {
       expect(openExternal).toHaveBeenCalledWith(ELECTRON_DOWNLOAD_URL);
     });
@@ -36,7 +41,9 @@ describe("ElectronMigrateDialog", () => {
 
   it("persists postpone so the next launch stays quiet", () => {
     render(<ElectronMigrateDialog />);
-    fireEvent.click(screen.getByRole("button", { name: "electronMigrate.later" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "electronMigrate.later" }),
+    );
     expect(localStorage.getItem(ELECTRON_MIGRATE_DISMISSED_KEY)).toBe("1");
   });
 });
