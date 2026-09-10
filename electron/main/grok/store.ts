@@ -25,12 +25,16 @@ export type StoredGrokProvider = {
   baseUrl: string
   model: string
   apiBackend: GrokApiBackend
+  imageModel: string
+  imageBaseUrl: string
+  videoModel: string
   effortLevel: string
   permissionMode: string
   contextWindow: string
   autoCompact: string
   overlayToml: string
   apiKeyPayload: string
+  imageApiKeyPayload: string
   createdAt: string
   updatedAt: string
 }
@@ -59,6 +63,7 @@ export class GrokProviderStore {
     }
     const now = new Date().toISOString()
     const session = this.sessionFields(kind, draft)
+    const image = kind === 'official' ? emptyImageFields() : this.imageFields(draft)
     const provider: StoredGrokProvider = {
       id: kind === 'official' ? OFFICIAL_ID : randomUUID(),
       name: this.requireName(draft.name),
@@ -66,8 +71,10 @@ export class GrokProviderStore {
       baseUrl: kind === 'official' ? '' : this.requireBaseUrl(draft.baseUrl),
       model: kind === 'official' ? '' : (draft.model ?? '').trim(),
       apiBackend: kind === 'official' ? 'responses' : this.requireBackend(draft.apiBackend),
+      ...image,
       ...session,
       apiKeyPayload: this.encryptApiKey(kind, draft.apiKey),
+      imageApiKeyPayload: this.encryptApiKey(kind, draft.imageApiKey),
       createdAt: now,
       updatedAt: now,
     }
@@ -85,9 +92,13 @@ export class GrokProviderStore {
       provider.baseUrl = this.requireBaseUrl(draft.baseUrl)
       provider.model = (draft.model ?? '').trim()
       provider.apiBackend = this.requireBackend(draft.apiBackend)
+      Object.assign(provider, this.imageFields(draft))
       Object.assign(provider, this.sessionFields(provider.kind, draft))
       if (draft.apiKey?.trim()) {
         provider.apiKeyPayload = this.encryptApiKey(provider.kind, draft.apiKey)
+      }
+      if (draft.imageApiKey?.trim()) {
+        provider.imageApiKeyPayload = this.encryptApiKey(provider.kind, draft.imageApiKey)
       }
     }
     this.assertReadyToSave(provider, draft.apiKey)
@@ -154,11 +165,19 @@ export class GrokProviderStore {
   }
 
   decryptApiKey(provider: StoredGrokProvider): string {
-    if (!provider.apiKeyPayload) return ''
+    return this.decryptPayload(provider.apiKeyPayload)
+  }
+
+  decryptImageApiKey(provider: StoredGrokProvider): string {
+    return this.decryptPayload(provider.imageApiKeyPayload)
+  }
+
+  private decryptPayload(payload: string): string {
+    if (!payload) return ''
     if (!safeStorage.isEncryptionAvailable()) {
       throw new AppError('secret_storage_unavailable_read')
     }
-    return safeStorage.decryptString(Buffer.from(provider.apiKeyPayload, 'base64'))
+    return safeStorage.decryptString(Buffer.from(payload, 'base64'))
   }
 
   private toListItem(provider: StoredGrokProvider, activeProviderId: string | null): GrokProviderListItem {
@@ -169,12 +188,16 @@ export class GrokProviderStore {
       baseUrl: provider.baseUrl,
       model: provider.model,
       apiBackend: provider.apiBackend,
+      imageModel: provider.imageModel,
+      imageBaseUrl: provider.imageBaseUrl,
+      videoModel: provider.videoModel,
       effortLevel: provider.effortLevel,
       permissionMode: provider.permissionMode,
       contextWindow: provider.contextWindow,
       autoCompact: provider.autoCompact,
       overlayToml: provider.overlayToml,
       hasApiKey: Boolean(provider.apiKeyPayload),
+      hasImageApiKey: Boolean(provider.imageApiKeyPayload),
       enabled: provider.id === activeProviderId,
     }
   }
@@ -251,6 +274,18 @@ export class GrokProviderStore {
     return persistGrokSession(draft)
   }
 
+  private imageFields(
+    draft: GrokProviderDraft,
+  ): Pick<StoredGrokProvider, 'imageModel' | 'imageBaseUrl' | 'videoModel'> {
+    return {
+      imageModel: (draft.imageModel ?? '').trim(),
+      imageBaseUrl: draft.imageBaseUrl?.trim()
+        ? this.requireBaseUrl(draft.imageBaseUrl)
+        : '',
+      videoModel: (draft.videoModel ?? '').trim(),
+    }
+  }
+
   private normalizeProvider(
     provider: StoredGrokProvider & { overlayJson?: string },
   ): StoredGrokProvider {
@@ -273,6 +308,10 @@ export class GrokProviderStore {
     return {
       ...rest,
       apiBackend: isGrokApiBackend(rest.apiBackend) ? rest.apiBackend : 'responses',
+      imageModel: typeof rest.imageModel === 'string' ? rest.imageModel : '',
+      imageBaseUrl: typeof rest.imageBaseUrl === 'string' ? rest.imageBaseUrl : '',
+      videoModel: typeof rest.videoModel === 'string' ? rest.videoModel : '',
+      imageApiKeyPayload: typeof rest.imageApiKeyPayload === 'string' ? rest.imageApiKeyPayload : '',
       effortLevel: session.effortLevel || columns.effortLevel,
       permissionMode: session.permissionMode || columns.permissionMode,
       contextWindow: session.contextWindow || columns.contextWindow,
@@ -300,4 +339,8 @@ export class GrokProviderStore {
       providers: [],
     }
   }
+}
+
+function emptyImageFields(): Pick<StoredGrokProvider, 'imageModel' | 'imageBaseUrl' | 'videoModel'> {
+  return { imageModel: '', imageBaseUrl: '', videoModel: '' }
 }

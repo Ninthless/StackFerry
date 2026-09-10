@@ -3,15 +3,33 @@ import { zipSync, strToU8 } from 'fflate'
 import { AppError } from '../shared/app-error'
 import {
   assertGithubArchiveUrl,
+  DEFAULT_SKILL_REPOS,
   githubArchiveUrl,
   normalizeSkillRepo,
   parseSkillRepoInput,
+  pinPreferredSkillRepo,
   skillRepo,
 } from '../shared/skills'
 import { discoverSkills, unzipSkillArchive } from '../electron/main/skills/github'
 import { assertSafeZipEntry } from '../electron/main/skills/safe-path'
 
 const sampleMarkdown = '---\nname: pdf\ndescription: Use when working with PDFs.\n---\n\nRead PDFs.\n'
+
+describe('default skill repos', () => {
+  it('lists Ninthless/agent-skills first', () => {
+    expect(DEFAULT_SKILL_REPOS[0]).toEqual(skillRepo('Ninthless', 'agent-skills', 'main'))
+  })
+
+  it('moves the preferred default repo to the front without dropping others', () => {
+    const anthropic = skillRepo('anthropics', 'skills', 'main')
+    const extra = skillRepo('acme', 'extra', 'main')
+    expect(pinPreferredSkillRepo([anthropic, extra])).toEqual([
+      skillRepo('Ninthless', 'agent-skills', 'main'),
+      anthropic,
+      extra,
+    ])
+  })
+})
 
 describe('github archive urls', () => {
   it('only allows github.com heads zip archives', () => {

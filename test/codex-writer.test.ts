@@ -107,4 +107,49 @@ wire_api = "responses"
     expect(written).not.toContain('experimental_bearer_token')
     expect(written).not.toContain('localhost')
   })
+
+  it('writes the StackFerry catalog and clears it for official', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-catalog-'))
+    const codexHome = path.join(root, 'codex')
+    const backupRoot = path.join(root, 'backups')
+    await mkdir(codexHome, { recursive: true })
+    await writeFile(path.join(codexHome, 'config.toml'), 'notify = ["keep"]\n')
+
+    await enableThirdPartyLiveConfig({
+      codexHome,
+      backupRoot,
+      provider: {
+        id: 'prov-catalog',
+        name: 'Catalog',
+        tomlText: `model = "gpt-5.4"
+model_provider = "provider_c"
+
+[model_providers.provider_c]
+name = "Catalog"
+base_url = "https://c.example/v1"
+wire_api = "responses"
+`,
+        apiKey: 'key-c',
+        models: ['gpt-5.4', 'gpt-5'],
+      },
+    })
+
+    const catalogPath = path.join(codexHome, 'model-catalogs', 'stackferry.json')
+    const catalog = JSON.parse(await readFile(catalogPath, 'utf8')) as {
+      models: { slug: string }[]
+    }
+    expect(catalog.models.map((item) => item.slug)).toEqual(['gpt-5.4', 'gpt-5'])
+    expect(catalog.models[0]).toMatchObject({
+      slug: 'gpt-5.4',
+      priority: 1000,
+      truncation_policy: { mode: 'bytes', limit: 10_000 },
+    })
+    const afterCustom = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
+    expect(afterCustom.replaceAll('\\', '/')).toContain('model-catalogs/stackferry.json')
+
+    await enableOfficialLiveConfig({ codexHome, backupRoot })
+    const afterOfficial = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
+    expect(afterOfficial).not.toContain('model_catalog_json')
+    expect(afterOfficial).toContain('notify = [ "keep" ]')
+  })
 })

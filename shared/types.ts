@@ -52,6 +52,7 @@ export type ProviderDraft = {
   name: string
   kind: ProviderKind
   tomlText?: string
+  models?: string[]
   apiKey?: string
   presetId?: string
 }
@@ -62,6 +63,7 @@ export type ProviderListItem = {
   kind: ProviderKind
   baseUrl: string
   model: string
+  models: string[]
   tomlText: string
   hasApiKey: boolean
   enabled: boolean
@@ -149,6 +151,10 @@ export type GrokProviderDraft = {
   model?: string
   apiBackend?: GrokApiBackend
   apiKey?: string
+  imageModel?: string
+  imageBaseUrl?: string
+  imageApiKey?: string
+  videoModel?: string
   presetId?: string
   effortLevel?: string
   permissionMode?: string
@@ -164,12 +170,16 @@ export type GrokProviderListItem = {
   baseUrl: string
   model: string
   apiBackend: GrokApiBackend
+  imageModel: string
+  imageBaseUrl: string
+  videoModel: string
   effortLevel: string
   permissionMode: string
   contextWindow: string
   autoCompact: string
   overlayToml: string
   hasApiKey: boolean
+  hasImageApiKey: boolean
   enabled: boolean
 }
 

@@ -160,9 +160,13 @@ describe('PATH helpers', () => {
 
 describe('install commands', () => {
   it('uses the official native installer URLs', () => {
+    expect(nativeInstallArgs('codex', 'win32').tool).toBe('powershell')
+    expect(nativeInstallArgs('codex', 'darwin').tool).toBe('sh')
+    expect(nativeInstallArgs('codex', 'linux').tool).toBe('sh')
     expect(nativeInstallArgs('codex', 'win32').args.join(' ')).toContain(CLI_INSTALL_URLS.codex.win32)
     expect(nativeInstallArgs('claude-code', 'linux').args.join(' ')).toContain(CLI_INSTALL_URLS['claude-code'].posix)
     expect(nativeInstallArgs('grok-build', 'win32').args.join(' ')).toContain(CLI_INSTALL_URLS['grok-build'].win32)
+    expect(nativeInstallArgs('grok-build', 'darwin').args.join(' ')).toContain(CLI_INSTALL_URLS['grok-build'].posix)
     expect(nativeInstallArgs('grok-build', 'linux').args.join(' ')).toContain(CLI_INSTALL_URLS['grok-build'].posix)
   })
 

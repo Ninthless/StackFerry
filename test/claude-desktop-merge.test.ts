@@ -34,7 +34,6 @@ describe('claude desktop merge', () => {
       inferenceGatewayApiKey: 'gw-key',
       inferenceGatewayAuthScheme: 'bearer',
       disableDeploymentModeChooser: true,
-      inferenceModels: [{ name: 'claude-sonnet-4-6', labelOverride: 'claude-sonnet-4-6' }],
     })
   })
 
@@ -61,6 +60,20 @@ describe('claude desktop merge', () => {
     expect(next.profile.inferenceModels).toBeUndefined()
     expect(next.profile.modelDiscoveryEnabled).toBeUndefined()
     expect(next.profile.inferenceGatewayAuthScheme).toBe('x-api-key')
+  })
+
+  it('does not pin a one-item Desktop catalog from the default model', () => {
+    const next = applyDesktopGateway(
+      { appliedId: null, entries: [] },
+      {
+        name: 'Corp Gateway',
+        baseUrl: 'https://gateway.example/v1',
+        apiKey: 'gw-key',
+        authScheme: 'bearer',
+        model: 'claude-sonnet-4-6',
+      },
+    )
+    expect(next.profile.inferenceModels).toBeUndefined()
   })
 
   it('writes the configured list with the default first', () => {

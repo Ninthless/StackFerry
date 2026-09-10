@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { CheckCircle2Icon, CircleHelp, Download, InfoIcon } from "lucide-react"
+import { persistCodexModels, uniqueCodexModelIds } from "@shared/codex-models"
 import {
   APPROVAL_POLICIES,
   REASONING_EFFORTS,
@@ -15,14 +16,18 @@ import { Button } from "@/components/ui/button"
 import { Field, FieldLabel } from "@/components/ui/field"
 import {
   Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
   ComboboxContent,
   ComboboxEmpty,
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
+  ComboboxValue,
 } from "@/components/ui/combobox"
-import { InputGroupAddon, InputGroupButton } from "@/components/ui/input-group"
 import { Input } from "@/components/ui/input"
+import { InputGroupAddon, InputGroupButton } from "@/components/ui/input-group"
 import {
   Select,
   SelectContent,
@@ -100,7 +105,9 @@ type Props = {
   tomlText: string
   apiKey: string
   providerId?: string
+  models: string[]
   onTomlChange: (value: string) => void
+  onModelsChange: (value: string[]) => void
   onError: (message: string) => void
 }
 
@@ -109,18 +116,35 @@ export function CodexSessionFields({
   tomlText,
   apiKey,
   providerId,
+  models,
   onTomlChange,
+  onModelsChange,
   onError,
 }: Props) {
   const session = overlaySession(tomlText)
-  const [models, setModels] = useState<string[]>([])
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [query, setQuery] = useState("")
   const [fetching, setFetching] = useState(false)
   const [fetchedCount, setFetchedCount] = useState<number | null>(null)
   const items = reasoningItems()
-  const modelItems = useMemo(() => {
-    if (!session.model || models.includes(session.model)) return models
-    return [session.model, ...models]
-  }, [models, session.model])
+  const catalogItems = useMemo(
+    () => uniqueCodexModelIds([query, ...suggestions, ...models]),
+    [models, query, suggestions],
+  )
+  const defaultItems = useMemo(
+    () => models.map((id) => ({ label: id, value: id })),
+    [models],
+  )
+  const defaultComboboxItems = useMemo(
+    () => uniqueCodexModelIds([session.model, ...suggestions]),
+    [session.model, suggestions],
+  )
+
+  useEffect(() => {
+    setSuggestions([])
+    setFetchedCount(null)
+    setQuery("")
+  }, [providerId])
 
   function patchSession(patch: Partial<OverlaySession>): void {
     try {
@@ -129,6 +153,12 @@ export function CodexSessionFields({
     } catch (error) {
       onError(formatAppError(error))
     }
+  }
+
+  function handleModelsChange(next: string[]): void {
+    const persisted = persistCodexModels(session.model, next)
+    onModelsChange(persisted.models)
+    if (persisted.model !== session.model) patchSession({ model: persisted.model })
   }
 
   async function handleFetchModels(): Promise<void> {
@@ -144,7 +174,7 @@ export function CodexSessionFields({
         apiKey,
         providerId,
       })
-      setModels(ids)
+      setSuggestions(ids)
       setFetchedCount(ids.length)
       onError("")
     } catch (error) {
@@ -159,52 +189,49 @@ export function CodexSessionFields({
     <>
       <Field>
         <FieldHint
-          htmlFor={`${formId}-model`}
-          label={m.session_model()}
-          hint={m.session_model_description()}
+          htmlFor={`${formId}-models`}
+          label={m.session_catalog()}
+          hint={m.session_catalog_description()}
         />
-        <Combobox
-          items={modelItems}
-          value={session.model || null}
-          inputValue={session.model}
-          onValueChange={(value) => {
-            if (typeof value === "string") patchSession({ model: value })
-          }}
-          onInputValueChange={(value) => {
-            patchSession({ model: value })
-          }}
-        >
-          <ComboboxInput
-            id={`${formId}-model`}
-            autoComplete="off"
-            placeholder="gpt-5.4"
-            className="w-full"
-          >
-            <InputGroupAddon align="inline-end">
-              <InputGroupButton
-                type="button"
-                size="icon-xs"
-                disabled={fetching}
-                aria-label={m.session_fetch_models()}
-                onClick={() => {
-                  void handleFetchModels()
-                }}
-              >
-                <Download />
-              </InputGroupButton>
-            </InputGroupAddon>
-          </ComboboxInput>
-          <ComboboxContent>
-            <ComboboxEmpty>{m.session_models_empty()}</ComboboxEmpty>
-            <ComboboxList>
-              {(item) => (
-                <ComboboxItem key={item} value={item}>
-                  {item}
-                </ComboboxItem>
-              )}
-            </ComboboxList>
-          </ComboboxContent>
-        </Combobox>
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <Combobox
+              items={catalogItems}
+              multiple
+              autoHighlight
+              value={models}
+              onValueChange={(value) => {
+                if (!Array.isArray(value)) return
+                handleModelsChange(value.filter((item): item is string => typeof item === "string"))
+              }}
+              onInputValueChange={setQuery}
+            >
+              <ComboboxChips>
+                <ComboboxValue>
+                  {models.map((item) => (
+                    <ComboboxChip key={item}>{item}</ComboboxChip>
+                  ))}
+                </ComboboxValue>
+                <ComboboxChipsInput
+                  id={`${formId}-models`}
+                  autoComplete="off"
+                  placeholder={m.session_catalog_placeholder()}
+                />
+              </ComboboxChips>
+              <ComboboxContent>
+                <ComboboxEmpty>{m.session_models_empty()}</ComboboxEmpty>
+                <ComboboxList>
+                  {(item) => (
+                    <ComboboxItem key={item} value={item}>
+                      {item}
+                    </ComboboxItem>
+                  )}
+                </ComboboxList>
+              </ComboboxContent>
+            </Combobox>
+          </div>
+          <ModelsFetchButton fetching={fetching} onFetch={() => void handleFetchModels()} />
+        </div>
         {fetchedCount == null ? null : (
           <Alert>
             {fetchedCount > 0 ? <CheckCircle2Icon /> : <InfoIcon />}
@@ -214,6 +241,83 @@ export function CodexSessionFields({
                 : m.session_models_none()}
             </AlertTitle>
           </Alert>
+        )}
+      </Field>
+      <Field>
+        <FieldHint
+          htmlFor={`${formId}-model`}
+          label={m.session_model()}
+          hint={m.session_model_description()}
+        />
+        {models.length > 0 ? (
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <Select
+                items={defaultItems}
+                value={models.includes(session.model) ? session.model : models[0]}
+                onValueChange={(value) => {
+                  if (typeof value === "string") patchSession({ model: value })
+                }}
+              >
+                <SelectTrigger id={`${formId}-model`} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false} side="bottom">
+                  <SelectGroup>
+                    {defaultItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            <ModelsFetchButton fetching={fetching} onFetch={() => void handleFetchModels()} />
+          </div>
+        ) : (
+          <Combobox
+            items={defaultComboboxItems}
+            value={session.model || null}
+            inputValue={session.model}
+            onValueChange={(value) => {
+              if (typeof value === "string") patchSession({ model: value })
+            }}
+            onInputValueChange={(value) => {
+              patchSession({ model: value })
+            }}
+          >
+            <ComboboxInput
+              id={`${formId}-model`}
+              autoComplete="off"
+              placeholder="gpt-5.4"
+              className="w-full"
+            >
+              <InputGroupAddon align="inline-end">
+                <InputGroupButton
+                  type="button"
+                  size="icon-xs"
+                  disabled={fetching}
+                  aria-label={m.session_fetch_models()}
+                  onClick={() => {
+                    void handleFetchModels()
+                  }}
+                >
+                  <Download />
+                </InputGroupButton>
+              </InputGroupAddon>
+            </ComboboxInput>
+            <ComboboxContent>
+              <ComboboxEmpty>{m.session_models_empty()}</ComboboxEmpty>
+              <ComboboxList>
+                {(item) => (
+                  <ComboboxItem key={item} value={item}>
+                    {item}
+                  </ComboboxItem>
+                )}
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
         )}
       </Field>
       <Field>
@@ -323,4 +427,25 @@ function approvalItems() {
 
 function isReasoningOption(value: string): value is (typeof REASONING_EFFORTS)[number] {
   return (REASONING_EFFORTS as readonly string[]).includes(value)
+}
+
+function ModelsFetchButton({
+  fetching,
+  onFetch,
+}: {
+  fetching: boolean
+  onFetch: () => void
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      disabled={fetching}
+      aria-label={m.session_fetch_models()}
+      onClick={onFetch}
+    >
+      <Download />
+    </Button>
+  )
 }

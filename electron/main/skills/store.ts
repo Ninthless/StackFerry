@@ -6,6 +6,7 @@ import {
   DEFAULT_SKILL_REPOS,
   isSkillTarget,
   normalizeSkillRepo,
+  pinPreferredSkillRepo,
   requireSkillName,
   type SkillOrigin,
   type SkillRepo,
@@ -13,7 +14,8 @@ import {
 } from '../../../shared/skills'
 import { atomicWriteFile } from '../codex/writer'
 
-const STORE_VERSION = 1
+// v2：已有商店补上 Ninthless/agent-skills 并排到最前；之后允许用户再删掉。
+const STORE_VERSION = 2
 
 export type StoredSkill = {
   origin: SkillOrigin | null
@@ -99,9 +101,12 @@ export class SkillStore {
         }
       }
     }
+    const version = typeof parsed.version === 'number' ? parsed.version : 0
+    let repos = uniqueRepos(Array.isArray(parsed.repos) ? parsed.repos : DEFAULT_SKILL_REPOS)
+    if (version < 2) repos = pinPreferredSkillRepo(repos)
     return {
       version: STORE_VERSION,
-      repos: uniqueRepos(Array.isArray(parsed.repos) ? parsed.repos : DEFAULT_SKILL_REPOS),
+      repos,
       installed,
     }
   }

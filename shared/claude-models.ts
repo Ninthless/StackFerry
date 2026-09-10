@@ -15,15 +15,19 @@ export function uniqueClaudeModelIds(ids: readonly string[]): string[] {
   return result
 }
 
-// 默认模型始终排在 models 首位（Claude Desktop 3P 的 inferenceModels 第一项即默认）；model 就是这个首位 ID，可为空。
 export function persistClaudeModels(
   defaultModel: string | undefined,
   models: readonly unknown[] | undefined,
 ): { model: string; models: string[] } {
+  // 合集为空时不把默认模型塞进去，避免启用后用单条 inferenceModels 盖掉 Desktop 3P / 网关发现。
   const listed = uniqueClaudeModelIds(
     (models ?? []).filter((item): item is string => typeof item === 'string'),
   )
-  const ordered = uniqueClaudeModelIds([defaultModel ?? '', ...listed])
+  const fallback = (defaultModel ?? '').trim()
+  if (listed.length === 0) {
+    return { model: fallback, models: [] }
+  }
+  const ordered = listed.includes(fallback) ? uniqueClaudeModelIds([fallback, ...listed]) : listed
   return { model: ordered[0] ?? '', models: ordered }
 }
 

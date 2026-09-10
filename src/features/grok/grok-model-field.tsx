@@ -23,6 +23,7 @@ type Props = {
   providerId?: string
   model: string
   onModelChange: (value: string) => void
+  onModelsChange?: (models: string[]) => void
   onError: (message: string) => void
 }
 
@@ -34,6 +35,7 @@ export function GrokModelField({
   providerId,
   model,
   onModelChange,
+  onModelsChange,
   onError,
 }: Props) {
   const [models, setModels] = useState<string[]>([])
@@ -48,6 +50,7 @@ export function GrokModelField({
     if (!open) return
     setModels([])
     setFetchedCount(null)
+    onModelsChange?.([])
   }, [open, providerId])
 
   async function handleFetchModels(): Promise<void> {
@@ -61,6 +64,7 @@ export function GrokModelField({
       const ids = await api.listGrokModels({ baseUrl, apiKey, providerId })
       setModels(ids)
       setFetchedCount(ids.length)
+      onModelsChange?.(ids)
       onError("")
     } catch (error) {
       setFetchedCount(null)

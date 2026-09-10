@@ -306,4 +306,63 @@ wire_api = "chat"
     expect(stringifyToml(next)).not.toContain('wire_api = "chat"')
     expect(stringifyToml(next)).not.toContain('chat.example')
   })
+
+  it('points custom and router live configs at the StackFerry catalog', () => {
+    const catalogPath = 'C:\\Users\\me\\.codex\\model-catalogs\\stackferry.json'
+    const custom = applyThirdPartyProvider(existing, {
+      id: 'catalog',
+      name: 'Catalog',
+      tomlText: overlayFor({
+        providerId: 'provider_catalog',
+        name: 'Catalog',
+        baseUrl: 'https://catalog.example/v1',
+        model: 'gpt-5.4',
+      }),
+      apiKey: 'key-catalog',
+      catalogPath,
+      models: ['gpt-5.4', 'gpt-5'],
+    })
+    expect(custom.model_catalog_json).toBe('C:/Users/me/.codex/model-catalogs/stackferry.json')
+
+    const routed = applyRouterProvider(custom, {
+      port: 17890,
+      tomlText: overlayFor({
+        providerId: 'provider_r',
+        name: 'Routed',
+        baseUrl: 'https://secret.example/v1',
+        model: 'model-r',
+      }),
+      catalogPath,
+      models: ['model-r'],
+    })
+    expect(routed.model_catalog_json).toBe('C:/Users/me/.codex/model-catalogs/stackferry.json')
+  })
+
+  it('clears only the StackFerry catalog pointer', () => {
+    const owned = 'C:/Users/me/.codex/model-catalogs/stackferry.json'
+    const other = '/tmp/custom-catalog.json'
+    const withOwned = applyThirdPartyProvider(
+      { ...existing, model_catalog_json: owned },
+      {
+        id: 'empty',
+        name: 'Empty',
+        tomlText: overlayFor({
+          providerId: 'provider_empty',
+          name: 'Empty',
+          baseUrl: 'https://empty.example/v1',
+          model: 'gpt-5.4',
+        }),
+        apiKey: 'key-empty',
+        catalogPath: owned,
+        models: [],
+      },
+    )
+    expect(withOwned.model_catalog_json).toBeUndefined()
+
+    const withOther = applyOfficialProvider(
+      { ...existing, model_catalog_json: other },
+      owned,
+    )
+    expect(withOther.model_catalog_json).toBe(other)
+  })
 })

@@ -61,11 +61,18 @@ const GITHUB_NAME_PATTERN = /^[A-Za-z0-9._-]+$/
 const BRANCH_PATTERN = /^[A-Za-z0-9._/-]+$/
 
 export const DEFAULT_SKILL_REPOS: SkillRepo[] = [
+  skillRepo('Ninthless', 'agent-skills', 'main'),
   skillRepo('anthropics', 'skills', 'main'),
   skillRepo('ComposioHQ', 'awesome-claude-skills', 'master'),
   skillRepo('cexll', 'myclaude', 'master'),
   skillRepo('JimLiu', 'baoyu-skills', 'main'),
 ]
+
+export function pinPreferredSkillRepo(repos: SkillRepo[]): SkillRepo[] {
+  const preferred = DEFAULT_SKILL_REPOS[0]
+  if (!preferred) return repos
+  return [{ ...preferred }, ...repos.filter((repo) => repo.id !== preferred.id)]
+}
 
 export function isSkillTarget(value: unknown): value is SkillTarget {
   return typeof value === 'string' && (SKILL_TARGETS as readonly string[]).includes(value)

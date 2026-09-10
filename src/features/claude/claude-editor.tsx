@@ -49,6 +49,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { formatAppError } from "@/lib/format-app-error"
 import { claudePresetLabel } from "@/lib/preset-label"
 import { HintLabel } from "@/features/settings/settings-hint"
+import { missingText, nonHttpUrl, useEditorSubmit } from "@/features/providers/editor-validation"
 import * as m from "@/paraglide/messages.js"
 import { ClaudeModelField } from "./claude-model-field"
 import { ClaudeSessionFields } from "./claude-session-fields"
@@ -93,10 +94,15 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
     : pending
       ? m.action_saving()
       : m.action_save()
+  const { submitted, markSubmitted } = useEditorSubmit(open)
   const requiresApiKey = kind === "custom" && (!displayedEditing || !displayedEditing.hasApiKey)
   const overlayFields = claudeOverlayFields(overlayJson)
   const liveBaseUrl = overlayFields.baseUrl
   const liveModel = overlayFields.model
+  const nameInvalid = submitted && missingText(name)
+  const baseUrlMissing = kind === "custom" && submitted && missingText(liveBaseUrl)
+  const baseUrlInvalid = kind === "custom" && submitted && !missingText(liveBaseUrl) && nonHttpUrl(liveBaseUrl)
+  const apiKeyInvalid = submitted && requiresApiKey && missingText(apiKey)
 
   useEffect(() => {
     if (!open) return
@@ -190,6 +196,14 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
+    markSubmitted()
+    if (
+      missingText(name) ||
+      (kind === "custom" && (missingText(liveBaseUrl) || nonHttpUrl(liveBaseUrl))) ||
+      (requiresApiKey && missingText(apiKey))
+    ) {
+      return
+    }
     setPending(true)
     setError("")
     try {
@@ -221,7 +235,7 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
         side="right"
         className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-xl"
       >
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
+        <form className="flex min-h-0 flex-1 flex-col" noValidate onSubmit={handleSubmit}>
           <SheetHeader>
             <SheetTitle>{displayedEditing ? m.editor_edit_title() : m.editor_add_title()}</SheetTitle>
           </SheetHeader>
@@ -252,26 +266,33 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
                   </Select>
                 </Field>
               ) : null}
-              <Field>
-                <FieldLabel htmlFor={`${formId}-name`}>{m.field_name()}</FieldLabel>
+              <Field data-invalid={nameInvalid || undefined}>
+                <FieldLabel htmlFor={`${formId}-name`} required>
+                  {m.field_name()}
+                </FieldLabel>
                 <Input
                   id={`${formId}-name`}
                   name="name"
-                  required
+                  aria-required
+                  aria-invalid={nameInvalid || undefined}
                   autoComplete="off"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                 />
+                {nameInvalid ? <FieldError>{m.error_provider_name_required()}</FieldError> : null}
               </Field>
               {kind === "custom" ? (
                 <>
-                  <Field>
-                    <FieldLabel htmlFor={`${formId}-base-url`}>{m.claude_field_base_url()}</FieldLabel>
+                  <Field data-invalid={baseUrlMissing || baseUrlInvalid || undefined}>
+                    <FieldLabel htmlFor={`${formId}-base-url`} required>
+                      {m.claude_field_base_url()}
+                    </FieldLabel>
                     <Input
                       id={`${formId}-base-url`}
                       name="baseUrl"
                       type="url"
-                      required
+                      aria-required
+                      aria-invalid={baseUrlMissing || baseUrlInvalid || undefined}
                       autoComplete="url"
                       inputMode="url"
                       placeholder="https://llm-gateway.example.com"
@@ -281,6 +302,8 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
                         patchOverlay({ baseUrl: event.target.value })
                       }}
                     />
+                    {baseUrlMissing ? <FieldError>{m.error_claude_base_url_required()}</FieldError> : null}
+                    {baseUrlInvalid ? <FieldError>{m.error_claude_base_url_invalid()}</FieldError> : null}
                   </Field>
                   <FieldSet>
                     <FieldLegend variant="label">{m.claude_field_auth_scheme()}</FieldLegend>
@@ -308,18 +331,22 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
                       </FieldContent>
                     </Field>
                   </FieldSet>
-                  <Field>
-                    <FieldLabel htmlFor={`${formId}-api-key`}>{m.field_api_key()}</FieldLabel>
+                  <Field data-invalid={apiKeyInvalid || undefined}>
+                    <FieldLabel htmlFor={`${formId}-api-key`} required={requiresApiKey}>
+                      {m.field_api_key()}
+                    </FieldLabel>
                     <Input
                       id={`${formId}-api-key`}
                       name="apiKey"
                       type="password"
                       autoComplete="off"
-                      required={requiresApiKey}
+                      aria-required={requiresApiKey || undefined}
+                      aria-invalid={apiKeyInvalid || undefined}
                       value={apiKey}
                       placeholder={displayedEditing?.hasApiKey ? m.api_key_keep_placeholder() : ""}
                       onChange={(event) => setApiKey(event.target.value)}
                     />
+                    {apiKeyInvalid ? <FieldError>{m.error_api_key_required()}</FieldError> : null}
                   </Field>
                   <ClaudeModelField
                     formId={formId}

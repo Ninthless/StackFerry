@@ -2,19 +2,22 @@ import { describe, expect, it } from 'vitest'
 import { ROUTER_PROVIDER_KEY } from '../shared/routing'
 import {
   applyDirectModel,
+  applyMediaBaseUrl,
   applyOfficialModel,
   applyRouterModel,
+  GROK_IMAGINE_MODEL_KEY,
+  GROK_IMAGINE_VIDEO_KEY,
   grokModelKey,
   stringifyToml,
 } from '../electron/main/grok/merge'
 
 describe('grok config merge', () => {
-  it('writes a StackFerry model table without pinning global API-key auth', () => {
+  it('writes a StackFerry model table and pins API-key auth for Imagine and subagents', () => {
     const next = applyDirectModel(
       {
         ui: { theme: 'auto' },
         models: { default: 'my-byok' },
-        grok_com_config: { preferred_method: 'api_key' },
+        grok_com_config: { grok_ws_url: 'wss://kept.example' },
         model: { 'my-byok': { base_url: 'https://example.test/v1', model: 'kept' } },
       },
       {
@@ -33,7 +36,17 @@ describe('grok config merge', () => {
       session_summary: key,
       image_description: key,
     })
-    expect(next.grok_com_config).toBeUndefined()
+    expect(next.grok_com_config).toEqual({
+      grok_ws_url: 'wss://kept.example',
+      preferred_method: 'api_key',
+    })
+    expect(next.subagents).toEqual({
+      models: {
+        'general-purpose': key,
+        explore: key,
+        plan: key,
+      },
+    })
     expect(next.stackferry).toBeUndefined()
     expect(next.model).toEqual({
       'my-byok': { base_url: 'https://example.test/v1', model: 'kept' },
@@ -49,7 +62,7 @@ describe('grok config merge', () => {
     const text = stringifyToml(next)
     expect(text).toContain('[model.my-byok]')
     expect(text).not.toContain('[stackferry]')
-    expect(text).not.toContain('preferred_method')
+    expect(text).toContain('preferred_method')
   })
 
   it('restores the provided default, strips StackFerry tables, and unpins API-key auth', () => {
@@ -68,6 +81,7 @@ describe('grok config merge', () => {
     expect(official.models).toEqual({ default: 'my-byok' })
     expect(official.stackferry).toBeUndefined()
     expect(official.grok_com_config).toBeUndefined()
+    expect(official.subagents).toBeUndefined()
     expect(official.model).toBeUndefined()
     expect(official.ui).toBeUndefined()
   })
@@ -191,7 +205,14 @@ describe('grok config merge', () => {
       default: ROUTER_PROVIDER_KEY,
       web_search: ROUTER_PROVIDER_KEY,
     })
-    expect(next.grok_com_config).toBeUndefined()
+    expect(next.grok_com_config).toEqual({ preferred_method: 'api_key' })
+    expect(next.subagents).toEqual({
+      models: {
+        'general-purpose': ROUTER_PROVIDER_KEY,
+        explore: ROUTER_PROVIDER_KEY,
+        plan: ROUTER_PROVIDER_KEY,
+      },
+    })
     expect(next.model).toEqual({
       [ROUTER_PROVIDER_KEY]: {
         name: 'StackFerry Router',
@@ -408,5 +429,134 @@ permission_mode = "auto"
         context_window: 128000,
       },
     })
+  })
+
+  it('pins third-party Imagine settings when an image model is provided', () => {
+    const next = applyDirectModel(
+      {},
+      {
+        id: 'img-1',
+        name: 'Custom',
+        model: 'chat-demo',
+        baseUrl: 'https://gateway.test/v1',
+        apiBackend: 'responses',
+        apiKey: 'chat-secret',
+        media: {
+          imageModel: 'flux-schnell',
+          baseUrl: 'https://gateway.test/v1',
+          apiKey: 'chat-secret',
+        },
+      },
+    )
+    expect(next.endpoints).toEqual({ xai_api_base_url: 'https://gateway.test/v1' })
+    expect(next.features).toEqual({
+      image_gen: true,
+      image_gen_model_override: 'flux-schnell',
+    })
+    expect(next.model).toMatchObject({
+      [GROK_IMAGINE_MODEL_KEY]: {
+        model: 'flux-schnell',
+        base_url: 'https://gateway.test/v1',
+        api_backend: 'chat_completions',
+        api_key: 'chat-secret',
+      },
+    })
+    expect(next.stackferry).toMatchObject({
+      owned: [GROK_IMAGINE_MODEL_KEY],
+      media_gen: true,
+    })
+
+    const official = applyOfficialModel(next, 'grok-build')
+    expect(official.endpoints).toBeUndefined()
+    expect(official.features).toBeUndefined()
+    expect(official.model).toBeUndefined()
+    expect(official.stackferry).toBeUndefined()
+  })
+
+  it('keeps Imagine on the real upstream during router mode', () => {
+    const next = applyRouterModel(
+      {},
+      {
+        port: 41234,
+        model: 'demo',
+        media: {
+          imageModel: 'flux-pro',
+          baseUrl: 'https://images.test/v1',
+          apiKey: 'image-secret',
+        },
+      },
+    )
+    expect(next.endpoints).toEqual({ xai_api_base_url: 'https://images.test/v1' })
+    expect(next.features).toMatchObject({ image_gen_model_override: 'flux-pro' })
+    expect(next.model?.[ROUTER_PROVIDER_KEY]).toMatchObject({
+      base_url: 'http://127.0.0.1:41234/v1',
+      api_key: 'stackferry-router',
+    })
+    expect(next.model?.[GROK_IMAGINE_MODEL_KEY]).toMatchObject({
+      model: 'flux-pro',
+      base_url: 'https://images.test/v1',
+      api_key: 'image-secret',
+    })
+  })
+
+  it('pins video to the real Imagine URL without a local proxy', () => {
+    const next = applyDirectModel(
+      {},
+      {
+        id: 'vid-1',
+        name: 'Custom',
+        model: 'chat-demo',
+        baseUrl: 'https://gateway.test/v1',
+        apiBackend: 'responses',
+        apiKey: 'chat-secret',
+        media: {
+          videoModel: 'kling-v1',
+          baseUrl: 'https://gateway.test/v1',
+          apiKey: 'media-secret',
+        },
+      },
+    )
+    expect(next.endpoints).toEqual({ xai_api_base_url: 'https://gateway.test/v1' })
+    expect(next.features).toEqual({ video_gen: true })
+    expect(next.model?.[GROK_IMAGINE_VIDEO_KEY]).toMatchObject({
+      model: 'kling-v1',
+      base_url: 'https://gateway.test/v1',
+      api_key: 'media-secret',
+    })
+  })
+
+  it('keeps image and video on the same real Imagine URL', () => {
+    const next = applyDirectModel(
+      {},
+      {
+        id: 'both-1',
+        name: 'Custom',
+        model: 'chat-demo',
+        baseUrl: 'https://chat.test/v1',
+        apiBackend: 'responses',
+        apiKey: 'chat-secret',
+        media: {
+          imageModel: 'flux-schnell',
+          videoModel: 'kling-v1',
+          baseUrl: 'https://media.test/v1',
+          apiKey: 'media-secret',
+        },
+      },
+    )
+    expect(next.endpoints).toEqual({ xai_api_base_url: 'https://media.test/v1' })
+    expect(next.features).toEqual({
+      image_gen: true,
+      image_gen_model_override: 'flux-schnell',
+      video_gen: true,
+    })
+  })
+
+  it('rewrites a stale loopback Imagine URL to the real upstream', () => {
+    const next = applyMediaBaseUrl(
+      { endpoints: { xai_api_base_url: 'http://127.0.0.1:61325/v1' }, ui: { theme: 'auto' } },
+      'https://gateway.test/v1',
+    )
+    expect(next.endpoints).toEqual({ xai_api_base_url: 'https://gateway.test/v1' })
+    expect(next.ui).toEqual({ theme: 'auto' })
   })
 })

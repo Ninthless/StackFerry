@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { paraglideVitePlugin } from '@inlang/paraglide-js'
 import { electronSimple } from 'vite-plugin-electron/multi-env'
 import { notBundle } from 'vite-plugin-electron/plugin'
-import pkg from './package.json'
+import pkg from './package.json' with { type: 'json' }
 
 const external = Object.keys(
   'dependencies' in pkg ? (pkg.dependencies as Record<string, string>) : {},
@@ -23,8 +23,8 @@ export default defineConfig(({ command }) => {
   return {
     resolve: {
       alias: {
-        '@': path.join(__dirname, 'src'),
-        '@shared': path.join(__dirname, 'shared'),
+        '@': path.join(import.meta.dirname, 'src'),
+        '@shared': path.join(import.meta.dirname, 'shared'),
       },
     },
     plugins: [

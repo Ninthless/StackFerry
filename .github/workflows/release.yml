@@ -53,6 +53,8 @@ jobs:
             ubuntu-latest)
               test -f release/*/latest-linux.yml
               test -f release/*/latest-linux-arm64.yml
+              ls release/*/*.AppImage
+              ls release/*/*.deb
               ;;
             macos-latest)
               test -f release/*/latest-mac.yml
@@ -65,6 +67,7 @@ jobs:
             release/**/*.exe
             release/**/*.dmg
             release/**/*.AppImage
+            release/**/*.deb
             release/**/*.yml
             release/**/*.blockmap
           if-no-files-found: error
@@ -85,3 +88,13 @@ jobs:
           draft: false
           prerelease: false
           make_latest: "true"
+      - name: Attach Tauri trampoline latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release download v0.1.28 --pattern latest.json --dir trampoline-manifest; then
+            gh release upload "${GITHUB_REF_NAME}" trampoline-manifest/latest.json --clobber
+          else
+            echo "v0.1.28 latest.json is not on GitHub yet; attach it after the Tauri trampoline ships."
+          fi

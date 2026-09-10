@@ -25,6 +25,7 @@ describe('claude code merge', () => {
       ANTHROPIC_MODEL: 'claude-sonnet-4-6',
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+      CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: '1',
     })
   })
 
@@ -46,6 +47,7 @@ describe('claude code merge', () => {
       ANTHROPIC_API_KEY: 'sk-ant',
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+      CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: '1',
     })
   })
 
@@ -74,6 +76,7 @@ describe('claude code merge', () => {
             CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1',
             CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '0',
             CLAUDE_CODE_ATTRIBUTION_HEADER: '1',
+            CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: '0',
             DISABLE_PROMPT_CACHING: '1',
           },
         }),
@@ -92,6 +95,7 @@ describe('claude code merge', () => {
       CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1000000',
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+      CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: '1',
       DISABLE_PROMPT_CACHING: '1',
     })
   })
@@ -122,6 +126,7 @@ describe('claude code merge', () => {
       ANTHROPIC_AUTH_TOKEN: 'token-a',
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+      CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: '1',
     })
   })
 
@@ -196,6 +201,7 @@ describe('claude code merge', () => {
         CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000',
         CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
         CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+        CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: '1',
       },
     })
 

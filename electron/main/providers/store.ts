@@ -4,12 +4,14 @@ import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { safeStorage } from 'electron'
 import { AppError } from '../../../shared/app-error'
+import { persistCodexModels } from '../../../shared/codex-models'
 import { findPreset } from '../../../shared/presets'
 import {
   overlayRequiresApiKey,
   parseProviderOverlay,
   starterOverlayToml,
   summarizeProviderOverlay,
+  withOverlaySession,
 } from '../../../shared/provider-overlay'
 import { orderByIds } from '../../../shared/id-order'
 import type { ProviderDraft, ProviderKind, ProviderListItem } from '../../../shared/types'
@@ -24,6 +26,7 @@ export type StoredProvider = {
   kind: ProviderKind
   baseUrl: string
   model: string
+  models: string[]
   tomlText: string
   apiKeyPayload: string
   createdAt: string
@@ -37,8 +40,9 @@ type StoreFile = {
   providers: StoredProvider[]
 }
 
-type LegacyStoredProvider = Omit<StoredProvider, 'tomlText'> & {
+type LegacyStoredProvider = Omit<StoredProvider, 'tomlText' | 'models'> & {
   tomlText?: string
+  models?: string[]
 }
 
 export class ProviderStore {
@@ -56,13 +60,14 @@ export class ProviderStore {
       throw new AppError('official_exists')
     }
     const now = new Date().toISOString()
-    const overlay = this.resolveOverlay(kind, draft.tomlText)
+    const overlay = this.resolveOverlay(kind, draft.tomlText, draft.models)
     const provider: StoredProvider = {
       id: kind === 'official' ? OFFICIAL_ID : randomUUID(),
       name: this.requireName(draft.name),
       kind,
       baseUrl: overlay.baseUrl,
       model: overlay.model,
+      models: overlay.models,
       tomlText: overlay.tomlText,
       apiKeyPayload: this.encryptApiKey(kind, draft.apiKey),
       createdAt: now,
@@ -77,10 +82,11 @@ export class ProviderStore {
   async update(id: string, draft: ProviderDraft): Promise<ProviderListItem> {
     const file = await this.read()
     const provider = this.requireProvider(file, id)
-    const overlay = this.resolveOverlay(provider.kind, draft.tomlText)
+    const overlay = this.resolveOverlay(provider.kind, draft.tomlText, draft.models)
     provider.name = this.requireName(draft.name)
     provider.baseUrl = overlay.baseUrl
     provider.model = overlay.model
+    provider.models = overlay.models
     provider.tomlText = overlay.tomlText
     if (draft.apiKey?.trim()) {
       provider.apiKeyPayload = this.encryptApiKey(provider.kind, draft.apiKey)
@@ -147,6 +153,7 @@ export class ProviderStore {
       kind: provider.kind,
       baseUrl: provider.baseUrl,
       model: provider.model,
+      models: provider.models,
       tomlText: provider.tomlText,
       hasApiKey: Boolean(provider.apiKeyPayload),
       enabled: provider.id === activeProviderId,
@@ -158,17 +165,29 @@ export class ProviderStore {
     return preset?.kind ?? draft.kind
   }
 
-  private resolveOverlay(kind: ProviderKind, tomlText: string | undefined): {
+  private resolveOverlay(
+    kind: ProviderKind,
+    tomlText: string | undefined,
+    models: readonly unknown[] | undefined,
+  ): {
     tomlText: string
     baseUrl: string
     model: string
+    models: string[]
   } {
     if (kind === 'official') {
-      return { tomlText: '', baseUrl: '', model: '' }
+      return { tomlText: '', baseUrl: '', model: '', models: [] }
     }
     const text = tomlText ?? ''
     const summary = summarizeProviderOverlay(text)
-    return { tomlText: text, baseUrl: summary.baseUrl, model: summary.model }
+    const persisted = persistCodexModels(summary.model, models)
+    const nextText = this.syncOverlayModel(text, persisted.model)
+    return {
+      tomlText: nextText,
+      baseUrl: summarizeProviderOverlay(nextText).baseUrl,
+      model: persisted.model,
+      models: persisted.models,
+    }
   }
 
   private requireName(name: string): string {
@@ -223,18 +242,31 @@ export class ProviderStore {
 
   private migrateProvider(provider: LegacyStoredProvider): StoredProvider {
     if (provider.kind === 'official') {
-      return { ...provider, tomlText: '' }
+      return { ...provider, tomlText: '', models: [] }
     }
+    const tomlText =
+      provider.tomlText ??
+      starterOverlayToml({
+        providerId: 'custom',
+        name: provider.name,
+        baseUrl: provider.baseUrl,
+        model: provider.model,
+      })
+    const persisted = persistCodexModels(provider.model, provider.models)
     return {
       ...provider,
-      tomlText:
-        provider.tomlText ??
-        starterOverlayToml({
-          providerId: 'custom',
-          name: provider.name,
-          baseUrl: provider.baseUrl,
-          model: provider.model,
-        }),
+      tomlText: this.syncOverlayModel(tomlText, persisted.model),
+      model: persisted.model,
+      models: persisted.models,
+    }
+  }
+
+  private syncOverlayModel(tomlText: string, model: string): string {
+    try {
+      if (summarizeProviderOverlay(tomlText).model === model) return tomlText
+      return withOverlaySession(tomlText, { model })
+    } catch {
+      return tomlText
     }
   }
 

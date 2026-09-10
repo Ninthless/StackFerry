@@ -14,6 +14,14 @@ export function grokConfigPath(grokHome: string): string {
   return path.join(grokHome, 'config.toml')
 }
 
+export function grokAuthPath(grokHome: string): string {
+  return path.join(grokHome, 'auth.json')
+}
+
+export function grokAuthRestorePath(grokHome: string): string {
+  return path.join(grokHome, 'auth.json.stackferry-restore')
+}
+
 export function grokSkillsRoot(grokHome: string): string {
   return path.join(grokHome, 'skills')
 }

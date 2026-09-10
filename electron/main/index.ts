@@ -293,6 +293,7 @@ app.whenReady().then(async () => {
   await seedOfficialClaudeProvider(claudeStore)
   await seedOfficialGrokProvider(grokStore)
   await routing.start()
+  await grok.restoreMedia()
   tray.create()
   await refreshTray()
   await createWindow()

@@ -3,12 +3,15 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { AppError } from '../../../shared/app-error'
 import { atomicWriteFile } from '../codex/writer'
-import { grokConfigPath } from './home'
+import { restoreGrokAuth, writeStackferryApiKey } from './auth'
+import { grokAuthPath, grokAuthRestorePath, grokConfigPath } from './home'
 import type { GrokSessionInput } from '../../../shared/grok-session'
 import {
   applyDirectModel,
   applyOfficialModel,
   applyRouterModel,
+  applyMediaBaseUrl,
+  grokConfiguredMediaUrl,
   parseToml,
   stringifyToml,
   type GrokDirectLiveConfig,
@@ -24,9 +27,12 @@ export async function enableGrokDirectConfig(options: {
   backupRoot: string
   provider: GrokDirectLiveConfig
 }): Promise<EnableResult> {
-  return writeMerged(options.grokHome, options.backupRoot, (current) => {
+  const result = await writeMerged(options.grokHome, options.backupRoot, (current) => {
     return applyDirectModel(current, options.provider)
   })
+  const authKey = options.provider.media?.apiKey.trim() || options.provider.apiKey
+  await writeStackferryApiKey(options.grokHome, authKey)
+  return result
 }
 
 export async function enableGrokOfficialConfig(options: {
@@ -34,9 +40,11 @@ export async function enableGrokOfficialConfig(options: {
   backupRoot: string
   previousDefault?: string
 }): Promise<EnableResult> {
-  return writeMerged(options.grokHome, options.backupRoot, (current) => {
+  const result = await writeMerged(options.grokHome, options.backupRoot, (current) => {
     return applyOfficialModel(current, options.previousDefault ?? '')
   })
+  await restoreGrokAuth(options.grokHome)
+  return result
 }
 
 export async function enableGrokRouterConfig(
@@ -45,10 +53,27 @@ export async function enableGrokRouterConfig(
     backupRoot: string
     port: number
     model: string
+    apiKey?: string
+    media?: GrokDirectLiveConfig['media']
   } & GrokSessionInput,
 ): Promise<EnableResult> {
-  const { grokHome, backupRoot, ...input } = options
-  return writeMerged(grokHome, backupRoot, (current) => applyRouterModel(current, input))
+  const { grokHome, backupRoot, apiKey, ...input } = options
+  const result = await writeMerged(grokHome, backupRoot, (current) => applyRouterModel(current, input))
+  if (apiKey?.trim()) await writeStackferryApiKey(grokHome, apiKey)
+  return result
+}
+
+export async function patchGrokMediaUrl(options: {
+  grokHome: string
+  backupRoot: string
+  baseUrl: string
+}): Promise<void> {
+  const configPath = grokConfigPath(options.grokHome)
+  const current = await readTomlOrEmpty(configPath)
+  if (grokConfiguredMediaUrl(current) === options.baseUrl) return
+  await writeMerged(options.grokHome, options.backupRoot, (doc) => {
+    return applyMediaBaseUrl(doc, options.baseUrl)
+  })
 }
 
 async function writeMerged(
@@ -70,6 +95,10 @@ async function backupGrokConfig(grokHome: string, backupRoot: string): Promise<s
   await mkdir(backupPath, { recursive: true })
   const from = grokConfigPath(grokHome)
   if (existsSync(from)) await copyFile(from, path.join(backupPath, 'config.toml'))
+  const auth = grokAuthPath(grokHome)
+  if (existsSync(auth)) await copyFile(auth, path.join(backupPath, 'auth.json'))
+  const restore = grokAuthRestorePath(grokHome)
+  if (existsSync(restore)) await copyFile(restore, path.join(backupPath, 'auth.json.stackferry-restore'))
   return backupPath
 }
 

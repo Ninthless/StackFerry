@@ -85,6 +85,7 @@ export function createCodexAdapter(options: {
           name: provider.name,
           tomlText: provider.tomlText,
           apiKey: options.providers.decryptApiKey(provider),
+          models: provider.models,
         },
       })
     },
@@ -93,7 +94,7 @@ export function createCodexAdapter(options: {
       await enableRouterLiveConfig({
         ...homes(),
         port,
-        provider: { tomlText: provider.tomlText },
+        provider: { tomlText: provider.tomlText, models: provider.models },
       })
     },
     async markEnabled(id) {

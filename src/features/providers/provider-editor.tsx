@@ -35,6 +35,7 @@ import { formatAppError } from "@/lib/format-app-error"
 import { presetLabel } from "@/lib/preset-label"
 import { HintLabel } from "@/features/settings/settings-hint"
 import * as m from "@/paraglide/messages.js"
+import { missingText, useEditorSubmit } from "./editor-validation"
 import { TomlEditor } from "./toml-editor"
 import { CodexSessionFields } from "./codex-session-fields"
 
@@ -51,6 +52,7 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
   const [presetId, setPresetId] = useState("custom")
   const [name, setName] = useState("")
   const [tomlText, setTomlText] = useState("")
+  const [models, setModels] = useState<string[]>([])
   const [apiKey, setApiKey] = useState("")
   const [error, setError] = useState("")
   const [pending, setPending] = useState(false)
@@ -73,6 +75,7 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
     : pending
       ? m.action_saving()
       : m.action_save()
+  const { submitted, markSubmitted } = useEditorSubmit(open)
   const requiresApiKey = useMemo(() => {
     if (kind !== "custom") return false
     try {
@@ -81,6 +84,11 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
       return false
     }
   }, [kind, tomlText])
+  const apiKeyRequired = requiresApiKey && (!displayedEditing || !displayedEditing.hasApiKey)
+  const liveBaseUrl = kind === "custom" ? overlayBaseUrl(tomlText) : ""
+  const nameInvalid = submitted && missingText(name)
+  const baseUrlInvalid = kind === "custom" && submitted && missingText(liveBaseUrl)
+  const apiKeyInvalid = submitted && apiKeyRequired && missingText(apiKey)
   const wireApi = useMemo(() => wireApiFromToml(tomlText), [tomlText])
 
   useEffect(() => {
@@ -91,12 +99,14 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
       setPresetId(editing.kind === "official" ? "official" : "custom")
       setName(editing.name)
       setTomlText(editing.tomlText)
+      setModels(editing.models)
       return
     }
     const initial = presets.find((preset) => preset.id === "custom") ?? presets[0]
     setPresetId(initial?.id ?? "custom")
     setName(initial?.name ?? "")
     setTomlText(initial?.tomlText ?? "")
+    setModels([])
   }, [open, editing, presets])
 
   function applyPreset(nextPresetId: string): void {
@@ -105,6 +115,7 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
     if (!preset || displayedEditing) return
     setName(preset.name)
     setTomlText(preset.tomlText)
+    setModels([])
   }
 
   function handleFormatToml(): void {
@@ -118,6 +129,14 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
+    markSubmitted()
+    if (
+      missingText(name) ||
+      (kind === "custom" && missingText(overlayBaseUrl(tomlText))) ||
+      (apiKeyRequired && missingText(apiKey))
+    ) {
+      return
+    }
     setPending(true)
     setError("")
     try {
@@ -125,6 +144,7 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
         name,
         kind,
         tomlText: kind === "custom" ? tomlText : undefined,
+        models: kind === "custom" ? models : undefined,
         apiKey: apiKey.trim() ? apiKey : undefined,
         presetId: editing ? undefined : presetId,
       })
@@ -141,7 +161,7 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
         side="right"
         className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-xl"
       >
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
+        <form className="flex min-h-0 flex-1 flex-col" noValidate onSubmit={handleSubmit}>
           <SheetHeader>
             <SheetTitle>{displayedEditing ? m.editor_edit_title() : m.editor_add_title()}</SheetTitle>
           </SheetHeader>
@@ -172,30 +192,37 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
                   </Select>
                 </Field>
               ) : null}
-              <Field>
-                <FieldLabel htmlFor={`${formId}-name`}>{m.field_name()}</FieldLabel>
+              <Field data-invalid={nameInvalid || undefined}>
+                <FieldLabel htmlFor={`${formId}-name`} required>
+                  {m.field_name()}
+                </FieldLabel>
                 <Input
                   id={`${formId}-name`}
                   name="name"
-                  required
+                  aria-required
+                  aria-invalid={nameInvalid || undefined}
                   autoComplete="off"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                 />
+                {nameInvalid ? <FieldError>{m.error_provider_name_required()}</FieldError> : null}
               </Field>
               {kind === "custom" ? (
                 <>
-                  <Field>
-                    <FieldLabel htmlFor={`${formId}-base-url`}>Base URL</FieldLabel>
+                  <Field data-invalid={baseUrlInvalid || undefined}>
+                    <FieldLabel htmlFor={`${formId}-base-url`} required>
+                      Base URL
+                    </FieldLabel>
                     <Input
                       id={`${formId}-base-url`}
                       name="baseUrl"
                       type="url"
-                      required
+                      aria-required
+                      aria-invalid={baseUrlInvalid || undefined}
                       autoComplete="url"
                       inputMode="url"
                       placeholder="https://api.example.com/v1"
-                      value={overlayBaseUrl(tomlText)}
+                      value={liveBaseUrl}
                       onChange={(event) => {
                         try {
                           setTomlText(withOverlayBaseUrl(tomlText, event.target.value))
@@ -204,6 +231,7 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
                         }
                       }}
                     />
+                    {baseUrlInvalid ? <FieldError>{m.error_overlay_missing_base_url()}</FieldError> : null}
                   </Field>
                   <FieldSet>
                     <FieldLegend variant="label">{m.field_wire_api()}</FieldLegend>
@@ -237,25 +265,31 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
                       </FieldContent>
                     </Field>
                   </FieldSet>
-                  <Field>
-                    <FieldLabel htmlFor={`${formId}-api-key`}>{m.field_api_key()}</FieldLabel>
+                  <Field data-invalid={apiKeyInvalid || undefined}>
+                    <FieldLabel htmlFor={`${formId}-api-key`} required={apiKeyRequired}>
+                      {m.field_api_key()}
+                    </FieldLabel>
                     <Input
                       id={`${formId}-api-key`}
                       name="apiKey"
                       type="password"
                       autoComplete="off"
-                      required={requiresApiKey && (!displayedEditing || !displayedEditing.hasApiKey)}
+                      aria-required={apiKeyRequired || undefined}
+                      aria-invalid={apiKeyInvalid || undefined}
                       value={apiKey}
                       placeholder={displayedEditing?.hasApiKey ? m.api_key_keep_placeholder() : ""}
                       onChange={(event) => setApiKey(event.target.value)}
                     />
+                    {apiKeyInvalid ? <FieldError>{m.error_api_key_required()}</FieldError> : null}
                   </Field>
                   <CodexSessionFields
                     formId={formId}
                     tomlText={tomlText}
                     apiKey={apiKey}
                     providerId={displayedEditing?.id}
+                    models={models}
                     onTomlChange={setTomlText}
+                    onModelsChange={setModels}
                     onError={setError}
                   />
                   <Field data-invalid={error ? true : undefined}>

@@ -3,18 +3,10 @@ import { readFile } from 'node:fs/promises'
 import { AppError } from '../../../shared/app-error'
 import type { GrokAppStatus } from '../../../shared/types'
 import { grokConfigPath } from './home'
-import {
-  grokDefaultModel,
-  isStackferryModelKey,
-  parseToml,
-} from './merge'
+import { grokDefaultModel, isStackferryModelKey, parseToml, type GrokMediaLiveConfig } from './merge'
 import { grokManagedPolicyPresent } from './policy'
 import type { GrokProviderStore, StoredGrokProvider } from './store'
-import {
-  enableGrokDirectConfig,
-  enableGrokOfficialConfig,
-  enableGrokRouterConfig,
-} from './writer'
+import { enableGrokDirectConfig, enableGrokOfficialConfig, enableGrokRouterConfig, patchGrokMediaUrl } from './writer'
 
 function liveSession(provider: StoredGrokProvider) {
   return {
@@ -50,6 +42,8 @@ export class GrokEnableService {
   async writeDirect(provider: StoredGrokProvider): Promise<void> {
     this.assertWritable()
     await this.rememberPreviousDefault()
+    const apiKey = this.options.store.decryptApiKey(provider)
+    const media = this.resolveMedia(provider, apiKey)
     await enableGrokDirectConfig({
       grokHome: this.options.getGrokHome(),
       backupRoot: this.options.backupRoot,
@@ -59,7 +53,8 @@ export class GrokEnableService {
         model: provider.model,
         baseUrl: provider.baseUrl,
         apiBackend: provider.apiBackend,
-        apiKey: this.options.store.decryptApiKey(provider),
+        apiKey,
+        media,
         ...liveSession(provider),
       },
     })
@@ -68,12 +63,36 @@ export class GrokEnableService {
   async writeRouter(provider: StoredGrokProvider, port: number): Promise<void> {
     this.assertWritable()
     await this.rememberPreviousDefault()
+    const apiKey = this.options.store.decryptApiKey(provider)
+    const media = this.resolveMedia(provider, apiKey)
     await enableGrokRouterConfig({
       grokHome: this.options.getGrokHome(),
       backupRoot: this.options.backupRoot,
       port,
       model: provider.model,
+      apiKey: media?.apiKey || apiKey,
+      media,
       ...liveSession(provider),
+    })
+  }
+
+  async restoreMedia(): Promise<void> {
+    const id = await this.options.store.getActiveId()
+    if (!id) return
+    let provider: StoredGrokProvider
+    try {
+      provider = await this.options.store.peek(id)
+    } catch {
+      return
+    }
+    if (provider.kind !== 'custom') return
+    const apiKey = this.options.store.decryptApiKey(provider)
+    const media = this.resolveMedia(provider, apiKey)
+    if (!media) return
+    await patchGrokMediaUrl({
+      grokHome: this.options.getGrokHome(),
+      backupRoot: this.options.backupRoot,
+      baseUrl: media.baseUrl,
     })
   }
 
@@ -85,6 +104,26 @@ export class GrokEnableService {
       lastWriteAt: await this.options.store.getLastWriteAt(),
       activeProviderId: await this.options.store.getActiveId(),
       needsRestart: false,
+    }
+  }
+
+  private resolveMedia(provider: StoredGrokProvider, chatApiKey: string): GrokMediaLiveConfig | null {
+    const imageModel = provider.imageModel.trim()
+    const videoModel = provider.videoModel.trim()
+    if (!imageModel && !videoModel) return null
+    let mediaApiKey = ''
+    try {
+      mediaApiKey = this.options.store.decryptImageApiKey(provider)
+    } catch {
+      mediaApiKey = ''
+    }
+    const baseUrl = provider.imageBaseUrl.trim() || provider.baseUrl.trim()
+    if (!baseUrl) return null
+    return {
+      baseUrl,
+      apiKey: mediaApiKey.trim() || chatApiKey,
+      imageModel: imageModel || undefined,
+      videoModel: videoModel || undefined,
     }
   }
 

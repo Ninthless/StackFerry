@@ -5,6 +5,11 @@ import {
 } from '../../../shared/routing'
 import { AppError } from '../../../shared/app-error'
 import {
+  catalogPathForToml,
+  isOwnedCatalogPath,
+  uniqueCodexModelIds,
+} from '../../../shared/codex-models'
+import {
   isPlainObject,
   overlayUsesExternalAuth,
   parseProviderOverlay,
@@ -19,17 +24,22 @@ export { parseToml, stringifyToml }
 export const STACKFERRY_PREFIX = 'stackferry_'
 export const OFFICIAL_MODEL_PROVIDER = 'openai'
 
+export type CatalogLiveConfig = {
+  catalogPath?: string
+  models?: readonly string[]
+}
+
 export type RouterLiveConfig = {
   port: number
   tomlText: string
-}
+} & CatalogLiveConfig
 
 export type ThirdPartyLiveConfig = {
   id: string
   name: string
   tomlText: string
   apiKey: string
-}
+} & CatalogLiveConfig
 
 export function providerKey(id: string): string {
   return `${STACKFERRY_PREFIX}${id.replaceAll('-', '')}`
@@ -56,13 +66,15 @@ export function applyThirdPartyProvider(doc: TomlTable, input: ThirdPartyLiveCon
   providers[key] = table
   next.model_provider = key
   applySessionKeys(next, overlay)
+  applyCatalogPointer(next, input)
   return next
 }
 
-export function applyOfficialProvider(doc: TomlTable): TomlTable {
+export function applyOfficialProvider(doc: TomlTable, catalogPath?: string): TomlTable {
   const next = cloneDoc(doc)
   stripStackferryProviders(next)
   next.model_provider = OFFICIAL_MODEL_PROVIDER
+  applyCatalogPointer(next, { catalogPath, models: [] })
   return next
 }
 
@@ -78,7 +90,21 @@ export function applyRouterProvider(doc: TomlTable, input: RouterLiveConfig): To
   }
   next.model_provider = ROUTER_PROVIDER_KEY
   applySessionKeys(next, overlay)
+  applyCatalogPointer(next, input)
   return next
+}
+
+function applyCatalogPointer(doc: TomlTable, input: CatalogLiveConfig): void {
+  const catalogPath = input.catalogPath?.trim() ?? ''
+  if (!catalogPath) return
+  const listed = uniqueCodexModelIds(input.models ?? [])
+  if (listed.length > 0) {
+    doc.model_catalog_json = catalogPathForToml(catalogPath)
+    return
+  }
+  if (isOwnedCatalogPath(doc.model_catalog_json, catalogPath)) {
+    delete doc.model_catalog_json
+  }
 }
 
 function ensureProviderTable(doc: TomlTable): TomlTable {

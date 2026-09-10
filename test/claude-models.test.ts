@@ -50,24 +50,22 @@ describe('unique claude model ids', () => {
 })
 
 describe('persist claude models', () => {
-  it('puts the default first and ignores non-strings', () => {
+  it('does not seed an empty catalog from the default model', () => {
+    expect(persistClaudeModels('gw-sonnet', undefined)).toEqual({ model: 'gw-sonnet', models: [] })
+    expect(persistClaudeModels('gw-sonnet', [])).toEqual({ model: 'gw-sonnet', models: [] })
+  })
+
+  it('keeps the default first when it is already in the catalog', () => {
     expect(persistClaudeModels(' gw-sonnet ', ['gw-opus', 'gw-sonnet', 1, '  '])).toEqual({
       model: 'gw-sonnet',
       models: ['gw-sonnet', 'gw-opus'],
     })
   })
 
-  it('uses the first listed id when the default is empty', () => {
+  it('falls back to the first catalog id when the default is missing', () => {
     expect(persistClaudeModels('', ['gw-opus', 'gw-sonnet'])).toEqual({
       model: 'gw-opus',
       models: ['gw-opus', 'gw-sonnet'],
-    })
-  })
-
-  it('migrates a legacy single model to a one-item list', () => {
-    expect(persistClaudeModels('gw-sonnet', undefined)).toEqual({
-      model: 'gw-sonnet',
-      models: ['gw-sonnet'],
     })
   })
 

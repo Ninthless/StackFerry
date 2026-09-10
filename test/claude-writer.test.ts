@@ -42,6 +42,7 @@ describe('claude live writers', () => {
       ANTHROPIC_MODEL: 'model-a',
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+      CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: '1',
     })
     expect(JSON.parse(await readFile(path.join(first.backupPath, 'settings.json'), 'utf8'))).toMatchObject({
       env: { KEEP_ME: 'yes' },
@@ -94,6 +95,7 @@ describe('claude live writers', () => {
     expect(profile.inferenceProvider).toBe('gateway')
     expect(profile.inferenceGatewayApiKey).toBe('gw-key')
     expect(profile.disableDeploymentModeChooser).toBe(true)
+    expect(profile.inferenceModels).toBeUndefined()
     const appConfig = JSON.parse(
       await readFile(path.join(root, 'claude_desktop_config.json'), 'utf8'),
     ) as { deploymentMode: string }

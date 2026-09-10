@@ -12,6 +12,7 @@ export const MANAGED_CODE_ENV_KEYS = [
   'CLAUDE_CODE_AUTO_COMPACT_WINDOW',
   'CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS',
   'CLAUDE_CODE_ATTRIBUTION_HEADER',
+  'CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY',
 ] as const
 
 export const MANAGED_CODE_ROOT_KEYS = ['effortLevel', 'autoCompactWindow'] as const
@@ -53,6 +54,8 @@ export function applyCodeGateway(
   // 不写 DISABLE_PROMPT_CACHING：基础 cache_control 应继续发给上游。
   env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = '1'
   env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
+  // 3P 网关模型不在 Claude Code 内置 /model 里；开启发现后会把 GET /v1/models 加进选择器。
+  env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = '1'
   if (session.effortLevel) root.effortLevel = session.effortLevel
   else delete root.effortLevel
   if (session.autoCompact != null) root.autoCompactWindow = session.autoCompact

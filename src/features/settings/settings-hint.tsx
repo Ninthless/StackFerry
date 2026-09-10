@@ -30,16 +30,18 @@ export function HintLabel({
   htmlFor,
   id,
   hint,
+  required,
   children,
 }: {
   htmlFor?: string
   id?: string
   hint: string
+  required?: boolean
   children: ReactNode
 }) {
   return (
     <div className="flex items-center gap-1">
-      <FieldLabel htmlFor={htmlFor} id={id}>
+      <FieldLabel htmlFor={htmlFor} id={id} required={required}>
         {children}
       </FieldLabel>
       <HintIcon hint={hint} />

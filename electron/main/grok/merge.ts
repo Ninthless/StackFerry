@@ -22,6 +22,7 @@ const OWNED_MODEL_KEYS = new Set([
 ])
 
 const AUX_MODEL_KEYS = ['web_search', 'session_summary', 'image_description'] as const
+const SUBAGENT_TYPES = ['general-purpose', 'explore', 'plan'] as const
 const OWNED_MODELS_PIN_KEYS = new Set(['default', ...AUX_MODEL_KEYS])
 const OWNED_UI_PIN_KEYS = new Set(['fork_secondary_model', 'permission_mode'])
 
@@ -33,6 +34,13 @@ export const STACKFERRY_META_TABLE = 'stackferry'
 export const PREFERRED_AUTH_METHOD = 'preferred_method'
 export const PREFERRED_API_KEY = 'api_key'
 
+export type GrokMediaLiveConfig = {
+  baseUrl: string
+  apiKey: string
+  imageModel?: string
+  videoModel?: string
+}
+
 export type GrokDirectLiveConfig = {
   id: string
   name: string
@@ -40,12 +48,17 @@ export type GrokDirectLiveConfig = {
   baseUrl: string
   apiBackend: GrokApiBackend
   apiKey: string
+  media?: GrokMediaLiveConfig | null
 } & GrokSessionInput
 
 export type GrokRouterLiveConfig = {
   port: number
   model: string
+  media?: GrokMediaLiveConfig | null
 } & GrokSessionInput
+
+export const GROK_IMAGINE_MODEL_KEY = 'grok-imagine-image'
+export const GROK_IMAGINE_VIDEO_KEY = 'grok-imagine-video'
 
 export function grokModelKey(id: string): string {
   return `${STACKFERRY_PREFIX}${id.replaceAll('-', '')}`
@@ -61,14 +74,29 @@ export function grokDefaultModel(doc: TomlTable): string {
   return models.default.trim()
 }
 
+export function grokConfiguredMediaUrl(doc: TomlTable): string {
+  const endpoints = doc.endpoints
+  if (!isPlainObject(endpoints) || typeof endpoints.xai_api_base_url !== 'string') return ''
+  return endpoints.xai_api_base_url.trim()
+}
+
+export function applyMediaBaseUrl(doc: TomlTable, baseUrl: string): TomlTable {
+  const next = cloneDoc(doc)
+  const endpoints = isPlainObject(next.endpoints) ? { ...next.endpoints } : {}
+  endpoints.xai_api_base_url = baseUrl
+  next.endpoints = endpoints
+  return next
+}
+
 export function applyDirectModel(doc: TomlTable, input: GrokDirectLiveConfig): TomlTable {
   const next = cloneDoc(doc)
   stripStackferryOwned(next)
-  unpinByokAuth(next)
   const session = parseGrokSession(input)
   if (session.overlay) applyOverlayRoot(next, session.overlay)
   const key = attachDirectModel(next, input, directTable(input, session))
   pinLiveModel(next, key, session)
+  pinByokAuth(next)
+  pinMediaGeneration(next, input.media)
   return next
 }
 
@@ -85,7 +113,6 @@ export function applyOfficialModel(doc: TomlTable, previousDefault = ''): TomlTa
 export function applyRouterModel(doc: TomlTable, input: GrokRouterLiveConfig): TomlTable {
   const next = cloneDoc(doc)
   stripStackferryOwned(next)
-  unpinByokAuth(next)
   const session = parseGrokSession(input)
   if (session.overlay) applyOverlayRoot(next, session.overlay)
   const table: TomlTable = {
@@ -98,6 +125,8 @@ export function applyRouterModel(doc: TomlTable, input: GrokRouterLiveConfig): T
   applySession(table, session)
   ensureModelTable(next)[ROUTER_PROVIDER_KEY] = table
   pinLiveModel(next, ROUTER_PROVIDER_KEY, session)
+  pinByokAuth(next)
+  pinMediaGeneration(next, input.media)
   return next
 }
 
@@ -208,6 +237,7 @@ function pinLiveModel(doc: TomlTable, key: string, session: GrokSession): void {
   // Grok 的 permission_mode 是用户级 [ui] 键，不能写到 [model.*]。
   if (session.permissionMode) ui.permission_mode = session.permissionMode
   else delete ui.permission_mode
+  pinSubagentModels(doc, key)
 }
 
 function unpinLiveModel(doc: TomlTable, owned: Set<string> = new Set()): void {
@@ -229,6 +259,7 @@ function unpinLiveModel(doc: TomlTable, owned: Set<string> = new Set()): void {
     delete ui.fork_secondary_model
   }
   if (isPlainObject(ui) && Object.keys(ui).length === 0) delete doc.ui
+  unpinSubagentModels(doc, isOwnedPin)
 }
 
 function stripStackferryOwned(doc: TomlTable): Set<string> {
@@ -247,6 +278,7 @@ function stripStackferryOwned(doc: TomlTable): Set<string> {
     for (const key of owned) delete models[key]
     if (Object.keys(models).length === 0) delete doc.model
   }
+  unpinMediaGeneration(doc)
   delete doc[STACKFERRY_META_TABLE]
   return owned
 }
@@ -267,12 +299,122 @@ function leftoverPreviousDefault(doc: TomlTable): string {
   return meta.previous_default.trim()
 }
 
-// 全局 preferred_method=api_key 会禁止官方模型走 /login；密钥只写在 StackFerry 模型表上。
+// Imagine 只读 endpoints.xai_api_base_url，必须是上游真实地址；聊天走 [model.*].base_url。
+function pinMediaGeneration(doc: TomlTable, media?: GrokMediaLiveConfig | null): void {
+  const imageModel = media?.imageModel?.trim() ?? ''
+  const videoModel = media?.videoModel?.trim() ?? ''
+  if (!imageModel && !videoModel) return
+  const baseUrl = media?.baseUrl.trim() ?? ''
+  const apiKey = media?.apiKey.trim() ?? ''
+  if (!baseUrl) return
+
+  const endpoints = isPlainObject(doc.endpoints) ? { ...doc.endpoints } : {}
+  endpoints.xai_api_base_url = baseUrl
+  doc.endpoints = endpoints
+
+  const features = isPlainObject(doc.features) ? { ...doc.features } : {}
+  if (imageModel) {
+    features.image_gen = true
+    features.image_gen_model_override = imageModel
+  }
+  if (videoModel) features.video_gen = true
+  doc.features = features
+
+  const models = ensureModelTable(doc)
+  if (imageModel) {
+    const table: TomlTable = {
+      model: imageModel,
+      base_url: baseUrl,
+      api_backend: 'chat_completions',
+    }
+    if (apiKey) table.api_key = apiKey
+    models[GROK_IMAGINE_MODEL_KEY] = table
+    markOwned(doc, GROK_IMAGINE_MODEL_KEY)
+  }
+  if (videoModel) {
+    const table: TomlTable = {
+      model: videoModel,
+      base_url: baseUrl,
+      api_backend: 'chat_completions',
+    }
+    if (apiKey) table.api_key = apiKey
+    models[GROK_IMAGINE_VIDEO_KEY] = table
+    markOwned(doc, GROK_IMAGINE_VIDEO_KEY)
+  }
+
+  const meta = isPlainObject(doc[STACKFERRY_META_TABLE]) ? { ...doc[STACKFERRY_META_TABLE] } : {}
+  meta.media_gen = true
+  doc[STACKFERRY_META_TABLE] = meta
+}
+
+function unpinMediaGeneration(doc: TomlTable): void {
+  const meta = doc[STACKFERRY_META_TABLE]
+  const managed =
+    isPlainObject(meta) && (meta.media_gen === true || meta.image_gen === true)
+  if (!managed) return
+  const models = doc.model
+  if (isPlainObject(models)) {
+    delete models[GROK_IMAGINE_MODEL_KEY]
+    delete models[GROK_IMAGINE_VIDEO_KEY]
+    if (Object.keys(models).length === 0) delete doc.model
+  }
+  const features = doc.features
+  if (isPlainObject(features)) {
+    delete features.image_gen
+    delete features.image_gen_model_override
+    delete features.video_gen
+    if (Object.keys(features).length === 0) delete doc.features
+  }
+  const endpoints = doc.endpoints
+  if (isPlainObject(endpoints)) {
+    delete endpoints.xai_api_base_url
+    if (Object.keys(endpoints).length === 0) delete doc.endpoints
+  }
+}
+
+function markOwned(doc: TomlTable, key: string): void {
+  const meta = isPlainObject(doc[STACKFERRY_META_TABLE]) ? { ...doc[STACKFERRY_META_TABLE] } : {}
+  const owned = Array.isArray(meta.owned)
+    ? meta.owned.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+  if (!owned.includes(key)) owned.push(key)
+  meta.owned = owned
+  doc[STACKFERRY_META_TABLE] = meta
+}
+
+// Imagine 和未钉住的子代理走会话凭证，不读 [model.*].api_key。
+function pinByokAuth(doc: TomlTable): void {
+  const gcc = isPlainObject(doc.grok_com_config) ? { ...doc.grok_com_config } : {}
+  gcc[PREFERRED_AUTH_METHOD] = PREFERRED_API_KEY
+  doc.grok_com_config = gcc
+}
+
 function unpinByokAuth(doc: TomlTable): void {
   const gcc = doc.grok_com_config
   if (!isPlainObject(gcc)) return
   if (gcc[PREFERRED_AUTH_METHOD] === PREFERRED_API_KEY) delete gcc[PREFERRED_AUTH_METHOD]
   if (Object.keys(gcc).length === 0) delete doc.grok_com_config
+}
+
+function pinSubagentModels(doc: TomlTable, key: string): void {
+  const subagents = isPlainObject(doc.subagents) ? { ...doc.subagents } : {}
+  const models = isPlainObject(subagents.models) ? { ...subagents.models } : {}
+  for (const type of SUBAGENT_TYPES) models[type] = key
+  subagents.models = models
+  doc.subagents = subagents
+}
+
+function unpinSubagentModels(doc: TomlTable, isOwnedPin: (value: string) => boolean): void {
+  const subagents = doc.subagents
+  if (!isPlainObject(subagents)) return
+  const models = subagents.models
+  if (isPlainObject(models)) {
+    for (const type of SUBAGENT_TYPES) {
+      if (typeof models[type] === 'string' && isOwnedPin(models[type])) delete models[type]
+    }
+    if (Object.keys(models).length === 0) delete subagents.models
+  }
+  if (Object.keys(subagents).length === 0) delete doc.subagents
 }
 
 function setDefaultModel(doc: TomlTable, id: string): void {

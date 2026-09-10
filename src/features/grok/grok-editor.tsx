@@ -37,9 +37,11 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { formatAppError } from "@/lib/format-app-error"
 import { grokPresetLabel } from "@/lib/preset-label"
 import { HintLabel } from "@/features/settings/settings-hint"
+import { missingText, nonHttpUrl, useEditorSubmit } from "@/features/providers/editor-validation"
 import * as m from "@/paraglide/messages.js"
 import { TomlEditor } from "@/features/providers/toml-editor"
 import { GrokModelField } from "./grok-model-field"
+import { GrokImageFields } from "./grok-image-fields"
 import { GrokSessionFields } from "./grok-session-fields"
 
 type Props = {
@@ -58,6 +60,11 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
   const [model, setModel] = useState("")
   const [apiBackend, setApiBackend] = useState<GrokApiBackend>("responses")
   const [apiKey, setApiKey] = useState("")
+  const [imageModel, setImageModel] = useState("")
+  const [videoModel, setVideoModel] = useState("")
+  const [imageBaseUrl, setImageBaseUrl] = useState("")
+  const [imageApiKey, setImageApiKey] = useState("")
+  const [catalogModels, setCatalogModels] = useState<string[]>([])
   const [overlayToml, setOverlayToml] = useState("")
   const [error, setError] = useState("")
   const [pending, setPending] = useState(false)
@@ -80,23 +87,33 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
     : pending
       ? m.action_saving()
       : m.action_save()
+  const { submitted, markSubmitted } = useEditorSubmit(open)
   const requiresApiKey = kind === "custom" && (!displayedEditing || !displayedEditing.hasApiKey)
   const identity = grokOverlayIdentity(overlayToml)
   const liveName = kind === "custom" ? identity.name : name
   const liveBaseUrl = identity.baseUrl
   const liveModel = identity.model
   const liveBackend = isGrokApiBackend(identity.apiBackend) ? identity.apiBackend : apiBackend
+  const nameInvalid = submitted && missingText(liveName)
+  const baseUrlMissing = kind === "custom" && submitted && missingText(liveBaseUrl)
+  const baseUrlInvalid = kind === "custom" && submitted && !missingText(liveBaseUrl) && nonHttpUrl(liveBaseUrl)
+  const apiKeyInvalid = submitted && requiresApiKey && missingText(apiKey)
+  const imageBaseUrlInvalid = submitted && !missingText(imageBaseUrl) && nonHttpUrl(imageBaseUrl)
 
   useEffect(() => {
     if (!open) return
     setError("")
     setApiKey("")
+    setImageApiKey("")
     if (editing) {
       setPresetId(editing.kind === "official" ? "official" : "custom")
       setName(editing.name)
       setBaseUrl(editing.baseUrl)
       setModel(editing.model)
       setApiBackend(editing.apiBackend)
+      setImageModel(editing.imageModel)
+      setVideoModel(editing.videoModel)
+      setImageBaseUrl(editing.imageBaseUrl)
       setOverlayToml(
         editing.kind === "custom"
           ? seedOverlay(editing.overlayToml, {
@@ -119,6 +136,9 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
     setBaseUrl(initial?.baseUrl ?? "")
     setModel(initial?.model ?? "")
     setApiBackend(initial?.apiBackend ?? "responses")
+    setImageModel("")
+    setVideoModel("")
+    setImageBaseUrl("")
     setOverlayToml(
       initial?.kind === "custom"
         ? seedOverlay("", {
@@ -143,6 +163,10 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
     setBaseUrl(preset.baseUrl)
     setModel(preset.model)
     setApiBackend(preset.apiBackend)
+    setImageModel("")
+    setVideoModel("")
+    setImageBaseUrl("")
+    setImageApiKey("")
     setOverlayToml(
       preset.kind === "custom"
         ? seedOverlay("", {
@@ -179,6 +203,15 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
+    markSubmitted()
+    if (
+      missingText(liveName) ||
+      (kind === "custom" && (missingText(liveBaseUrl) || nonHttpUrl(liveBaseUrl))) ||
+      (requiresApiKey && missingText(apiKey)) ||
+      (!missingText(imageBaseUrl) && nonHttpUrl(imageBaseUrl))
+    ) {
+      return
+    }
     setPending(true)
     setError("")
     try {
@@ -189,6 +222,10 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
         model: kind === "custom" ? liveModel || model : undefined,
         apiBackend: kind === "custom" ? liveBackend : undefined,
         apiKey: apiKey.trim() ? apiKey : undefined,
+        imageModel: kind === "custom" ? imageModel : undefined,
+        imageBaseUrl: kind === "custom" ? imageBaseUrl : undefined,
+        imageApiKey: kind === "custom" && imageApiKey.trim() ? imageApiKey : undefined,
+        videoModel: kind === "custom" ? videoModel : undefined,
         overlayToml: kind === "custom" ? overlayToml : undefined,
         presetId: editing ? undefined : presetId,
       })
@@ -202,7 +239,7 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
+        <form className="flex min-h-0 flex-1 flex-col" noValidate onSubmit={handleSubmit}>
           <SheetHeader>
             <SheetTitle>{displayedEditing ? m.editor_edit_title() : m.editor_add_title()}</SheetTitle>
           </SheetHeader>
@@ -233,12 +270,15 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
                   </Select>
                 </Field>
               ) : null}
-              <Field>
-                <FieldLabel htmlFor={`${formId}-name`}>{m.field_name()}</FieldLabel>
+              <Field data-invalid={nameInvalid || undefined}>
+                <FieldLabel htmlFor={`${formId}-name`} required>
+                  {m.field_name()}
+                </FieldLabel>
                 <Input
                   id={`${formId}-name`}
                   name="name"
-                  required
+                  aria-required
+                  aria-invalid={nameInvalid || undefined}
                   autoComplete="off"
                   value={liveName}
                   onChange={(event) => {
@@ -247,16 +287,20 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
                     if (kind === "custom") patchIdentity({ name: next })
                   }}
                 />
+                {nameInvalid ? <FieldError>{m.error_provider_name_required()}</FieldError> : null}
               </Field>
               {kind === "custom" ? (
                 <>
-                  <Field>
-                    <FieldLabel htmlFor={`${formId}-base-url`}>{m.grok_field_base_url()}</FieldLabel>
+                  <Field data-invalid={baseUrlMissing || baseUrlInvalid || undefined}>
+                    <FieldLabel htmlFor={`${formId}-base-url`} required>
+                      {m.grok_field_base_url()}
+                    </FieldLabel>
                     <Input
                       id={`${formId}-base-url`}
                       name="baseUrl"
                       type="url"
-                      required
+                      aria-required
+                      aria-invalid={baseUrlMissing || baseUrlInvalid || undefined}
                       autoComplete="url"
                       inputMode="url"
                       placeholder="https://api.example.com/v1"
@@ -266,6 +310,8 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
                         patchIdentity({ baseUrl: event.target.value })
                       }}
                     />
+                    {baseUrlMissing ? <FieldError>{m.error_grok_base_url_required()}</FieldError> : null}
+                    {baseUrlInvalid ? <FieldError>{m.error_grok_base_url_invalid()}</FieldError> : null}
                   </Field>
                   <FieldSet>
                     <FieldLegend variant="label">{m.grok_field_api_backend()}</FieldLegend>
@@ -295,18 +341,22 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
                       </FieldContent>
                     </Field>
                   </FieldSet>
-                  <Field>
-                    <FieldLabel htmlFor={`${formId}-api-key`}>{m.field_api_key()}</FieldLabel>
+                  <Field data-invalid={apiKeyInvalid || undefined}>
+                    <FieldLabel htmlFor={`${formId}-api-key`} required={requiresApiKey}>
+                      {m.field_api_key()}
+                    </FieldLabel>
                     <Input
                       id={`${formId}-api-key`}
                       name="apiKey"
                       type="password"
                       autoComplete="off"
-                      required={requiresApiKey}
+                      aria-required={requiresApiKey || undefined}
+                      aria-invalid={apiKeyInvalid || undefined}
                       value={apiKey}
                       placeholder={displayedEditing?.hasApiKey ? m.api_key_keep_placeholder() : ""}
                       onChange={(event) => setApiKey(event.target.value)}
                     />
+                    {apiKeyInvalid ? <FieldError>{m.error_api_key_required()}</FieldError> : null}
                   </Field>
                   <GrokModelField
                     formId={formId}
@@ -319,7 +369,22 @@ export function GrokProviderEditor({ open, presets, editing, onOpenChange, onSub
                       setModel(next)
                       patchIdentity({ model: next })
                     }}
+                    onModelsChange={setCatalogModels}
                     onError={setError}
+                  />
+                  <GrokImageFields
+                    formId={formId}
+                    catalogModels={catalogModels}
+                    imageModel={imageModel}
+                    videoModel={videoModel}
+                    imageBaseUrl={imageBaseUrl}
+                    imageApiKey={imageApiKey}
+                    hasImageApiKey={Boolean(displayedEditing?.hasImageApiKey)}
+                    imageBaseUrlInvalid={imageBaseUrlInvalid}
+                    onImageModelChange={setImageModel}
+                    onVideoModelChange={setVideoModel}
+                    onImageBaseUrlChange={setImageBaseUrl}
+                    onImageApiKeyChange={setImageApiKey}
                   />
                   <GrokSessionFields
                     formId={formId}

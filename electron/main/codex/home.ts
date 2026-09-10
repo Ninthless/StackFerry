@@ -17,3 +17,7 @@ export function codexConfigPath(codexHome: string): string {
 export function codexAuthPath(codexHome: string): string {
   return path.join(codexHome, 'auth.json')
 }
+
+export function stackferryCatalogPath(codexHome: string): string {
+  return path.join(codexHome, 'model-catalogs', 'stackferry.json')
+}

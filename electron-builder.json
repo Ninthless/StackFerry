@@ -61,6 +61,7 @@
   "linux": {
     "icon": "public/icon.png",
     "category": "Development",
+    "maintainer": "Ninthless <ninthless@users.noreply.github.com>",
     "desktop": {
       "entry": {
         "StartupWMClass": "stackferry"
@@ -70,9 +71,25 @@
       {
         "target": "AppImage",
         "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "deb",
+        "arch": ["x64", "arm64"]
       }
     ],
     "artifactName": "${productName}_${version}_${arch}.${ext}"
+  },
+  "deb": {
+    "depends": [
+      "libgtk-3-0 | libgtk-3-0t64",
+      "libnotify4 | libnotify4t64",
+      "libnss3",
+      "libxss1 | libxss1t64",
+      "libxtst6 | libxtst6t64",
+      "xdg-utils",
+      "libatspi2.0-0 | libatspi2.0-0t64",
+      "libuuid1"
+    ]
   },
   "publish": {
     "provider": "github",
