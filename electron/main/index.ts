@@ -50,6 +50,14 @@ import { broadcastSkillsChanged } from './skills/ipc'
 import { SkillService } from './skills/service'
 import { AppTray } from './tray'
 import { windowChromeOptions } from './window-chrome'
+import {
+  bindProviderImportWindow,
+  flushProviderImportOffer,
+  handleProviderImportArgv,
+  handleProviderImportUrl,
+  registerProviderImportIpc,
+  registerProviderImportProtocol,
+} from './deep-link'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -82,6 +90,13 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
   process.exit(0)
 }
+
+registerProviderImportProtocol()
+// macOS 会在 app ready 前投递 open-url，必须在 whenReady 之前监听。
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  handleProviderImportUrl(url)
+})
 
 
 let win: BrowserWindow | null = null
@@ -132,6 +147,9 @@ async function createWindow(): Promise<void> {
   } else {
     await win.loadFile(indexHtml)
   }
+  win.webContents.on('did-finish-load', () => {
+    flushProviderImportOffer()
+  })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https:') || url.startsWith('http:')) {
@@ -301,6 +319,7 @@ app.whenReady().then(async () => {
     },
   })
   registerIpc(ipcContext)
+  registerProviderImportIpc()
   await seedOfficialProvider(store)
   await seedOfficialClaudeProvider(claudeStore)
   await seedOfficialGrokProvider(grokStore)
@@ -309,6 +328,8 @@ app.whenReady().then(async () => {
   tray.create()
   await refreshTray()
   await createWindow()
+  bindProviderImportWindow(showWindow)
+  handleProviderImportArgv(process.argv)
 })
 
 app.on('window-all-closed', () => {
@@ -340,7 +361,8 @@ async function restoreThenQuit(): Promise<void> {
   app.quit()
 }
 
-app.on('second-instance', () => {
+app.on('second-instance', (_event, commandLine) => {
+  handleProviderImportArgv(commandLine)
   showWindow()
 })
 

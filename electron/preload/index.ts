@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IpcChannel } from '../../shared/ipc'
-import type { AppUpdateStatus, ClaudeProviderDraft, ProviderDraft, StackferryApi } from '../../shared/types'
+import type { AppUpdateStatus, ClaudeProviderDraft, ProviderDraft, ProviderImportOffer, StackferryApi } from '../../shared/types'
 
 const api: StackferryApi = {
   showWindowControls: process.platform !== 'darwin',
@@ -115,6 +115,15 @@ const api: StackferryApi = {
   refreshAnnouncements: () => ipcRenderer.invoke(IpcChannel.refreshAnnouncements),
   markAnnouncementRead: (id) => ipcRenderer.invoke(IpcChannel.markAnnouncementRead, id),
   markAllAnnouncementsRead: () => ipcRenderer.invoke(IpcChannel.markAllAnnouncementsRead),
+  getProviderImportOffer: () => ipcRenderer.invoke(IpcChannel.getProviderImportOffer),
+  dismissProviderImport: () => ipcRenderer.invoke(IpcChannel.dismissProviderImport),
+  onProviderImportOffer: (listener) => {
+    const wrapped = (_event: unknown, offer: ProviderImportOffer) => listener(offer)
+    ipcRenderer.on(IpcChannel.providerImportOffer, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IpcChannel.providerImportOffer, wrapped)
+    }
+  },
   onSkillsChanged: (listener) => {
     const wrapped = () => listener()
     ipcRenderer.on(IpcChannel.skillsChanged, wrapped)

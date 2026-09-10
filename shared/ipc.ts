@@ -83,4 +83,7 @@ export const IpcChannel = {
   refreshAnnouncements: 'announcements:refresh',
   markAnnouncementRead: 'announcements:markRead',
   markAllAnnouncementsRead: 'announcements:markAllRead',
+  getProviderImportOffer: 'providerImport:get',
+  dismissProviderImport: 'providerImport:dismiss',
+  providerImportOffer: 'providerImport:offer',
 } as const

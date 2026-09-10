@@ -8,6 +8,7 @@ import type { LanguagePreference } from './locale'
 import type { MicaState } from './mica'
 import type { RoutingSettingsPatch, RoutingSnapshot, RoutingLaneState } from './routing'
 import type { McpDraft, McpListItem, McpTarget } from './mcp'
+import type { ProviderImportOffer } from './provider-import'
 import type {
   SkillDocument,
   SkillDraft,
@@ -38,6 +39,7 @@ export type {
   SkillTarget,
 } from './skills'
 
+export type { ProviderImportOffer, ProviderImportTarget } from './provider-import'
 export type { LanguagePreference, MicaState, RoutingLaneState, RoutingSettingsPatch, RoutingSnapshot, ThemePreference }
 
 export type ProviderKind = 'official' | 'custom'
@@ -293,4 +295,7 @@ export type StackferryApi = {
   refreshAnnouncements: () => Promise<AnnouncementSnapshot>
   markAnnouncementRead: (id: string) => Promise<AnnouncementSnapshot>
   markAllAnnouncementsRead: () => Promise<AnnouncementSnapshot>
+  getProviderImportOffer: () => Promise<ProviderImportOffer | null>
+  dismissProviderImport: () => Promise<void>
+  onProviderImportOffer: (listener: (offer: ProviderImportOffer) => void) => () => void
 }
