@@ -64,12 +64,12 @@ jobs:
         with:
           name: stackferry-${{ matrix.os }}
           path: |
-            release/**/*.exe
-            release/**/*.dmg
-            release/**/*.AppImage
-            release/**/*.deb
-            release/**/*.yml
-            release/**/*.blockmap
+            release/*/*.exe
+            release/*/*.dmg
+            release/*/*.AppImage
+            release/*/*.deb
+            release/*/latest*.yml
+            release/*/*.blockmap
           if-no-files-found: error
 
   publish:

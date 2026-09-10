@@ -32,3 +32,13 @@ describe('linux packages', () => {
     expect(config.linux.desktop.entry.MimeType).toContain('x-scheme-handler/stackferry')
   })
 })
+
+describe('release artifacts', () => {
+  it('uploads only version-root installers and updater manifests', () => {
+    const workflow = readFileSync(path.join(process.cwd(), '.github/workflows/release.yml'), 'utf8')
+    expect(workflow).toContain('release/*/latest*.yml')
+    expect(workflow).toContain('release/*/*.blockmap')
+    expect(workflow).not.toContain('release/**/*.yml')
+    expect(workflow).not.toContain('release/**/*.exe')
+  })
+})
