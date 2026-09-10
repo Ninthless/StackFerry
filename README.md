@@ -43,7 +43,7 @@ xattr -dr com.apple.quarantine /Applications/StackFerry.app
 
 ## 能做什么
 
-- **供应商**：为每个 CLI 保存多套官方 / 自定义网关，启用时先备份再写入该 CLI 的配置文件。
+- **供应商**：为每个 CLI 保存多套官方 / 自定义网关，启用时先备份再写入该 CLI 的配置文件。中转站可用 `stackferry://` 深度链接一键导入自定义供应商，对接说明见 [docs/provider-import.md](docs/provider-import.md)。
 - **本地路由**：每条 CLI 一条队列。队列非空时，请求经本机 `127.0.0.1` 代理按序尝试上游，并带熔断。官方登录不会进队列。
 - **Skills**：从 GitHub 仓库或本地文件夹导入 `SKILL.md`，安装后可投影到 Claude、Codex、Grok。
 - **CLI 工具**：检测、安装、更新、卸载本机上的 Codex / Claude Code / Grok Build。卸载 CLI 不会删除 StackFerry 写入的供应商配置。
