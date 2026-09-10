@@ -236,10 +236,12 @@ describe('announcement store', () => {
 })
 
 describe('app release service', () => {
-  it('starts unpackaged without a feed and idle on packaged Windows and Linux', async () => {
+  it('starts unpackaged without a feed and idle only on Windows NSIS and Linux AppImage', async () => {
     expect(initialAppUpdateStatus('0.1.0', false, 'win32').phase).toBe('unpackaged')
     expect(initialAppUpdateStatus('0.1.0', true, 'win32').phase).toBe('idle')
-    expect(initialAppUpdateStatus('0.1.0', true, 'linux').phase).toBe('idle')
+    expect(initialAppUpdateStatus('0.1.0', true, 'linux', '/tmp/StackFerry.AppImage').phase).toBe('idle')
+    expect(initialAppUpdateStatus('0.1.0', true, 'linux').phase).toBe('unsupported')
+    expect(initialAppUpdateStatus('0.1.0', true, 'linux', '  ').phase).toBe('unsupported')
     expect(initialAppUpdateStatus('0.1.0', true, 'darwin').phase).toBe('unsupported')
     expect(initialAppUpdateStatus('0.1.0', true, 'freebsd').phase).toBe('unsupported')
     const unpackaged = await createService({ packaged: false, platform: 'win32', feed: null })
@@ -247,6 +249,15 @@ describe('app release service', () => {
     await expect(unpackaged.download()).rejects.toMatchObject({ code: 'app_update_unsupported' })
     const mac = await createService({ packaged: true, platform: 'darwin', feed: null })
     expect((await mac.check()).phase).toBe('unsupported')
+    const linuxDeb = await createService({ packaged: true, platform: 'linux', feed: null })
+    expect((await linuxDeb.check()).phase).toBe('unsupported')
+    const linuxAppImage = await createService({
+      packaged: true,
+      platform: 'linux',
+      feed: memoryFeed({ version: '0.2.0', releaseNotes: null }),
+      appImagePath: '/tmp/StackFerry.AppImage',
+    })
+    expect((await linuxAppImage.check()).phase).toBe('available')
   })
 
   it('checks, downloads, and refuses install before ready', async () => {
@@ -315,6 +326,7 @@ async function createService(options: {
   packaged: boolean
   platform: NodeJS.Platform
   feed: AppUpdateFeed | null
+  appImagePath?: string | null
   fetchReleases?: () => Promise<unknown>
 }): Promise<AppReleaseService> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-releases-'))
@@ -322,6 +334,7 @@ async function createService(options: {
     currentVersion: '0.1.0',
     packaged: options.packaged,
     platform: options.platform,
+    appImagePath: options.appImagePath,
     store: new AnnouncementStore(path.join(dir, 'announcements.json')),
     fetchReleases: options.fetchReleases ?? (async () => []),
     feed: options.feed,

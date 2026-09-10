@@ -411,7 +411,7 @@
   "error_grok_overlay_unsupported_top_level": "Grok 覆盖片段不支持顶层键 {key}",
   "error_grok_overlay_table": "Grok 覆盖片段的 [{key}] 必须是表",
   "app_update_legend": "应用更新",
-  "app_update_description": "已打包的 Windows 安装包可检查 GitHub Releases 并安装 NSIS 更新。开发运行保持未打包状态。",
+  "app_update_description": "已打包的 Windows NSIS 与 Linux AppImage 可检查 GitHub Releases 并安装更新。macOS、Linux deb 与开发运行请从 GitHub 下载。",
   "app_update_check": "检查",
   "app_update_checking": "正在检查",
   "app_update_download": "下载",

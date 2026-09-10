@@ -16,6 +16,7 @@ export type AppReleaseServiceOptions = {
   currentVersion: string
   packaged: boolean
   platform: NodeJS.Platform
+  appImagePath?: string | null
   store: AnnouncementStore
   fetchReleases: () => Promise<unknown>
   feed: AppUpdateFeed | null
@@ -28,7 +29,12 @@ export class AppReleaseService {
   private readonly listeners = new Set<() => void>()
 
   constructor(private readonly options: AppReleaseServiceOptions) {
-    this.status = initialAppUpdateStatus(options.currentVersion, options.packaged, options.platform)
+    this.status = initialAppUpdateStatus(
+      options.currentVersion,
+      options.packaged,
+      options.platform,
+      options.appImagePath,
+    )
   }
 
   onChange(listener: () => void): () => void {

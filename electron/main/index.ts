@@ -236,13 +236,18 @@ app.whenReady().then(async () => {
     getGrokHome: () => resolveGrokHome(),
     getHomedir: () => os.homedir(),
   })
+  const appImagePath = process.env.APPIMAGE
   const releases = new AppReleaseService({
     currentVersion: app.getVersion(),
     packaged: app.isPackaged,
     platform: process.platform,
+    appImagePath,
     store: new AnnouncementStore(path.join(app.getPath('userData'), 'announcements.json')),
     fetchReleases: () => fetchAnnouncementFeed(),
-    feed: app.isPackaged && isPackagedUpdatePlatform(process.platform) ? createElectronUpdateFeed() : null,
+    feed:
+      app.isPackaged && isPackagedUpdatePlatform(process.platform, appImagePath)
+        ? createElectronUpdateFeed()
+        : null,
     prepareQuit: prepareQuitForUpdate,
   })
   const ipcContext = {
