@@ -492,5 +492,16 @@
   "error_mcp_transport": "Transport only supports stdio or HTTP",
   "error_mcp_missing": "MCP server not found.",
   "error_mcp_store_corrupt": "The MCP store file is corrupt.",
-  "error_mcp_claude_json_corrupt": "Could not parse ~/.claude.json"
+  "error_mcp_claude_json_corrupt": "Could not parse ~/.claude.json",
+  "import_provider_title": "Import provider",
+  "import_provider_description": "Add {name} to {targets}. It will not be enabled until you turn it on.",
+  "import_provider_confirm": "Import",
+  "import_provider_failed": "Could not import provider",
+  "toast_import_provider": "Added {targets}. Enable it from the provider list when you are ready.",
+  "toast_import_provider_partial": "Added {targets}. Other targets failed.",
+  "error_import_url": "This StackFerry import link is not valid",
+  "error_import_payload": "The import payload could not be read",
+  "error_import_targets": "targets must include codex, claude, and/or grok",
+  "error_import_version": "This import link uses an unsupported version",
+  "error_import_invalid": "name, baseUrl, and apiKey are required"
 }

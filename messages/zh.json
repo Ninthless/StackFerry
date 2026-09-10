@@ -492,5 +492,16 @@
   "error_mcp_transport": "传输仅支持 stdio 或 HTTP",
   "error_mcp_missing": "找不到该 MCP 服务器。",
   "error_mcp_store_corrupt": "MCP 存储文件已损坏。",
-  "error_mcp_claude_json_corrupt": "无法解析 ~/.claude.json"
+  "error_mcp_claude_json_corrupt": "无法解析 ~/.claude.json",
+  "import_provider_title": "导入供应商",
+  "import_provider_description": "将 {name} 添加到 {targets}。导入后不会自动启用。",
+  "import_provider_confirm": "导入",
+  "import_provider_failed": "无法导入供应商",
+  "toast_import_provider": "已添加到 {targets}。需要时再在列表里启用。",
+  "toast_import_provider_partial": "已添加到 {targets}。其余目标失败。",
+  "error_import_url": "这不是有效的 StackFerry 导入链接",
+  "error_import_payload": "无法读取导入数据",
+  "error_import_targets": "targets 只能包含 codex、claude 和/或 grok",
+  "error_import_version": "此导入链接版本不受支持",
+  "error_import_invalid": "必须提供 name、baseUrl 和 apiKey"
 }
