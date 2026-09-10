@@ -116,6 +116,21 @@ describe('enable vs failover queue', () => {
       await routing.restoreOnQuit()
     }
   })
+
+  it('promotes a queued provider to the head when it is enabled', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-enable-promote-queue-'))
+    const { store, routing, providers } = await harness(dir, ['a', 'b', 'c'])
+    await store.setQueue('codex', ['b', 'a', 'c'])
+
+    try {
+      await routing.enable('codex', 'a')
+      expect((await store.get()).lanes.codex.queue).toEqual(['a', 'b', 'c'])
+      expect((await providers.list()).find((item) => item.enabled)?.id).toBe('a')
+      expect((await routing.snapshot()).lanes.codex.queue[0]).toBe('a')
+    } finally {
+      await routing.restoreOnQuit()
+    }
+  })
 })
 
 async function harness(

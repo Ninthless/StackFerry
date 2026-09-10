@@ -89,6 +89,7 @@
   "routing_queue_leave_hint": "This provider is at position {position} in the failover queue. Select again to remove it.",
   "routing_badge_current": "Current upstream",
   "routing_badge_standby": "Queue backup",
+  "routing_queued_cannot_enable": "Queued providers cannot be enabled from the list. Remove it first, or drag it to the front in routing settings.",
   "status_read_failed": "Could not read status",
   "restart_codex_title": "Restart Codex",
   "restart_codex_description": "The configuration has been written. Restart Codex or the terminal for the change to take effect.",

@@ -91,6 +91,7 @@ export class RoutingService {
   }
 
   async enable(laneId: RoutingLaneId, id: string): Promise<void> {
+    await this.refresh()
     await this.lane(laneId).enable(id)
   }
 

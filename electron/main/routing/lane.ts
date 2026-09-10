@@ -7,6 +7,7 @@ import {
   planAfterQueueChange,
   planEnable,
   planQuit,
+  queueAfterEnable,
   requestOrder,
   type ProxyRoute,
 } from './policy'
@@ -117,8 +118,10 @@ export class RoutingLane {
     const kind = await this.adapter.peekKind(id)
     if (!kind) return
     const persist = this.options.persist()
+    const queue = kind === 'custom' ? queueAfterEnable(persist.queue, id) : persist.queue
+    if (queue !== persist.queue) await this.options.setQueue(queue)
     const needsRouter = await this.adapter.overlayNeedsRouter(id)
-    const plan = planEnable(kind, persist.queue.length, needsRouter)
+    const plan = planEnable(kind, queue.length, needsRouter)
     await this.executeEnable(plan, id)
     await this.adapter.markEnabled(id)
     this.options.setNeedsRestart(plan.needsRestart)

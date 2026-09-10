@@ -61,6 +61,12 @@ export function requestOrder(activeCustomId: string | null, queue: string[]): st
   return ordered
 }
 
+/** 已在队列中的供应商被启用时提到队首，避免「当前上游」和尝试顺序不一致。 */
+export function queueAfterEnable(queue: string[], id: string): string[] {
+  if (!queue.includes(id) || queue[0] === id) return queue
+  return [id, ...queue.filter((item) => item !== id)]
+}
+
 export function displayQueue(activeCustomId: string | null, queue: string[]): string[] {
   if (queue.length === 0) return []
   return requestOrder(activeCustomId, queue)

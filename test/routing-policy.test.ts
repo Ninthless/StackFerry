@@ -6,6 +6,7 @@ import {
   planAfterQueueChange,
   planEnable,
   planQuit,
+  queueAfterEnable,
   requestOrder,
   shouldFailoverHttp,
   upstreamProxyPath,
@@ -48,6 +49,12 @@ describe('routing policy', () => {
     expect(requestOrder('active', ['b', 'active', 'c'])).toEqual(['b', 'active', 'c'])
     expect(requestOrder('active', ['b', 'c'])).toEqual(['active', 'b', 'c'])
     expect(requestOrder(null, ['b', 'c'])).toEqual(['b', 'c'])
+  })
+
+  it('promotes a queued provider to the head when it is enabled', () => {
+    expect(queueAfterEnable(['b', 'a', 'c'], 'a')).toEqual(['a', 'b', 'c'])
+    expect(queueAfterEnable(['a', 'b'], 'a')).toEqual(['a', 'b'])
+    expect(queueAfterEnable(['b', 'c'], 'a')).toEqual(['b', 'c'])
   })
 
   it('lists the enabled provider in the routing queue only when failover backups exist', () => {

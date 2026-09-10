@@ -89,6 +89,7 @@
   "routing_queue_leave_hint": "当前位于故障队列第 {position} 位。再次选择可将其移出队列。",
   "routing_badge_current": "当前上游",
   "routing_badge_standby": "队列备用",
+  "routing_queued_cannot_enable": "已在故障队列中，不能再单独启用。请先移出队列，或在路由设置里拖到队首。",
   "status_read_failed": "无法读取状态",
   "restart_codex_title": "需要重启 Codex",
   "restart_codex_description": "配置已写入。请重启 Codex 或终端以使更改生效。",
