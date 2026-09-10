@@ -2,7 +2,7 @@
   "name": "stackferry",
   "productName": "StackFerry",
   "desktopName": "stackferry",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "Electron desktop app for switching Codex CLI providers.",
   "license": "MIT",

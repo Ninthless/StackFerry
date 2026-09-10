@@ -7,6 +7,7 @@ import type { CliToolId, CliToolStatus } from './cli-tools'
 import type { LanguagePreference } from './locale'
 import type { MicaState } from './mica'
 import type { RoutingSettingsPatch, RoutingSnapshot, RoutingLaneState } from './routing'
+import type { McpDraft, McpListItem, McpTarget } from './mcp'
 import type {
   SkillDocument,
   SkillDraft,
@@ -25,6 +26,7 @@ export type {
 } from './app-releases'
 export type { CliInstallMethod, CliToolId, CliToolStatus } from './cli-tools'
 
+export type { McpDraft, McpListItem, McpServer, McpTarget, McpTransport } from './mcp'
 export type {
   SkillDocument,
   SkillDraft,
@@ -270,6 +272,13 @@ export type StackferryApi = {
   chooseSkillImport: () => Promise<SkillImportCandidate[] | null>
   importSkills: (directories: string[]) => Promise<SkillListItem[]>
   onSkillsChanged: (listener: () => void) => () => void
+  listMcps: () => Promise<McpListItem[]>
+  addMcp: (draft: McpDraft) => Promise<McpListItem[]>
+  updateMcp: (id: string, draft: McpDraft) => Promise<McpListItem[]>
+  deleteMcp: (id: string) => Promise<McpListItem[]>
+  setMcpTarget: (id: string, target: McpTarget, enabled: boolean) => Promise<McpListItem[]>
+  importMcps: () => Promise<McpListItem[]>
+  onMcpsChanged: (listener: () => void) => () => void
   listCliTools: () => Promise<CliToolStatus[]>
   checkCliToolUpdates: () => Promise<CliToolStatus[]>
   installCliTool: (id: CliToolId) => Promise<CliToolStatus[]>

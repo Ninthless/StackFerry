@@ -5,6 +5,8 @@ import { useClaudeProviders } from "@/features/claude/use-claude-providers"
 import { cliById, defaultCliId } from "@/features/clis/registry"
 import { GrokWorkspace } from "@/features/grok/grok-workspace"
 import { useGrokProviders } from "@/features/grok/use-grok-providers"
+import { McpWorkspace } from "@/features/mcp/mcp-workspace"
+import { useMcps } from "@/features/mcp/use-mcp"
 import { ProviderWorkspace } from "@/features/providers/provider-workspace"
 import { useProviders } from "@/features/providers/use-providers"
 import { SettingsPage } from "@/features/settings/settings-page"
@@ -135,6 +137,38 @@ function SkillsView() {
   )
 }
 
+function McpView() {
+  const session = useMcps()
+
+  return (
+    <>
+      <AppTitlebar
+        title={m.nav_mcp()}
+        action={
+          <div className="flex items-center gap-2">
+            <Button
+              className="app-region-no-drag"
+              type="button"
+              variant="outline"
+              disabled={session.importing}
+              onClick={() => void session.importFromLive()}
+            >
+              <FolderInput data-icon="inline-start" />
+              {session.importing ? m.mcp_importing() : m.mcp_import()}
+            </Button>
+            <Button className="app-region-no-drag" type="button" onClick={() => session.openCreate()}>
+              <Plus data-icon="inline-start" />
+              {m.action_add()}
+            </Button>
+          </div>
+        }
+      />
+      <Separator />
+      <McpWorkspace session={session} />
+    </>
+  )
+}
+
 function KeepAlivePane({ active, children }: { active: boolean; children: ReactNode }) {
   return (
     <div
@@ -179,6 +213,11 @@ export function AppShell() {
         <KeepAlivePane active={navId === "skills"}>
           <SkillsView />
         </KeepAlivePane>
+        {navId === "mcp" ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <McpView />
+          </div>
+        ) : null}
         {settingsSection ? <SettingsView section={settingsSection} /> : null}
       </SidebarInset>
     </SidebarProvider>

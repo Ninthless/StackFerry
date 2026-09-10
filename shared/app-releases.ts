@@ -90,12 +90,29 @@ function parseAnnouncementEntry(entry: unknown): AppRelease | null {
   }
 }
 
+export function announcementIdentity(item: Pick<AppRelease, 'id' | 'publishedAt'>): string {
+  return item.publishedAt ? `${item.id}@${item.publishedAt}` : item.id
+}
+
+export function formatAnnouncementPublishedAt(publishedAt: string | null): string {
+  if (!publishedAt) return ''
+  const stamped = publishedAt.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/)
+  if (stamped) return `${stamped[1]} ${stamped[2]}`
+  const date = new Date(publishedAt)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())} ${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`
+}
+
 export function announcementSnapshot(items: AppRelease[], seenIds: ReadonlySet<string>): AnnouncementSnapshot {
-  const listed = items.map((item) => ({ ...item, unread: !seenIds.has(item.id) }))
+  const listed = items.map((item) => ({ ...item, unread: !seenIds.has(announcementIdentity(item)) }))
   return {
     items: listed,
     unreadCount: listed.filter((item) => item.unread).length,
   }
+}
+
+function padDatePart(value: number): string {
+  return String(value).padStart(2, '0')
 }
 
 export function unreadAnnouncements(snapshot: AnnouncementSnapshot): AnnouncementItem[] {

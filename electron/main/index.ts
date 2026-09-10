@@ -44,6 +44,8 @@ import { AnnouncementStore } from './releases/store'
 import { createElectronUpdateFeed } from './releases/updater'
 import { RoutingService } from './routing/service'
 import { RoutingStore } from './routing/store'
+import { broadcastMcpsChanged } from './mcp/ipc'
+import { McpService } from './mcp/service'
 import { broadcastSkillsChanged } from './skills/ipc'
 import { SkillService } from './skills/service'
 import { AppTray } from './tray'
@@ -210,6 +212,12 @@ app.whenReady().then(async () => {
     getCodexHome: () => resolveCodexHome(),
     getGrokHome: () => resolveGrokHome(),
   })
+  const mcp = new McpService({
+    userData: app.getPath('userData'),
+    getCodexHome: () => resolveCodexHome(),
+    getGrokHome: () => resolveGrokHome(),
+    getHomedir: () => os.homedir(),
+  })
   const releases = new AppReleaseService({
     currentVersion: app.getVersion(),
     packaged: app.isPackaged,
@@ -227,6 +235,7 @@ app.whenReady().then(async () => {
     grokStore: grokStore!,
     grok: grok!,
     skills,
+    mcp,
     releases,
     getCodexHome: () => resolveCodexHome(),
     getGrokHome: () => resolveGrokHome(),
@@ -249,6 +258,9 @@ app.whenReady().then(async () => {
     },
     onSkillsChanged: () => {
       broadcastSkillsChanged()
+    },
+    onMcpsChanged: () => {
+      broadcastMcpsChanged()
     },
     getLocalePreference: () => localeStore!.getPreference(),
     setLocalePreference: async (preference: LanguagePreference) => {

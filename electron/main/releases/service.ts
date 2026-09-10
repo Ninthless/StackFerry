@@ -1,5 +1,6 @@
 import { AppError } from '../../../shared/app-error'
 import {
+  announcementIdentity,
   announcementSnapshot,
   emptyAnnouncementSnapshot,
   initialAppUpdateStatus,
@@ -53,12 +54,13 @@ export class AppReleaseService {
 
   async markAnnouncementRead(id: string): Promise<AnnouncementSnapshot> {
     if (!id) return this.withUnread(this.releases)
-    await this.options.store.markRead([id])
+    const item = this.releases.find((release) => release.id === id)
+    await this.options.store.markRead([item ? announcementIdentity(item) : id])
     return this.withUnread(this.releases)
   }
 
   async markAllAnnouncementsRead(): Promise<AnnouncementSnapshot> {
-    await this.options.store.markRead(this.releases.map((item) => item.id))
+    await this.options.store.markRead(this.releases.map(announcementIdentity))
     return this.withUnread(this.releases)
   }
 

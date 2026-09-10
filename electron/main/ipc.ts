@@ -28,6 +28,8 @@ import { listProviderModels, type ListModelsInput } from './providers/models'
 import type { ProviderStore } from './providers/store'
 import type { RoutingService } from './routing/service'
 import { registerCliToolIpc } from './cli-tools/ipc'
+import { registerMcpIpc } from './mcp/ipc'
+import type { McpService } from './mcp/service'
 import { registerReleaseIpc } from './releases/ipc'
 import type { AppReleaseService } from './releases/service'
 import { registerSkillIpc } from './skills/ipc'
@@ -50,8 +52,10 @@ type IpcContext = {
   onClaudeChanged: () => void
   onGrokChanged: () => void
   skills: SkillService
+  mcp: McpService
   releases: AppReleaseService
   onSkillsChanged: () => void
+  onMcpsChanged: () => void
   getLocalePreference: () => Promise<LanguagePreference>
   setLocalePreference: (preference: LanguagePreference) => Promise<LanguagePreference>
   getMicaState: () => Promise<MicaState>
@@ -261,6 +265,7 @@ export function registerIpc(context: IpcContext): void {
     return listGrokModels(context.grokStore, input)
   })
   registerSkillIpc(context)
+  registerMcpIpc(context)
   registerCliToolIpc()
   registerReleaseIpc(context.releases)
 }

@@ -1,5 +1,5 @@
 import { useRef } from "react"
-import { ArrowLeftIcon, CircleHelp, SettingsIcon, SparklesIcon } from "lucide-react"
+import { ArrowLeftIcon, CircleHelp, PlugIcon, SettingsIcon, SparklesIcon } from "lucide-react"
 import { BrandMark } from "@/components/brand-mark"
 import { clis, defaultCliId, type CliId } from "@/features/clis/registry"
 import {
@@ -26,7 +26,7 @@ import { registerBurstClick } from "./burst-click"
 const DEVTOOLS_CLICKS = 7
 const DEVTOOLS_CLICK_WINDOW_MS = 1000
 
-export type NavId = CliId | "skills" | `settings:${SettingsSectionId}`
+export type NavId = CliId | "skills" | "mcp" | `settings:${SettingsSectionId}`
 
 type Props = {
   activeId: NavId
@@ -155,6 +155,23 @@ export function AppSidebar({ activeId, onSelect }: Props) {
                     >
                       <SparklesIcon />
                       <span>{m.nav_skills()}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <SidebarGroup>
+              <SidebarGroupLabel>{m.nav_mcp()}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      isActive={activeId === "mcp"}
+                      tooltip={m.nav_mcp()}
+                      onClick={() => onSelect("mcp")}
+                    >
+                      <PlugIcon />
+                      <span>{m.nav_mcp()}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>

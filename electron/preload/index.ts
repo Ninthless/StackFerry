@@ -122,6 +122,19 @@ const api: StackferryApi = {
       ipcRenderer.removeListener(IpcChannel.skillsChanged, wrapped)
     }
   },
+  listMcps: () => ipcRenderer.invoke(IpcChannel.listMcps),
+  addMcp: (draft) => ipcRenderer.invoke(IpcChannel.addMcp, draft),
+  updateMcp: (id, draft) => ipcRenderer.invoke(IpcChannel.updateMcp, id, draft),
+  deleteMcp: (id) => ipcRenderer.invoke(IpcChannel.deleteMcp, id),
+  setMcpTarget: (id, target, enabled) => ipcRenderer.invoke(IpcChannel.setMcpTarget, id, target, enabled),
+  importMcps: () => ipcRenderer.invoke(IpcChannel.importMcps),
+  onMcpsChanged: (listener) => {
+    const wrapped = () => listener()
+    ipcRenderer.on(IpcChannel.mcpsChanged, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IpcChannel.mcpsChanged, wrapped)
+    }
+  },
 }
 
 contextBridge.exposeInMainWorld('stackferry', api)

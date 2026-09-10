@@ -4,7 +4,9 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { AppError } from '../shared/app-error'
 import {
+  announcementIdentity,
   announcementSnapshot,
+  formatAnnouncementPublishedAt,
   initialAppUpdateStatus,
   isAnnouncementFeedUrl,
   latestUnreadAnnouncement,
@@ -109,10 +111,36 @@ describe('announcement feed parsing', () => {
     expect(() => parseAnnouncementFeed({ message: 'no' })).toThrow(AppError)
   })
 
-  it('marks unseen ids unread', () => {
+  it('marks unseen identities unread', () => {
     const items = parseAnnouncementFeed([sampleAnnouncement])
     expect(announcementSnapshot(items, new Set()).unreadCount).toBe(1)
-    expect(announcementSnapshot(items, new Set(['42'])).unreadCount).toBe(0)
+    expect(announcementSnapshot(items, new Set(['42'])).unreadCount).toBe(1)
+    expect(announcementSnapshot(items, new Set([announcementIdentity(items[0]!)])).unreadCount).toBe(0)
+  })
+
+  it('treats a republished notice as unread when id or publishedAt changes', () => {
+    const original = parseAnnouncementFeed([sampleAnnouncement])
+    const seen = new Set([announcementIdentity(original[0]!)])
+    const newId = parseAnnouncementFeed([
+      {
+        ...sampleAnnouncement,
+        id: '4a394089-8645-478a-9dae-0cf7adfd1f56',
+        title: '欢迎使用新版StackFerry',
+        publishedAt: '2026-09-09T15:05:10.879+08:00',
+      },
+    ])
+    expect(announcementSnapshot(newId, seen).unreadCount).toBe(1)
+    const newTime = parseAnnouncementFeed([
+      { ...sampleAnnouncement, publishedAt: '2026-09-09T15:05:10.879+08:00' },
+    ])
+    expect(announcementSnapshot(newTime, seen).unreadCount).toBe(1)
+  })
+
+  it('formats publishedAt to date, hour, and minute', () => {
+    expect(formatAnnouncementPublishedAt('2026-09-09T15:05:10.879+08:00')).toBe('2026-09-09 15:05')
+    expect(formatAnnouncementPublishedAt('2026-09-01T00:00:00Z')).toBe('2026-09-01 00:00')
+    expect(formatAnnouncementPublishedAt(null)).toBe('')
+    expect(formatAnnouncementPublishedAt('not-a-date')).toBe('')
   })
 
   it('returns the first unread announcement', () => {
@@ -123,8 +151,14 @@ describe('announcement feed parsing', () => {
     const unread = announcementSnapshot(items, new Set())
     expect(unreadAnnouncements(unread).map((item) => item.id)).toEqual(['42', '41'])
     expect(latestUnreadAnnouncement(unread)?.id).toBe('42')
-    expect(latestUnreadAnnouncement(announcementSnapshot(items, new Set(['42'])))?.id).toBe('41')
-    expect(latestUnreadAnnouncement(announcementSnapshot(items, new Set(['42', '41'])))).toBeNull()
+    expect(latestUnreadAnnouncement(announcementSnapshot(items, new Set([announcementIdentity(items[0]!)])))?.id).toBe(
+      '41',
+    )
+    expect(
+      latestUnreadAnnouncement(
+        announcementSnapshot(items, new Set(items.map(announcementIdentity))),
+      ),
+    ).toBeNull()
   })
 })
 
@@ -258,6 +292,17 @@ describe('app release service', () => {
     expect(second.unreadCount).toBe(2)
     expect(second.items[0]?.id).toBe('99')
     expect((await service.markAnnouncementRead('99')).unreadCount).toBe(1)
+    payload = [
+      {
+        ...sampleAnnouncement,
+        id: '4a394089-8645-478a-9dae-0cf7adfd1f56',
+        title: '欢迎使用新版StackFerry',
+        publishedAt: '2026-09-09T15:05:10.879+08:00',
+      },
+    ]
+    const republished = await service.refreshAnnouncements()
+    expect(republished.unreadCount).toBe(1)
+    expect(republished.items[0]?.id).toBe('4a394089-8645-478a-9dae-0cf7adfd1f56')
     expect((await service.markAllAnnouncementsRead()).unreadCount).toBe(0)
   })
 })

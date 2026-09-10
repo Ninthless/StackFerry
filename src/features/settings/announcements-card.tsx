@@ -1,7 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
-import { Tag } from "antd"
 import { Megaphone } from "lucide-react"
-import type { AnnouncementItem, AnnouncementSnapshot } from "@shared/types"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,96 +9,15 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
-import {
-  Item,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemTitle,
-} from "@/components/ui/item"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
-import { toast } from "@/components/ui/toast"
-import { formatAppError } from "@/lib/format-app-error"
+import { HintTitle } from "@/features/settings/settings-hint"
 import * as m from "@/paraglide/messages.js"
-import { HintTitle } from "./settings-hint"
-
-const EMPTY: AnnouncementSnapshot = { items: [], unreadCount: 0 }
+import { AnnouncementList } from "@/features/announcements/announcement-list"
+import { useAnnouncements } from "@/features/announcements/announcement-provider"
 
 export function AnnouncementsCard() {
-  const [snapshot, setSnapshot] = useState<AnnouncementSnapshot>(EMPTY)
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState("")
-  const [selected, setSelected] = useState<AnnouncementItem | null>(null)
-
-  const refresh = useCallback(async (manual: boolean) => {
-    const api = window.stackferry
-    if (!api) {
-      setError(m.error_desktop_only())
-      setLoading(false)
-      return
-    }
-    setRefreshing(true)
-    const toastId = "announcements-refresh"
-    if (manual) {
-      toast.add({ id: toastId, type: "loading", description: m.toast_announcements_refreshing(), timeout: 0 })
-    }
-    try {
-      const next = await api.refreshAnnouncements()
-      setSnapshot(next)
-      setError("")
-      if (manual) toast.add({ id: toastId, type: "success", description: m.toast_announcements_refreshed() })
-    } catch (refreshError) {
-      const message = formatAppError(refreshError)
-      setError(message)
-      if (manual) {
-        toast.close(toastId)
-        toast.add({ type: "error", description: message, priority: "high" })
-      }
-    } finally {
-      setRefreshing(false)
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void refresh(false)
-  }, [refresh])
-
-  async function openItem(item: AnnouncementItem): Promise<void> {
-    setSelected(item)
-    const api = window.stackferry
-    if (!api || !item.unread) return
-    try {
-      setSnapshot(await api.markAnnouncementRead(item.id))
-    } catch (markError) {
-      toast.add({ type: "error", description: formatAppError(markError), priority: "high" })
-    }
-  }
-
-  async function markAllRead(): Promise<void> {
-    const api = window.stackferry
-    if (!api) return
-    try {
-      setSnapshot(await api.markAllAnnouncementsRead())
-    } catch (markError) {
-      toast.add({ type: "error", description: formatAppError(markError), priority: "high" })
-    }
-  }
-
-  const displayed = selected
-    ? (snapshot.items.find((item) => item.id === selected.id) ?? selected)
-    : null
+  const { snapshot, loading, refreshing, error, refresh, openItem, markAllRead } = useAnnouncements()
 
   return (
     <Card>
@@ -152,57 +68,9 @@ export function AnnouncementsCard() {
             </EmptyHeader>
           </Empty>
         ) : (
-          <ItemGroup>
-            {snapshot.items.map((item) => (
-              <Item
-                key={item.id}
-                variant="outline"
-                render={<button type="button" />}
-                onClick={() => void openItem(item)}
-              >
-                <ItemContent className="min-w-0">
-                  <ItemTitle>
-                    <span>{item.title}</span>
-                    {item.unread ? <Tag color="warning">{m.announcements_unread()}</Tag> : null}
-                    {item.prerelease ? <Tag>{m.announcements_prerelease()}</Tag> : null}
-                  </ItemTitle>
-                  <ItemDescription>
-                    {[item.tag, item.publishedAt ? item.publishedAt.slice(0, 10) : ""]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </ItemDescription>
-                </ItemContent>
-              </Item>
-            ))}
-          </ItemGroup>
+          <AnnouncementList items={snapshot.items} onSelect={(item) => void openItem(item)} />
         )}
       </CardContent>
-      <Sheet open={Boolean(displayed)} onOpenChange={(open) => !open && setSelected(null)}>
-        <SheetContent className="sm:max-w-lg">
-          <SheetHeader>
-            <SheetTitle>{displayed?.title ?? ""}</SheetTitle>
-            <SheetDescription>
-              {[displayed?.tag, displayed?.publishedAt ? displayed.publishedAt.slice(0, 10) : ""]
-                .filter(Boolean)
-                .join(" · ")}
-            </SheetDescription>
-          </SheetHeader>
-          <ScrollArea className="min-h-0 flex-1">
-            <pre className="px-4 pb-4 text-sm whitespace-pre-wrap">{displayed?.body ?? ""}</pre>
-          </ScrollArea>
-          <SheetFooter>
-            {displayed?.htmlUrl ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => window.open(displayed.htmlUrl, "_blank", "noopener")}
-              >
-                {m.announcements_open_github()}
-              </Button>
-            ) : null}
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
     </Card>
   )
 }

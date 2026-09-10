@@ -15,6 +15,10 @@ export function claudeSettingsPath(claudeHome: string): string {
   return path.join(claudeHome, 'settings.json')
 }
 
+export function claudeUserJsonPath(homedir: () => string = os.homedir): string {
+  return path.join(homedir(), '.claude.json')
+}
+
 export type ListMsixClaudeLibraries = (localAppData: string) => string[]
 
 export function resolveClaudeDesktopLibrary(

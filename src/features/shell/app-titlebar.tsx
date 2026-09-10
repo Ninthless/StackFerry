@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { AnnouncementBell } from "@/features/announcements/announcement-bell"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { WindowControls } from "./window-controls"
 
@@ -21,14 +22,13 @@ export function AppTitlebar({ title, action }: Props) {
           onDoubleClick={(event) => event.stopPropagation()}
         />
         <h1 className="font-heading truncate text-sm font-medium">{title}</h1>
-        {action ? (
-          <div
-            className="app-region-no-drag ml-auto"
-            onDoubleClick={(event) => event.stopPropagation()}
-          >
-            {action}
-          </div>
-        ) : null}
+        <div
+          className="app-region-no-drag ml-auto flex items-center gap-1"
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
+          {action}
+          <AnnouncementBell />
+        </div>
       </div>
       <WindowControls />
     </header>

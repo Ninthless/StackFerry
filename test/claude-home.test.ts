@@ -2,7 +2,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import os from 'node:os'
 import path from 'node:path'
-import { desktopAppConfigPath, listWindowsMsixClaudeLibraries, resolveClaudeDesktopLibraries, resolveClaudeDesktopLibrary, resolveClaudeHome } from '../electron/main/claude/home'
+import { desktopAppConfigPath, listWindowsMsixClaudeLibraries, resolveClaudeDesktopLibraries, resolveClaudeDesktopLibrary, resolveClaudeHome, claudeUserJsonPath } from '../electron/main/claude/home'
 
 describe('resolveClaudeHome', () => {
   it('uses CLAUDE_CONFIG_DIR when set', () => {
@@ -109,5 +109,11 @@ describe('desktopAppConfigPath', () => {
     expect(desktopAppConfigPath(library)).toBe(
       path.join('app', 'Claude-3p', 'claude_desktop_config.json'),
     )
+  })
+})
+
+describe('claudeUserJsonPath', () => {
+  it('is the home-directory .claude.json file, not settings.json', () => {
+    expect(claudeUserJsonPath(() => '/home/demo')).toBe(path.join('/home/demo', '.claude.json'))
   })
 })
