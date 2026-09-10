@@ -111,17 +111,12 @@ export class GrokEnableService {
     const imageModel = provider.imageModel.trim()
     const videoModel = provider.videoModel.trim()
     if (!imageModel && !videoModel) return null
-    let mediaApiKey = ''
-    try {
-      mediaApiKey = this.options.store.decryptImageApiKey(provider)
-    } catch {
-      mediaApiKey = ''
-    }
+    const mediaApiKey = this.options.store.decryptImageApiKey(provider).trim()
     const baseUrl = provider.imageBaseUrl.trim() || provider.baseUrl.trim()
     if (!baseUrl) return null
     return {
       baseUrl,
-      apiKey: mediaApiKey.trim() || chatApiKey,
+      apiKey: mediaApiKey || chatApiKey,
       imageModel: imageModel || undefined,
       videoModel: videoModel || undefined,
     }
