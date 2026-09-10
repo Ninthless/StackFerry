@@ -53,6 +53,14 @@
     "bodyOfficial": "リストには「Official（公式）」プリセットも用意されており、公式バージョンに戻したくなったらクリックするだけで切り替えられます。切り替える前に現在の設定は自動で default にバックアップされるので、自由に行き来できます。これが StackFerry の仕組みです 😊",
     "confirm": "了解しました"
   },
+  "electronMigrate": {
+    "title": "新しい StackFerry をインストールしてください",
+    "summary": "デスクトップ版は作り直されました。GitHub Latest のインストーラーをダウンロードしてください。",
+    "body": "実行中のビルドは最後の Tauri 版です。\n\nこのアプリのデータフォルダーにあるプロバイダー一覧は自動では移行されません。~/.codex、~/.claude、~/.grok の CLI 設定はそのまま使えます。\n\nWindows と Linux では新版と併存してから、このコピーをアンインストールできます。macOS ビルドは未署名のため、初回起動が Gatekeeper にブロックされる場合があります。",
+    "download": "新しい StackFerry をダウンロード",
+    "opening": "開いています…",
+    "later": "後で"
+  },
   "apiKeyInput": {
     "placeholder": "API Key を入力",
     "show": "API Key を表示",

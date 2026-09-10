@@ -12,6 +12,7 @@ import UsageScriptModal from "@/features/usage/UsageScriptModal";
 import { ConfirmDialog } from "@/shared/ui/ConfirmDialog";
 import { CriticalAnnouncementDialog } from "@/features/announcements/CriticalAnnouncementDialog";
 import { DeepLinkImportDialog } from "./DeepLinkImportDialog";
+import { ElectronMigrateDialog } from "./ElectronMigrateDialog";
 import { FirstRunNoticeDialog } from "./FirstRunNoticeDialog";
 import type { AppView } from "@/app/shell/types";
 
@@ -180,6 +181,7 @@ export function AppOverlays({
         onCancel={() => onLaunchDashboardOpenChange(false)}
       />
       <DeepLinkImportDialog />
+      <ElectronMigrateDialog />
       <FirstRunNoticeDialog />
     </>
   );

@@ -53,6 +53,14 @@
     "bodyOfficial": "An “Official” preset is also included in the list — click it any time you want to switch back to the official default. StackFerry automatically backs up your current config to “default” before switching, so you can move back and forth freely. That's how StackFerry works 😊",
     "confirm": "Got it"
   },
+  "electronMigrate": {
+    "title": "Install the new StackFerry",
+    "summary": "This desktop app has been rebuilt. Download the current GitHub Latest installer.",
+    "body": "The version you are running is the last Tauri build.\n\nProvider settings live in this app’s data folder and will not copy themselves over. CLI config in ~/.codex, ~/.claude, and ~/.grok is unchanged.\n\nWindows and Linux can install the new build alongside this one, then uninstall this copy. macOS builds are unsigned; Gatekeeper may block the first launch.",
+    "download": "Download new StackFerry",
+    "opening": "Opening…",
+    "later": "Later"
+  },
   "apiKeyInput": {
     "placeholder": "Enter API Key",
     "show": "Show API Key",

@@ -53,6 +53,14 @@
     "bodyOfficial": "清單中還預設了「官方 (Official)」供應商，隨時點擊即可切換回官方預設設定。切換前 StackFerry 會自動將目前設定備份回 default，可以放心來回切換。這就是 StackFerry 的運作方式。",
     "confirm": "我了解了"
   },
+  "electronMigrate": {
+    "title": "請安裝新版 StackFerry",
+    "summary": "桌面端已經換新。請下載 GitHub Latest 上的安裝包。",
+    "body": "你正在使用的是最後一版 Tauri 用戶端。\n\n本應用資料目錄裡的供應商清單不會自動遷移。~/.codex、~/.claude、~/.grok 裡的 CLI 設定可以繼續使用。\n\nWindows 與 Linux 可以先與新版並存，再解除安裝這一份。macOS 安裝包未簽名，第一次開啟可能被 Gatekeeper 攔截。",
+    "download": "下載新版 StackFerry",
+    "opening": "正在開啟…",
+    "later": "稍後"
+  },
   "apiKeyInput": {
     "placeholder": "請輸入 API Key",
     "show": "顯示 API Key",
