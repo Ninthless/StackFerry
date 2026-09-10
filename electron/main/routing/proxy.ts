@@ -39,6 +39,21 @@ export type UpstreamTarget = {
   httpHeaders?: Record<string, string>
 }
 
+// env_key 覆盖层不使用已存密钥，与直连写入 Codex 的行为一致。
+export function readUpstreamApiKey(decrypt: () => string, envKey = ''): string | null {
+  const name = envKey.trim()
+  if (name) {
+    const fromEnv = process.env[name]?.trim() ?? ''
+    return fromEnv || null
+  }
+  try {
+    const apiKey = decrypt().trim()
+    return apiKey || null
+  } catch {
+    return null
+  }
+}
+
 export type RoutingProxyDeps = {
   listCandidates: () => Promise<string[]>
   resolveUpstream: (id: string) => Promise<UpstreamTarget | null>

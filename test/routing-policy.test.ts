@@ -14,12 +14,11 @@ import {
 
 describe('routing policy', () => {
   it('uses the router only for custom providers with a non-empty queue', () => {
-    expect(planEnable('official', 2, false)).toEqual({ action: 'official', needsRestart: true })
-    expect(planEnable('custom', 0, false)).toEqual({ action: 'direct', needsRestart: true })
-    expect(planEnable('custom', 1, false)).toEqual({ action: 'router', needsRestart: true })
-    expect(planEnable('custom', 2, true)).toEqual({ action: 'pointer', needsRestart: false })
-    expect(planEnable('custom', 0, false, true)).toEqual({ action: 'router', needsRestart: true })
-    expect(planEnable('custom', 0, true, true)).toEqual({ action: 'pointer', needsRestart: false })
+    expect(planEnable('official', 2)).toEqual({ action: 'official', needsRestart: true })
+    expect(planEnable('custom', 0)).toEqual({ action: 'direct', needsRestart: true })
+    expect(planEnable('custom', 1)).toEqual({ action: 'router', needsRestart: true })
+    expect(planEnable('custom', 2)).toEqual({ action: 'router', needsRestart: true })
+    expect(planEnable('custom', 0, true)).toEqual({ action: 'router', needsRestart: true })
   })
 
   it('enters the router when a custom provider is active and the queue fills', () => {

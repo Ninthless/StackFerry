@@ -6,7 +6,7 @@ import {
 } from '../codex/writer'
 import type { ProviderStore } from '../providers/store'
 import type { LaneAdapter } from './lane'
-import type { UpstreamTarget } from './proxy'
+import { readUpstreamApiKey, type UpstreamTarget } from './proxy'
 
 export function createCodexAdapter(options: {
   providers: ProviderStore
@@ -55,12 +55,9 @@ export function createCodexAdapter(options: {
         const overlay = parseProviderOverlay(provider.tomlText)
         const baseUrl = typeof overlay.table.base_url === 'string' ? overlay.table.base_url.trim() : ''
         if (!baseUrl) return null
-        let apiKey = ''
-        try {
-          apiKey = options.providers.decryptApiKey(provider)
-        } catch {
-          apiKey = ''
-        }
+        const envKey = typeof overlay.table.env_key === 'string' ? overlay.table.env_key : ''
+        const apiKey = readUpstreamApiKey(() => options.providers.decryptApiKey(provider), envKey)
+        if (!apiKey) return null
         return {
           id: provider.id,
           baseUrl,

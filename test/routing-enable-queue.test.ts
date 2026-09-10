@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -86,6 +86,24 @@ describe('enable vs failover queue', () => {
     }
   })
 
+  it('rewrites the live router config when switching the enabled provider', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-live-rewrite-'))
+    const { routing, providers, restart } = await harness(dir, ['a', 'b'])
+
+    try {
+      await routing.enable('codex', 'a')
+      expect(restart.value).toBe(true)
+      const backupsAfterFirst = await readdir(path.join(dir, 'backups'))
+      restart.value = false
+      await routing.enable('codex', 'b')
+      expect(restart.value).toBe(true)
+      expect((await providers.list()).find((item) => item.enabled)?.id).toBe('b')
+      expect((await readdir(path.join(dir, 'backups'))).length).toBeGreaterThan(backupsAfterFirst.length)
+    } finally {
+      await routing.restoreOnQuit()
+    }
+  })
+
   it('leaves an explicit failover queue unchanged when enabling someone else', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-enable-keep-queue-'))
     const { store, routing } = await harness(dir, ['a', 'b', 'c'])
@@ -132,6 +150,7 @@ async function harness(
     backupRoot: path.join(dir, 'backups', 'grok'),
     isManaged: () => false,
   })
+  const restart = { value: false }
   const routing = new RoutingService({
     store,
     providers,
@@ -141,9 +160,11 @@ async function harness(
     grok,
     getCodexHome: () => path.join(dir, 'codex'),
     backupRoot: path.join(dir, 'backups'),
-    setNeedsRestart: () => undefined,
+    setNeedsRestart: (value) => {
+      restart.value = value
+    },
   })
-  return { store, routing, providers, grokStore }
+  return { store, routing, providers, grokStore, restart }
 }
 
 function grokProviderFile(ids: string[], apiBackend: 'responses' | 'chat_completions' = 'responses') {

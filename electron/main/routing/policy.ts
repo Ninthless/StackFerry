@@ -2,7 +2,7 @@ import type { ProviderKind } from '../../../shared/types'
 
 export const FIRST_BYTE_TIMEOUT_MS = 15_000
 
-export type EnableAction = 'official' | 'direct' | 'router' | 'pointer'
+export type EnableAction = 'official' | 'direct' | 'router'
 
 export type EnablePlan = {
   action: EnableAction
@@ -17,12 +17,10 @@ export type QueuePlan =
 export function planEnable(
   kind: ProviderKind,
   queueLength: number,
-  routerLive: boolean,
   needsRouter = false,
 ): EnablePlan {
   if (kind === 'official') return { action: 'official', needsRestart: true }
   if (queueLength < 1 && !needsRouter) return { action: 'direct', needsRestart: true }
-  if (routerLive) return { action: 'pointer', needsRestart: false }
   return { action: 'router', needsRestart: true }
 }
 

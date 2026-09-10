@@ -87,7 +87,7 @@ export class RoutingLane {
     if (kind !== 'custom') return
     const active = await this.adapter.peekActive()
     if (active?.id === head) return
-    await this.adapter.markEnabled(head)
+    await this.enable(head)
   }
 
   async resetBreaker(id: string): Promise<void> {
@@ -118,7 +118,7 @@ export class RoutingLane {
     if (!kind) return
     const persist = this.options.persist()
     const needsRouter = await this.adapter.overlayNeedsRouter(id)
-    const plan = planEnable(kind, persist.queue.length, this.live, needsRouter)
+    const plan = planEnable(kind, persist.queue.length, needsRouter)
     await this.executeEnable(plan, id)
     await this.adapter.markEnabled(id)
     this.options.setNeedsRestart(plan.needsRestart)
@@ -158,7 +158,6 @@ export class RoutingLane {
       this.live = false
       return
     }
-    if (plan.action === 'pointer') return
     const port = await this.ensureProxy()
     await this.adapter.writeRouter(port, id)
     this.live = true

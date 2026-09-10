@@ -1,7 +1,7 @@
 import type { GrokEnableService } from '../grok/service'
 import type { GrokProviderStore } from '../grok/store'
 import type { LaneAdapter } from './lane'
-import type { UpstreamTarget } from './proxy'
+import { readUpstreamApiKey, type UpstreamTarget } from './proxy'
 
 export function createGrokAdapter(options: {
   store: GrokProviderStore
@@ -43,12 +43,8 @@ export function createGrokAdapter(options: {
         if (provider.kind !== 'custom') return null
         const baseUrl = provider.baseUrl.trim()
         if (!baseUrl) return null
-        let apiKey = ''
-        try {
-          apiKey = options.store.decryptApiKey(provider)
-        } catch {
-          apiKey = ''
-        }
+        const apiKey = readUpstreamApiKey(() => options.store.decryptApiKey(provider))
+        if (!apiKey) return null
         return {
           id: provider.id,
           baseUrl,

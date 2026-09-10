@@ -1,7 +1,7 @@
 import type { ClaudeEnableService } from '../claude/service'
 import type { ClaudeProviderStore } from '../claude/store'
 import type { LaneAdapter } from './lane'
-import type { UpstreamTarget } from './proxy'
+import { readUpstreamApiKey, type UpstreamTarget } from './proxy'
 
 export function createClaudeAdapter(options: {
   store: ClaudeProviderStore
@@ -38,12 +38,8 @@ export function createClaudeAdapter(options: {
         if (provider.kind !== 'custom') return null
         const baseUrl = provider.baseUrl.trim()
         if (!baseUrl) return null
-        let apiKey = ''
-        try {
-          apiKey = options.store.decryptApiKey(provider)
-        } catch {
-          apiKey = ''
-        }
+        const apiKey = readUpstreamApiKey(() => options.store.decryptApiKey(provider))
+        if (!apiKey) return null
         return {
           id: provider.id,
           baseUrl,
