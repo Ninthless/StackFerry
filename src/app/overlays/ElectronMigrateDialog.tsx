@@ -58,8 +58,14 @@ export function ElectronMigrateDialog() {
           <Button type="button" variant="outline" onClick={handleLater}>
             {t("electronMigrate.later")}
           </Button>
-          <Button type="button" onClick={() => void handleDownload()} disabled={opening}>
-            {opening ? t("electronMigrate.opening") : t("electronMigrate.download")}
+          <Button
+            type="button"
+            onClick={() => void handleDownload()}
+            disabled={opening}
+          >
+            {opening
+              ? t("electronMigrate.opening")
+              : t("electronMigrate.download")}
           </Button>
         </DialogFooter>
       </DialogContent>
