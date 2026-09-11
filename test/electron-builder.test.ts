@@ -53,4 +53,13 @@ describe('release artifacts', () => {
     expect(workflow).not.toContain('release/**/*.yml')
     expect(workflow).not.toContain('release/**/*.exe')
   })
+
+  it('runs tests on a Node that exposes node:sqlite without a flag', () => {
+    const workflow = readFileSync(path.join(process.cwd(), '.github/workflows/release.yml'), 'utf8')
+    const match = workflow.match(/runtime: node@(\d+)\.(\d+)\.(\d+)/)
+    expect(match).not.toBeNull()
+    const major = Number(match?.[1])
+    const minor = Number(match?.[2])
+    expect(major > 22 || (major === 22 && minor >= 13)).toBe(true)
+  })
 })
