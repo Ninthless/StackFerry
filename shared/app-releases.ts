@@ -162,8 +162,8 @@ export function initialAppUpdateStatus(
   }
 }
 
-// electron-updater's GitHub provider returns rendered HTML (or a versioned note
-// array). The UI shows release notes as plain text, so normalize at the feed.
+// electron-updater 的 GitHub 提供者返回渲染后的 HTML（或带有版本的备注数组）。
+// UI 以纯文本形式显示发行说明，因此在获取数据时进行标准化处理。
 export function normalizeAppReleaseNotes(notes: unknown): string | null {
   if (typeof notes === 'string') return plainReleaseNotes(notes)
   if (!Array.isArray(notes)) return null
