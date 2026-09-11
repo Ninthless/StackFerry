@@ -4,7 +4,7 @@ import {
   enableRouterLiveConfig,
   enableThirdPartyLiveConfig,
 } from '../codex/writer'
-import type { ProviderStore } from '../providers/store'
+import type { ProviderStore } from '../codex/store'
 import type { LaneAdapter } from './lane'
 import { readUpstreamApiKey, type UpstreamTarget } from './proxy'
 

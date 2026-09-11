@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ProviderStore, StoredProvider } from '../electron/main/providers/store'
+import type { ProviderStore, StoredProvider } from '../electron/main/codex/store'
 import { createCodexAdapter } from '../electron/main/routing/codex-adapter'
 import { readUpstreamApiKey } from '../electron/main/routing/proxy'
 import { starterOverlayToml } from '../shared/provider-overlay'

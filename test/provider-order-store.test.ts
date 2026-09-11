@@ -12,7 +12,7 @@ vi.mock('electron', () => ({
 }))
 
 import { ClaudeProviderStore } from '../electron/main/claude/store'
-import { ProviderStore } from '../electron/main/providers/store'
+import { ProviderStore } from '../electron/main/codex/store'
 
 describe('provider list order', () => {
   it('persists a Codex provider permutation', async () => {

@@ -37,7 +37,7 @@ import {
   MICA_WINDOW_BACKGROUND,
   solidWindowBackground,
 } from './mica'
-import { ProviderStore } from './providers/store'
+import { ProviderStore } from './codex/store'
 import { fetchAnnouncementFeed } from './releases/feed'
 import { AppReleaseService } from './releases/service'
 import { AnnouncementStore } from './releases/store'

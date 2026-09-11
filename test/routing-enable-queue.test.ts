@@ -16,7 +16,7 @@ import { ClaudeEnableService } from '../electron/main/claude/service'
 import { ClaudeProviderStore } from '../electron/main/claude/store'
 import { GrokEnableService } from '../electron/main/grok/service'
 import { GrokProviderStore } from '../electron/main/grok/store'
-import { ProviderStore } from '../electron/main/providers/store'
+import { ProviderStore } from '../electron/main/codex/store'
 import { RoutingService } from '../electron/main/routing/service'
 import { RoutingStore } from '../electron/main/routing/store'
 

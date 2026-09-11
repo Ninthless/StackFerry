@@ -62,10 +62,10 @@ xattr -dr com.apple.quarantine /Applications/StackFerry.app
 
 ## 目录
 
-- `electron/main` 窗口、托盘、IPC、写盘、路由、Skills、CLI 安装
+- `electron/main` 窗口、托盘、IPC；各 CLI 目录负责该 CLI 的供应商存储与写盘，另有路由、Skills、CLI 安装
 - `electron/preload` 暴露 `window.stackferry`
 - `shared` 前后端共用类型、IPC 名、预设
-- `src/features` 各 CLI 工作区、Skills、设置
+- `src/features` 各 CLI 工作区、Skills、设置；`providers` 是共用的列表/编辑壳，Codex 工作区也放在这里
 - `src/components/ui` shadcn / Base UI 组件
 - `src/lib` 无业务的小工具
 - `test` Vitest
