@@ -411,7 +411,7 @@
   "error_grok_overlay_unsupported_top_level": "Grok overlay does not support top-level key {key}",
   "error_grok_overlay_table": "[{key}] in the Grok overlay must be a table",
   "app_update_legend": "App updates",
-  "app_update_description": "Packaged Windows NSIS and Linux AppImage builds can check GitHub Releases and install updates. macOS, Linux deb, and development runs should download from GitHub.",
+  "app_update_description": "Packaged Windows NSIS and Linux AppImage or deb builds can check GitHub Releases and install updates. macOS and development runs should download from GitHub.",
   "app_update_check": "Check",
   "app_update_checking": "Checking",
   "app_update_download": "Download",

@@ -19,7 +19,7 @@ pnpm build:linux  # AppImage + deb
 | 平台 | 安装包 | 应用内更新 |
 | --- | --- | --- |
 | Windows | NSIS | 可用。SmartScreen 可能拦截未签名安装包，选“仍要运行”。 |
-| Linux | AppImage、deb | AppImage 可用。先赋予可执行权限。deb 用 `dpkg`/`apt` 安装，不走应用内更新。 |
+| Linux | AppImage、deb | 可用。AppImage 先赋予可执行权限。deb 安装更新时会弹出系统密码框。 |
 | macOS | ad-hoc 签名 DMG | 不可用。按下方步骤安装，换版本请重新下载。 |
 
 启用供应商后请重启对应 CLI / 终端。应用不会覆盖 Codex `auth.json`，切回官方登录时会保留 ChatGPT 登录缓存。关闭窗口会藏到托盘；退出时会把路由写回的配置还原成直连。
