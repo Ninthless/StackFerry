@@ -41,7 +41,7 @@ import { ProviderStore } from './providers/store'
 import { fetchAnnouncementFeed } from './releases/feed'
 import { AppReleaseService } from './releases/service'
 import { AnnouncementStore } from './releases/store'
-import { createElectronUpdateFeed } from './releases/updater'
+import { createElectronUpdateFeed, readLinuxPackageType } from './releases/updater'
 import { RoutingService } from './routing/service'
 import { RoutingStore } from './routing/store'
 import { broadcastMcpsChanged } from './mcp/ipc'
@@ -237,15 +237,17 @@ app.whenReady().then(async () => {
     getHomedir: () => os.homedir(),
   })
   const appImagePath = process.env.APPIMAGE
+  const linuxPackageType = process.platform === 'linux' ? readLinuxPackageType(process.resourcesPath) : null
   const releases = new AppReleaseService({
     currentVersion: app.getVersion(),
     packaged: app.isPackaged,
     platform: process.platform,
     appImagePath,
+    linuxPackageType,
     store: new AnnouncementStore(path.join(app.getPath('userData'), 'announcements.json')),
     fetchReleases: () => fetchAnnouncementFeed(),
     feed:
-      app.isPackaged && isPackagedUpdatePlatform(process.platform, appImagePath)
+      app.isPackaged && isPackagedUpdatePlatform(process.platform, appImagePath, linuxPackageType)
         ? createElectronUpdateFeed()
         : null,
     prepareQuit: prepareQuitForUpdate,

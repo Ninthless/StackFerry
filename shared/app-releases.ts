@@ -137,9 +137,14 @@ export function emptyAnnouncementSnapshot(): AnnouncementSnapshot {
   return { items: [], unreadCount: 0 }
 }
 
-export function isPackagedUpdatePlatform(platform: string, appImagePath?: string | null): boolean {
+export function isPackagedUpdatePlatform(
+  platform: string,
+  appImagePath?: string | null,
+  linuxPackageType?: string | null,
+): boolean {
   if (platform === 'win32') return true
-  return platform === 'linux' && Boolean(appImagePath?.trim())
+  if (platform !== 'linux') return false
+  return Boolean(appImagePath?.trim()) || linuxPackageType === 'deb'
 }
 
 export function initialAppUpdateStatus(
@@ -147,10 +152,11 @@ export function initialAppUpdateStatus(
   packaged: boolean,
   platform: string,
   appImagePath?: string | null,
+  linuxPackageType?: string | null,
 ): AppUpdateStatus {
   return {
     phase: packaged
-      ? isPackagedUpdatePlatform(platform, appImagePath)
+      ? isPackagedUpdatePlatform(platform, appImagePath, linuxPackageType)
         ? 'idle'
         : 'unsupported'
       : 'unpackaged',

@@ -17,6 +17,7 @@ export type AppReleaseServiceOptions = {
   packaged: boolean
   platform: NodeJS.Platform
   appImagePath?: string | null
+  linuxPackageType?: string | null
   store: AnnouncementStore
   fetchReleases: () => Promise<unknown>
   feed: AppUpdateFeed | null
@@ -34,6 +35,7 @@ export class AppReleaseService {
       options.packaged,
       options.platform,
       options.appImagePath,
+      options.linuxPackageType,
     )
   }
 

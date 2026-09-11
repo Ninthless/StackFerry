@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import electronUpdater, { type AppUpdater } from 'electron-updater'
 import { AppError } from '../../../shared/app-error'
 import { normalizeAppReleaseNotes } from '../../../shared/app-releases'
@@ -9,6 +11,16 @@ export type AppUpdateFeed = {
   check: () => Promise<{ version: string; releaseNotes: string | null } | null>
   download: (onProgress: (transferred: number, total: number) => void) => Promise<void>
   install: () => void
+}
+
+// electron-updater 的 autoUpdater 在 Linux 上读 resources/package-type 选择 DebUpdater。
+export function readLinuxPackageType(resourcesPath: string): string | null {
+  try {
+    const value = readFileSync(path.join(resourcesPath, 'package-type'), 'utf8').trim()
+    return value || null
+  } catch {
+    return null
+  }
 }
 
 export function configureAppUpdater(updater: AppUpdater = electronUpdater.autoUpdater): AppUpdater {

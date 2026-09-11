@@ -19,7 +19,7 @@ import electronUpdater from 'electron-updater'
 import { fetchAnnouncementFeed } from '../electron/main/releases/feed'
 import { AppReleaseService } from '../electron/main/releases/service'
 import { AnnouncementStore } from '../electron/main/releases/store'
-import type { AppUpdateFeed } from '../electron/main/releases/updater'
+import { readLinuxPackageType, type AppUpdateFeed } from '../electron/main/releases/updater'
 
 const sampleAnnouncement = {
   id: '42',
@@ -34,7 +34,19 @@ describe('electron-updater module', () => {
     expect(typeof electronUpdater.NsisUpdater).toBe('function')
     expect(typeof electronUpdater.MacUpdater).toBe('function')
     expect(typeof electronUpdater.AppImageUpdater).toBe('function')
+    expect(typeof electronUpdater.DebUpdater).toBe('function')
     expect('autoUpdater' in electronUpdater).toBe(true)
+  })
+})
+
+describe('readLinuxPackageType', () => {
+  it('reads the electron-builder package-type file and ignores missing or blank files', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-package-type-'))
+    expect(readLinuxPackageType(dir)).toBeNull()
+    await writeFile(path.join(dir, 'package-type'), '  \n')
+    expect(readLinuxPackageType(dir)).toBeNull()
+    await writeFile(path.join(dir, 'package-type'), 'deb\n')
+    expect(readLinuxPackageType(dir)).toBe('deb')
   })
 })
 
@@ -236,12 +248,14 @@ describe('announcement store', () => {
 })
 
 describe('app release service', () => {
-  it('starts unpackaged without a feed and idle only on Windows NSIS and Linux AppImage', async () => {
+  it('starts unpackaged without a feed and idle only on Windows NSIS and Linux AppImage or deb', async () => {
     expect(initialAppUpdateStatus('0.1.0', false, 'win32').phase).toBe('unpackaged')
     expect(initialAppUpdateStatus('0.1.0', true, 'win32').phase).toBe('idle')
     expect(initialAppUpdateStatus('0.1.0', true, 'linux', '/tmp/StackFerry.AppImage').phase).toBe('idle')
+    expect(initialAppUpdateStatus('0.1.0', true, 'linux', null, 'deb').phase).toBe('idle')
     expect(initialAppUpdateStatus('0.1.0', true, 'linux').phase).toBe('unsupported')
     expect(initialAppUpdateStatus('0.1.0', true, 'linux', '  ').phase).toBe('unsupported')
+    expect(initialAppUpdateStatus('0.1.0', true, 'linux', null, 'rpm').phase).toBe('unsupported')
     expect(initialAppUpdateStatus('0.1.0', true, 'darwin').phase).toBe('unsupported')
     expect(initialAppUpdateStatus('0.1.0', true, 'freebsd').phase).toBe('unsupported')
     const unpackaged = await createService({ packaged: false, platform: 'win32', feed: null })
@@ -258,6 +272,13 @@ describe('app release service', () => {
       appImagePath: '/tmp/StackFerry.AppImage',
     })
     expect((await linuxAppImage.check()).phase).toBe('available')
+    const linuxDebFeed = await createService({
+      packaged: true,
+      platform: 'linux',
+      feed: memoryFeed({ version: '0.2.0', releaseNotes: null }),
+      linuxPackageType: 'deb',
+    })
+    expect((await linuxDebFeed.check()).phase).toBe('available')
   })
 
   it('checks, downloads, and refuses install before ready', async () => {
@@ -327,6 +348,7 @@ async function createService(options: {
   platform: NodeJS.Platform
   feed: AppUpdateFeed | null
   appImagePath?: string | null
+  linuxPackageType?: string | null
   fetchReleases?: () => Promise<unknown>
 }): Promise<AppReleaseService> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-releases-'))
@@ -335,6 +357,7 @@ async function createService(options: {
     packaged: options.packaged,
     platform: options.platform,
     appImagePath: options.appImagePath,
+    linuxPackageType: options.linuxPackageType,
     store: new AnnouncementStore(path.join(dir, 'announcements.json')),
     fetchReleases: options.fetchReleases ?? (async () => []),
     feed: options.feed,
