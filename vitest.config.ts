@@ -4,12 +4,12 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   resolve: {
     alias: {
-      '@': path.join(__dirname, 'src'),
-      '@shared': path.join(__dirname, 'shared'),
+      '@': path.join(import.meta.dirname, 'src'),
+      '@shared': path.join(import.meta.dirname, 'shared'),
     },
   },
   test: {
-    root: __dirname,
+    root: import.meta.dirname,
     include: ['test/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
     passWithNoTests: false,
     testTimeout: 1000 * 29,

@@ -432,6 +432,16 @@
   "toast_app_update_downloaded": "更新已下载完成，请前往关于页面安装",
   "toast_announcements_refreshing": "正在刷新公告…",
   "toast_announcements_refreshed": "公告已更新。",
+  "ccsw_legend": "从 cc-switch 导入",
+  "ccsw_description": "从 cc-switch 导入 Codex 与 Claude 供应商。内置供应商、缺少凭据的条目以及此处已存在的供应商会被跳过；导入的 API Key 仅在原设备上有效。",
+  "ccsw_detected": "在 {path} 发现 cc-switch 数据（{codex} 个 Codex、{claude} 个 Claude，跳过 {skipped} 项）。",
+  "ccsw_none": "本机未发现 cc-switch 数据，可手动选择 cc-switch.db 文件。",
+  "ccsw_choose": "选择文件…",
+  "ccsw_choose_title": "选择 cc-switch 数据库",
+  "ccsw_import": "导入",
+  "ccsw_confirm_title": "从 cc-switch 导入供应商？",
+  "ccsw_confirm_description": "将从 {path} 导入 {codex} 个 Codex 与 {claude} 个 Claude 供应商，跳过 {skipped} 项。",
+  "toast_ccsw_imported": "已导入 {codex} 个 Codex、{claude} 个 Claude 供应商，跳过 {skipped} 项。",
   "announcements_legend": "公告",
   "announcements_description": "来自 StackFerry 公告源的产品通知。未读条目会在标题栏铃铛上显示标记。",
   "announcements_refresh": "刷新",
@@ -504,5 +514,8 @@
   "error_import_payload": "无法读取导入数据",
   "error_import_targets": "targets 只能包含 codex、claude 和/或 grok",
   "error_import_version": "此导入链接版本不受支持",
-  "error_import_invalid": "必须提供 name、baseUrl 和 apiKey"
+  "error_import_invalid": "必须提供 name、baseUrl 和 apiKey",
+  "error_ccsw_not_found": "所选位置没有找到 cc-switch.db",
+  "error_ccsw_db_corrupt": "cc-switch 数据库已损坏或无法读取",
+  "error_ccsw_no_providers": "cc-switch 数据库中没有可导入的供应商"
 }

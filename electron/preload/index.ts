@@ -117,6 +117,9 @@ const api: StackferryApi = {
   markAllAnnouncementsRead: () => ipcRenderer.invoke(IpcChannel.markAllAnnouncementsRead),
   getProviderImportOffer: () => ipcRenderer.invoke(IpcChannel.getProviderImportOffer),
   dismissProviderImport: () => ipcRenderer.invoke(IpcChannel.dismissProviderImport),
+  detectCcswImport: () => ipcRenderer.invoke(IpcChannel.detectCcswImport),
+  chooseCcswImport: () => ipcRenderer.invoke(IpcChannel.chooseCcswImport),
+  importCcswProviders: (dbPath) => ipcRenderer.invoke(IpcChannel.importCcswProviders, dbPath),
   onProviderImportOffer: (listener) => {
     const wrapped = (_event: unknown, offer: ProviderImportOffer) => listener(offer)
     ipcRenderer.on(IpcChannel.providerImportOffer, wrapped)

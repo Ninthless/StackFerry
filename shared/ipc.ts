@@ -86,4 +86,7 @@ export const IpcChannel = {
   getProviderImportOffer: 'providerImport:get',
   dismissProviderImport: 'providerImport:dismiss',
   providerImportOffer: 'providerImport:offer',
+  detectCcswImport: 'ccswImport:detect',
+  chooseCcswImport: 'ccswImport:choose',
+  importCcswProviders: 'ccswImport:import',
 } as const

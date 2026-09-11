@@ -432,6 +432,16 @@
   "toast_app_update_downloaded": "Update downloaded. Open About to install.",
   "toast_announcements_refreshing": "Refreshing announcements…",
   "toast_announcements_refreshed": "Announcements updated.",
+  "ccsw_legend": "Import from cc-switch",
+  "ccsw_description": "Import Codex and Claude providers from cc-switch. Built-in providers, entries without credentials, and providers that already exist here are skipped. Imported API keys stay valid only on the device that created them.",
+  "ccsw_detected": "cc-switch data found at {path} ({codex} Codex, {claude} Claude, {skipped} skipped).",
+  "ccsw_none": "No cc-switch data was found on this device. You can choose a cc-switch.db file manually.",
+  "ccsw_choose": "Choose file…",
+  "ccsw_choose_title": "Choose the cc-switch database",
+  "ccsw_import": "Import",
+  "ccsw_confirm_title": "Import providers from cc-switch?",
+  "ccsw_confirm_description": "{codex} Codex and {claude} Claude providers will be imported from {path}. {skipped} entries will be skipped.",
+  "toast_ccsw_imported": "Imported {codex} Codex and {claude} Claude providers, skipped {skipped}.",
   "announcements_legend": "Announcements",
   "announcements_description": "Product notices from the StackFerry feed. Unread items show a marker on the title bar bell.",
   "announcements_refresh": "Refresh",
@@ -504,5 +514,8 @@
   "error_import_payload": "The import payload could not be read",
   "error_import_targets": "targets must include codex, claude, and/or grok",
   "error_import_version": "This import link uses an unsupported version",
-  "error_import_invalid": "name, baseUrl, and apiKey are required"
+  "error_import_invalid": "name, baseUrl, and apiKey are required",
+  "error_ccsw_not_found": "No cc-switch.db was found at the chosen location",
+  "error_ccsw_db_corrupt": "The cc-switch database is corrupt or unreadable",
+  "error_ccsw_no_providers": "The cc-switch database contains no providers that can be imported"
 }

@@ -9,6 +9,7 @@ import type { MicaState } from './mica'
 import type { RoutingSettingsPatch, RoutingSnapshot, RoutingLaneState } from './routing'
 import type { McpDraft, McpListItem, McpTarget } from './mcp'
 import type { ProviderImportOffer } from './provider-import'
+import type { CcswImportCandidate, CcswImportResult } from './ccsw-import'
 import type {
   SkillDocument,
   SkillDraft,
@@ -40,6 +41,13 @@ export type {
 } from './skills'
 
 export type { ProviderImportOffer, ProviderImportTarget } from './provider-import'
+export type {
+  CcswDraft,
+  CcswImportCandidate,
+  CcswImportResult,
+  CcswProviderRow,
+  CcswSkipReason,
+} from './ccsw-import'
 export type { LanguagePreference, MicaState, RoutingLaneState, RoutingSettingsPatch, RoutingSnapshot, ThemePreference }
 
 export type ProviderKind = 'official' | 'custom'
@@ -298,4 +306,7 @@ export type StackferryApi = {
   getProviderImportOffer: () => Promise<ProviderImportOffer | null>
   dismissProviderImport: () => Promise<void>
   onProviderImportOffer: (listener: (offer: ProviderImportOffer) => void) => () => void
+  detectCcswImport: () => Promise<CcswImportCandidate | null>
+  chooseCcswImport: () => Promise<CcswImportCandidate | null>
+  importCcswProviders: (dbPath: string) => Promise<CcswImportResult>
 }

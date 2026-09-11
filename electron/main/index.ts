@@ -31,6 +31,7 @@ import {
   seedOfficialProvider,
 } from './ipc'
 import { LocaleStore } from './locale-store'
+import { CcswImportService } from './ccsw/service'
 import {
   applyWindowMica,
   currentMicaState,
@@ -236,6 +237,11 @@ app.whenReady().then(async () => {
     getGrokHome: () => resolveGrokHome(),
     getHomedir: () => os.homedir(),
   })
+  const ccswImport = new CcswImportService({
+    getHomedir: () => os.homedir(),
+    providerStore: store,
+    claudeStore,
+  })
   const appImagePath = process.env.APPIMAGE
   const linuxPackageType = process.platform === 'linux' ? readLinuxPackageType(process.resourcesPath) : null
   const releases = new AppReleaseService({
@@ -262,6 +268,7 @@ app.whenReady().then(async () => {
     skills,
     mcp,
     releases,
+    ccswImport,
     getCodexHome: () => resolveCodexHome(),
     getGrokHome: () => resolveGrokHome(),
     backupRoot: path.join(app.getPath('userData'), 'backups'),

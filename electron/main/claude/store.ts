@@ -107,6 +107,43 @@ export class ClaudeProviderStore {
     return file.providers.map((provider) => this.toListItem(provider, file.activeProviderId))
   }
 
+  async importDrafts(drafts: ClaudeProviderDraft[]): Promise<{ imported: number; skipped: number }> {
+    const file = await this.read()
+    const now = new Date().toISOString()
+    let imported = 0
+    let skipped = 0
+    for (const draft of drafts) {
+      const kind: ProviderKind = 'custom'
+      const name = this.requireName(draft.name)
+      const baseUrl = this.requireBaseUrl(draft.baseUrl)
+      const duplicate = file.providers.some(
+        (provider) => provider.name.trim() === name && provider.baseUrl === baseUrl,
+      )
+      if (duplicate) {
+        skipped += 1
+        continue
+      }
+      const persistedModels = this.persistModels(kind, draft)
+      const provider: StoredClaudeProvider = {
+        id: randomUUID(),
+        name,
+        kind,
+        baseUrl,
+        ...persistedModels,
+        authScheme: this.requireAuthScheme(draft.authScheme),
+        ...this.sessionFields(kind, draft),
+        apiKeyPayload: this.encryptApiKey(kind, draft.apiKey),
+        createdAt: now,
+        updatedAt: now,
+      }
+      this.assertReadyToSave(provider, draft.apiKey)
+      file.providers.push(provider)
+      imported += 1
+    }
+    if (imported > 0) await this.write(file)
+    return { imported, skipped }
+  }
+
   async delete(id: string): Promise<void> {
     const file = await this.read()
     this.requireProvider(file, id)

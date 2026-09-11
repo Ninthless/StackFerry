@@ -28,6 +28,8 @@ import { listProviderModels, type ListModelsInput } from './codex/models'
 import type { ProviderStore } from './codex/store'
 import type { RoutingService } from './routing/service'
 import { registerCliToolIpc } from './cli-tools/ipc'
+import { registerCcswIpc } from './ccsw/ipc'
+import type { CcswImportService } from './ccsw/service'
 import { registerMcpIpc } from './mcp/ipc'
 import type { McpService } from './mcp/service'
 import { registerReleaseIpc } from './releases/ipc'
@@ -54,6 +56,7 @@ type IpcContext = {
   skills: SkillService
   mcp: McpService
   releases: AppReleaseService
+  ccswImport: CcswImportService
   onSkillsChanged: () => void
   onMcpsChanged: () => void
   getLocalePreference: () => Promise<LanguagePreference>
@@ -268,6 +271,7 @@ export function registerIpc(context: IpcContext): void {
   registerMcpIpc(context)
   registerCliToolIpc()
   registerReleaseIpc(context.releases)
+  registerCcswIpc(context)
 }
 
 export function bindWindowState(win: BrowserWindow): void {

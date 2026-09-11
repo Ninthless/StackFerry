@@ -15,7 +15,7 @@ import {
 } from '../../../shared/provider-overlay'
 import { orderByIds } from '../../../shared/id-order'
 import type { ProviderDraft, ProviderKind, ProviderListItem } from '../../../shared/types'
-import { atomicWriteFile } from '../codex/writer'
+import { atomicWriteFile } from './writer'
 
 const STORE_VERSION = 2
 const OFFICIAL_ID = 'official'
@@ -104,6 +104,42 @@ export class ProviderStore {
     file.providers = next
     await this.write(file)
     return file.providers.map((provider) => this.toListItem(provider, file.activeProviderId))
+  }
+
+  async importDrafts(drafts: ProviderDraft[]): Promise<{ imported: number; skipped: number }> {
+    const file = await this.read()
+    const now = new Date().toISOString()
+    let imported = 0
+    let skipped = 0
+    for (const draft of drafts) {
+      const kind = draft.kind === 'official' ? 'official' : 'custom'
+      const overlay = this.resolveOverlay(kind, draft.tomlText, draft.models)
+      const name = draft.name.trim()
+      const duplicate = file.providers.some(
+        (provider) => provider.name.trim() === name && provider.baseUrl === overlay.baseUrl,
+      )
+      if (duplicate) {
+        skipped += 1
+        continue
+      }
+      const provider: StoredProvider = {
+        id: randomUUID(),
+        name,
+        kind,
+        baseUrl: overlay.baseUrl,
+        model: overlay.model,
+        models: overlay.models,
+        tomlText: overlay.tomlText,
+        apiKeyPayload: this.encryptApiKey(kind, draft.apiKey),
+        createdAt: now,
+        updatedAt: now,
+      }
+      this.assertReadyToSave(provider, draft.apiKey)
+      file.providers.push(provider)
+      imported += 1
+    }
+    if (imported > 0) await this.write(file)
+    return { imported, skipped }
   }
 
   async delete(id: string): Promise<void> {
