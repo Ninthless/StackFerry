@@ -23,7 +23,7 @@ export function AnnouncementList({ items, onSelect }: Props) {
           key={item.id}
           size="xs"
           variant="outline"
-          className="overflow-hidden"
+          className="overflow-hidden text-left"
           render={<button type="button" />}
           onClick={() => onSelect(item)}
         >
