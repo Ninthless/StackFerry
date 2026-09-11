@@ -9,6 +9,7 @@ import type { MicaState } from './mica'
 import type { RoutingSettingsPatch, RoutingSnapshot, RoutingLaneState } from './routing'
 import type { McpDraft, McpListItem, McpTarget } from './mcp'
 import type { ProviderImportOffer } from './provider-import'
+import type { LegacyImportCandidate, LegacyImportResult } from './legacy-import'
 import type { CcswImportCandidate, CcswImportResult } from './ccsw-import'
 import type {
   SkillDocument,
@@ -41,6 +42,7 @@ export type {
 } from './skills'
 
 export type { ProviderImportOffer, ProviderImportTarget } from './provider-import'
+export type { LegacyImportCandidate, LegacyImportResult } from './legacy-import'
 export type {
   CcswDraft,
   CcswImportCandidate,
@@ -306,6 +308,9 @@ export type StackferryApi = {
   getProviderImportOffer: () => Promise<ProviderImportOffer | null>
   dismissProviderImport: () => Promise<void>
   onProviderImportOffer: (listener: (offer: ProviderImportOffer) => void) => () => void
+  detectLegacyImport: () => Promise<LegacyImportCandidate | null>
+  chooseLegacyImport: () => Promise<LegacyImportCandidate | null>
+  importLegacyProviders: (dbPath: string) => Promise<LegacyImportResult>
   detectCcswImport: () => Promise<CcswImportCandidate | null>
   chooseCcswImport: () => Promise<CcswImportCandidate | null>
   importCcswProviders: (dbPath: string) => Promise<CcswImportResult>

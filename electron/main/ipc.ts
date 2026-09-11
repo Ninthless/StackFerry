@@ -30,6 +30,8 @@ import type { RoutingService } from './routing/service'
 import { registerCliToolIpc } from './cli-tools/ipc'
 import { registerCcswIpc } from './ccsw/ipc'
 import type { CcswImportService } from './ccsw/service'
+import { registerLegacyImportIpc } from './legacy/ipc'
+import type { LegacyImportService } from './legacy/service'
 import { registerMcpIpc } from './mcp/ipc'
 import type { McpService } from './mcp/service'
 import { registerReleaseIpc } from './releases/ipc'
@@ -56,6 +58,7 @@ type IpcContext = {
   skills: SkillService
   mcp: McpService
   releases: AppReleaseService
+  legacyImport: LegacyImportService
   ccswImport: CcswImportService
   onSkillsChanged: () => void
   onMcpsChanged: () => void
@@ -271,6 +274,7 @@ export function registerIpc(context: IpcContext): void {
   registerMcpIpc(context)
   registerCliToolIpc()
   registerReleaseIpc(context.releases)
+  registerLegacyImportIpc(context)
   registerCcswIpc(context)
 }
 

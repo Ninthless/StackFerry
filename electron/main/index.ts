@@ -32,6 +32,7 @@ import {
 } from './ipc'
 import { LocaleStore } from './locale-store'
 import { CcswImportService } from './ccsw/service'
+import { LegacyImportService } from './legacy/service'
 import {
   applyWindowMica,
   currentMicaState,
@@ -237,6 +238,11 @@ app.whenReady().then(async () => {
     getGrokHome: () => resolveGrokHome(),
     getHomedir: () => os.homedir(),
   })
+  const legacyImport = new LegacyImportService({
+    getHomedir: () => os.homedir(),
+    providerStore: store,
+    claudeStore,
+  })
   const ccswImport = new CcswImportService({
     getHomedir: () => os.homedir(),
     providerStore: store,
@@ -268,6 +274,7 @@ app.whenReady().then(async () => {
     skills,
     mcp,
     releases,
+    legacyImport,
     ccswImport,
     getCodexHome: () => resolveCodexHome(),
     getGrokHome: () => resolveGrokHome(),
