@@ -3,6 +3,7 @@ import {
   encodeProviderImportData,
   encodeProviderImportUrl,
   findProviderImportUrl,
+  NEW_API_CHAT_LINK,
   parseProviderImportUrl,
 } from '../shared/provider-import'
 import { overlayBaseUrl, overlayWireApi } from '../shared/provider-overlay'
@@ -115,6 +116,71 @@ describe('provider import links', () => {
       'models_unsupported_protocol',
     )
     expectAppError(() => parseProviderImportDataCorrupt(), 'import_payload')
+  })
+
+  it('parses NewAPI {address}/{key} query templates', () => {
+    const url = NEW_API_CHAT_LINK.split('{address}')
+      .join(encodeURIComponent('https://api.example.com'))
+      .split('{key}')
+      .join('sk-example-key')
+    const offer = parseProviderImportUrl(url)
+    expect(offer.name).toBe('New API')
+    expect(offer.baseUrl).toBe('https://api.example.com')
+    expect(offer.apiKey).toBe('sk-example-key')
+    expect(offer.targets).toEqual(['codex', 'claude', 'grok'])
+    expect(offer.drafts.codex?.kind).toBe('custom')
+    expect(offer.drafts.claude?.kind).toBe('custom')
+    expect(offer.drafts.grok?.kind).toBe('custom')
+  })
+
+  it('defaults query name and targets, and lets data win over query fields', () => {
+    const unnamed = parseProviderImportUrl(
+      'stackferry://import/providers?baseUrl=https://gw.example.com/v1&apiKey=secret',
+    )
+    expect(unnamed.name).toBe('gw.example.com')
+    expect(unnamed.targets).toEqual(['codex', 'claude', 'grok'])
+    const trimmed = parseProviderImportUrl(
+      'stackferry://import/providers?baseUrl=https://gw.example.com&apiKey=secret&targets=codex,%20claude&wireApi=chat',
+    )
+    expect(trimmed.targets).toEqual(['codex', 'claude'])
+    expect(overlayWireApi(trimmed.drafts.codex?.tomlText ?? '')).toBe('chat')
+    expect(trimmed.drafts.grok).toBeUndefined()
+    const mixed = parseProviderImportUrl(
+      `${encodeProviderImportUrl({
+        name: 'From Data',
+        baseUrl: 'https://data.example.com',
+        apiKey: 'from-data',
+        targets: ['codex'],
+      })}&baseUrl=https://query.example.com&apiKey=from-query&targets=grok`,
+    )
+    expect(mixed.name).toBe('From Data')
+    expect(mixed.baseUrl).toBe('https://data.example.com')
+    expect(mixed.targets).toEqual(['codex'])
+  })
+
+  it('rejects incomplete or unexpanded query links', () => {
+    expectAppError(
+      () => parseProviderImportUrl('stackferry://import/providers?baseUrl=https://api.example.com'),
+      'api_key_required',
+    )
+    expectAppError(
+      () => parseProviderImportUrl('stackferry://import/providers?apiKey=secret'),
+      'import_invalid',
+    )
+    expectAppError(
+      () =>
+        parseProviderImportUrl(
+          'stackferry://import/providers?baseUrl={address}&apiKey=secret&targets=codex',
+        ),
+      'import_invalid',
+    )
+    expectAppError(
+      () =>
+        parseProviderImportUrl(
+          'stackferry://import/providers?baseUrl=https://api.example.com&apiKey=secret&targets=gemini',
+        ),
+      'import_targets',
+    )
   })
 })
 

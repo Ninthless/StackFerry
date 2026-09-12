@@ -4,16 +4,33 @@
 
 ## 链接
 
+完整 payload 用 `data`：
+
 ```text
 stackferry://import/providers?v=1&data=<base64url(JSON)>
+```
+
+NewAPI 聊天设置没有 `{stackferryConfig}`，用查询参数：
+
+```text
+stackferry://import/providers?v=1&name=New%20API&baseUrl={address}&apiKey={key}&targets=codex,claude,grok
 ```
 
 | 参数 | 存在性 | 说明 |
 | --- | --- | --- |
 | `v` | 可选 | 协议版本。缺省视为 `1`；出现时必须是 `1`，否则拒绝。 |
-| `data` | 必填 | UTF-8 JSON 的 Base64URL（`-` `_`，无 padding）。解码后 JSON 不得超过 32768 字节。 |
+| `data` | 条件必填 | UTF-8 JSON 的 Base64URL（`-` `_`，无 padding）。解码后 JSON 不得超过 32768 字节。出现时忽略查询参数字段。 |
+| `name` | 可选 | 仅无 `data` 时有效。缺省为 `baseUrl` 的 hostname。 |
+| `baseUrl` | 条件必填 | 仅无 `data` 时有效。`http` 或 `https`。 |
+| `apiKey` | 条件必填 | 仅无 `data` 时有效。去空白后非空。 |
+| `targets` | 可选 | 仅无 `data` 时有效。逗号分隔。缺省 `codex,claude,grok`。 |
+| `model` | 可选 | 仅无 `data` 时有效。与 JSON `model` 相同。 |
+| `models` | 可选 | 仅无 `data` 时有效。逗号分隔的模型 id。 |
+| `wireApi` | 可选 | 仅无 `data` 时有效。与 JSON `wireApi` 相同。 |
+| `claudeAuthScheme` | 可选 | 仅无 `data` 时有效。与 JSON `claudeAuthScheme` 相同。 |
+| `grokApiBackend` | 可选 | 仅无 `data` 时有效。与 JSON `grokApiBackend` 相同。 |
 
-不要使用标准 Base64 的 `+` `/`：它们会被 URL 吃掉。应用也能读带 `+` `/` 的标准 Base64，对接方仍应只发 Base64URL。
+无 `data` 且无 `baseUrl` / `apiKey` 时拒绝。不要使用标准 Base64 的 `+` `/`：它们会被 URL 吃掉。应用也能读带 `+` `/` 的标准 Base64，对接方仍应只发 Base64URL。
 
 ## JSON 字段
 
@@ -90,13 +107,15 @@ url = f"stackferry://import/providers?v=1&data={data}"
 
 ## NewAPI
 
-在一键配置里放：
+在控制台「系统设置 → 聊天设置」加入：
 
 ```json
-{ "StackFerry": "stackferry://import/providers?v=1&data={stackferryConfig}" }
+{ "StackFerry": "stackferry://import/providers?v=1&name=New%20API&baseUrl={address}&apiKey={key}&targets=codex,claude,grok" }
 ```
 
-用当前用户的 `name`、`baseUrl`、`apiKey`、`targets` 生成 JSON，再 Base64URL 填进 `{stackferryConfig}`。不要把未编码的 JSON 直接拼进 URL。
+NewAPI 只替换 `{address}`（站点地址，末尾不含 `/` 和 `/v1`，并做 `encodeURIComponent`）和 `{key}`（密钥；不以 `sk-` 开头时 NewAPI 会补上）。令牌页选 StackFerry 后会打开本应用。不要写 `{stackferryConfig}`，NewAPI 不会编码它。
+
+站长自建按钮、需要 `models` / `wireApi` 等字段时，改用上面的 `data` JSON 链接。
 
 ## 应用内结果
 
@@ -114,7 +133,7 @@ url = f"stackferry://import/providers?v=1&data={data}"
 | --- | --- |
 | 不是 `stackferry://import/providers` | `import_url` |
 | `v` 不是 `1` | `import_version` |
-| 缺少 / 无法解码 / 超过大小的 `data`，或 JSON 不是对象 | `import_payload` |
+| 缺少 `data` 且缺少 `baseUrl` / `apiKey`，或 `data` 无法解码 / 超过大小，或 JSON 不是对象 | `import_payload` |
 | 缺少 `name` 或 `baseUrl`，或 `baseUrl` 不是合法 URL | `import_invalid` |
 | `baseUrl` 不是 `http`/`https` | `models_unsupported_protocol` |
 | `apiKey` 为空 | `api_key_required` |

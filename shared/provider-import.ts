@@ -21,6 +21,10 @@ export const PROVIDER_IMPORT_SCHEME = 'stackferry'
 export const PROVIDER_IMPORT_MAX_BYTES = 32_768
 export const PROVIDER_IMPORT_TARGETS = ['codex', 'claude', 'grok'] as const
 
+// NewAPI 只替换 `{address}` / `{key}`，不会编码 `{stackferryConfig}`。
+export const NEW_API_CHAT_LINK =
+  `${PROVIDER_IMPORT_SCHEME}://import/providers?v=1&name=New%20API&baseUrl={address}&apiKey={key}&targets=codex,claude,grok`
+
 export type ProviderImportTarget = (typeof PROVIDER_IMPORT_TARGETS)[number]
 
 export type ProviderImportDrafts = {
@@ -81,8 +85,9 @@ export function parseProviderImportUrl(raw: string): ProviderImportOffer {
   const version = url.searchParams.get('v')
   if (version && version !== '1') throw new AppError('import_version')
   const data = url.searchParams.get('data')
-  if (!data) throw new AppError('import_payload')
-  return parseProviderImportData(data)
+  if (data) return parseProviderImportData(data)
+  if (hasQueryPayload(url.searchParams)) return parseProviderImportQuery(url.searchParams)
+  throw new AppError('import_payload')
 }
 
 export function parseProviderImportData(data: string): ProviderImportOffer {
@@ -103,6 +108,36 @@ export function parseProviderImportData(data: string): ProviderImportOffer {
     throw new AppError('import_payload')
   }
   const payload = parsePayload(raw)
+  return toOffer(payload)
+}
+
+function hasQueryPayload(params: URLSearchParams): boolean {
+  return params.has('baseUrl') || params.has('apiKey')
+}
+
+function parseProviderImportQuery(params: URLSearchParams): ProviderImportOffer {
+  const baseUrl = optionalQuery(params, 'baseUrl') ?? ''
+  const targetsText = params.get('targets')
+  const modelsText = optionalQuery(params, 'models')
+  return toOffer(
+    parsePayload({
+      name: optionalQuery(params, 'name') || hostnameFrom(baseUrl),
+      baseUrl,
+      apiKey: optionalQuery(params, 'apiKey') ?? '',
+      targets:
+        targetsText === null
+          ? [...PROVIDER_IMPORT_TARGETS]
+          : targetsText.split(',').map((item) => item.trim()),
+      model: optionalQuery(params, 'model'),
+      models: modelsText ? modelsText.split(',').map((item) => item.trim()) : undefined,
+      wireApi: optionalQuery(params, 'wireApi'),
+      claudeAuthScheme: optionalQuery(params, 'claudeAuthScheme'),
+      grokApiBackend: optionalQuery(params, 'grokApiBackend'),
+    }),
+  )
+}
+
+function toOffer(payload: ProviderImportPayload): ProviderImportOffer {
   return {
     name: payload.name,
     baseUrl: payload.baseUrl,
@@ -110,6 +145,20 @@ export function parseProviderImportData(data: string): ProviderImportOffer {
     targets: payload.targets,
     maskedKey: maskApiKey(payload.apiKey),
     drafts: toDrafts(payload),
+  }
+}
+
+function optionalQuery(params: URLSearchParams, key: string): string | undefined {
+  const value = params.get(key)
+  if (value === null || !value.trim()) return undefined
+  return value.trim()
+}
+
+function hostnameFrom(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).hostname
+  } catch {
+    return ''
   }
 }
 
