@@ -93,7 +93,7 @@ describe('codex toml merge', () => {
     expect(providers[key].experimental_bearer_token).toBeUndefined()
   })
 
-  it('replaces the previous StackFerry provider when switching', () => {
+  it('keeps previous StackFerry provider tables when switching', () => {
     const first = applyThirdPartyProvider(existing, {
       id: 'aaaa',
       name: 'A',
@@ -117,13 +117,13 @@ describe('codex toml merge', () => {
       apiKey: 'key-b',
     })
     const providers = second.model_providers as Record<string, unknown>
-    expect(Object.keys(providers)).toEqual([providerKey('bbbb')])
+    expect(Object.keys(providers)).toEqual([providerKey('aaaa'), providerKey('bbbb')])
     expect(second.model_provider).toBe(providerKey('bbbb'))
     expect(stringifyToml(second)).toContain('experimental_bearer_token = "key-b"')
-    expect(stringifyToml(second)).not.toContain('key-a')
+    expect(stringifyToml(second)).toContain('experimental_bearer_token = "key-a"')
   })
 
-  it('restores the official openai provider and strips injected tokens', () => {
+  it('restores the official openai pointer and keeps dormant provider tables', () => {
     const thirdParty = applyThirdPartyProvider(existing, {
       id: 'cccc',
       name: 'C',
@@ -139,8 +139,8 @@ describe('codex toml merge', () => {
     expect(official.model_provider).toBe('openai')
     expect(official.approval_policy).toBeUndefined()
     expect(official.mcp_servers).toEqual({ docs: { command: 'docs-mcp' } })
-    expect(official.model_providers).toBeUndefined()
-    expect(stringifyToml(official)).not.toContain('experimental_bearer_token')
+    const providers = official.model_providers as Record<string, Record<string, string>>
+    expect(providers[providerKey('cccc')].experimental_bearer_token).toBe('key-c')
   })
 
   it('writes reasoning and context from the overlay and clears them when omitted', () => {
@@ -336,6 +336,9 @@ wire_api = "chat"
       models: ['model-r'],
     })
     expect(routed.model_catalog_json).toBe('C:/Users/me/.codex/model-catalogs/stackferry.json')
+    const providers = routed.model_providers as Record<string, unknown>
+    expect(providers).toHaveProperty(providerKey('catalog'))
+    expect(providers).toHaveProperty('stackferry_router')
   })
 
   it('clears only the StackFerry catalog pointer', () => {

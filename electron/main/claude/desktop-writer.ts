@@ -8,6 +8,7 @@ import {
   applyDesktopDeploymentMode,
   applyDesktopGateway,
   applyDesktopOfficial,
+  desktopProfileId,
   LEGACY_STACKFERRY_DESKTOP_PROFILE_ID,
   parseDesktopAppConfig,
   parseDesktopMeta,
@@ -32,9 +33,10 @@ export async function enableDesktopGateway(options: {
   isManaged?: ManagedPolicyProbe
 }): Promise<DesktopWriteResult> {
   await assertLocalLibraryWritable(options.isManaged)
+  const profileId = desktopProfileId(options.provider.id)
   const metaPath = desktopMetaPath(options.library)
-  const profilePath = desktopProfilePath(options.library, STACKFERRY_DESKTOP_PROFILE_ID)
-  const backupPath = await backupDesktopLibrary(options.library, options.backupRoot)
+  const profilePath = desktopProfilePath(options.library, profileId)
+  const backupPath = await backupDesktopLibrary(options.library, options.backupRoot, profileId)
   const current = await readMeta(metaPath)
   const next = applyDesktopGateway(current, options.provider)
   await mkdir(options.library, { recursive: true })
@@ -69,7 +71,11 @@ async function assertLocalLibraryWritable(isManaged?: ManagedPolicyProbe): Promi
   }
 }
 
-async function backupDesktopLibrary(library: string, backupRoot: string): Promise<string> {
+async function backupDesktopLibrary(
+  library: string,
+  backupRoot: string,
+  profileId = STACKFERRY_DESKTOP_PROFILE_ID,
+): Promise<string> {
   const stamp = new Date().toISOString().replaceAll(':', '-')
   const tag = createHash('sha1').update(library).digest('hex').slice(0, 8)
   const backupPath = path.join(backupRoot, `${stamp}-${tag}`)
@@ -79,6 +85,12 @@ async function backupDesktopLibrary(library: string, backupRoot: string): Promis
     desktopProfilePath(library, STACKFERRY_DESKTOP_PROFILE_ID),
     path.join(backupPath, `${STACKFERRY_DESKTOP_PROFILE_ID}.json`),
   )
+  if (profileId !== STACKFERRY_DESKTOP_PROFILE_ID) {
+    await copyIfExists(
+      desktopProfilePath(library, profileId),
+      path.join(backupPath, `${profileId}.json`),
+    )
+  }
   await copyIfExists(
     desktopProfilePath(library, LEGACY_STACKFERRY_DESKTOP_PROFILE_ID),
     path.join(backupPath, `${LEGACY_STACKFERRY_DESKTOP_PROFILE_ID}.json`),

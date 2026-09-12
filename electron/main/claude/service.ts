@@ -67,6 +67,7 @@ export class ClaudeEnableService {
     await this.assertWritable()
     const session = parseClaudeSession(provider)
     const live = {
+      id: provider.id,
       name: provider.name,
       baseUrl,
       apiKey,

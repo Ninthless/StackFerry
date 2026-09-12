@@ -90,9 +90,9 @@ export function applyMediaBaseUrl(doc: TomlTable, baseUrl: string): TomlTable {
 
 export function applyDirectModel(doc: TomlTable, input: GrokDirectLiveConfig): TomlTable {
   const next = cloneDoc(doc)
-  stripStackferryOwned(next)
   const session = parseGrokSession(input)
   if (session.overlay) applyOverlayRoot(next, session.overlay)
+  // 旧会话按 [model.<id>] 回查；换供应商只改 default 指针，stackferry_* 表必须留下。
   const key = attachDirectModel(next, input, directTable(input, session))
   pinLiveModel(next, key, session)
   pinByokAuth(next)
@@ -103,7 +103,10 @@ export function applyDirectModel(doc: TomlTable, input: GrokDirectLiveConfig): T
 export function applyOfficialModel(doc: TomlTable, previousDefault = ''): TomlTable {
   const next = cloneDoc(doc)
   const fromLegacyMeta = leftoverPreviousDefault(next)
-  const owned = stripStackferryOwned(next)
+  const owned = ownedCatalogKeys(next)
+  unpinMediaGeneration(next)
+  stripOwnedCatalogOverlays(next, owned)
+  delete next[STACKFERRY_META_TABLE]
   unpinByokAuth(next)
   unpinLiveModel(next, owned)
   setDefaultModel(next, previousDefault || fromLegacyMeta || GROK_OFFICIAL_DEFAULT_MODEL)
@@ -112,7 +115,6 @@ export function applyOfficialModel(doc: TomlTable, previousDefault = ''): TomlTa
 
 export function applyRouterModel(doc: TomlTable, input: GrokRouterLiveConfig): TomlTable {
   const next = cloneDoc(doc)
-  stripStackferryOwned(next)
   const session = parseGrokSession(input)
   if (session.overlay) applyOverlayRoot(next, session.overlay)
   const table: TomlTable = {
@@ -194,7 +196,7 @@ function attachDirectModel(doc: TomlTable, input: GrokDirectLiveConfig, table: T
     const overlay = { ...table }
     delete overlay.name
     models[catalog] = overlay
-    doc[STACKFERRY_META_TABLE] = { owned: [catalog] }
+    markOwned(doc, catalog)
     return catalog
   }
   const key = grokModelKey(input.id)
@@ -262,25 +264,14 @@ function unpinLiveModel(doc: TomlTable, owned: Set<string> = new Set()): void {
   unpinSubagentModels(doc, isOwnedPin)
 }
 
-function stripStackferryOwned(doc: TomlTable): Set<string> {
-  const owned = ownedCatalogKeys(doc)
+function stripOwnedCatalogOverlays(doc: TomlTable, owned: Set<string>): void {
   const models = doc.model
-  if (isPlainObject(models)) {
-    for (const key of Object.keys(models)) {
-      if (!isStackferryModelKey(key)) continue
-      const table = models[key]
-      if (isPlainObject(table) && typeof table.model === 'string') {
-        const catalog = grokCatalogKey(table.model)
-        if (catalog) owned.add(catalog)
-      }
-      delete models[key]
-    }
-    for (const key of owned) delete models[key]
-    if (Object.keys(models).length === 0) delete doc.model
+  if (!isPlainObject(models)) return
+  for (const key of owned) {
+    if (isStackferryModelKey(key)) continue
+    delete models[key]
   }
-  unpinMediaGeneration(doc)
-  delete doc[STACKFERRY_META_TABLE]
-  return owned
+  if (Object.keys(models).length === 0) delete doc.model
 }
 
 function ownedCatalogKeys(doc: TomlTable): Set<string> {

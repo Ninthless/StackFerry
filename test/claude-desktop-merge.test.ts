@@ -138,6 +138,35 @@ describe('claude desktop merge', () => {
     ])
   })
 
+  it('writes a per-provider profile and keeps the previous StackFerry entry', () => {
+    const firstId = '11111111-1111-1111-1111-111111111111'
+    const secondId = '22222222-2222-2222-2222-222222222222'
+    const first = applyDesktopGateway(
+      { appliedId: null, entries: [] },
+      {
+        id: firstId,
+        name: 'Gateway A',
+        baseUrl: 'https://a.example/v1',
+        apiKey: 'key-a',
+        authScheme: 'bearer',
+        model: 'claude-sonnet-4-6',
+      },
+    )
+    const second = applyDesktopGateway(first.meta, {
+      id: secondId,
+      name: 'Gateway B',
+      baseUrl: 'https://b.example/v1',
+      apiKey: 'key-b',
+      authScheme: 'bearer',
+      model: 'claude-sonnet-4-6',
+    })
+    expect(second.meta.appliedId).toBe(secondId)
+    expect(second.meta.entries).toEqual([
+      { id: firstId, name: 'Gateway A' },
+      { id: secondId, name: 'Gateway B' },
+    ])
+  })
+
   it('clears appliedId on official restore and keeps saved entries', () => {
     const next = applyDesktopOfficial({
       appliedId: STACKFERRY_DESKTOP_PROFILE_ID,

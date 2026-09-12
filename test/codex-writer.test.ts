@@ -64,14 +64,15 @@ wire_api = "responses"
     })
     const afterSecond = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
     expect(afterSecond).toContain('key-b')
-    expect(afterSecond).not.toContain('key-a')
+    expect(afterSecond).toContain('key-a')
+    expect(afterSecond).toContain('model_provider = "stackferry_provb"')
 
     await enableOfficialLiveConfig({ codexHome, backupRoot })
     const afterOfficial = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
     expect(afterOfficial).toContain('model_provider = "openai"')
     expect(afterOfficial).toContain('notify = [ "keep" ]')
     expect(afterOfficial).not.toContain('approval_policy')
-    expect(afterOfficial).not.toContain('experimental_bearer_token')
+    expect(afterOfficial).toContain('experimental_bearer_token = "key-b"')
     expect(await readFile(path.join(codexHome, 'auth.json'), 'utf8')).toBe(originalAuth)
   })
 

@@ -51,7 +51,6 @@ export function applyThirdPartyProvider(doc: TomlTable, input: ThirdPartyLiveCon
     throw new AppError('overlay_wire_api')
   }
   const next = cloneDoc(doc)
-  stripStackferryProviders(next)
   const key = providerKey(input.id)
   const providers = ensureProviderTable(next)
   const table: TomlTable = {
@@ -63,6 +62,7 @@ export function applyThirdPartyProvider(doc: TomlTable, input: ThirdPartyLiveCon
   if (input.apiKey.trim() && !overlayUsesExternalAuth(table)) {
     table.experimental_bearer_token = input.apiKey.trim()
   }
+  // Codex 会话按创建时的 model_provider id 回查此表；换供应商只改指针，旧表必须留下。
   providers[key] = table
   next.model_provider = key
   applySessionKeys(next, overlay)
@@ -72,7 +72,6 @@ export function applyThirdPartyProvider(doc: TomlTable, input: ThirdPartyLiveCon
 
 export function applyOfficialProvider(doc: TomlTable, catalogPath?: string): TomlTable {
   const next = cloneDoc(doc)
-  stripStackferryProviders(next)
   next.model_provider = OFFICIAL_MODEL_PROVIDER
   applyCatalogPointer(next, { catalogPath, models: [] })
   return next
@@ -81,7 +80,6 @@ export function applyOfficialProvider(doc: TomlTable, catalogPath?: string): Tom
 export function applyRouterProvider(doc: TomlTable, input: RouterLiveConfig): TomlTable {
   const overlay = parseProviderOverlay(input.tomlText)
   const next = cloneDoc(doc)
-  stripStackferryProviders(next)
   const providers = ensureProviderTable(next)
   providers[ROUTER_PROVIDER_KEY] = {
     name: ROUTER_PROVIDER_NAME,
@@ -113,19 +111,6 @@ function ensureProviderTable(doc: TomlTable): TomlTable {
   const created: TomlTable = {}
   doc.model_providers = created
   return created
-}
-
-function stripStackferryProviders(doc: TomlTable): void {
-  const providers = doc.model_providers
-  if (!isPlainObject(providers)) return
-  for (const key of Object.keys(providers)) {
-    if (key.startsWith(STACKFERRY_PREFIX)) {
-      delete providers[key]
-    }
-  }
-  if (Object.keys(providers).length === 0) {
-    delete doc.model_providers
-  }
 }
 
 function cloneDoc(doc: TomlTable): TomlTable {

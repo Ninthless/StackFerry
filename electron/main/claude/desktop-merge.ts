@@ -4,6 +4,7 @@ import type { ClaudeAuthScheme } from '../../../shared/types'
 
 export const STACKFERRY_DESKTOP_PROFILE_ID = '5f00c1a0-de5f-4000-8000-537461636b46'
 export const LEGACY_STACKFERRY_DESKTOP_PROFILE_ID = 'stackferry'
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export type DesktopMetaEntry = {
   id: string
@@ -16,6 +17,7 @@ export type DesktopMeta = {
 }
 
 export type DesktopGatewayConfig = {
+  id?: string
   name: string
   baseUrl: string
   apiKey: string
@@ -44,6 +46,13 @@ export type DesktopGatewayProfile = {
 
 export type DesktopDeploymentMode = '1p' | '3p'
 
+export function desktopProfileId(id?: string): string {
+  const trimmed = id?.trim() ?? ''
+  // Desktop 会话按 profile UUID 回查 json；无 UUID 的旧调用仍写入稳定的 StackFerry 档案。
+  if (UUID_RE.test(trimmed)) return trimmed
+  return STACKFERRY_DESKTOP_PROFILE_ID
+}
+
 export function parseDesktopMeta(value: unknown): DesktopMeta {
   if (value === undefined || value === null) {
     return { appliedId: null, entries: [] }
@@ -70,11 +79,12 @@ export function applyDesktopGateway(
   provider: DesktopGatewayConfig,
 ): { meta: DesktopMeta; profile: DesktopGatewayProfile } {
   const profile = buildDesktopGatewayProfile(provider)
+  const profileId = desktopProfileId(provider.id)
   return {
     meta: {
-      appliedId: STACKFERRY_DESKTOP_PROFILE_ID,
+      appliedId: profileId,
       entries: upsertEntry(withoutLegacyEntries(meta.entries), {
-        id: STACKFERRY_DESKTOP_PROFILE_ID,
+        id: profileId,
         name: provider.name,
       }),
     },

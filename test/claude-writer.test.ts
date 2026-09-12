@@ -151,6 +151,53 @@ describe('claude live writers', () => {
     expect(meta.entries.map((entry) => entry.id)).toEqual([STACKFERRY_DESKTOP_PROFILE_ID])
   })
 
+  it('keeps the previous UUID profile file when switching Desktop gateways', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-claude-profiles-'))
+    const library = path.join(root, 'configLibrary')
+    const backupRoot = path.join(root, 'backups')
+    const firstId = '11111111-1111-1111-1111-111111111111'
+    const secondId = '22222222-2222-2222-2222-222222222222'
+    await enableDesktopGateway({
+      library,
+      backupRoot,
+      isManaged: async () => false,
+      provider: {
+        id: firstId,
+        name: 'Gateway A',
+        baseUrl: 'https://a.example/v1',
+        apiKey: 'key-a',
+        authScheme: 'bearer',
+        model: 'claude-sonnet-4-6',
+      },
+    })
+    await enableDesktopGateway({
+      library,
+      backupRoot,
+      isManaged: async () => false,
+      provider: {
+        id: secondId,
+        name: 'Gateway B',
+        baseUrl: 'https://b.example/v1',
+        apiKey: 'key-b',
+        authScheme: 'bearer',
+        model: 'claude-sonnet-4-6',
+      },
+    })
+
+    const meta = JSON.parse(await readFile(path.join(library, '_meta.json'), 'utf8')) as {
+      appliedId: string
+      entries: { id: string }[]
+    }
+    expect(meta.appliedId).toBe(secondId)
+    expect(meta.entries.map((entry) => entry.id)).toEqual([firstId, secondId])
+    expect(existsSync(path.join(library, `${firstId}.json`))).toBe(true)
+    expect(existsSync(path.join(library, `${secondId}.json`))).toBe(true)
+    const firstProfile = JSON.parse(await readFile(path.join(library, `${firstId}.json`), 'utf8')) as {
+      inferenceGatewayBaseUrl: string
+    }
+    expect(firstProfile.inferenceGatewayBaseUrl).toBe('https://a.example/v1')
+  })
+
   it('refuses to write Desktop 3P when a managed policy is present', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-claude-policy-'))
     const library = path.join(root, 'configLibrary')
