@@ -106,7 +106,7 @@ describe('grok config merge', () => {
     expect(official.stackferry).toBeUndefined()
   })
 
-  it('pins catalog models onto custom instead of overlaying the built-in id', () => {
+  it('pins catalog models onto custom and overlays the builtin id for context', () => {
     const next = applyDirectModel(
       {},
       {
@@ -116,6 +116,7 @@ describe('grok config merge', () => {
         baseUrl: 'https://gateway.test/v1',
         apiBackend: 'chat_completions',
         apiKey: 'secret',
+        contextWindow: '1000000',
       },
     )
     expect(next.models).toMatchObject({
@@ -129,11 +130,18 @@ describe('grok config merge', () => {
         base_url: 'https://gateway.test/v1',
         api_backend: 'chat_completions',
         api_key: 'secret',
+        context_window: 1000000,
+      },
+      'grok-4.6': {
+        model: 'grok-4.6',
+        base_url: 'https://gateway.test/v1',
+        api_backend: 'chat_completions',
+        api_key: 'secret',
+        context_window: 1000000,
       },
     })
-    expect(next.model).not.toHaveProperty('grok-4.6')
     expect(next.model).not.toHaveProperty(grokModelKey('aaaa-bbbb'))
-    expect(next.stackferry).toBeUndefined()
+    expect(next.stackferry).toEqual({ owned: ['grok-4.6'] })
 
     const switched = applyDirectModel(next, {
       id: 'cccc-dddd',
@@ -142,15 +150,29 @@ describe('grok config merge', () => {
       baseUrl: 'https://gateway.test/v1',
       apiBackend: 'responses',
       apiKey: 'secret',
+      contextWindow: '256000',
     })
     expect(switched.models).toMatchObject({ default: GROK_LIVE_MODEL_KEY })
-    expect(switched.model).toEqual({
+    expect(switched.model).toMatchObject({
       [GROK_LIVE_MODEL_KEY]: {
         name: 'Other',
         model: 'grok-4.5',
         base_url: 'https://gateway.test/v1',
         api_backend: 'responses',
         api_key: 'secret',
+        context_window: 256000,
+      },
+      'grok-4.6': {
+        model: 'grok-4.6',
+        base_url: 'https://gateway.test/v1',
+        api_key: 'secret',
+        context_window: 256000,
+      },
+      'grok-4.5': {
+        model: 'grok-4.5',
+        base_url: 'https://gateway.test/v1',
+        api_key: 'secret',
+        context_window: 256000,
       },
     })
 
@@ -162,6 +184,7 @@ describe('grok config merge', () => {
         base_url: 'https://gateway.test/v1',
         api_backend: 'chat_completions',
         api_key: 'secret',
+        context_window: 1000000,
       },
     })
     expect(official.stackferry).toBeUndefined()
@@ -231,7 +254,7 @@ describe('grok config merge', () => {
     })
   })
 
-  it('keeps failover on the custom live table instead of overlaying the catalog', () => {
+  it('keeps failover on the custom live table and overlays the catalog id', () => {
     const next = applyRouterModel({}, { port: 41234, model: 'grok-4.6' })
     expect(next.models).toMatchObject({ default: GROK_LIVE_MODEL_KEY })
     expect(next.model).toEqual({
@@ -242,9 +265,14 @@ describe('grok config merge', () => {
         api_key: 'stackferry-router',
         model: 'grok-4.6',
       },
+      'grok-4.6': {
+        base_url: 'http://127.0.0.1:41234/v1',
+        api_backend: 'responses',
+        api_key: 'stackferry-router',
+        model: 'grok-4.6',
+      },
     })
-    expect(next.model).not.toHaveProperty('grok-4.6')
-    expect(next.stackferry).toBeUndefined()
+    expect(next.stackferry).toEqual({ owned: ['grok-4.6'] })
   })
 
   it('points the default model at the local router', () => {

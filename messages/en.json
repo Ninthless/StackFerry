@@ -201,7 +201,7 @@
   "grok_session_effort_description": "Writes reasoning_effort into the config.toml overlay, then onto the StackFerry model table and models.default_reasoning_effort. Also marks the model as supporting effort. Grok persists none / low / medium / high / xhigh / max. Selecting Default leaves these fields unset.",
   "grok_session_context": "Context window",
   "grok_session_context_placeholder": "e.g. 200000, leave blank for the model default",
-  "grok_session_context_description": "Writes context_window into the overlay, then onto the model table. Grok uses this token count to time auto-compaction. Leave blank to keep Grok’s default for unknown model IDs (200000).",
+  "grok_session_context_description": "Writes context_window into the overlay, then onto the model table. Grok uses this token count to time auto-compaction. Leave blank: unknown model IDs use 200000; built-in grok-* names keep that model’s catalog window. A value here applies even when the id is grok-4.6.",
   "grok_session_compact": "Auto-compact percent",
   "grok_session_compact_placeholder": "0–100; leave blank for Grok’s default (85)",
   "grok_session_compact_description": "Writes auto_compact_threshold_percent into the overlay, then onto the model table (0–100). Leave blank to keep Grok’s default (85). This is a percent of the context window, not a token count, and it is not filled from the window.",

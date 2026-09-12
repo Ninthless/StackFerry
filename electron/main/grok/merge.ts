@@ -73,6 +73,15 @@ export function isOwnedGrokModelKey(key: string): boolean {
   return key === GROK_LIVE_MODEL_KEY || isStackferryModelKey(key)
 }
 
+// Grok 对 [model.grok-*] 会继承内置窗口。live 仍钉 custom，同时叠一层目录覆盖，好把用户设的 context_window 写进去。
+export function isGrokBuiltinCatalogId(key: string): boolean {
+  const id = key.trim()
+  if (!id.startsWith('grok-')) return false
+  if (isOwnedGrokModelKey(id)) return false
+  if (id === GROK_IMAGINE_MODEL_KEY || id === GROK_IMAGINE_VIDEO_KEY) return false
+  return true
+}
+
 export function grokDefaultModel(doc: TomlTable): string {
   const models = doc.models
   if (!isPlainObject(models) || typeof models.default !== 'string') return ''
@@ -131,7 +140,7 @@ export function applyRouterModel(doc: TomlTable, input: GrokRouterLiveConfig): T
   }
   applySession(table, session)
   writeOwnedModelTables(ensureModelTable(next), table)
-  retargetOwnedCatalogOverlays(next, table)
+  syncCatalogOverlay(next, table)
   pinLiveModel(next, GROK_LIVE_MODEL_KEY, session)
   pinByokAuth(next)
   pinMediaGeneration(next, input.media)
@@ -190,6 +199,12 @@ function mergeOverlayTable(
 function attachDirectModel(doc: TomlTable, table: TomlTable): void {
   const models = ensureModelTable(doc)
   writeOwnedModelTables(models, table)
+  syncCatalogOverlay(doc, table)
+}
+
+function syncCatalogOverlay(doc: TomlTable, table: TomlTable): void {
+  const modelId = typeof table.model === 'string' ? table.model.trim() : ''
+  if (isGrokBuiltinCatalogId(modelId)) markOwned(doc, modelId)
   retargetOwnedCatalogOverlays(doc, table)
 }
 

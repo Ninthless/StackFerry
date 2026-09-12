@@ -201,7 +201,7 @@
   "grok_session_effort_description": "写入 config.toml 覆盖片段的 reasoning_effort，启用时再写到 StackFerry 模型表和 [models].default_reasoning_effort，并标记该模型支持思考等级。Grok 可持久化 none / low / medium / high / xhigh / max。选择「默认」时不写入这些字段。",
   "grok_session_context": "上下文窗口",
   "grok_session_context_placeholder": "例如 200000，留空则用模型默认",
-  "grok_session_context_description": "写入覆盖片段的 context_window，启用时再写到模型表。Grok 用该 token 数决定何时自动压缩。留空则对未知模型 ID 使用 Grok 默认值（200000）。",
+  "grok_session_context_description": "写入覆盖片段的 context_window，启用时再写到模型表。Grok 用该 token 数决定何时自动压缩。留空时：未知模型 ID 用 200000；grok-4.6 这类内置名称用该模型自带窗口。填写后即使用内置名称也会用你设的窗口。",
   "grok_session_compact": "自动压缩比例",
   "grok_session_compact_placeholder": "0–100，留空则用 Grok 默认（85）",
   "grok_session_compact_description": "写入覆盖片段的 auto_compact_threshold_percent，启用时再写到模型表（0–100）。留空则用 Grok 默认值 85。这是上下文窗口的百分比，不是 token 数，也不会根据窗口自动填入。",
