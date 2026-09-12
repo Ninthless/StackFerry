@@ -49,9 +49,9 @@ jobs:
         run: |
           case "${{ matrix.os }}" in
             windows-latest)
+              # Windows NSIS 只写 latest.yml（多架构列在同一文件），没有 latest-arm64.yml。
               test -f release/*/latest.yml
-              test -f release/*/latest-arm64.yml
-              ls release/*/*.exe
+              ls release/*/*-Setup.exe
               ;;
             ubuntu-latest)
               test -f release/*/latest-linux.yml
@@ -67,7 +67,7 @@ jobs:
         with:
           name: stackferry-${{ matrix.os }}
           path: |
-            release/*/*.exe
+            release/*/*-Setup.exe
             release/*/*.dmg
             release/*/*.AppImage
             release/*/*.deb

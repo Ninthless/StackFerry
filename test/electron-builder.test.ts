@@ -7,8 +7,10 @@ type BuilderTarget = { target: string; arch: string[] }
 type BuilderConfig = {
   protocols: { name: string; schemes: string[] }
   win: { target: BuilderTarget[]; artifactName: string }
+  mac: { artifactName: string }
   linux: {
     target: BuilderTarget[]
+    artifactName: string
     desktop: { entry: { MimeType: string } }
   }
   deb: { depends: string[] }
@@ -20,7 +22,7 @@ describe('windows packages', () => {
       readFileSync(path.join(process.cwd(), 'electron-builder.json'), 'utf8'),
     ) as BuilderConfig
     expect(config.win.target).toEqual([{ target: 'nsis', arch: ['x64', 'arm64'] }])
-    expect(config.win.artifactName).toContain('${arch}')
+    expect(config.win.artifactName).toBe('${productName}-${version}-${arch}-Setup.${ext}')
   })
 })
 
@@ -32,6 +34,8 @@ describe('linux packages', () => {
     const byName = Object.fromEntries(config.linux.target.map((item) => [item.target, item.arch]))
     expect(byName.AppImage).toEqual(['x64', 'arm64'])
     expect(byName.deb).toEqual(['x64', 'arm64'])
+    expect(config.linux.artifactName).toBe('${productName}-${version}-${arch}.${ext}')
+    expect(config.mac.artifactName).toBe('${productName}-${version}-${arch}.${ext}')
     expect(config.deb.depends.some((item) => item.includes('libgtk-3-0t64'))).toBe(true)
   })
 
@@ -48,10 +52,14 @@ describe('release artifacts', () => {
   it('uploads only version-root installers and updater manifests', () => {
     const workflow = readFileSync(path.join(process.cwd(), '.github/workflows/release.yml'), 'utf8')
     expect(workflow).toContain('release/*/latest*.yml')
-    expect(workflow).toContain('test -f release/*/latest-arm64.yml')
+    expect(workflow).toContain('release/*/*-Setup.exe')
+    expect(workflow).toContain('test -f release/*/latest.yml')
+    expect(workflow).toContain('test -f release/*/latest-linux-arm64.yml')
     expect(workflow).toContain('release/*/*.blockmap')
+    expect(workflow).not.toContain('test -f release/*/latest-arm64.yml')
     expect(workflow).not.toContain('release/**/*.yml')
     expect(workflow).not.toContain('release/**/*.exe')
+    expect(workflow).not.toContain('release/*/*.exe')
   })
 
   it('runs tests on a Node that exposes node:sqlite without a flag', () => {

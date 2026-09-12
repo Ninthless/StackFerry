@@ -40,7 +40,7 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "artifactName": "${productName}_${version}_${arch}.${ext}"
+    "artifactName": "${productName}-${version}-${arch}-Setup.${ext}"
   },
   "nsis": {
     "oneClick": false,
@@ -60,7 +60,7 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "artifactName": "${productName}_${version}_${arch}.${ext}"
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
   },
   "linux": {
     "icon": "public/icon.png",
@@ -82,7 +82,7 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "artifactName": "${productName}_${version}_${arch}.${ext}"
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
   },
   "deb": {
     "depends": [
