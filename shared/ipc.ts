@@ -1,5 +1,6 @@
 export const IpcChannel = {
   listProviders: 'providers:list',
+  readProviderApiKey: 'providers:readApiKey',
   listPresets: 'providers:presets',
   addProvider: 'providers:add',
   updateProvider: 'providers:update',
@@ -30,6 +31,7 @@ export const IpcChannel = {
   setQueueOrder: 'routing:setQueueOrder',
   resetBreaker: 'routing:resetBreaker',
   listClaudeProviders: 'claudeProviders:list',
+  readClaudeProviderApiKey: 'claudeProviders:readApiKey',
   listClaudePresets: 'claudeProviders:presets',
   addClaudeProvider: 'claudeProviders:add',
   updateClaudeProvider: 'claudeProviders:update',
@@ -40,6 +42,7 @@ export const IpcChannel = {
   listClaudeModels: 'claudeProviders:list-models',
   claudeChanged: 'claudeProviders:changed',
   listGrokProviders: 'grokProviders:list',
+  readGrokProviderApiKeys: 'grokProviders:readApiKeys',
   listGrokPresets: 'grokProviders:presets',
   addGrokProvider: 'grokProviders:add',
   updateGrokProvider: 'grokProviders:update',

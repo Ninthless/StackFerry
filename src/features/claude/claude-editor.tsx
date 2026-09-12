@@ -50,6 +50,7 @@ import { formatAppError } from "@/lib/format-app-error"
 import { claudePresetLabel } from "@/lib/preset-label"
 import { HintLabel } from "@/features/settings/settings-hint"
 import { missingText, nonHttpUrl, useEditorSubmit } from "@/features/providers/editor-validation"
+import { ApiKeyInput } from "@/features/providers/api-key-input"
 import * as m from "@/paraglide/messages.js"
 import { ClaudeModelField } from "./claude-model-field"
 import { ClaudeSessionFields } from "./claude-session-fields"
@@ -105,7 +106,8 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
   const apiKeyInvalid = submitted && requiresApiKey && missingText(apiKey)
 
   useEffect(() => {
-    if (!open) return
+    let cancelled = false
+    if (!open) return () => { cancelled = true }
     setError("")
     setApiKey("")
     if (editing) {
@@ -128,28 +130,38 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
             })
           : "",
       )
-      return
+    } else {
+      const initial = presets.find((preset) => preset.id === "custom") ?? presets[0]
+      setPresetId(initial?.id ?? "custom")
+      const persisted = persistClaudeModels(initial?.model, undefined)
+      setName(initial?.name ?? "")
+      setBaseUrl(initial?.baseUrl ?? "")
+      setModel(persisted.model)
+      setModels(persisted.models)
+      setAuthScheme(initial?.authScheme ?? "bearer")
+      setOverlayJson(
+        initial?.kind === "custom"
+          ? seedOverlay("", {
+              baseUrl: initial.baseUrl,
+              model: persisted.model,
+              effortLevel: "",
+              permissionMode: "",
+              contextWindow: "",
+              autoCompact: "",
+            })
+          : "",
+      )
     }
-    const initial = presets.find((preset) => preset.id === "custom") ?? presets[0]
-    setPresetId(initial?.id ?? "custom")
-    const persisted = persistClaudeModels(initial?.model, undefined)
-    setName(initial?.name ?? "")
-    setBaseUrl(initial?.baseUrl ?? "")
-    setModel(persisted.model)
-    setModels(persisted.models)
-    setAuthScheme(initial?.authScheme ?? "bearer")
-    setOverlayJson(
-      initial?.kind === "custom"
-        ? seedOverlay("", {
-            baseUrl: initial.baseUrl,
-            model: persisted.model,
-            effortLevel: "",
-            permissionMode: "",
-            contextWindow: "",
-            autoCompact: "",
-          })
-        : "",
-    )
+    if (editing?.hasApiKey && window.stackferry) {
+      void window.stackferry.readClaudeProviderApiKey(editing.id).then((key) => {
+        if (!cancelled) setApiKey(key)
+      }).catch((loadError) => {
+        if (!cancelled) setError(formatAppError(loadError))
+      })
+    }
+    return () => {
+      cancelled = true
+    }
   }, [open, editing, presets])
 
   function applyPreset(nextPresetId: string): void {
@@ -335,16 +347,15 @@ export function ClaudeProviderEditor({ open, presets, editing, onOpenChange, onS
                     <FieldLabel htmlFor={`${formId}-api-key`} required={requiresApiKey}>
                       {m.field_api_key()}
                     </FieldLabel>
-                    <Input
+                    <ApiKeyInput
+                      key={displayedEditing?.id ?? "create"}
                       id={`${formId}-api-key`}
                       name="apiKey"
-                      type="password"
-                      autoComplete="off"
                       aria-required={requiresApiKey || undefined}
                       aria-invalid={apiKeyInvalid || undefined}
                       value={apiKey}
                       placeholder={displayedEditing?.hasApiKey ? m.api_key_keep_placeholder() : ""}
-                      onChange={(event) => setApiKey(event.target.value)}
+                      onValueChange={setApiKey}
                     />
                     {apiKeyInvalid ? <FieldError>{m.error_api_key_required()}</FieldError> : null}
                   </Field>

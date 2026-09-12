@@ -159,6 +159,10 @@ export class ClaudeProviderStore {
     return this.requireProvider(file, id)
   }
 
+  async readApiKey(id: string): Promise<string> {
+    return this.decryptApiKey(await this.peek(id))
+  }
+
   async markEnabled(id: string): Promise<StoredClaudeProvider> {
     const file = await this.read()
     const provider = this.requireProvider(file, id)

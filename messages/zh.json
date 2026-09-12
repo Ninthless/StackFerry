@@ -112,6 +112,8 @@
   "field_preset": "预设",
   "field_name": "名称",
   "field_api_key": "API Key",
+  "action_show_api_key": "显示 API Key",
+  "action_hide_api_key": "隐藏 API Key",
   "field_wire_api": "协议",
   "field_wire_api_responses": "Responses",
   "field_wire_api_chat": "Chat Completions",

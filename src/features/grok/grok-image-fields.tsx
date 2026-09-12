@@ -15,6 +15,7 @@ import {
   ComboboxList,
 } from "@/components/ui/combobox"
 import { Input } from "@/components/ui/input"
+import { ApiKeyInput } from "@/features/providers/api-key-input"
 import { HintLabel } from "@/features/settings/settings-hint"
 import * as m from "@/paraglide/messages.js"
 
@@ -109,16 +110,14 @@ export function GrokImageFields({
         <HintLabel htmlFor={`${formId}-image-api-key`} hint={m.grok_field_image_api_key_hint()}>
           {m.grok_field_image_api_key()}
         </HintLabel>
-        <Input
+        <ApiKeyInput
           id={`${formId}-image-api-key`}
           name="imageApiKey"
-          type="password"
-          autoComplete="off"
           placeholder={
             hasImageApiKey ? m.api_key_keep_placeholder() : m.grok_field_image_api_key_placeholder()
           }
           value={imageApiKey}
-          onChange={(event) => onImageApiKeyChange(event.target.value)}
+          onValueChange={onImageApiKeyChange}
         />
       </Field>
     </FieldSet>

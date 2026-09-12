@@ -12,7 +12,13 @@ import {
   persistGrokSession,
 } from '../../../shared/grok-session'
 import { orderByIds } from '../../../shared/id-order'
-import type { GrokApiBackend, GrokProviderDraft, GrokProviderListItem, ProviderKind } from '../../../shared/types'
+import type {
+  GrokApiBackend,
+  GrokProviderApiKeys,
+  GrokProviderDraft,
+  GrokProviderListItem,
+  ProviderKind,
+} from '../../../shared/types'
 import { atomicWriteFile } from '../codex/writer'
 
 const STORE_VERSION = 1
@@ -127,6 +133,14 @@ export class GrokProviderStore {
   async peek(id: string): Promise<StoredGrokProvider> {
     const file = await this.read()
     return this.requireProvider(file, id)
+  }
+
+  async readApiKeys(id: string): Promise<GrokProviderApiKeys> {
+    const provider = await this.peek(id)
+    return {
+      apiKey: this.decryptApiKey(provider),
+      imageApiKey: this.decryptImageApiKey(provider),
+    }
   }
 
   async markEnabled(id: string): Promise<StoredGrokProvider> {

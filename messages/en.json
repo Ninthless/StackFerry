@@ -112,6 +112,8 @@
   "field_preset": "Preset",
   "field_name": "Name",
   "field_api_key": "API Key",
+  "action_show_api_key": "Show API Key",
+  "action_hide_api_key": "Hide API Key",
   "field_wire_api": "Protocol",
   "field_wire_api_responses": "Responses",
   "field_wire_api_chat": "Chat Completions",

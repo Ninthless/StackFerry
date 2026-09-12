@@ -197,6 +197,11 @@ export type GrokProviderListItem = {
   enabled: boolean
 }
 
+export type GrokProviderApiKeys = {
+  apiKey: string
+  imageApiKey: string
+}
+
 export type GrokAppStatus = {
   grokHome: string
   configExists: boolean
@@ -209,6 +214,7 @@ export type StackferryApi = {
   showWindowControls: boolean
   usesMacChrome: boolean
   listProviders: () => Promise<ProviderListItem[]>
+  readProviderApiKey: (id: string) => Promise<string>
   listPresets: () => Promise<Preset[]>
   addProvider: (draft: ProviderDraft) => Promise<ProviderListItem>
   updateProvider: (id: string, draft: ProviderDraft) => Promise<ProviderListItem>
@@ -243,6 +249,7 @@ export type StackferryApi = {
   setQueueOrder: (cliId: CliToolId, ids: string[]) => Promise<RoutingSnapshot>
   resetBreaker: (cliId: CliToolId, id: string) => Promise<RoutingSnapshot>
   listClaudeProviders: () => Promise<ClaudeProviderListItem[]>
+  readClaudeProviderApiKey: (id: string) => Promise<string>
   listClaudePresets: () => Promise<ClaudePreset[]>
   addClaudeProvider: (draft: ClaudeProviderDraft) => Promise<ClaudeProviderListItem>
   updateClaudeProvider: (id: string, draft: ClaudeProviderDraft) => Promise<ClaudeProviderListItem>
@@ -258,6 +265,7 @@ export type StackferryApi = {
   }) => Promise<string[]>
   onClaudeChanged: (listener: () => void) => () => void
   listGrokProviders: () => Promise<GrokProviderListItem[]>
+  readGrokProviderApiKeys: (id: string) => Promise<GrokProviderApiKeys>
   listGrokPresets: () => Promise<GrokPreset[]>
   addGrokProvider: (draft: GrokProviderDraft) => Promise<GrokProviderListItem>
   updateGrokProvider: (id: string, draft: GrokProviderDraft) => Promise<GrokProviderListItem>

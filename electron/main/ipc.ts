@@ -76,6 +76,7 @@ export function registerIpc(context: IpcContext): void {
   const writeChains = emptyWriteChains()
 
   ipcMain.handle(IpcChannel.listProviders, () => context.store.list())
+  ipcMain.handle(IpcChannel.readProviderApiKey, (_event, id: string) => context.store.readApiKey(id))
   ipcMain.handle(IpcChannel.listPresets, () => PRESETS)
   ipcMain.handle(IpcChannel.addProvider, async (_event, draft: ProviderDraft) => {
     const provider = await context.store.add(draft)
@@ -203,6 +204,9 @@ export function registerIpc(context: IpcContext): void {
     return next
   })
   ipcMain.handle(IpcChannel.listClaudeProviders, () => context.claudeStore.list())
+  ipcMain.handle(IpcChannel.readClaudeProviderApiKey, (_event, id: string) => {
+    return context.claudeStore.readApiKey(id)
+  })
   ipcMain.handle(IpcChannel.listClaudePresets, () => CLAUDE_PRESETS)
   ipcMain.handle(IpcChannel.addClaudeProvider, async (_event, draft: ClaudeProviderDraft) => {
     const provider = await context.claudeStore.add(draft)
@@ -244,6 +248,9 @@ export function registerIpc(context: IpcContext): void {
     return listClaudeModels(context.claudeStore, input)
   })
   ipcMain.handle(IpcChannel.listGrokProviders, () => context.grokStore.list())
+  ipcMain.handle(IpcChannel.readGrokProviderApiKeys, (_event, id: string) => {
+    return context.grokStore.readApiKeys(id)
+  })
   ipcMain.handle(IpcChannel.listGrokPresets, () => GROK_PRESETS)
   ipcMain.handle(IpcChannel.addGrokProvider, async (_event, draft: GrokProviderDraft) => {
     const provider = await context.grokStore.add(draft)

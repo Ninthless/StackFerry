@@ -6,6 +6,7 @@ const api: StackferryApi = {
   showWindowControls: process.platform !== 'darwin',
   usesMacChrome: process.platform === 'darwin',
   listProviders: () => ipcRenderer.invoke(IpcChannel.listProviders),
+  readProviderApiKey: (id) => ipcRenderer.invoke(IpcChannel.readProviderApiKey, id),
   listPresets: () => ipcRenderer.invoke(IpcChannel.listPresets),
   addProvider: (draft) => ipcRenderer.invoke(IpcChannel.addProvider, draft),
   updateProvider: (id, draft: ProviderDraft) => ipcRenderer.invoke(IpcChannel.updateProvider, id, draft),
@@ -48,6 +49,7 @@ const api: StackferryApi = {
   setQueueOrder: (cliId, ids) => ipcRenderer.invoke(IpcChannel.setQueueOrder, cliId, ids),
   resetBreaker: (cliId, id) => ipcRenderer.invoke(IpcChannel.resetBreaker, cliId, id),
   listClaudeProviders: () => ipcRenderer.invoke(IpcChannel.listClaudeProviders),
+  readClaudeProviderApiKey: (id) => ipcRenderer.invoke(IpcChannel.readClaudeProviderApiKey, id),
   listClaudePresets: () => ipcRenderer.invoke(IpcChannel.listClaudePresets),
   addClaudeProvider: (draft) => ipcRenderer.invoke(IpcChannel.addClaudeProvider, draft),
   updateClaudeProvider: (id, draft: ClaudeProviderDraft) => {
@@ -66,6 +68,7 @@ const api: StackferryApi = {
     }
   },
   listGrokProviders: () => ipcRenderer.invoke(IpcChannel.listGrokProviders),
+  readGrokProviderApiKeys: (id) => ipcRenderer.invoke(IpcChannel.readGrokProviderApiKeys, id),
   listGrokPresets: () => ipcRenderer.invoke(IpcChannel.listGrokPresets),
   addGrokProvider: (draft) => ipcRenderer.invoke(IpcChannel.addGrokProvider, draft),
   updateGrokProvider: (id, draft) => ipcRenderer.invoke(IpcChannel.updateGrokProvider, id, draft),

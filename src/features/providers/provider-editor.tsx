@@ -36,6 +36,7 @@ import { presetLabel } from "@/lib/preset-label"
 import { HintLabel } from "@/features/settings/settings-hint"
 import * as m from "@/paraglide/messages.js"
 import { missingText, useEditorSubmit } from "./editor-validation"
+import { ApiKeyInput } from "./api-key-input"
 import { TomlEditor } from "./toml-editor"
 import { CodexSessionFields } from "./codex-session-fields"
 
@@ -92,7 +93,8 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
   const wireApi = useMemo(() => wireApiFromToml(tomlText), [tomlText])
 
   useEffect(() => {
-    if (!open) return
+    let cancelled = false
+    if (!open) return () => { cancelled = true }
     setError("")
     setApiKey("")
     if (editing) {
@@ -100,13 +102,23 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
       setName(editing.name)
       setTomlText(editing.tomlText)
       setModels(editing.models)
-      return
+    } else {
+      const initial = presets.find((preset) => preset.id === "custom") ?? presets[0]
+      setPresetId(initial?.id ?? "custom")
+      setName(initial?.name ?? "")
+      setTomlText(initial?.tomlText ?? "")
+      setModels([])
     }
-    const initial = presets.find((preset) => preset.id === "custom") ?? presets[0]
-    setPresetId(initial?.id ?? "custom")
-    setName(initial?.name ?? "")
-    setTomlText(initial?.tomlText ?? "")
-    setModels([])
+    if (editing?.hasApiKey && window.stackferry) {
+      void window.stackferry.readProviderApiKey(editing.id).then((key) => {
+        if (!cancelled) setApiKey(key)
+      }).catch((loadError) => {
+        if (!cancelled) setError(formatAppError(loadError))
+      })
+    }
+    return () => {
+      cancelled = true
+    }
   }, [open, editing, presets])
 
   function applyPreset(nextPresetId: string): void {
@@ -269,16 +281,15 @@ export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit 
                     <FieldLabel htmlFor={`${formId}-api-key`} required={apiKeyRequired}>
                       {m.field_api_key()}
                     </FieldLabel>
-                    <Input
+                    <ApiKeyInput
+                      key={displayedEditing?.id ?? "create"}
                       id={`${formId}-api-key`}
                       name="apiKey"
-                      type="password"
-                      autoComplete="off"
                       aria-required={apiKeyRequired || undefined}
                       aria-invalid={apiKeyInvalid || undefined}
                       value={apiKey}
                       placeholder={displayedEditing?.hasApiKey ? m.api_key_keep_placeholder() : ""}
-                      onChange={(event) => setApiKey(event.target.value)}
+                      onValueChange={setApiKey}
                     />
                     {apiKeyInvalid ? <FieldError>{m.error_api_key_required()}</FieldError> : null}
                   </Field>
