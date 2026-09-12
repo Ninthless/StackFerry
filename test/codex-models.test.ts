@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { REASONING_EFFORTS } from '../shared/provider-overlay'
 import {
   catalogPathForToml,
   encodeCodexCatalog,
@@ -36,9 +37,13 @@ describe('persist Codex models', () => {
 
 describe('Codex catalog encoding', () => {
   it('writes Codex ModelInfo required catalog fields', () => {
-    expect(encodeCodexCatalog([' gpt-5.4 ', 'gpt-5.4', 'gpt-5'])).toEqual({
+    const encoded = encodeCodexCatalog([' gpt-5.4 ', 'gpt-5.4', 'gpt-5'])
+    expect(encoded).toEqual({
       models: [expectedCatalogEntry('gpt-5.4'), expectedCatalogEntry('gpt-5')],
     })
+    const levels = encoded.models[0]?.supported_reasoning_levels ?? []
+    expect(levels.map((level) => level.effort)).toEqual([...REASONING_EFFORTS])
+    expect(levels.every((level) => level.description.length > 0)).toBe(true)
   })
 
   it('treats Windows and POSIX paths to the same catalog as owned', () => {
@@ -56,7 +61,10 @@ function expectedCatalogEntry(slug: string) {
     description: slug,
     visibility: 'list',
     shell_type: 'default',
-    supported_reasoning_levels: [],
+    supported_reasoning_levels: [...REASONING_EFFORTS].map((effort) => ({
+      effort,
+      description: expect.any(String) as string,
+    })),
     input_modalities: ['text'],
     supported_in_api: true,
     priority: 1000,

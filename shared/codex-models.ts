@@ -1,3 +1,10 @@
+import { REASONING_EFFORTS, type ReasoningEffort } from './provider-overlay'
+
+export type CodexReasoningLevel = {
+  effort: ReasoningEffort
+  description: string
+}
+
 // Codex ModelInfo 若干字段没有 serde default；catalog 缺一项就会在启动时整份拒读。
 export type CodexCatalogEntry = {
   slug: string
@@ -5,7 +12,7 @@ export type CodexCatalogEntry = {
   description: string
   visibility: 'list'
   shell_type: 'default'
-  supported_reasoning_levels: []
+  supported_reasoning_levels: CodexReasoningLevel[]
   input_modalities: ['text']
   supported_in_api: true
   priority: 1000
@@ -66,7 +73,8 @@ function codexCatalogEntry(slug: string): CodexCatalogEntry {
     description: slug,
     visibility: 'list',
     shell_type: 'default',
-    supported_reasoning_levels: [],
+    // 空数组时 Codex App 没有可选档位，思考等级会落在 ReasoningEffort 默认值 medium 且无法改。
+    supported_reasoning_levels: catalogReasoningLevels(),
     input_modalities: ['text'],
     supported_in_api: true,
     priority: 1000,
@@ -82,6 +90,25 @@ function codexCatalogEntry(slug: string): CodexCatalogEntry {
     supports_parallel_tool_calls: false,
     experimental_supported_tools: [],
   }
+}
+
+function catalogReasoningLevels(): CodexReasoningLevel[] {
+  return REASONING_EFFORTS.map((effort) => ({
+    effort,
+    description: REASONING_LEVEL_DESCRIPTIONS[effort],
+  }))
+}
+
+const REASONING_LEVEL_DESCRIPTIONS: Record<ReasoningEffort, string> = {
+  none: 'No extra reasoning; fastest replies',
+  minimal: 'Lowest reasoning for simple, well-specified tasks',
+  low: 'Light reasoning for small, well-scoped changes',
+  medium: 'Balances speed and reasoning depth for everyday tasks',
+  high: 'Greater reasoning depth for complex problems',
+  xhigh: 'Extra high reasoning depth for complex problems',
+  max: 'Maximum reasoning depth for the hardest problems',
+  ultra: 'Maximum reasoning with automatic task delegation',
+  persistent: 'Sustained high reasoning across a long session',
 }
 
 export function catalogPathForToml(filePath: string): string {

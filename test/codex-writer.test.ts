@@ -136,7 +136,7 @@ wire_api = "responses"
 
     const catalogPath = path.join(codexHome, 'model-catalogs', 'stackferry.json')
     const catalog = JSON.parse(await readFile(catalogPath, 'utf8')) as {
-      models: { slug: string }[]
+      models: { slug: string; supported_reasoning_levels?: { effort: string }[] }[]
     }
     expect(catalog.models.map((item) => item.slug)).toEqual(['gpt-5.4', 'gpt-5'])
     expect(catalog.models[0]).toMatchObject({
@@ -144,6 +144,9 @@ wire_api = "responses"
       priority: 1000,
       truncation_policy: { mode: 'bytes', limit: 10_000 },
     })
+    expect(catalog.models[0]?.supported_reasoning_levels).toEqual(
+      expect.arrayContaining([{ effort: 'medium', description: expect.any(String) }]),
+    )
     const afterCustom = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
     expect(afterCustom.replaceAll('\\', '/')).toContain('model-catalogs/stackferry.json')
 
