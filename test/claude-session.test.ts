@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CLAUDE_AUTO_COMPACT_MAX,
   CLAUDE_AUTO_COMPACT_MIN,
+  claudeLiveModelId,
   claudeOverlayFields,
   desktopSupports1m,
   formatClaudeOverlayJson,
@@ -203,5 +204,16 @@ describe('claude session', () => {
     })
     expect(desktopSupports1m(999999)).toBe(false)
     expect(desktopSupports1m(1000000)).toBe(true)
+  })
+
+  it('appends [1m] only for catalog model ids when the window is 1M', () => {
+    expect(claudeLiveModelId('claude-sonnet-4-6', 1_000_000)).toBe('claude-sonnet-4-6[1m]')
+    expect(claudeLiveModelId('claude-sonnet-4-6[1m]', 1_000_000)).toBe('claude-sonnet-4-6[1m]')
+    expect(claudeLiveModelId('sonnet', 1_000_000)).toBe('sonnet[1m]')
+    expect(claudeLiveModelId('opus', 1_000_000)).toBe('opus[1m]')
+    expect(claudeLiveModelId('claude-sonnet-4-6', 200_000)).toBe('claude-sonnet-4-6')
+    expect(claudeLiveModelId('claude-sonnet-4-6[1m]', 200_000)).toBe('claude-sonnet-4-6')
+    expect(claudeLiveModelId('alias-1m', 1_000_000)).toBe('alias-1m')
+    expect(claudeLiveModelId('', 1_000_000)).toBe('')
   })
 })

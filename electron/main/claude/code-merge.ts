@@ -1,5 +1,9 @@
 import { AppError } from '../../../shared/app-error'
-import { parseClaudeSession, type ClaudeSessionInput } from '../../../shared/claude-session'
+import {
+  claudeLiveModelId,
+  parseClaudeSession,
+  type ClaudeSessionInput,
+} from '../../../shared/claude-session'
 import type { ClaudeAuthScheme } from '../../../shared/types'
 
 export const MANAGED_CODE_ENV_KEYS = [
@@ -40,7 +44,7 @@ export function applyCodeGateway(
     env.ANTHROPIC_API_KEY = provider.apiKey
     delete env.ANTHROPIC_AUTH_TOKEN
   }
-  const model = provider.model.trim()
+  const model = claudeLiveModelId(provider.model, session.contextWindow)
   if (model) env.ANTHROPIC_MODEL = model
   else delete env.ANTHROPIC_MODEL
   delete env.CLAUDE_CODE_EFFORT_LEVEL

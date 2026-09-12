@@ -184,6 +184,27 @@ export function desktopSupports1m(contextWindow: number | null): boolean {
   return contextWindow != null && contextWindow >= CLAUDE_DESKTOP_1M_TOKENS
 }
 
+const CLAUDE_1M_SUFFIX = '[1m]'
+const CLAUDE_1M_SUFFIX_RE = /\[1m\]$/i
+const CLAUDE_CATALOG_ALIASES = new Set(['sonnet', 'opus', 'haiku', 'fable', 'opusplan'])
+
+// Claude Code 对 claude-* / 别名走内置窗口，CLAUDE_CODE_MAX_CONTEXT_TOKENS 无效。
+// 1M 官方开关是名称后的 [1m]；发给上游前会剥掉。Desktop 不要写这个后缀。
+export function claudeLiveModelId(model: string, contextWindow: number | null): string {
+  const trimmed = model.trim()
+  if (!trimmed) return ''
+  const base = trimmed.replace(CLAUDE_1M_SUFFIX_RE, '')
+  if (!desktopSupports1m(contextWindow)) return base
+  if (!isClaudeCatalogModelId(base)) return trimmed
+  return `${base}${CLAUDE_1M_SUFFIX}`
+}
+
+export function isClaudeCatalogModelId(model: string): boolean {
+  const id = model.trim().replace(CLAUDE_1M_SUFFIX_RE, '').toLowerCase()
+  if (!id) return false
+  return id.startsWith('claude-') || CLAUDE_CATALOG_ALIASES.has(id)
+}
+
 function parseEffort(value: string | undefined): ClaudeEffortLevel | '' {
   const trimmed = value?.trim() ?? ''
   if (!trimmed) return ''

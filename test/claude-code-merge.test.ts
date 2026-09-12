@@ -234,6 +234,50 @@ describe('claude code merge', () => {
     expect(next.env).toMatchObject({ CLAUDE_CODE_MAX_CONTEXT_TOKENS: '200000' })
   })
 
+  it('appends [1m] to catalog model ids when the context window is 1M', () => {
+    const withSuffix = applyCodeGateway(
+      {},
+      {
+        baseUrl: 'https://gateway.example/v1',
+        apiKey: 'token-a',
+        authScheme: 'bearer',
+        model: 'claude-sonnet-4-6',
+        contextWindow: '1000000',
+      },
+    )
+    expect(withSuffix.env).toMatchObject({
+      ANTHROPIC_MODEL: 'claude-sonnet-4-6[1m]',
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1000000',
+    })
+
+    const stripped = applyCodeGateway(
+      {},
+      {
+        baseUrl: 'https://gateway.example/v1',
+        apiKey: 'token-a',
+        authScheme: 'bearer',
+        model: 'claude-sonnet-4-6[1m]',
+        contextWindow: '200000',
+      },
+    )
+    expect(stripped.env).toMatchObject({
+      ANTHROPIC_MODEL: 'claude-sonnet-4-6',
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: '200000',
+    })
+
+    const custom = applyCodeGateway(
+      {},
+      {
+        baseUrl: 'https://gateway.example/v1',
+        apiKey: 'token-a',
+        authScheme: 'bearer',
+        model: 'alias-1m',
+        contextWindow: '1000000',
+      },
+    )
+    expect(custom.env).toMatchObject({ ANTHROPIC_MODEL: 'alias-1m' })
+  })
+
   it('rejects corrupt settings json', () => {
     expect(() => parseCodeSettings('{')).toThrow(AppError)
     try {

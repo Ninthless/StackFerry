@@ -221,7 +221,7 @@
   "claude_session_effort_description": "Maps to effortLevel in ~/.claude/settings.json. Claude Code persists only low / medium / high / xhigh. Selecting Default leaves the field unset. max applies to the current session only and is not written.",
   "claude_session_context": "Context window",
   "claude_session_context_placeholder": "e.g. 1000000 for a 1M gateway; leave blank for the model default",
-  "claude_session_context_description": "Written as CLAUDE_CODE_MAX_CONTEXT_TOKENS so Claude Code uses this window for unrecognized gateway model IDs. Fill the gateway’s real limit (1000000 for 1M). Values of 1000000 or greater also enable supports1m and prefer1m for Claude Desktop 3P. A value below the real window makes auto-compact fire early.",
+  "claude_session_context_description": "Written as CLAUDE_CODE_MAX_CONTEXT_TOKENS so Claude Code uses this window for unrecognized gateway model IDs. Fill the gateway’s real limit (1000000 for 1M). Built-in claude-* / sonnet / opus names ignore that variable; a window of 1000000 or greater appends [1m] to Claude Code’s ANTHROPIC_MODEL (stripped before the upstream request). Desktop 3P also gets supports1m and prefer1m. A value below the real window makes auto-compact fire early.",
   "claude_session_compact": "Auto-compact window",
   "claude_session_compact_placeholder": "100000–1000000; leave blank for the model default",
   "claude_session_compact_description": "Maps to autoCompactWindow in settings.json (100000–1000000 tokens). This is the compact budget, not a 90% threshold: setting it can only make compact fire earlier. Leave blank so Claude Code uses the model default. Do not copy Codex’s 90% token limit here.",
