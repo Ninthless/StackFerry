@@ -60,13 +60,15 @@ export function isClaudePermissionMode(value: string): value is ClaudePermission
 }
 
 export function parseClaudeSession(input: ClaudeSessionInput): ClaudeSession {
-  return {
+  const session: ClaudeSession = {
     effortLevel: parseEffort(input.effortLevel),
     permissionMode: parsePermissionMode(input.permissionMode),
     contextWindow: parseOptionalPositiveInt(input.contextWindow, 'CLAUDE_CODE_MAX_CONTEXT_TOKENS'),
     autoCompact: parseAutoCompact(input.autoCompact),
     overlay: parseClaudeOverlayJson(input.overlayJson),
   }
+  dropCopiedCodexCompact(session)
+  return session
 }
 
 export function parseClaudeOverlayJson(text: string | undefined): Record<string, unknown> | null {
@@ -145,7 +147,14 @@ export function hydrateClaudeOverlay(overlayJson: string, columns: ClaudeOverlay
       patch.permissionMode = columns.permissionMode
     }
     if (!(ENV_CONTEXT in env) && columns.contextWindow) patch.contextWindow = columns.contextWindow
-    if (overlay.autoCompactWindow == null && columns.autoCompact) patch.autoCompact = columns.autoCompact
+    if (overlay.autoCompactWindow == null && columns.autoCompact) {
+      if (!isCopiedCodexCompactLimit(
+        parsedPositiveInt(columns.contextWindow),
+        parsedPositiveInt(columns.autoCompact),
+      )) {
+        patch.autoCompact = columns.autoCompact
+      }
+    }
     if (Object.keys(patch).length === 0) return overlayJson
     return withClaudeOverlayFields(overlayJson, patch)
   } catch {
@@ -171,29 +180,6 @@ export function persistClaudeSession(input: ClaudePersistInput): {
   }
 }
 
-export function suggestedClaudeAutoCompact(contextWindow: number): number | null {
-  const suggested = Math.floor((contextWindow * 9) / 10)
-  if (suggested < CLAUDE_AUTO_COMPACT_MIN || suggested > CLAUDE_AUTO_COMPACT_MAX) return null
-  return suggested
-}
-
-export function syncedClaudeAutoCompact(
-  nextContextWindow: string,
-  previousContextWindow: string,
-  currentAutoCompact: string,
-): string | undefined {
-  const previous = parsedPositiveInt(previousContextWindow)
-  const compact = currentAutoCompact.trim()
-  const previousSuggested = previous == null ? null : suggestedClaudeAutoCompact(previous)
-  const previousSuggestedText = previousSuggested == null ? null : String(previousSuggested)
-  if (compact !== '' && compact !== previousSuggestedText) return undefined
-
-  const next = parsedPositiveInt(nextContextWindow)
-  if (next == null) return compact === '' ? undefined : ''
-  const suggested = suggestedClaudeAutoCompact(next)
-  return suggested == null ? '' : String(suggested)
-}
-
 export function desktopSupports1m(contextWindow: number | null): boolean {
   return contextWindow != null && contextWindow >= CLAUDE_DESKTOP_1M_TOKENS
 }
@@ -210,6 +196,17 @@ function parsePermissionMode(value: string | undefined): ClaudePermissionMode | 
   if (!trimmed) return ''
   if (!isClaudePermissionMode(trimmed)) throw new AppError('claude_permission')
   return trimmed
+}
+
+function dropCopiedCodexCompact(session: ClaudeSession): void {
+  // autoCompactWindow 是压缩预算，只能缩小；90% 配对是误套 Codex 阈值，启用时必须丢掉。
+  if (!isCopiedCodexCompactLimit(session.contextWindow, session.autoCompact)) return
+  session.autoCompact = null
+  if (session.overlay) delete session.overlay.autoCompactWindow
+}
+
+function isCopiedCodexCompactLimit(contextWindow: number | null, autoCompact: number | null): boolean {
+  return contextWindow != null && autoCompact != null && Math.floor((contextWindow * 9) / 10) === autoCompact
 }
 
 function parseAutoCompact(text: string | undefined): number | null {

@@ -4,7 +4,6 @@ import {
   claudeOverlayFields,
   isClaudeEffortLevel,
   isClaudePermissionMode,
-  syncedClaudeAutoCompact,
   withClaudeOverlayFields,
 } from "@shared/claude-session"
 import { Field } from "@/components/ui/field"
@@ -82,12 +81,7 @@ export function ClaudeSessionFields({
           inputMode="numeric"
           placeholder={m.claude_session_context_placeholder()}
           value={fields.contextWindow}
-          onChange={(event) => {
-            const next = event.target.value
-            const compact = syncedClaudeAutoCompact(next, fields.contextWindow, fields.autoCompact)
-            if (compact === undefined) patchFields({ contextWindow: next })
-            else patchFields({ contextWindow: next, autoCompact: compact })
-          }}
+          onChange={(event) => patchFields({ contextWindow: event.target.value })}
         />
       </Field>
       <Field>

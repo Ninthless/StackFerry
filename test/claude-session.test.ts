@@ -8,8 +8,6 @@ import {
   hydrateClaudeOverlay,
   parseClaudeSession,
   persistClaudeSession,
-  suggestedClaudeAutoCompact,
-  syncedClaudeAutoCompact,
   withClaudeOverlayFields,
 } from '../shared/claude-session'
 import { expectAppError } from './expect-app-error'
@@ -31,13 +29,13 @@ describe('claude session', () => {
       effortLevel: 'high',
       permissionMode: 'acceptEdits',
       contextWindow: '200000',
-      autoCompact: '180000',
+      autoCompact: '150000',
       overlayJson: '{"permissions":{"allow":["Read"]},"env":{"KEEP_ME":"yes"}}',
     })
     expect(session.effortLevel).toBe('high')
     expect(session.permissionMode).toBe('acceptEdits')
     expect(session.contextWindow).toBe(200000)
-    expect(session.autoCompact).toBe(180000)
+    expect(session.autoCompact).toBe(150000)
     expect(session.overlay).toEqual({
       permissions: { allow: ['Read'] },
       env: { KEEP_ME: 'yes' },
@@ -113,7 +111,7 @@ describe('claude session', () => {
       effortLevel: 'high',
       permissionMode: 'acceptEdits',
       contextWindow: '200000',
-      autoCompact: '180000',
+      autoCompact: '150000',
     })
     expect(claudeOverlayFields(patched)).toEqual({
       baseUrl: 'https://gateway.example/v1',
@@ -121,7 +119,7 @@ describe('claude session', () => {
       effortLevel: 'high',
       permissionMode: 'acceptEdits',
       contextWindow: '200000',
-      autoCompact: '180000',
+      autoCompact: '150000',
     })
     expect(JSON.parse(patched)).toEqual({
       statusLine: { type: 'command' },
@@ -131,7 +129,7 @@ describe('claude session', () => {
         CLAUDE_CODE_MAX_CONTEXT_TOKENS: '200000',
       },
       effortLevel: 'high',
-      autoCompactWindow: 180000,
+      autoCompactWindow: 150000,
       permissions: { defaultMode: 'acceptEdits' },
     })
   })
@@ -157,12 +155,52 @@ describe('claude session', () => {
     })
   })
 
-  it('suggests compact at 90% only when the value is in Claude Code range', () => {
-    expect(suggestedClaudeAutoCompact(200000)).toBe(180000)
-    expect(suggestedClaudeAutoCompact(50000)).toBeNull()
-    expect(syncedClaudeAutoCompact('200000', '', '')).toBe('180000')
-    expect(syncedClaudeAutoCompact('200000', '200000', '190000')).toBeUndefined()
-    expect(syncedClaudeAutoCompact('', '200000', '180000')).toBe('')
+  it('drops a Codex-style 90% compact pairing and keeps an intentional smaller window', () => {
+    expect(
+      parseClaudeSession({
+        contextWindow: '200000',
+        autoCompact: '180000',
+        overlayJson: JSON.stringify({ autoCompactWindow: 180000 }),
+      }),
+    ).toMatchObject({
+      contextWindow: 200000,
+      autoCompact: null,
+      overlay: {},
+    })
+    expect(
+      persistClaudeSession({
+        contextWindow: '200000',
+        autoCompact: '180000',
+      }),
+    ).toMatchObject({
+      contextWindow: '200000',
+      autoCompact: '',
+    })
+    expect(JSON.parse(persistClaudeSession({
+      contextWindow: '200000',
+      autoCompact: '180000',
+    }).overlayJson || '{}')).not.toHaveProperty('autoCompactWindow')
+    expect(parseClaudeSession({ contextWindow: '200000', autoCompact: '150000' }).autoCompact).toBe(
+      150000,
+    )
+    expect(parseClaudeSession({ contextWindow: '1000000', autoCompact: '900000' }).autoCompact).toBeNull()
+    expect(
+      JSON.parse(
+        hydrateClaudeOverlay('{}', {
+          baseUrl: '',
+          model: '',
+          effortLevel: '',
+          permissionMode: '',
+          contextWindow: '200000',
+          autoCompact: '180000',
+        }),
+      ),
+    ).toEqual({
+      env: {
+        ANTHROPIC_BASE_URL: '',
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS: '200000',
+      },
+    })
     expect(desktopSupports1m(999999)).toBe(false)
     expect(desktopSupports1m(1000000)).toBe(true)
   })

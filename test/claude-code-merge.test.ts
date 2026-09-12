@@ -218,6 +218,22 @@ describe('claude code merge', () => {
     expect(next.env).toBeUndefined()
   })
 
+  it('does not write a Codex-style 90% autoCompactWindow', () => {
+    const next = applyCodeGateway(
+      { autoCompactWindow: 180000 },
+      {
+        baseUrl: 'https://gateway.example/v1',
+        apiKey: 'token-a',
+        authScheme: 'bearer',
+        model: 'sonnet-x',
+        contextWindow: '200000',
+        autoCompact: '180000',
+      },
+    )
+    expect(next.autoCompactWindow).toBeUndefined()
+    expect(next.env).toMatchObject({ CLAUDE_CODE_MAX_CONTEXT_TOKENS: '200000' })
+  })
+
   it('rejects corrupt settings json', () => {
     expect(() => parseCodeSettings('{')).toThrow(AppError)
     try {
