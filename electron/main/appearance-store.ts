@@ -7,11 +7,13 @@ import { atomicWriteFile } from './codex/writer'
 type AppearanceFile = {
   mica: boolean
   theme: ThemePreference
+  onboardingCompleted: boolean
 }
 
 const DEFAULT_APPEARANCE: AppearanceFile = {
   mica: false,
   theme: 'dark',
+  onboardingCompleted: false,
 }
 
 export class AppearanceStore {
@@ -37,6 +39,16 @@ export class AppearanceStore {
     return theme
   }
 
+  async getOnboardingCompleted(): Promise<boolean> {
+    return (await this.read()).onboardingCompleted
+  }
+
+  async setOnboardingCompleted(completed: boolean): Promise<boolean> {
+    const current = await this.read()
+    await this.write({ ...current, onboardingCompleted: completed })
+    return completed
+  }
+
   private async read(): Promise<AppearanceFile> {
     if (!existsSync(this.filePath)) return DEFAULT_APPEARANCE
     try {
@@ -44,6 +56,8 @@ export class AppearanceStore {
       return {
         mica: parsed.mica === true,
         theme: isThemePreference(parsed.theme) ? parsed.theme : DEFAULT_APPEARANCE.theme,
+        // 已有 appearance.json 但没有该字段，视为老用户，不再弹出指引。
+        onboardingCompleted: parsed.onboardingCompleted !== false,
       }
     } catch {
       return DEFAULT_APPEARANCE

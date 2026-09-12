@@ -6,6 +6,7 @@ import {
 } from "@shared/app-releases"
 import type { AnnouncementItem, AnnouncementSnapshot } from "@shared/types"
 import { toast } from "@/components/ui/toast"
+import { useOnboarding } from "@/features/onboarding/onboarding-session"
 import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
 
@@ -49,6 +50,7 @@ export function AnnouncementProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("")
   const [selected, setSelected] = useState<AnnouncementItem | null>(null)
   const prompted = useRef(false)
+  const { completed: onboardingCompleted, running: onboardingRunning } = useOnboarding()
 
   const promptUnread = useCallback((next: AnnouncementSnapshot) => {
     if (prompted.current) return
@@ -63,7 +65,6 @@ export function AnnouncementProvider({ children }: { children: ReactNode }) {
       setSnapshot(next)
       setError(import.meta.env.DEV ? "" : m.error_desktop_only())
       setLoading(false)
-      promptUnread(next)
       return
     }
     setRefreshing(true)
@@ -75,7 +76,6 @@ export function AnnouncementProvider({ children }: { children: ReactNode }) {
       const next = await api.refreshAnnouncements()
       setSnapshot(next)
       setError("")
-      promptUnread(next)
       if (manual) toast.add({ id: toastId, type: "success", description: m.toast_announcements_refreshed() })
     } catch (refreshError) {
       const message = formatAppError(refreshError)
@@ -85,17 +85,21 @@ export function AnnouncementProvider({ children }: { children: ReactNode }) {
         toast.add({ type: "error", description: message, priority: "high" })
       } else if (import.meta.env.DEV) {
         setSnapshot(DEV_PREVIEW)
-        promptUnread(DEV_PREVIEW)
       }
     } finally {
       setRefreshing(false)
       setLoading(false)
     }
-  }, [promptUnread])
+  }, [])
 
   useEffect(() => {
     void refresh(false)
   }, [refresh])
+
+  useEffect(() => {
+    if (loading || onboardingCompleted !== true || onboardingRunning) return
+    promptUnread(snapshot)
+  }, [loading, onboardingCompleted, onboardingRunning, promptUnread, snapshot])
 
   const openItem = useCallback(async (item: AnnouncementItem) => {
     setSelected(item)

@@ -1,0 +1,103 @@
+.driver-popover.stackferry-tour {
+  --driver-popover-font-family: var(--font-sans);
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  border-radius: var(--radius-xl);
+  box-shadow: none;
+}
+
+.driver-popover.stackferry-tour .driver-popover-title,
+.driver-popover.stackferry-tour .driver-popover-description,
+.driver-popover.stackferry-tour .driver-popover-progress-text {
+  color: var(--popover-foreground);
+}
+
+.driver-popover.stackferry-tour .driver-popover-title {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.driver-popover.stackferry-tour .driver-popover-description {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.driver-popover.stackferry-tour .driver-popover-progress-text {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.driver-popover.stackferry-tour .driver-popover-footer-btn {
+  background-color: var(--primary);
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) * 0.8);
+  color: var(--primary-foreground);
+  font-size: 0.875rem;
+  padding: 0.375rem 0.75rem;
+  text-shadow: none;
+}
+
+.driver-popover.stackferry-tour .driver-popover-footer-btn:hover,
+.driver-popover.stackferry-tour .driver-popover-footer-btn:focus-visible {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.driver-popover.stackferry-tour .driver-popover-prev-btn {
+  background-color: transparent;
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+.driver-popover.stackferry-tour .driver-popover-prev-btn:hover,
+.driver-popover.stackferry-tour .driver-popover-prev-btn:focus-visible {
+  background-color: var(--muted);
+  color: var(--foreground);
+}
+
+.driver-popover.stackferry-tour .driver-popover-skip-btn {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--muted-foreground);
+}
+
+.driver-popover.stackferry-tour .driver-popover-skip-btn:hover,
+.driver-popover.stackferry-tour .driver-popover-skip-btn:focus-visible {
+  background-color: var(--muted);
+  color: var(--foreground);
+}
+
+.driver-popover.stackferry-tour .driver-popover-close-btn {
+  color: var(--muted-foreground);
+}
+
+.driver-popover.stackferry-tour .driver-popover-close-btn:hover {
+  color: var(--foreground);
+}
+
+.driver-popover.stackferry-tour .driver-popover-arrow-side-left.driver-popover-arrow {
+  border-left-color: var(--popover);
+}
+
+.driver-popover.stackferry-tour .driver-popover-arrow-side-right.driver-popover-arrow {
+  border-right-color: var(--popover);
+}
+
+.driver-popover.stackferry-tour .driver-popover-arrow-side-top.driver-popover-arrow {
+  border-top-color: var(--popover);
+}
+
+.driver-popover.stackferry-tour .driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-bottom-color: var(--popover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .driver-overlay,
+  .driver-popover.stackferry-tour {
+    transition: none;
+  }
+}

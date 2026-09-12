@@ -68,6 +68,8 @@ type IpcContext = {
   setMicaPreference: (enabled: boolean) => Promise<MicaState>
   getThemePreference: () => Promise<ThemePreference>
   setThemePreference: (preference: ThemePreference) => Promise<ThemePreference>
+  getOnboardingCompleted: () => Promise<boolean>
+  setOnboardingCompleted: (completed: boolean) => Promise<boolean>
 }
 
 export function registerIpc(context: IpcContext): void {
@@ -157,6 +159,10 @@ export function registerIpc(context: IpcContext): void {
       return context.getThemePreference()
     }
     return context.setThemePreference(preference)
+  })
+  ipcMain.handle(IpcChannel.getOnboardingCompleted, () => context.getOnboardingCompleted())
+  ipcMain.handle(IpcChannel.setOnboardingCompleted, (_event, completed: boolean) => {
+    return context.setOnboardingCompleted(completed === true)
   })
   ipcMain.handle(IpcChannel.getRouting, () => context.routing.snapshot())
   ipcMain.handle(IpcChannel.setRoutingSettings, async (_event, patch: RoutingSettingsPatch) => {

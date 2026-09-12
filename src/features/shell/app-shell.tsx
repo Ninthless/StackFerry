@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useState } from "react"
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react"
 import { FolderInput, Plus, Store } from "lucide-react"
 import { ClaudeWorkspace } from "@/features/claude/claude-workspace"
 import { useClaudeProviders } from "@/features/claude/use-claude-providers"
@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import * as m from "@/paraglide/messages.js"
+import { useOnboarding } from "@/features/onboarding/onboarding-session"
 import { AppSidebar, type NavId } from "./app-sidebar"
 import { AppTitlebar } from "./app-titlebar"
 
@@ -73,7 +74,12 @@ function CodexView() {
       <AppTitlebar
         title={cli.name}
         action={
-          <Button className="app-region-no-drag" type="button" onClick={session.openCreate}>
+          <Button
+            className="app-region-no-drag"
+            data-onboarding="add"
+            type="button"
+            onClick={session.openCreate}
+          >
             <Plus data-icon="inline-start" />
             {m.action_add()}
           </Button>
@@ -186,8 +192,14 @@ function KeepAlivePane({ active, children }: { active: boolean; children: ReactN
 
 export function AppShell() {
   const [navId, setNavId] = useState<NavId>(defaultCliId)
+  const { bindNavigator } = useOnboarding()
   const settingsSection = settingsSectionFromNav(navId)
   const macChrome = window.stackferry?.usesMacChrome === true
+
+  useEffect(() => {
+    bindNavigator(setNavId)
+    return () => bindNavigator(null)
+  }, [bindNavigator])
 
   return (
     <SidebarProvider

@@ -1,3 +1,4 @@
+import { OnboardingCard } from "@/features/onboarding/onboarding-card"
 import { AnnouncementsCard } from "./announcements-card"
 import { AppUpdateCard } from "./app-update-card"
 import { CcswImportCard } from "./ccsw-import-card"
@@ -8,6 +9,7 @@ export function AboutSettings() {
     <div className="flex flex-col gap-6">
       <AppUpdateCard />
       <AnnouncementsCard />
+      <OnboardingCard />
       <LegacyImportCard />
       <CcswImportCard />
     </div>

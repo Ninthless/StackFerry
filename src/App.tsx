@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/toast"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { AnnouncementDialog } from "@/features/announcements/announcement-dialog"
 import { AnnouncementProvider } from "@/features/announcements/announcement-provider"
+import { OnboardingProvider } from "@/features/onboarding/onboarding-session"
 import { ProviderImportDialog } from "@/features/providers/provider-import-dialog"
 import { AppUpdatePopup } from "@/features/settings/app-update-popup"
 import { AppShell } from "@/features/shell/app-shell"
@@ -14,12 +15,14 @@ export default function App() {
       <AntdApp>
         <TooltipProvider>
           <Toaster>
-            <AnnouncementProvider>
-              <AnnouncementDialog />
-              <AppUpdatePopup />
-              <ProviderImportDialog />
-              <AppShell />
-            </AnnouncementProvider>
+            <OnboardingProvider>
+              <AnnouncementProvider>
+                <AnnouncementDialog />
+                <AppUpdatePopup />
+                <ProviderImportDialog />
+                <AppShell />
+              </AnnouncementProvider>
+            </OnboardingProvider>
           </Toaster>
         </TooltipProvider>
       </AntdApp>

@@ -123,7 +123,7 @@ export function AppSidebar({ activeId, onSelect }: Props) {
           </SidebarGroup>
         ) : (
           <>
-            <SidebarGroup>
+            <SidebarGroup data-onboarding="cli">
               <SidebarGroupLabel>{m.nav_cli()}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
@@ -149,6 +149,7 @@ export function AppSidebar({ activeId, onSelect }: Props) {
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton
+                      data-onboarding="skills"
                       isActive={activeId === "skills"}
                       tooltip={m.nav_skills()}
                       onClick={() => onSelect("skills")}
@@ -166,6 +167,7 @@ export function AppSidebar({ activeId, onSelect }: Props) {
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton
+                      data-onboarding="mcp"
                       isActive={activeId === "mcp"}
                       tooltip={m.nav_mcp()}
                       onClick={() => onSelect("mcp")}
@@ -182,6 +184,7 @@ export function AppSidebar({ activeId, onSelect }: Props) {
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton
+                      data-onboarding="settings"
                       tooltip={m.nav_settings()}
                       onClick={() => onSelect("settings:appearance")}
                     >

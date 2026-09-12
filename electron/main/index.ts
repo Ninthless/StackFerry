@@ -321,6 +321,8 @@ app.whenReady().then(async () => {
       if (win && !win.isDestroyed()) applyWindowMica(win, micaPreference)
       return next
     },
+    getOnboardingCompleted: () => appearanceStore!.getOnboardingCompleted(),
+    setOnboardingCompleted: (completed: boolean) => appearanceStore!.setOnboardingCompleted(completed),
   }
   tray = new AppTray({
     iconPath: trayIconPath,
