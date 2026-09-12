@@ -2,7 +2,7 @@
   "name": "stackferry",
   "productName": "StackFerry",
   "desktopName": "stackferry",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "Desktop provider manager and local failover router for Codex, Claude Code, and Grok.",
   "license": "GPL-3.0",
