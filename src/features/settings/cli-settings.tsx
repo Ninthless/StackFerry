@@ -132,7 +132,7 @@ export function CliSettings() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Card>
+      <Card data-onboarding="cli-tools">
         <CardHeader>
           <HintTitle hint={m.cli_description()}>
             <CardTitle>{m.cli_legend()}</CardTitle>

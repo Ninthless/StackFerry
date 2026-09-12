@@ -136,7 +136,7 @@ export function RoutingSettings() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
-      <Card>
+      <Card data-onboarding="routing">
         <CardHeader>
           <HintTitle hint={m.routing_description()}>
             <CardTitle>{m.routing_legend()}</CardTitle>

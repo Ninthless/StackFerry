@@ -120,7 +120,7 @@ function SkillsView() {
       <AppTitlebar
         title={m.nav_skills()}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-onboarding="skills-actions">
             <Button className="app-region-no-drag" type="button" onClick={() => void session.openImport()}>
               <FolderInput data-icon="inline-start" />
               {m.skills_import()}
@@ -151,7 +151,7 @@ function McpView() {
       <AppTitlebar
         title={m.nav_mcp()}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-onboarding="mcp-actions">
             <Button
               className="app-region-no-drag"
               type="button"

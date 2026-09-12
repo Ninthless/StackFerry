@@ -9,7 +9,7 @@ export function OnboardingCard() {
   const { startTour, running } = useOnboarding()
 
   return (
-    <Card>
+    <Card data-onboarding="about">
       <CardHeader>
         <HintTitle hint={m.onboarding_replay_description()}>
           <CardTitle>{m.onboarding_replay_title()}</CardTitle>

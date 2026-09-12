@@ -1,5 +1,6 @@
 .driver-popover.stackferry-tour {
   --driver-popover-font-family: var(--font-sans);
+  max-width: 24rem;
   background-color: var(--popover);
   color: var(--popover-foreground);
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
@@ -23,7 +24,8 @@
 .driver-popover.stackferry-tour .driver-popover-description {
   color: var(--muted-foreground);
   font-size: 0.875rem;
-  line-height: 1.5;
+  line-height: 1.55;
+  white-space: pre-line;
 }
 
 .driver-popover.stackferry-tour .driver-popover-progress-text {
