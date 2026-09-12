@@ -71,7 +71,7 @@ export function applyThirdPartyProvider(doc: TomlTable, input: ThirdPartyLiveCon
   if (input.apiKey.trim() && !overlayUsesExternalAuth(table)) {
     table.experimental_bearer_token = input.apiKey.trim()
   }
-  // Codex 会话冻的是 model_provider id。直连和路由都写 custom 这一张表，换供应商旧会话才会跟过去。
+  // Codex 会话冻的是 model_provider id。直连和故障路由都写 custom，开关路由只改地址。
   writeOwnedProviderTables(providers, table)
   next.model_provider = STACKFERRY_LIVE_PROVIDER_KEY
   applySessionKeys(next, overlay)

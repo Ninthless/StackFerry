@@ -118,7 +118,7 @@ describe('claude live writers', () => {
     ).toMatchObject({ deploymentMode: '1p' })
   })
 
-  it('removes the legacy stackferry profile file after writing the UUID profile', async () => {
+  it('retargets the legacy stackferry profile file instead of deleting it', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-claude-legacy-'))
     const library = path.join(root, 'configLibrary')
     await mkdir(library, { recursive: true })
@@ -141,8 +141,12 @@ describe('claude live writers', () => {
       },
     })
 
-    expect(existsSync(path.join(library, 'stackferry.json'))).toBe(false)
+    expect(existsSync(path.join(library, 'stackferry.json'))).toBe(true)
     expect(existsSync(path.join(library, `${STACKFERRY_DESKTOP_PROFILE_ID}.json`))).toBe(true)
+    const legacy = JSON.parse(await readFile(path.join(library, 'stackferry.json'), 'utf8')) as {
+      inferenceGatewayBaseUrl: string
+    }
+    expect(legacy.inferenceGatewayBaseUrl).toBe('https://gateway.example/v1')
     const meta = JSON.parse(await readFile(path.join(library, '_meta.json'), 'utf8')) as {
       appliedId: string
       entries: { id: string }[]
@@ -151,31 +155,32 @@ describe('claude live writers', () => {
     expect(meta.entries.map((entry) => entry.id)).toEqual([STACKFERRY_DESKTOP_PROFILE_ID])
   })
 
-  it('keeps the previous UUID profile file when switching Desktop gateways', async () => {
+  it('retargets leftover UUID profile files when switching Desktop gateways', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-claude-profiles-'))
     const library = path.join(root, 'configLibrary')
     const backupRoot = path.join(root, 'backups')
     const firstId = '11111111-1111-1111-1111-111111111111'
-    const secondId = '22222222-2222-2222-2222-222222222222'
+    await mkdir(library, { recursive: true })
+    await writeFile(
+      path.join(library, `${firstId}.json`),
+      `${JSON.stringify({ inferenceProvider: 'gateway', inferenceGatewayBaseUrl: 'https://a.example/v1' }, null, 2)}\n`,
+    )
+    await writeFile(
+      path.join(library, '_meta.json'),
+      `${JSON.stringify({
+        appliedId: firstId,
+        entries: [
+          { id: firstId, name: 'Gateway A' },
+          { id: 'other-profile', name: 'Bedrock' },
+        ],
+      }, null, 2)}\n`,
+    )
     await enableDesktopGateway({
       library,
       backupRoot,
       isManaged: async () => false,
       provider: {
-        id: firstId,
-        name: 'Gateway A',
-        baseUrl: 'https://a.example/v1',
-        apiKey: 'key-a',
-        authScheme: 'bearer',
-        model: 'claude-sonnet-4-6',
-      },
-    })
-    await enableDesktopGateway({
-      library,
-      backupRoot,
-      isManaged: async () => false,
-      provider: {
-        id: secondId,
+        id: '22222222-2222-2222-2222-222222222222',
         name: 'Gateway B',
         baseUrl: 'https://b.example/v1',
         apiKey: 'key-b',
@@ -188,14 +193,14 @@ describe('claude live writers', () => {
       appliedId: string
       entries: { id: string }[]
     }
-    expect(meta.appliedId).toBe(secondId)
-    expect(meta.entries.map((entry) => entry.id)).toEqual([firstId, secondId])
+    expect(meta.appliedId).toBe(STACKFERRY_DESKTOP_PROFILE_ID)
+    expect(meta.entries.map((entry) => entry.id)).toEqual(['other-profile', STACKFERRY_DESKTOP_PROFILE_ID])
     expect(existsSync(path.join(library, `${firstId}.json`))).toBe(true)
-    expect(existsSync(path.join(library, `${secondId}.json`))).toBe(true)
+    expect(existsSync(path.join(library, `${STACKFERRY_DESKTOP_PROFILE_ID}.json`))).toBe(true)
     const firstProfile = JSON.parse(await readFile(path.join(library, `${firstId}.json`), 'utf8')) as {
       inferenceGatewayBaseUrl: string
     }
-    expect(firstProfile.inferenceGatewayBaseUrl).toBe('https://a.example/v1')
+    expect(firstProfile.inferenceGatewayBaseUrl).toBe('https://b.example/v1')
   })
 
   it('refuses to write Desktop 3P when a managed policy is present', async () => {

@@ -138,7 +138,7 @@ describe('claude desktop merge', () => {
     ])
   })
 
-  it('writes a per-provider profile and keeps the previous StackFerry entry', () => {
+  it('writes the stable StackFerry profile even when the provider has a UUID', () => {
     const firstId = '11111111-1111-1111-1111-111111111111'
     const secondId = '22222222-2222-2222-2222-222222222222'
     const first = applyDesktopGateway(
@@ -160,11 +160,36 @@ describe('claude desktop merge', () => {
       authScheme: 'bearer',
       model: 'claude-sonnet-4-6',
     })
-    expect(second.meta.appliedId).toBe(secondId)
+    expect(second.meta.appliedId).toBe(STACKFERRY_DESKTOP_PROFILE_ID)
     expect(second.meta.entries).toEqual([
-      { id: firstId, name: 'Gateway A' },
-      { id: secondId, name: 'Gateway B' },
+      { id: STACKFERRY_DESKTOP_PROFILE_ID, name: 'Gateway B' },
     ])
+  })
+
+  it('keeps the stable profile when the gateway URL changes', () => {
+    const first = applyDesktopGateway(
+      { appliedId: null, entries: [] },
+      {
+        name: 'Gateway A',
+        baseUrl: 'https://a.example/v1',
+        apiKey: 'key-a',
+        authScheme: 'bearer',
+        model: 'claude-sonnet-4-6',
+      },
+    )
+    const second = applyDesktopGateway(first.meta, {
+      name: 'Gateway A',
+      baseUrl: 'http://127.0.0.1:18765',
+      apiKey: 'stackferry-router',
+      authScheme: 'bearer',
+      model: 'claude-sonnet-4-6',
+    })
+    expect(first.meta.appliedId).toBe(STACKFERRY_DESKTOP_PROFILE_ID)
+    expect(second.meta.appliedId).toBe(STACKFERRY_DESKTOP_PROFILE_ID)
+    expect(second.meta.entries).toEqual([
+      { id: STACKFERRY_DESKTOP_PROFILE_ID, name: 'Gateway A' },
+    ])
+    expect(second.profile.inferenceGatewayBaseUrl).toBe('http://127.0.0.1:18765')
   })
 
   it('clears appliedId on official restore and keeps saved entries', () => {

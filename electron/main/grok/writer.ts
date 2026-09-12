@@ -5,6 +5,7 @@ import { AppError } from '../../../shared/app-error'
 import { atomicWriteFile } from '../codex/writer'
 import { restoreGrokAuth, writeStackferryApiKey } from './auth'
 import { grokAuthPath, grokAuthRestorePath, grokConfigPath } from './home'
+import { migrateGrokHistoryModelBucket } from './history'
 import type { GrokSessionInput } from '../../../shared/grok-session'
 import {
   applyDirectModel,
@@ -32,6 +33,7 @@ export async function enableGrokDirectConfig(options: {
   })
   const authKey = options.provider.media?.apiKey.trim() || options.provider.apiKey
   await writeStackferryApiKey(options.grokHome, authKey)
+  await migrateGrokHistoryModelBucket({ grokHome: options.grokHome, backupRoot: options.backupRoot })
   return result
 }
 
@@ -60,6 +62,7 @@ export async function enableGrokRouterConfig(
   const { grokHome, backupRoot, apiKey, ...input } = options
   const result = await writeMerged(grokHome, backupRoot, (current) => applyRouterModel(current, input))
   if (apiKey?.trim()) await writeStackferryApiKey(grokHome, apiKey)
+  await migrateGrokHistoryModelBucket({ grokHome, backupRoot })
   return result
 }
 

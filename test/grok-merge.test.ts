@@ -7,6 +7,7 @@ import {
   applyRouterModel,
   GROK_IMAGINE_MODEL_KEY,
   GROK_IMAGINE_VIDEO_KEY,
+  GROK_LIVE_MODEL_KEY,
   grokModelKey,
   stringifyToml,
 } from '../electron/main/grok/merge'
@@ -29,7 +30,7 @@ describe('grok config merge', () => {
         apiKey: 'secret',
       },
     )
-    const key = grokModelKey('aaaa-bbbb')
+    const key = GROK_LIVE_MODEL_KEY
     expect(next.models).toMatchObject({
       default: key,
       web_search: key,
@@ -78,7 +79,7 @@ describe('grok config merge', () => {
       },
     )
     const official = applyOfficialModel(live, 'my-byok')
-    const key = grokModelKey('id1')
+    const key = GROK_LIVE_MODEL_KEY
     expect(official.models).toEqual({ default: 'my-byok' })
     expect(official.stackferry).toBeUndefined()
     expect(official.grok_com_config).toBeUndefined()
@@ -105,7 +106,7 @@ describe('grok config merge', () => {
     expect(official.stackferry).toBeUndefined()
   })
 
-  it('overrides a built-in catalog id without adding a Custom picker entry', () => {
+  it('pins catalog models onto custom instead of overlaying the built-in id', () => {
     const next = applyDirectModel(
       {},
       {
@@ -118,20 +119,21 @@ describe('grok config merge', () => {
       },
     )
     expect(next.models).toMatchObject({
-      default: 'grok-4.6',
-      web_search: 'grok-4.6',
+      default: GROK_LIVE_MODEL_KEY,
+      web_search: GROK_LIVE_MODEL_KEY,
     })
     expect(next.model).toEqual({
-      'grok-4.6': {
+      [GROK_LIVE_MODEL_KEY]: {
+        name: 'Custom',
         model: 'grok-4.6',
         base_url: 'https://gateway.test/v1',
         api_backend: 'chat_completions',
         api_key: 'secret',
       },
     })
+    expect(next.model).not.toHaveProperty('grok-4.6')
     expect(next.model).not.toHaveProperty(grokModelKey('aaaa-bbbb'))
-    expect(next.stackferry).toEqual({ owned: ['grok-4.6'] })
-    expect(stringifyToml(next)).toContain('[model."grok-4.6"]')
+    expect(next.stackferry).toBeUndefined()
 
     const switched = applyDirectModel(next, {
       id: 'cccc-dddd',
@@ -141,73 +143,99 @@ describe('grok config merge', () => {
       apiBackend: 'responses',
       apiKey: 'secret',
     })
-    expect(switched.model).toMatchObject({
-      'grok-4.6': {
-        model: 'grok-4.6',
-        base_url: 'https://gateway.test/v1',
-        api_backend: 'chat_completions',
-        api_key: 'secret',
-      },
-      'grok-4.5': {
+    expect(switched.models).toMatchObject({ default: GROK_LIVE_MODEL_KEY })
+    expect(switched.model).toEqual({
+      [GROK_LIVE_MODEL_KEY]: {
+        name: 'Other',
         model: 'grok-4.5',
         base_url: 'https://gateway.test/v1',
         api_backend: 'responses',
         api_key: 'secret',
       },
     })
-    expect(switched.stackferry).toEqual({ owned: ['grok-4.6', 'grok-4.5'] })
 
     const official = applyOfficialModel(next, 'grok-build')
-    expect(official.model).toBeUndefined()
+    expect(official.model).toEqual({
+      [GROK_LIVE_MODEL_KEY]: {
+        name: 'Custom',
+        model: 'grok-4.6',
+        base_url: 'https://gateway.test/v1',
+        api_backend: 'chat_completions',
+        api_key: 'secret',
+      },
+    })
     expect(official.stackferry).toBeUndefined()
     expect(official.models).toEqual({ default: 'grok-build' })
   })
 
-  it('writes Custom only when the model is not in the grok catalog', () => {
-    const live = applyDirectModel(
-      {},
+  it('retargets leftover catalog overlays without making them live', () => {
+    const next = applyDirectModel(
       {
-        id: 'aaaa-bbbb',
+        stackferry: { owned: ['grok-4.6'] },
+        model: {
+          'grok-4.6': { model: 'grok-4.6', base_url: 'https://old.test/v1', api_key: 'old' },
+        },
+      },
+      {
+        id: 'cccc-dddd',
         name: 'Custom',
-        model: 'grok-4.6',
+        model: 'my-proxy',
         baseUrl: 'https://gateway.test/v1',
         apiBackend: 'responses',
         apiKey: 'secret',
       },
     )
-    const custom = applyDirectModel(live, {
-      id: 'cccc-dddd',
-      name: 'Custom',
-      model: 'my-proxy',
-      baseUrl: 'https://gateway.test/v1',
-      apiBackend: 'responses',
-      apiKey: 'secret',
-    })
-    const key = grokModelKey('cccc-dddd')
-    expect(custom.model).toMatchObject({
-      'grok-4.6': {
-        model: 'grok-4.6',
-        base_url: 'https://gateway.test/v1',
-        api_backend: 'responses',
-        api_key: 'secret',
-      },
-      [key]: {
+    expect(next.models).toMatchObject({ default: GROK_LIVE_MODEL_KEY })
+    expect(next.model).toMatchObject({
+      [GROK_LIVE_MODEL_KEY]: {
         name: 'Custom',
         model: 'my-proxy',
         base_url: 'https://gateway.test/v1',
-        api_backend: 'responses',
+        api_key: 'secret',
+      },
+      'grok-4.6': {
+        model: 'grok-4.6',
+        base_url: 'https://gateway.test/v1',
         api_key: 'secret',
       },
     })
-    expect(custom.stackferry).toEqual({ owned: ['grok-4.6'] })
-    expect(custom.models).toMatchObject({ default: key })
+    expect(next.stackferry).toEqual({ owned: ['grok-4.6'] })
   })
 
-  it('keeps failover on the router table instead of overlaying the catalog', () => {
+  it('keeps the same custom id when toggling the failover router', () => {
+    const provider = {
+      id: 'aaaa-bbbb',
+      name: 'Custom',
+      model: 'demo',
+      baseUrl: 'https://a.example/v1',
+      apiBackend: 'responses' as const,
+      apiKey: 'secret',
+    }
+    const direct = applyDirectModel({}, provider)
+    const routed = applyRouterModel(direct, { port: 41234, model: 'demo' })
+    const back = applyDirectModel(routed, provider)
+    expect(direct.models).toMatchObject({ default: GROK_LIVE_MODEL_KEY })
+    expect(routed.models).toMatchObject({ default: GROK_LIVE_MODEL_KEY })
+    expect(back.models).toMatchObject({ default: GROK_LIVE_MODEL_KEY })
+    expect(direct.model).toMatchObject({
+      [GROK_LIVE_MODEL_KEY]: { base_url: 'https://a.example/v1', api_key: 'secret' },
+    })
+    expect(routed.model).toMatchObject({
+      [GROK_LIVE_MODEL_KEY]: {
+        base_url: 'http://127.0.0.1:41234/v1',
+        api_key: 'stackferry-router',
+      },
+    })
+    expect(back.model).toMatchObject({
+      [GROK_LIVE_MODEL_KEY]: { base_url: 'https://a.example/v1', api_key: 'secret' },
+    })
+  })
+
+  it('keeps failover on the custom live table instead of overlaying the catalog', () => {
     const next = applyRouterModel({}, { port: 41234, model: 'grok-4.6' })
-    expect(next.models).toMatchObject({ default: ROUTER_PROVIDER_KEY })
+    expect(next.models).toMatchObject({ default: GROK_LIVE_MODEL_KEY })
     expect(next.model).toEqual({
-      [ROUTER_PROVIDER_KEY]: {
+      [GROK_LIVE_MODEL_KEY]: {
         name: 'StackFerry Router',
         base_url: 'http://127.0.0.1:41234/v1',
         api_backend: 'responses',
@@ -222,19 +250,19 @@ describe('grok config merge', () => {
   it('points the default model at the local router', () => {
     const next = applyRouterModel({ models: { default: 'grok-build' } }, { port: 41234, model: 'demo' })
     expect(next.models).toMatchObject({
-      default: ROUTER_PROVIDER_KEY,
-      web_search: ROUTER_PROVIDER_KEY,
+      default: GROK_LIVE_MODEL_KEY,
+      web_search: GROK_LIVE_MODEL_KEY,
     })
     expect(next.grok_com_config).toEqual({ preferred_method: 'api_key' })
     expect(next.subagents).toEqual({
       models: {
-        'general-purpose': ROUTER_PROVIDER_KEY,
-        explore: ROUTER_PROVIDER_KEY,
-        plan: ROUTER_PROVIDER_KEY,
+        'general-purpose': GROK_LIVE_MODEL_KEY,
+        explore: GROK_LIVE_MODEL_KEY,
+        plan: GROK_LIVE_MODEL_KEY,
       },
     })
     expect(next.model).toEqual({
-      [ROUTER_PROVIDER_KEY]: {
+      [GROK_LIVE_MODEL_KEY]: {
         name: 'StackFerry Router',
         base_url: 'http://127.0.0.1:41234/v1',
         api_backend: 'responses',
@@ -282,7 +310,7 @@ x-foo = "bar"
 `,
       },
     )
-    const key = grokModelKey('sess-1')
+    const key = GROK_LIVE_MODEL_KEY
     expect(next.models).toMatchObject({
       default: key,
       default_reasoning_effort: 'high',
@@ -318,7 +346,7 @@ x-foo = "bar"
         permissionMode: 'always-approve',
       },
     )
-    const key = grokModelKey('perm-1')
+    const key = GROK_LIVE_MODEL_KEY
     expect(withMode.ui).toEqual({
       theme: 'auto',
       fork_secondary_model: key,
@@ -338,7 +366,7 @@ x-foo = "bar"
     })
     expect(cleared.ui).toEqual({
       theme: 'auto',
-      fork_secondary_model: grokModelKey('perm-2'),
+      fork_secondary_model: GROK_LIVE_MODEL_KEY,
     })
   })
 
@@ -370,7 +398,7 @@ allow = ["read"]
 `,
       },
     )
-    const key = grokModelKey('over-1')
+    const key = GROK_LIVE_MODEL_KEY
     expect(next.models).toMatchObject({
       default: key,
       max_retries: 3,
@@ -398,7 +426,7 @@ allow = ["read"]
     expect(cleared.ui).toEqual({
       theme: 'auto',
       vim_mode: true,
-      fork_secondary_model: grokModelKey('over-2'),
+      fork_secondary_model: GROK_LIVE_MODEL_KEY,
     })
   })
 
@@ -421,7 +449,7 @@ permission_mode = "auto"
 `,
       },
     )
-    const key = grokModelKey('over-sess')
+    const key = GROK_LIVE_MODEL_KEY
     expect(next.models).toMatchObject({
       default: key,
       default_reasoning_effort: 'high',
@@ -443,7 +471,7 @@ permission_mode = "auto"
       { port: 41234, model: 'demo', effortLevel: 'low', contextWindow: '128000' },
     )
     expect(next.model).toMatchObject({
-      [ROUTER_PROVIDER_KEY]: {
+      [GROK_LIVE_MODEL_KEY]: {
         reasoning_effort: 'low',
         supports_reasoning_effort: true,
         context_window: 128000,
@@ -490,7 +518,7 @@ permission_mode = "auto"
     expect(official.endpoints).toBeUndefined()
     expect(official.features).toBeUndefined()
     expect(official.model).toEqual({
-      [grokModelKey('img-1')]: {
+      [GROK_LIVE_MODEL_KEY]: {
         name: 'Custom',
         model: 'chat-demo',
         base_url: 'https://gateway.test/v1',
@@ -516,7 +544,7 @@ permission_mode = "auto"
     )
     expect(next.endpoints).toEqual({ xai_api_base_url: 'https://images.test/v1' })
     expect(next.features).toMatchObject({ image_gen_model_override: 'flux-pro' })
-    expect(next.model?.[ROUTER_PROVIDER_KEY]).toMatchObject({
+    expect(next.model?.[GROK_LIVE_MODEL_KEY]).toMatchObject({
       base_url: 'http://127.0.0.1:41234/v1',
       api_key: 'stackferry-router',
     })
@@ -586,5 +614,46 @@ permission_mode = "auto"
     )
     expect(next.endpoints).toEqual({ xai_api_base_url: 'https://gateway.test/v1' })
     expect(next.ui).toEqual({ theme: 'auto' })
+  })
+
+  it('points leftover stackferry tables at the current live model', () => {
+    const leftover = grokModelKey('aaaa-bbbb')
+    const first = applyDirectModel(
+      {
+        model: {
+          [leftover]: { name: 'Old', model: 'old', base_url: 'https://old.test/v1', api_key: 'old' },
+          [ROUTER_PROVIDER_KEY]: { name: 'Router', model: 'old', base_url: 'http://127.0.0.1:1/v1' },
+        },
+      },
+      {
+        id: 'bbbb-cccc',
+        name: 'New',
+        model: 'demo',
+        baseUrl: 'https://new.test/v1',
+        apiBackend: 'responses',
+        apiKey: 'new-key',
+      },
+    )
+    expect(first.models).toMatchObject({ default: GROK_LIVE_MODEL_KEY })
+    expect(first.model).toMatchObject({
+      [GROK_LIVE_MODEL_KEY]: {
+        name: 'New',
+        model: 'demo',
+        base_url: 'https://new.test/v1',
+        api_key: 'new-key',
+      },
+      [leftover]: {
+        name: 'New',
+        model: 'demo',
+        base_url: 'https://new.test/v1',
+        api_key: 'new-key',
+      },
+      [ROUTER_PROVIDER_KEY]: {
+        name: 'New',
+        model: 'demo',
+        base_url: 'https://new.test/v1',
+        api_key: 'new-key',
+      },
+    })
   })
 })

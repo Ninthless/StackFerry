@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { copyFile, mkdir, readFile, unlink } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { AppError } from '../../../shared/app-error'
@@ -8,13 +8,14 @@ import {
   applyDesktopDeploymentMode,
   applyDesktopGateway,
   applyDesktopOfficial,
-  desktopProfileId,
+  isLeftoverOwnedDesktopProfileId,
   LEGACY_STACKFERRY_DESKTOP_PROFILE_ID,
   parseDesktopAppConfig,
   parseDesktopMeta,
   STACKFERRY_DESKTOP_PROFILE_ID,
   type DesktopDeploymentMode,
   type DesktopGatewayConfig,
+  type DesktopGatewayProfile,
   type DesktopMeta,
 } from './desktop-merge'
 import { desktopAppConfigPath, desktopMetaPath, desktopProfilePath } from './home'
@@ -33,17 +34,17 @@ export async function enableDesktopGateway(options: {
   isManaged?: ManagedPolicyProbe
 }): Promise<DesktopWriteResult> {
   await assertLocalLibraryWritable(options.isManaged)
-  const profileId = desktopProfileId(options.provider.id)
+  const profileId = STACKFERRY_DESKTOP_PROFILE_ID
   const metaPath = desktopMetaPath(options.library)
   const profilePath = desktopProfilePath(options.library, profileId)
-  const backupPath = await backupDesktopLibrary(options.library, options.backupRoot, profileId)
+  const backupPath = await backupDesktopLibrary(options.library, options.backupRoot)
   const current = await readMeta(metaPath)
   const next = applyDesktopGateway(current, options.provider)
   await mkdir(options.library, { recursive: true })
   await atomicWriteFile(profilePath, stringifyJson(next.profile))
+  await retargetLeftoverProfiles(options.library, next.profile)
   await atomicWriteFile(metaPath, stringifyJson(next.meta))
   await writeDeploymentMode(options.library, '3p')
-  await removeLegacyProfile(options.library)
   return { backupPath, metaPath, profilePath }
 }
 
@@ -71,11 +72,7 @@ async function assertLocalLibraryWritable(isManaged?: ManagedPolicyProbe): Promi
   }
 }
 
-async function backupDesktopLibrary(
-  library: string,
-  backupRoot: string,
-  profileId = STACKFERRY_DESKTOP_PROFILE_ID,
-): Promise<string> {
+async function backupDesktopLibrary(library: string, backupRoot: string): Promise<string> {
   const stamp = new Date().toISOString().replaceAll(':', '-')
   const tag = createHash('sha1').update(library).digest('hex').slice(0, 8)
   const backupPath = path.join(backupRoot, `${stamp}-${tag}`)
@@ -85,24 +82,43 @@ async function backupDesktopLibrary(
     desktopProfilePath(library, STACKFERRY_DESKTOP_PROFILE_ID),
     path.join(backupPath, `${STACKFERRY_DESKTOP_PROFILE_ID}.json`),
   )
-  if (profileId !== STACKFERRY_DESKTOP_PROFILE_ID) {
-    await copyIfExists(
-      desktopProfilePath(library, profileId),
-      path.join(backupPath, `${profileId}.json`),
-    )
-  }
   await copyIfExists(
     desktopProfilePath(library, LEGACY_STACKFERRY_DESKTOP_PROFILE_ID),
     path.join(backupPath, `${LEGACY_STACKFERRY_DESKTOP_PROFILE_ID}.json`),
   )
+  await backupLeftoverProfiles(library, backupPath)
   await copyIfExists(desktopAppConfigPath(library), path.join(backupPath, 'claude_desktop_config.json'))
   return backupPath
 }
 
-async function removeLegacyProfile(library: string): Promise<void> {
-  const legacyPath = desktopProfilePath(library, LEGACY_STACKFERRY_DESKTOP_PROFILE_ID)
-  if (!existsSync(legacyPath)) return
-  await unlink(legacyPath)
+async function backupLeftoverProfiles(library: string, backupPath: string): Promise<void> {
+  for (const id of await listLeftoverProfileIds(library)) {
+    await copyIfExists(desktopProfilePath(library, id), path.join(backupPath, `${id}.json`))
+  }
+}
+
+async function retargetLeftoverProfiles(library: string, profile: DesktopGatewayProfile): Promise<void> {
+  const contents = stringifyJson(profile)
+  for (const id of await listLeftoverProfileIds(library)) {
+    await atomicWriteFile(desktopProfilePath(library, id), contents)
+  }
+}
+
+async function listLeftoverProfileIds(library: string): Promise<string[]> {
+  let names: string[]
+  try {
+    names = await readdir(library)
+  } catch {
+    return []
+  }
+  const ids: string[] = []
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue
+    const id = name.slice(0, -'.json'.length)
+    if (!isLeftoverOwnedDesktopProfileId(id)) continue
+    ids.push(id)
+  }
+  return ids
 }
 
 async function writeDeploymentMode(library: string, mode: DesktopDeploymentMode): Promise<void> {

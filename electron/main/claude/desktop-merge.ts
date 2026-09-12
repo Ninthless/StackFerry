@@ -46,11 +46,9 @@ export type DesktopGatewayProfile = {
 
 export type DesktopDeploymentMode = '1p' | '3p'
 
-export function desktopProfileId(id?: string): string {
-  const trimmed = id?.trim() ?? ''
-  // Desktop 会话按 profile UUID 回查 json；无 UUID 的旧调用仍写入稳定的 StackFerry 档案。
-  if (UUID_RE.test(trimmed)) return trimmed
-  return STACKFERRY_DESKTOP_PROFILE_ID
+export function isLeftoverOwnedDesktopProfileId(id: string): boolean {
+  if (id === STACKFERRY_DESKTOP_PROFILE_ID) return false
+  return id === LEGACY_STACKFERRY_DESKTOP_PROFILE_ID || UUID_RE.test(id)
 }
 
 export function parseDesktopMeta(value: unknown): DesktopMeta {
@@ -79,11 +77,11 @@ export function applyDesktopGateway(
   provider: DesktopGatewayConfig,
 ): { meta: DesktopMeta; profile: DesktopGatewayProfile } {
   const profile = buildDesktopGatewayProfile(provider)
-  const profileId = desktopProfileId(provider.id)
+  const profileId = STACKFERRY_DESKTOP_PROFILE_ID
   return {
     meta: {
       appliedId: profileId,
-      entries: upsertEntry(withoutLegacyEntries(meta.entries), {
+      entries: upsertEntry(withoutLeftoverOwnedEntries(meta.entries), {
         id: profileId,
         name: provider.name,
       }),
@@ -139,8 +137,8 @@ export function parseDesktopAppConfig(text: string): unknown {
   }
 }
 
-function withoutLegacyEntries(entries: DesktopMetaEntry[]): DesktopMetaEntry[] {
-  return entries.filter((entry) => entry.id !== LEGACY_STACKFERRY_DESKTOP_PROFILE_ID)
+function withoutLeftoverOwnedEntries(entries: DesktopMetaEntry[]): DesktopMetaEntry[] {
+  return entries.filter((entry) => !isLeftoverOwnedDesktopProfileId(entry.id))
 }
 
 function upsertEntry(entries: DesktopMetaEntry[], next: DesktopMetaEntry): DesktopMetaEntry[] {

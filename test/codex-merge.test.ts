@@ -302,6 +302,35 @@ ${overlayFor({
     expect(applied.model_reasoning_effort).toBe('max')
   })
 
+  it('keeps the same custom provider when toggling the failover router', () => {
+    const provider = {
+      id: 'toggle',
+      name: 'Direct',
+      tomlText: overlayFor({
+        providerId: 'provider_toggle',
+        name: 'Direct',
+        baseUrl: 'https://a.example/v1',
+        model: 'model-a',
+      }),
+      apiKey: 'key-a',
+    }
+    const direct = applyThirdPartyProvider(existing, provider)
+    const routed = applyRouterProvider(direct, {
+      port: 17890,
+      tomlText: provider.tomlText,
+    })
+    const back = applyThirdPartyProvider(routed, provider)
+    expect(direct.model_provider).toBe(STACKFERRY_LIVE_PROVIDER_KEY)
+    expect(routed.model_provider).toBe(STACKFERRY_LIVE_PROVIDER_KEY)
+    expect(back.model_provider).toBe(STACKFERRY_LIVE_PROVIDER_KEY)
+    const providers = (doc: ReturnType<typeof applyThirdPartyProvider>) =>
+      doc.model_providers as Record<string, Record<string, string>>
+    expect(providers(direct)[STACKFERRY_LIVE_PROVIDER_KEY].base_url).toBe('https://a.example/v1')
+    expect(providers(routed)[STACKFERRY_LIVE_PROVIDER_KEY].base_url).toBe('http://127.0.0.1:17890/v1')
+    expect(providers(back)[STACKFERRY_LIVE_PROVIDER_KEY].base_url).toBe('https://a.example/v1')
+    expect(providers(back)[STACKFERRY_LIVE_PROVIDER_KEY].experimental_bearer_token).toBe('key-a')
+  })
+
   it('writes a local router table without secrets', () => {
     const next = applyRouterProvider(existing, {
       port: 17890,

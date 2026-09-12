@@ -1,4 +1,4 @@
-import { ROUTER_BIND_HOST, ROUTER_PROVIDER_KEY, ROUTER_PROVIDER_NAME } from '../../../shared/routing'
+import { ROUTER_BIND_HOST, ROUTER_PROVIDER_NAME } from '../../../shared/routing'
 import { GROK_OFFICIAL_DEFAULT_MODEL } from '../../../shared/grok-presets'
 import {
   GROK_OVERLAY_ROOT_TABLES,
@@ -31,6 +31,7 @@ export { parseToml, stringifyToml }
 
 export const STACKFERRY_PREFIX = 'stackferry_'
 export const STACKFERRY_META_TABLE = 'stackferry'
+export const GROK_LIVE_MODEL_KEY = 'custom'
 export const PREFERRED_AUTH_METHOD = 'preferred_method'
 export const PREFERRED_API_KEY = 'api_key'
 
@@ -68,6 +69,10 @@ export function isStackferryModelKey(key: string): boolean {
   return key.startsWith(STACKFERRY_PREFIX)
 }
 
+export function isOwnedGrokModelKey(key: string): boolean {
+  return key === GROK_LIVE_MODEL_KEY || isStackferryModelKey(key)
+}
+
 export function grokDefaultModel(doc: TomlTable): string {
   const models = doc.models
   if (!isPlainObject(models) || typeof models.default !== 'string') return ''
@@ -92,9 +97,9 @@ export function applyDirectModel(doc: TomlTable, input: GrokDirectLiveConfig): T
   const next = cloneDoc(doc)
   const session = parseGrokSession(input)
   if (session.overlay) applyOverlayRoot(next, session.overlay)
-  // 旧会话按 [model.<id>] 回查；换供应商只改 default 指针，stackferry_* 表必须留下。
-  const key = attachDirectModel(next, input, directTable(input, session))
-  pinLiveModel(next, key, session)
+  // Grok 会话冻的是 [model.<id>]。直连和故障路由都写 custom，开关路由只改地址。
+  attachDirectModel(next, directTable(input, session))
+  pinLiveModel(next, GROK_LIVE_MODEL_KEY, session)
   pinByokAuth(next)
   pinMediaGeneration(next, input.media)
   return next
@@ -125,8 +130,9 @@ export function applyRouterModel(doc: TomlTable, input: GrokRouterLiveConfig): T
     api_key: 'stackferry-router',
   }
   applySession(table, session)
-  ensureModelTable(next)[ROUTER_PROVIDER_KEY] = table
-  pinLiveModel(next, ROUTER_PROVIDER_KEY, session)
+  writeOwnedModelTables(ensureModelTable(next), table)
+  retargetOwnedCatalogOverlays(next, table)
+  pinLiveModel(next, GROK_LIVE_MODEL_KEY, session)
   pinByokAuth(next)
   pinMediaGeneration(next, input.media)
   return next
@@ -181,27 +187,30 @@ function mergeOverlayTable(
   doc[key] = next
 }
 
-// Grok 内置 / 预取 catalog 以 grok- 开头。同名 [model.*] 覆盖那一项，不必再挂 Custom。
-function grokCatalogKey(model: string): string {
-  const key = model.trim()
-  if (!key || isStackferryModelKey(key) || key === ROUTER_PROVIDER_KEY) return ''
-  if (key === 'grok' || key.startsWith('grok-') || key.startsWith('grok.')) return key
-  return ''
+function attachDirectModel(doc: TomlTable, table: TomlTable): void {
+  const models = ensureModelTable(doc)
+  writeOwnedModelTables(models, table)
+  retargetOwnedCatalogOverlays(doc, table)
 }
 
-function attachDirectModel(doc: TomlTable, input: GrokDirectLiveConfig, table: TomlTable): string {
+function writeOwnedModelTables(models: TomlTable, table: TomlTable): void {
+  models[GROK_LIVE_MODEL_KEY] = structuredClone(table)
+  for (const key of Object.keys(models)) {
+    if (key === GROK_LIVE_MODEL_KEY || !isStackferryModelKey(key)) continue
+    models[key] = structuredClone(table)
+  }
+}
+
+function retargetOwnedCatalogOverlays(doc: TomlTable, table: TomlTable): void {
   const models = ensureModelTable(doc)
-  const catalog = grokCatalogKey(input.model)
-  if (catalog) {
+  for (const key of ownedCatalogKeys(doc)) {
+    if (!key || isOwnedGrokModelKey(key)) continue
+    if (key === GROK_IMAGINE_MODEL_KEY || key === GROK_IMAGINE_VIDEO_KEY) continue
     const overlay = { ...table }
     delete overlay.name
-    models[catalog] = overlay
-    markOwned(doc, catalog)
-    return catalog
+    overlay.model = key
+    models[key] = overlay
   }
-  const key = grokModelKey(input.id)
-  models[key] = table
-  return key
 }
 
 function ensureModelTable(doc: TomlTable): TomlTable {
@@ -243,7 +252,7 @@ function pinLiveModel(doc: TomlTable, key: string, session: GrokSession): void {
 }
 
 function unpinLiveModel(doc: TomlTable, owned: Set<string> = new Set()): void {
-  const isOwnedPin = (value: string) => isStackferryModelKey(value) || owned.has(value)
+  const isOwnedPin = (value: string) => isOwnedGrokModelKey(value) || owned.has(value)
   const models = doc.models
   if (isPlainObject(models)) {
     for (const field of AUX_MODEL_KEYS) {
@@ -268,7 +277,7 @@ function stripOwnedCatalogOverlays(doc: TomlTable, owned: Set<string>): void {
   const models = doc.model
   if (!isPlainObject(models)) return
   for (const key of owned) {
-    if (isStackferryModelKey(key)) continue
+    if (isOwnedGrokModelKey(key)) continue
     delete models[key]
   }
   if (Object.keys(models).length === 0) delete doc.model
