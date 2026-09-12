@@ -5,7 +5,7 @@
   "version": "1.0.6",
   "private": true,
   "description": "Electron desktop app for switching Codex CLI providers.",
-  "license": "MIT",
+  "license": "GPL-3.0",
   "author": "StackFerry",
   "type": "module",
   "packageManager": "pnpm@11.25.0",
