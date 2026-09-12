@@ -117,10 +117,11 @@ pnpm build:mac     # ad-hoc DMG (macOS or CI)
 pnpm build:linux   # AppImage + deb
 ```
 
-To ship all three platforms, bump `package.json` `version` and push a matching `v*` tag (for `1.0.6`, push `v1.0.6`). GitHub Actions builds Windows / macOS / Linux, publishes a Latest GitHub Release, and writes `latest.yml` / `latest-linux.yml` for Windows and Linux auto-update. You can also run the `Release` workflow by hand to upload artifacts without publishing.
+To ship all three platforms, add a `CHANGELOG.md` section for the new version, bump `package.json` `version`, and push a matching `v*` tag (for `1.0.8`, push `v1.0.8`). GitHub Actions builds Windows / macOS / Linux, publishes a Latest GitHub Release from that changelog section, and writes `latest.yml` / `latest-linux.yml` for Windows and Linux auto-update. You can also run the `Release` workflow by hand to upload artifacts without publishing.
 
 Layout:
 
+- `CHANGELOG.md` — user-facing release notes
 - `electron/main` — window, tray, IPC; per-CLI writers, routing, Skills, MCP, CLI install
 - `electron/preload` — `window.stackferry`
 - `shared` — types, IPC names, presets

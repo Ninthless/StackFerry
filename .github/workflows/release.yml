@@ -39,6 +39,7 @@ jobs:
             echo "Tag ${GITHUB_REF_NAME} does not match package.json ${expected}"
             exit 1
           fi
+          node scripts/extract-changelog.mjs release-notes.md
       - run: pnpm test
       - run: pnpm exec vite build
       - run: pnpm exec electron-builder ${{ matrix.args }} --publish never
@@ -80,6 +81,9 @@ jobs:
     needs: package
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+      - name: Extract changelog
+        run: node scripts/extract-changelog.mjs release-notes.md
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -87,6 +91,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**
+          body_path: release-notes.md
           generate_release_notes: true
           draft: false
           prerelease: false

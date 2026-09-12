@@ -117,10 +117,11 @@ pnpm build:mac     # ad-hoc DMG（须 macOS 或 CI）
 pnpm build:linux   # AppImage + deb
 ```
 
-要发三端包：改好 `package.json` 的 `version`，再推匹配的 `v*` 标签（例如 `1.0.6` 推 `v1.0.6`）。GitHub Actions 会打 Windows / macOS / Linux，发布为 Latest，并写出 Windows / Linux 应用内更新用的 `latest.yml` / `latest-linux.yml`。也可手动跑 `Release` 工作流，只上传产物、不发版。
+要发三端包：在 `CHANGELOG.md` 写好新版本一节，改 `package.json` 的 `version`，再推匹配的 `v*` 标签（例如 `1.0.8` 推 `v1.0.8`）。GitHub Actions 会打 Windows / macOS / Linux，用该节作为 Latest Release 说明，并写出 Windows / Linux 应用内更新用的 `latest.yml` / `latest-linux.yml`。也可手动跑 `Release` 工作流，只上传产物、不发版。
 
 目录：
 
+- `CHANGELOG.md` — 面向用户的更新说明
 - `electron/main` — 窗口、托盘、IPC；各 CLI 写盘、路由、Skills、MCP、CLI 安装
 - `electron/preload` — `window.stackferry`
 - `shared` — 类型、IPC 名、预设
