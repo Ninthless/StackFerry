@@ -2,6 +2,7 @@ import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promis
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { encodeCodexCatalog, uniqueCodexModelIds } from '../../../shared/codex-models'
+import { migrateCodexHistoryProviderBucket } from './history'
 import { codexAuthPath, codexConfigPath, stackferryCatalogPath } from './home'
 import {
   applyOfficialProvider,
@@ -10,6 +11,7 @@ import {
   parseToml,
   stringifyToml,
   type RouterLiveConfig,
+  type TomlTable,
   type ThirdPartyLiveConfig,
 } from './merge'
 
@@ -30,6 +32,7 @@ export async function enableThirdPartyLiveConfig(options: {
   const next = applyThirdPartyProvider(current, withCatalog(options.codexHome, options.provider))
   await mkdir(options.codexHome, { recursive: true })
   await atomicWriteFile(configPath, stringifyToml(next))
+  await migrateHistory(options.codexHome, options.backupRoot, next)
   return { backupPath, configPath }
 }
 
@@ -62,7 +65,18 @@ export async function enableRouterLiveConfig(options: {
   })
   await mkdir(options.codexHome, { recursive: true })
   await atomicWriteFile(configPath, stringifyToml(next))
+  await migrateHistory(options.codexHome, options.backupRoot, next)
   return { backupPath, configPath }
+}
+
+async function migrateHistory(codexHome: string, backupRoot: string, doc: TomlTable): Promise<void> {
+  const sqliteHome = typeof doc.sqlite_home === 'string' ? doc.sqlite_home : undefined
+  await migrateCodexHistoryProviderBucket({
+    codexHome,
+    backupRoot,
+    sqliteHome,
+    env: process.env,
+  })
 }
 
 function withCatalog<T extends { models?: readonly string[] }>(

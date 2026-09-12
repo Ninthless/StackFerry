@@ -64,8 +64,8 @@ wire_api = "responses"
     })
     const afterSecond = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
     expect(afterSecond).toContain('key-b')
-    expect(afterSecond).toContain('key-a')
-    expect(afterSecond).toContain('model_provider = "stackferry_provb"')
+    expect(afterSecond).not.toContain('key-a')
+    expect(afterSecond).toContain('model_provider = "custom"')
 
     await enableOfficialLiveConfig({ codexHome, backupRoot })
     const afterOfficial = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
@@ -100,7 +100,7 @@ wire_api = "responses"
     })
 
     const written = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
-    expect(written).toContain('model_provider = "stackferry_router"')
+    expect(written).toContain('model_provider = "custom"')
     expect(written).toContain('base_url = "http://127.0.0.1:18765/v1"')
     expect(written).toContain('wire_api = "responses"')
     expect(written).toContain('model = "model-r"')

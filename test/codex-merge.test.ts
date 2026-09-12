@@ -5,6 +5,7 @@ import {
   applyThirdPartyProvider,
   parseToml,
   providerKey,
+  STACKFERRY_LIVE_PROVIDER_KEY,
   stringifyToml,
 } from '../electron/main/codex/merge'
 import { starterOverlayToml } from '../shared/provider-overlay'
@@ -49,16 +50,15 @@ describe('codex toml merge', () => {
       }),
       apiKey: 'sk-test',
     })
-    const key = providerKey('11111111-1111-1111-1111-111111111111')
     expect(next.approval_policy).toBeUndefined()
     expect(next.notify).toEqual(['notify-send'])
     expect(next.sandbox_mode).toBe('workspace-write')
-    expect(next.model_provider).toBe(key)
+    expect(next.model_provider).toBe(STACKFERRY_LIVE_PROVIDER_KEY)
     expect(next.model).toBe('deepseek-chat')
     const servers = next.mcp_servers as Record<string, Record<string, string>>
     expect(servers.docs.command).toBe('docs-mcp')
     const providers = next.model_providers as Record<string, Record<string, string>>
-    expect(providers[key]).toEqual({
+    expect(providers[STACKFERRY_LIVE_PROVIDER_KEY]).toEqual({
       name: 'DeepSeek',
       base_url: 'https://api.deepseek.com/v1',
       wire_api: 'responses',
@@ -83,17 +83,16 @@ describe('codex toml merge', () => {
       }),
       apiKey: 'should-not-write',
     })
-    const key = providerKey('aaaa')
     const providers = next.model_providers as Record<string, Record<string, unknown>>
-    expect(providers[key]).toMatchObject({
+    expect(providers[STACKFERRY_LIVE_PROVIDER_KEY]).toMatchObject({
       name: 'Azure OpenAI',
       env_key: 'AZURE_OPENAI_API_KEY',
       query_params: { 'api-version': 'preview' },
     })
-    expect(providers[key].experimental_bearer_token).toBeUndefined()
+    expect(providers[STACKFERRY_LIVE_PROVIDER_KEY].experimental_bearer_token).toBeUndefined()
   })
 
-  it('keeps previous StackFerry provider tables when switching', () => {
+  it('points every owned table at the current provider when switching', () => {
     const first = applyThirdPartyProvider(existing, {
       id: 'aaaa',
       name: 'A',
@@ -105,7 +104,11 @@ describe('codex toml merge', () => {
       }),
       apiKey: 'key-a',
     })
-    const second = applyThirdPartyProvider(first, {
+    const withLegacy = structuredClone(first)
+    const leftover = providerKey('aaaa')
+    const providersAfterFirst = withLegacy.model_providers as Record<string, unknown>
+    providersAfterFirst[leftover] = { ...(providersAfterFirst[STACKFERRY_LIVE_PROVIDER_KEY] as object) }
+    const second = applyThirdPartyProvider(withLegacy, {
       id: 'bbbb',
       name: 'B',
       tomlText: overlayFor({
@@ -116,11 +119,45 @@ describe('codex toml merge', () => {
       }),
       apiKey: 'key-b',
     })
-    const providers = second.model_providers as Record<string, unknown>
-    expect(Object.keys(providers)).toEqual([providerKey('aaaa'), providerKey('bbbb')])
-    expect(second.model_provider).toBe(providerKey('bbbb'))
-    expect(stringifyToml(second)).toContain('experimental_bearer_token = "key-b"')
-    expect(stringifyToml(second)).toContain('experimental_bearer_token = "key-a"')
+    const providers = second.model_providers as Record<string, Record<string, string>>
+    expect(second.model_provider).toBe(STACKFERRY_LIVE_PROVIDER_KEY)
+    expect(Object.keys(providers).sort()).toEqual([leftover, STACKFERRY_LIVE_PROVIDER_KEY].sort())
+    expect(providers[STACKFERRY_LIVE_PROVIDER_KEY].experimental_bearer_token).toBe('key-b')
+    expect(providers[leftover].experimental_bearer_token).toBe('key-b')
+    expect(providers[STACKFERRY_LIVE_PROVIDER_KEY].base_url).toBe('https://b.example/v1')
+    expect(stringifyToml(second)).not.toContain('key-a')
+  })
+
+  it('retargets the leftover stackferry live table', () => {
+    const first = applyThirdPartyProvider(existing, {
+      id: 'legacy-live',
+      name: 'A',
+      tomlText: overlayFor({
+        providerId: 'provider_a',
+        name: 'A',
+        baseUrl: 'https://a.example/v1',
+        model: 'model-a',
+      }),
+      apiKey: 'key-a',
+    })
+    const withLegacy = structuredClone(first)
+    const providersAfterFirst = withLegacy.model_providers as Record<string, unknown>
+    providersAfterFirst.stackferry = { ...(providersAfterFirst[STACKFERRY_LIVE_PROVIDER_KEY] as object) }
+    const second = applyThirdPartyProvider(withLegacy, {
+      id: 'legacy-next',
+      name: 'B',
+      tomlText: overlayFor({
+        providerId: 'provider_b',
+        name: 'B',
+        baseUrl: 'https://b.example/v1',
+        model: 'model-b',
+      }),
+      apiKey: 'key-b',
+    })
+    const providers = second.model_providers as Record<string, Record<string, string>>
+    expect(second.model_provider).toBe(STACKFERRY_LIVE_PROVIDER_KEY)
+    expect(providers.stackferry.experimental_bearer_token).toBe('key-b')
+    expect(providers[STACKFERRY_LIVE_PROVIDER_KEY].experimental_bearer_token).toBe('key-b')
   })
 
   it('restores the official openai pointer and keeps dormant provider tables', () => {
@@ -140,7 +177,7 @@ describe('codex toml merge', () => {
     expect(official.approval_policy).toBeUndefined()
     expect(official.mcp_servers).toEqual({ docs: { command: 'docs-mcp' } })
     const providers = official.model_providers as Record<string, Record<string, string>>
-    expect(providers[providerKey('cccc')].experimental_bearer_token).toBe('key-c')
+    expect(providers[STACKFERRY_LIVE_PROVIDER_KEY].experimental_bearer_token).toBe('key-c')
   })
 
   it('writes reasoning and context from the overlay and clears them when omitted', () => {
@@ -275,10 +312,10 @@ ${overlayFor({
         model: 'model-r',
       }),
     })
-    expect(next.model_provider).toBe('stackferry_router')
+    expect(next.model_provider).toBe(STACKFERRY_LIVE_PROVIDER_KEY)
     expect(next.model).toBe('model-r')
     const providers = next.model_providers as Record<string, Record<string, string>>
-    expect(providers.stackferry_router).toEqual({
+    expect(providers[STACKFERRY_LIVE_PROVIDER_KEY]).toEqual({
       name: 'StackFerry Router',
       base_url: 'http://127.0.0.1:17890/v1',
       wire_api: 'responses',
@@ -301,8 +338,8 @@ wire_api = "chat"
 `,
     })
     const providers = next.model_providers as Record<string, Record<string, string>>
-    expect(providers.stackferry_router.wire_api).toBe('responses')
-    expect(providers.stackferry_router.base_url).toBe('http://127.0.0.1:17890/v1')
+    expect(providers[STACKFERRY_LIVE_PROVIDER_KEY].wire_api).toBe('responses')
+    expect(providers[STACKFERRY_LIVE_PROVIDER_KEY].base_url).toBe('http://127.0.0.1:17890/v1')
     expect(stringifyToml(next)).not.toContain('wire_api = "chat"')
     expect(stringifyToml(next)).not.toContain('chat.example')
   })
@@ -337,8 +374,10 @@ wire_api = "chat"
     })
     expect(routed.model_catalog_json).toBe('C:/Users/me/.codex/model-catalogs/stackferry.json')
     const providers = routed.model_providers as Record<string, unknown>
-    expect(providers).toHaveProperty(providerKey('catalog'))
-    expect(providers).toHaveProperty('stackferry_router')
+    expect(providers).toHaveProperty(STACKFERRY_LIVE_PROVIDER_KEY)
+    expect(providers[STACKFERRY_LIVE_PROVIDER_KEY]).toMatchObject({
+      base_url: 'http://127.0.0.1:17890/v1',
+    })
   })
 
   it('clears only the StackFerry catalog pointer', () => {
