@@ -25,6 +25,7 @@ import { toast } from "@/components/ui/toast"
 import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
 import { HintTitle } from "./settings-hint"
+import { ReleaseNotes } from "./release-notes"
 
 export function AppUpdateCard() {
   const [status, setStatus] = useState<AppUpdateStatus | null>(null)
@@ -211,11 +212,7 @@ function UpdateStatusBody({
           <Badge variant="secondary">{status.availableVersion}</Badge>
           <span className="text-sm">{m.app_update_available()}</span>
         </div>
-        {status.releaseNotes ? (
-          <pre className="bg-muted text-muted-foreground max-h-40 overflow-auto rounded-lg p-3 whitespace-pre-wrap">
-            {status.releaseNotes}
-          </pre>
-        ) : null}
+        {status.releaseNotes ? <ReleaseNotes notes={status.releaseNotes} /> : null}
         {status.phase === "ready" ? (
           <Alert><AlertDescription>{m.app_update_ready()}</AlertDescription></Alert>
         ) : null}

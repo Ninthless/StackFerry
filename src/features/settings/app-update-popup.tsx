@@ -15,6 +15,7 @@ import {
 import { toast } from "@/components/ui/toast"
 import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
+import { ReleaseNotes } from "./release-notes"
 
 export function AppUpdatePopup() {
   const [status, setStatus] = useState<AppUpdateStatus | null>(null)
@@ -69,7 +70,7 @@ export function AppUpdatePopup() {
 
   return (
     <AlertDialog open={open} onOpenChange={(next) => !busy && setOpen(next)}>
-      <AlertDialogContent>
+      <AlertDialogContent className="max-w-[calc(100%-2rem)] sm:max-w-lg">
         <AlertDialogHeader>
           <AlertDialogMedia>
             <Download />
@@ -77,11 +78,7 @@ export function AppUpdatePopup() {
           <AlertDialogTitle>{m.app_update_popup_title()}</AlertDialogTitle>
           <AlertDialogDescription>{m.app_update_popup_description({ version })}</AlertDialogDescription>
         </AlertDialogHeader>
-        {status?.releaseNotes ? (
-          <pre className="bg-muted text-muted-foreground max-h-40 overflow-auto rounded-lg p-3 text-sm whitespace-pre-wrap">
-            {status.releaseNotes}
-          </pre>
-        ) : null}
+        {status?.releaseNotes ? <ReleaseNotes notes={status.releaseNotes} /> : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>{m.announcements_popup_later()}</AlertDialogCancel>
           <AlertDialogAction type="button" disabled={busy} onClick={() => void download()}>
