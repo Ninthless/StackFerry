@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { GROK_EFFORT_LEVELS } from '../shared/grok-session'
 import { ROUTER_PROVIDER_KEY } from '../shared/routing'
 import {
   applyDirectModel,
@@ -11,6 +12,8 @@ import {
   grokModelKey,
   stringifyToml,
 } from '../electron/main/grok/merge'
+
+const GROK_EFFORT_MENU = GROK_EFFORT_LEVELS.map((value) => ({ value }))
 
 describe('grok config merge', () => {
   it('writes a StackFerry model table and pins API-key auth for Imagine and subagents', () => {
@@ -353,6 +356,7 @@ x-foo = "bar"
         api_key: 'secret',
         reasoning_effort: 'high',
         supports_reasoning_effort: true,
+        reasoning_efforts: GROK_EFFORT_MENU,
         context_window: 200000,
         auto_compact_threshold_percent: 80,
         extra_headers: { 'x-foo': 'bar' },
@@ -486,11 +490,48 @@ permission_mode = "auto"
       [key]: {
         reasoning_effort: 'high',
         supports_reasoning_effort: true,
+        reasoning_efforts: GROK_EFFORT_MENU,
         context_window: 200000,
         auto_compact_threshold_percent: 80,
       },
     })
     expect(next.ui).toMatchObject({ permission_mode: 'auto' })
+  })
+
+  it('owns the /effort menu and keeps catalog overlays from wiping xhigh', () => {
+    const next = applyDirectModel(
+      {
+        stackferry: { owned: ['grok-4.6'] },
+        model: {
+          'grok-4.6': {
+            model: 'grok-4.6',
+            reasoning_efforts: ['low', 'medium', 'high'],
+          },
+        },
+      },
+      {
+        id: 'menu-1',
+        name: 'Custom',
+        model: 'grok-4.6',
+        baseUrl: 'https://gateway.test/v1',
+        apiBackend: 'responses',
+        apiKey: 'secret',
+        effortLevel: 'xhigh',
+        overlayToml: 'reasoning_efforts = ["low", "medium", "high"]\n',
+      },
+    )
+    expect(next.model?.[GROK_LIVE_MODEL_KEY]).toMatchObject({
+      reasoning_effort: 'xhigh',
+      supports_reasoning_effort: true,
+      reasoning_efforts: GROK_EFFORT_MENU,
+    })
+    expect(next.model?.['grok-4.6']).toMatchObject({
+      model: 'grok-4.6',
+      reasoning_effort: 'xhigh',
+      supports_reasoning_effort: true,
+    })
+    expect(next.model?.['grok-4.6']).not.toHaveProperty('reasoning_efforts')
+    expect(stringifyToml(next)).toContain('value = "xhigh"')
   })
 
   it('keeps session fields on the router model table', () => {
@@ -502,6 +543,7 @@ permission_mode = "auto"
       [GROK_LIVE_MODEL_KEY]: {
         reasoning_effort: 'low',
         supports_reasoning_effort: true,
+        reasoning_efforts: GROK_EFFORT_MENU,
         context_window: 128000,
       },
     })

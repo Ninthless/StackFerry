@@ -198,7 +198,7 @@
   "grok_backend_responses_description": "Grok Build 请求 /v1/responses。适用于 xAI 以及兼容 Responses 的 OpenAI 接口。",
   "grok_backend_chat_description": "Grok Build 仍通过 StackFerry 访问 /v1/responses；代理会把请求翻译成该上游的 /v1/chat/completions。",
   "grok_session_effort": "思考等级",
-  "grok_session_effort_description": "写入 config.toml 覆盖片段的 reasoning_effort，启用时再写到 StackFerry 模型表和 [models].default_reasoning_effort，并标记该模型支持思考等级。Grok 可持久化 none / low / medium / high / xhigh / max。选择「默认」时不写入这些字段。",
+  "grok_session_effort_description": "写入 config.toml 覆盖片段的 reasoning_effort，启用时再写到 StackFerry 模型表、[models].default_reasoning_effort 和模型表的 reasoning_efforts 菜单，并标记该模型支持思考等级。Grok 可持久化 none / low / medium / high / xhigh / max。选择「默认」时不写入这些字段。",
   "grok_session_context": "上下文窗口",
   "grok_session_context_placeholder": "例如 200000，留空则用模型默认",
   "grok_session_context_description": "写入覆盖片段的 context_window，启用时再写到模型表。Grok 用该 token 数决定何时自动压缩。留空时：未知模型 ID 用 200000；grok-4.6 这类内置名称用该模型自带窗口。填写后即使用内置名称也会用你设的窗口。",

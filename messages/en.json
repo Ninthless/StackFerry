@@ -198,7 +198,7 @@
   "grok_backend_responses_description": "Grok Build calls /v1/responses. Use this for xAI and OpenAI-compatible Responses APIs.",
   "grok_backend_chat_description": "Grok Build still talks to StackFerry over /v1/responses; the proxy translates to /v1/chat/completions for this upstream.",
   "grok_session_effort": "Reasoning effort",
-  "grok_session_effort_description": "Writes reasoning_effort into the config.toml overlay, then onto the StackFerry model table and models.default_reasoning_effort. Also marks the model as supporting effort. Grok persists none / low / medium / high / xhigh / max. Selecting Default leaves these fields unset.",
+  "grok_session_effort_description": "Writes reasoning_effort into the config.toml overlay, then onto the StackFerry model table, models.default_reasoning_effort, and the model's reasoning_efforts menu. Also marks the model as supporting effort. Grok persists none / low / medium / high / xhigh / max. Selecting Default leaves these fields unset.",
   "grok_session_context": "Context window",
   "grok_session_context_placeholder": "e.g. 200000, leave blank for the model default",
   "grok_session_context_description": "Writes context_window into the overlay, then onto the model table. Grok uses this token count to time auto-compaction. Leave blank: unknown model IDs use 200000; built-in grok-* names keep that model’s catalog window. A value here applies even when the id is grok-4.6.",

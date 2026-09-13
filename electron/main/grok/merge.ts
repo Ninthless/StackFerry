@@ -1,6 +1,7 @@
 import { ROUTER_BIND_HOST, ROUTER_PROVIDER_NAME } from '../../../shared/routing'
 import { GROK_OFFICIAL_DEFAULT_MODEL } from '../../../shared/grok-presets'
 import {
+  GROK_EFFORT_LEVELS,
   GROK_OVERLAY_ROOT_TABLES,
   parseGrokSession,
   type GrokSession,
@@ -16,6 +17,7 @@ const OWNED_MODEL_KEYS = new Set([
   'api_backend',
   'api_key',
   'reasoning_effort',
+  'reasoning_efforts',
   'supports_reasoning_effort',
   'context_window',
   'auto_compact_threshold_percent',
@@ -169,6 +171,7 @@ function applySession(table: TomlTable, session: GrokSession): void {
   if (session.effortLevel) {
     table.reasoning_effort = session.effortLevel
     table.supports_reasoning_effort = true
+    table.reasoning_efforts = GROK_EFFORT_LEVELS.map((value) => ({ value }))
   }
   if (session.contextWindow != null) table.context_window = session.contextWindow
   if (session.autoCompact != null) table.auto_compact_threshold_percent = session.autoCompact
@@ -223,6 +226,8 @@ function retargetOwnedCatalogOverlays(doc: TomlTable, table: TomlTable): void {
     if (key === GROK_IMAGINE_MODEL_KEY || key === GROK_IMAGINE_VIDEO_KEY) continue
     const overlay = { ...table }
     delete overlay.name
+    // 自定义表的 /effort 菜单不能盖掉 grok-* 目录自带的 xhigh。
+    delete overlay.reasoning_efforts
     overlay.model = key
     models[key] = overlay
   }
