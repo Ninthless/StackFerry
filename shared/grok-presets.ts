@@ -2,7 +2,8 @@ import type { GrokApiBackend, GrokPreset } from './types'
 
 export const GROK_API_BACKENDS = ['responses', 'chat_completions'] as const
 
-export const GROK_OFFICIAL_DEFAULT_MODEL = 'grok-build'
+// CCSW 校验自定义 Grok 快照时要求 context_window 为正整数；用户没填时按同一默认写入 live。
+export const GROK_DEFAULT_CONTEXT_WINDOW = 500_000
 
 export const GROK_PRESETS: GrokPreset[] = [
   {

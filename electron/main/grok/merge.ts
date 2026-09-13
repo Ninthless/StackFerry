@@ -1,5 +1,5 @@
 import { ROUTER_BIND_HOST, ROUTER_PROVIDER_NAME } from '../../../shared/routing'
-import { GROK_OFFICIAL_DEFAULT_MODEL } from '../../../shared/grok-presets'
+import { GROK_DEFAULT_CONTEXT_WINDOW } from '../../../shared/grok-presets'
 import {
   GROK_EFFORT_LEVELS,
   GROK_OVERLAY_ROOT_TABLES,
@@ -116,16 +116,18 @@ export function applyDirectModel(doc: TomlTable, input: GrokDirectLiveConfig): T
   return next
 }
 
+// CCSW 官方态是没有 [models]/[model]。留下 [model.custom] 却把 default 指走，两边都认不成。
 export function applyOfficialModel(doc: TomlTable, previousDefault = ''): TomlTable {
   const next = cloneDoc(doc)
   const fromLegacyMeta = leftoverPreviousDefault(next)
   const owned = ownedCatalogKeys(next)
   unpinMediaGeneration(next)
   stripOwnedCatalogOverlays(next, owned)
+  stripOwnedLiveTables(next)
   delete next[STACKFERRY_META_TABLE]
   unpinByokAuth(next)
   unpinLiveModel(next, owned)
-  setDefaultModel(next, previousDefault || fromLegacyMeta || GROK_OFFICIAL_DEFAULT_MODEL)
+  restoreOfficialDefault(next, previousDefault || fromLegacyMeta)
   return next
 }
 
@@ -171,9 +173,9 @@ function applySession(table: TomlTable, session: GrokSession): void {
   if (session.effortLevel) {
     table.reasoning_effort = session.effortLevel
     table.supports_reasoning_effort = true
-    table.reasoning_efforts = GROK_EFFORT_LEVELS.map((value) => ({ value }))
+    table.reasoning_efforts = grokEffortMenu()
   }
-  if (session.contextWindow != null) table.context_window = session.contextWindow
+  table.context_window = session.contextWindow ?? GROK_DEFAULT_CONTEXT_WINDOW
   if (session.autoCompact != null) table.auto_compact_threshold_percent = session.autoCompact
 }
 
@@ -226,9 +228,10 @@ function retargetOwnedCatalogOverlays(doc: TomlTable, table: TomlTable): void {
     if (key === GROK_IMAGINE_MODEL_KEY || key === GROK_IMAGINE_VIDEO_KEY) continue
     const overlay = { ...table }
     delete overlay.name
-    // 自定义表的 /effort 菜单不能盖掉 grok-* 目录自带的 xhigh。
-    delete overlay.reasoning_efforts
     overlay.model = key
+    // 老会话仍读 grok-* 覆盖表；不写完整菜单时 /effort 里看不到 xhigh。
+    overlay.supports_reasoning_effort = true
+    overlay.reasoning_efforts = grokEffortMenu()
     models[key] = overlay
   }
 }
@@ -301,6 +304,33 @@ function stripOwnedCatalogOverlays(doc: TomlTable, owned: Set<string>): void {
     delete models[key]
   }
   if (Object.keys(models).length === 0) delete doc.model
+}
+
+function stripOwnedLiveTables(doc: TomlTable): void {
+  const models = doc.model
+  if (!isPlainObject(models)) return
+  for (const key of Object.keys(models)) {
+    if (isOwnedGrokModelKey(key)) delete models[key]
+  }
+  if (Object.keys(models).length === 0) delete doc.model
+}
+
+function restoreOfficialDefault(doc: TomlTable, previousDefault: string): void {
+  const tables = isPlainObject(doc.model) ? doc.model : {}
+  for (const candidate of [previousDefault.trim(), grokDefaultModel(doc)]) {
+    if (candidate && !isOwnedGrokModelKey(candidate) && isPlainObject(tables[candidate])) {
+      setDefaultModel(doc, candidate)
+      return
+    }
+  }
+  const models = doc.models
+  if (!isPlainObject(models)) return
+  delete models.default
+  if (Object.keys(models).length === 0) delete doc.models
+}
+
+function grokEffortMenu(): Array<{ value: string }> {
+  return GROK_EFFORT_LEVELS.map((value) => ({ value }))
 }
 
 function ownedCatalogKeys(doc: TomlTable): Set<string> {

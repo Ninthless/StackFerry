@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  GROK_HISTORY_MIGRATION_MARKER,
   GROK_HISTORY_MIGRATION_NAME,
   migrateGrokHistoryModelBucket,
 } from '../electron/main/grok/history'
@@ -33,6 +34,18 @@ describe('grok history model bucket', () => {
 
     const second = await migrateGrokHistoryModelBucket({ grokHome, backupRoot })
     expect(second).toEqual({ files: 0, backupPath: null })
+    expect(await readFile(path.join(grokHome, GROK_HISTORY_MIGRATION_MARKER), 'utf8')).toContain(
+      GROK_HISTORY_MIGRATION_NAME,
+    )
+
+    const extraDir = path.join(grokHome, 'sessions', 'proj', 'sess-later')
+    await mkdir(extraDir, { recursive: true })
+    await writeFile(path.join(extraDir, 'summary.json'), summaryFile(leftover))
+    const skipped = await migrateGrokHistoryModelBucket({ grokHome, backupRoot })
+    expect(skipped).toEqual({ files: 0, backupPath: null })
+    expect(JSON.parse(await readFile(path.join(extraDir, 'summary.json'), 'utf8'))).toMatchObject({
+      current_model_id: leftover,
+    })
   })
 
   it('rewrites leftover session tags when enabling a third-party provider', async () => {

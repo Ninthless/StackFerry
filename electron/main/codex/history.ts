@@ -11,6 +11,7 @@ import {
 
 // 只改 session_meta / threads.model_provider；openai 官方会话不搬，避免 invalid_encrypted_content。
 export const HISTORY_MIGRATION_NAME = 'codex-history-provider-v1'
+export const HISTORY_MIGRATION_MARKER = 'stackferry-history-provider-v1.done'
 
 const JSONL_ROOTS = [
   { dir: 'sessions', maxDepth: 8 },
@@ -33,12 +34,17 @@ export async function migrateCodexHistoryProviderBucket(options: {
   sqliteHome?: string
   env?: NodeJS.ProcessEnv
 }): Promise<HistoryMigrationOutcome> {
+  const marker = path.join(options.codexHome, HISTORY_MIGRATION_MARKER)
+  // 旧 stackferry_* 会话只搬一次；启用路径不能每次都扫完 ~/.codex/sessions。
+  if (existsSync(marker)) return { jsonlFiles: 0, stateRows: 0, backupPath: null }
   const backup: { root: string; path: string | null } = {
     root: options.backupRoot,
     path: null,
   }
   const jsonlFiles = await migrateJsonlFiles(options.codexHome, backup)
   const stateRows = await migrateStateDbs(options, backup)
+  await mkdir(options.codexHome, { recursive: true })
+  await writeFile(marker, `${HISTORY_MIGRATION_NAME}\n`, 'utf8')
   return { jsonlFiles, stateRows, backupPath: backup.path }
 }
 

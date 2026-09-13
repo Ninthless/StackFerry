@@ -1,9 +1,11 @@
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { GROK_LIVE_MODEL_KEY, isStackferryModelKey } from './merge'
 
 // 只改 summary.json 的 current_model_id。grok-* catalog / 官方会话不搬。
 export const GROK_HISTORY_MIGRATION_NAME = 'grok-history-model-v1'
+export const GROK_HISTORY_MIGRATION_MARKER = 'stackferry-history-model-v1.done'
 
 export type GrokHistoryMigrationOutcome = {
   files: number
@@ -14,13 +16,22 @@ export async function migrateGrokHistoryModelBucket(options: {
   grokHome: string
   backupRoot: string
 }): Promise<GrokHistoryMigrationOutcome> {
+  const marker = grokHistoryMarkerPath(options.grokHome)
+  // 旧 stackferry_* 会话只搬一次；启用路径不能每次都扫完 ~/.grok/sessions。
+  if (existsSync(marker)) return { files: 0, backupPath: null }
   const backup: { root: string; path: string | null } = { root: options.backupRoot, path: null }
   const files = await collectSummaryFiles(path.join(options.grokHome, 'sessions'), 0, 6)
   let migrated = 0
   for (const filePath of files) {
     if (await rewriteSummary(filePath, options.grokHome, backup)) migrated += 1
   }
+  await mkdir(options.grokHome, { recursive: true })
+  await writeFile(marker, `${GROK_HISTORY_MIGRATION_NAME}\n`, 'utf8')
   return { files: migrated, backupPath: backup.path }
+}
+
+function grokHistoryMarkerPath(grokHome: string): string {
+  return path.join(grokHome, GROK_HISTORY_MIGRATION_MARKER)
 }
 
 async function collectSummaryFiles(dir: string, depth: number, maxDepth: number): Promise<string[]> {

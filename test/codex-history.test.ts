@@ -5,6 +5,7 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import {
+  HISTORY_MIGRATION_MARKER,
   HISTORY_MIGRATION_NAME,
   migrateCodexHistoryProviderBucket,
 } from '../electron/main/codex/history'
@@ -71,6 +72,15 @@ describe('codex history provider bucket', () => {
 
     const second = await migrateCodexHistoryProviderBucket({ codexHome, backupRoot })
     expect(second).toEqual({ jsonlFiles: 0, stateRows: 0, backupPath: null })
+    expect(await readFile(path.join(codexHome, HISTORY_MIGRATION_MARKER), 'utf8')).toContain(
+      HISTORY_MIGRATION_NAME,
+    )
+
+    const extraPath = path.join(sessionDir, 'later.jsonl')
+    await writeFile(extraPath, sessionFile(leftover, 'later-body'))
+    const skipped = await migrateCodexHistoryProviderBucket({ codexHome, backupRoot })
+    expect(skipped).toEqual({ jsonlFiles: 0, stateRows: 0, backupPath: null })
+    expect(await readFile(extraPath, 'utf8')).toContain(`"model_provider":"${leftover}"`)
   })
 
   it('does not rewrite unknown third-party session tags', async () => {

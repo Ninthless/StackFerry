@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GROK_EFFORT_LEVELS } from '../shared/grok-session'
+import { GROK_DEFAULT_CONTEXT_WINDOW } from '../shared/grok-presets'
 import { ROUTER_PROVIDER_KEY } from '../shared/routing'
 import {
   applyDirectModel,
@@ -60,6 +61,7 @@ describe('grok config merge', () => {
         base_url: 'https://gateway.test/v1',
         api_backend: 'responses',
         api_key: 'secret',
+        context_window: GROK_DEFAULT_CONTEXT_WINDOW,
       },
     })
     expect(next.ui).toEqual({ theme: 'auto', fork_secondary_model: key })
@@ -69,7 +71,7 @@ describe('grok config merge', () => {
     expect(text).toContain('preferred_method')
   })
 
-  it('restores the provided default, keeps StackFerry model tables, and unpins API-key auth', () => {
+  it('restores a remaining user default and strips owned live tables', () => {
     const live = applyDirectModel(
       { models: { default: 'my-byok' } },
       {
@@ -82,31 +84,40 @@ describe('grok config merge', () => {
       },
     )
     const official = applyOfficialModel(live, 'my-byok')
-    const key = GROK_LIVE_MODEL_KEY
-    expect(official.models).toEqual({ default: 'my-byok' })
+    expect(official.models).toBeUndefined()
     expect(official.stackferry).toBeUndefined()
     expect(official.grok_com_config).toBeUndefined()
     expect(official.subagents).toBeUndefined()
-    expect(official.model).toEqual({
-      [key]: {
-        name: 'Custom',
-        model: 'demo',
-        base_url: 'https://gateway.test/v1',
-        api_backend: 'chat_completions',
-        api_key: 'secret',
-      },
-    })
+    expect(official.model).toBeUndefined()
     expect(official.ui).toBeUndefined()
   })
 
-  it('reads a leftover stackferry previous_default when no store backup is passed', () => {
+  it('drops a leftover previous_default when that model table is gone', () => {
     const official = applyOfficialModel({
       stackferry: { previous_default: 'kept-model' },
       models: { default: 'stackferry_abc' },
       model: { stackferry_abc: { model: 'demo' } },
     })
-    expect(official.models).toMatchObject({ default: 'kept-model' })
+    expect(official.models).toBeUndefined()
     expect(official.stackferry).toBeUndefined()
+    expect(official.model).toBeUndefined()
+  })
+
+  it('keeps a remaining user model table as the official default', () => {
+    const official = applyOfficialModel(
+      {
+        models: { default: 'custom' },
+        model: {
+          custom: { name: 'Custom', model: 'demo', base_url: 'https://gateway.test/v1' },
+          'my-byok': { base_url: 'https://example.test/v1', model: 'kept' },
+        },
+      },
+      'my-byok',
+    )
+    expect(official.models).toEqual({ default: 'my-byok' })
+    expect(official.model).toEqual({
+      'my-byok': { base_url: 'https://example.test/v1', model: 'kept' },
+    })
   })
 
   it('pins catalog models onto custom and overlays the builtin id for context', () => {
@@ -141,6 +152,8 @@ describe('grok config merge', () => {
         api_backend: 'chat_completions',
         api_key: 'secret',
         context_window: 1000000,
+        supports_reasoning_effort: true,
+        reasoning_efforts: GROK_EFFORT_MENU,
       },
     })
     expect(next.model).not.toHaveProperty(grokModelKey('aaaa-bbbb'))
@@ -170,28 +183,23 @@ describe('grok config merge', () => {
         base_url: 'https://gateway.test/v1',
         api_key: 'secret',
         context_window: 256000,
+        supports_reasoning_effort: true,
+        reasoning_efforts: GROK_EFFORT_MENU,
       },
       'grok-4.5': {
         model: 'grok-4.5',
         base_url: 'https://gateway.test/v1',
         api_key: 'secret',
         context_window: 256000,
+        supports_reasoning_effort: true,
+        reasoning_efforts: GROK_EFFORT_MENU,
       },
     })
 
     const official = applyOfficialModel(next, 'grok-build')
-    expect(official.model).toEqual({
-      [GROK_LIVE_MODEL_KEY]: {
-        name: 'Custom',
-        model: 'grok-4.6',
-        base_url: 'https://gateway.test/v1',
-        api_backend: 'chat_completions',
-        api_key: 'secret',
-        context_window: 1000000,
-      },
-    })
+    expect(official.model).toBeUndefined()
     expect(official.stackferry).toBeUndefined()
-    expect(official.models).toEqual({ default: 'grok-build' })
+    expect(official.models).toBeUndefined()
   })
 
   it('retargets leftover catalog overlays without making them live', () => {
@@ -267,12 +275,16 @@ describe('grok config merge', () => {
         api_backend: 'responses',
         api_key: 'stackferry-router',
         model: 'grok-4.6',
+        context_window: GROK_DEFAULT_CONTEXT_WINDOW,
       },
       'grok-4.6': {
         base_url: 'http://127.0.0.1:41234/v1',
         api_backend: 'responses',
         api_key: 'stackferry-router',
         model: 'grok-4.6',
+        context_window: GROK_DEFAULT_CONTEXT_WINDOW,
+        supports_reasoning_effort: true,
+        reasoning_efforts: GROK_EFFORT_MENU,
       },
     })
     expect(next.stackferry).toEqual({ owned: ['grok-4.6'] })
@@ -299,6 +311,7 @@ describe('grok config merge', () => {
         api_backend: 'responses',
         api_key: 'stackferry-router',
         model: 'demo',
+        context_window: GROK_DEFAULT_CONTEXT_WINDOW,
       },
     })
   })
@@ -312,7 +325,8 @@ describe('grok config merge', () => {
       },
       'grok-build',
     )
-    expect(official.models).toEqual({ default: 'grok-build', web_search: 'grok-4.6' })
+    expect(official.models).toEqual({ web_search: 'grok-4.6' })
+    expect(official.model).toBeUndefined()
     expect(official.ui).toEqual({ fork_secondary_model: 'grok-4.6' })
   })
 
@@ -529,8 +543,8 @@ permission_mode = "auto"
       model: 'grok-4.6',
       reasoning_effort: 'xhigh',
       supports_reasoning_effort: true,
+      reasoning_efforts: GROK_EFFORT_MENU,
     })
-    expect(next.model?.['grok-4.6']).not.toHaveProperty('reasoning_efforts')
     expect(stringifyToml(next)).toContain('value = "xhigh"')
   })
 
@@ -587,15 +601,7 @@ permission_mode = "auto"
     const official = applyOfficialModel(next, 'grok-build')
     expect(official.endpoints).toBeUndefined()
     expect(official.features).toBeUndefined()
-    expect(official.model).toEqual({
-      [GROK_LIVE_MODEL_KEY]: {
-        name: 'Custom',
-        model: 'chat-demo',
-        base_url: 'https://gateway.test/v1',
-        api_backend: 'responses',
-        api_key: 'chat-secret',
-      },
-    })
+    expect(official.model).toBeUndefined()
     expect(official.stackferry).toBeUndefined()
   })
 
