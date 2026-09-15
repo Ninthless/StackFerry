@@ -37,7 +37,7 @@ describe('grok config merge', () => {
     const key = GROK_LIVE_MODEL_KEY
     expect(next.models).toMatchObject({
       default: key,
-      web_search: key,
+      web_search: GROK_LIVE_MODEL_KEY,
       session_summary: key,
       image_description: key,
     })
@@ -62,6 +62,7 @@ describe('grok config merge', () => {
         api_backend: 'responses',
         api_key: 'secret',
         context_window: GROK_DEFAULT_CONTEXT_WINDOW,
+        supports_backend_search: true,
       },
     })
     expect(next.ui).toEqual({ theme: 'auto', fork_secondary_model: key })
@@ -145,6 +146,7 @@ describe('grok config merge', () => {
         api_backend: 'chat_completions',
         api_key: 'secret',
         context_window: 1000000,
+        supports_backend_search: true,
       },
       'grok-4.6': {
         model: 'grok-4.6',
@@ -154,6 +156,7 @@ describe('grok config merge', () => {
         context_window: 1000000,
         supports_reasoning_effort: true,
         reasoning_efforts: GROK_EFFORT_MENU,
+        supports_backend_search: true,
       },
     })
     expect(next.model).not.toHaveProperty(grokModelKey('aaaa-bbbb'))
@@ -276,6 +279,7 @@ describe('grok config merge', () => {
         api_key: 'stackferry-router',
         model: 'grok-4.6',
         context_window: GROK_DEFAULT_CONTEXT_WINDOW,
+        supports_backend_search: true,
       },
       'grok-4.6': {
         base_url: 'http://127.0.0.1:41234/v1',
@@ -285,6 +289,7 @@ describe('grok config merge', () => {
         context_window: GROK_DEFAULT_CONTEXT_WINDOW,
         supports_reasoning_effort: true,
         reasoning_efforts: GROK_EFFORT_MENU,
+        supports_backend_search: true,
       },
     })
     expect(next.stackferry).toEqual({ owned: ['grok-4.6'] })
@@ -312,6 +317,7 @@ describe('grok config merge', () => {
         api_key: 'stackferry-router',
         model: 'demo',
         context_window: GROK_DEFAULT_CONTEXT_WINDOW,
+        supports_backend_search: true,
       },
     })
   })
@@ -328,6 +334,32 @@ describe('grok config merge', () => {
     expect(official.models).toEqual({ web_search: 'grok-4.6' })
     expect(official.model).toBeUndefined()
     expect(official.ui).toEqual({ fork_secondary_model: 'grok-4.6' })
+  })
+
+  it('pins web_search to the live BYOK model and enables hosted search', () => {
+    const next = applyDirectModel(
+      {
+        models: { default: 'custom', web_search: 'grok-4.5' },
+      },
+      {
+        id: 'search-1',
+        name: 'Custom',
+        model: 'grok-4.6',
+        baseUrl: 'https://gateway.test/v1',
+        apiBackend: 'responses',
+        apiKey: 'secret',
+      },
+    )
+    expect(next.models).toMatchObject({
+      default: GROK_LIVE_MODEL_KEY,
+      web_search: GROK_LIVE_MODEL_KEY,
+    })
+    expect(next.model?.[GROK_LIVE_MODEL_KEY]).toMatchObject({
+      supports_backend_search: true,
+    })
+    expect(next.model?.['grok-4.6']).toMatchObject({
+      supports_backend_search: true,
+    })
   })
 
   it('writes effort, context, compact percent, and overlay keys onto the model table', () => {
@@ -359,7 +391,7 @@ x-foo = "bar"
     expect(next.models).toMatchObject({
       default: key,
       default_reasoning_effort: 'high',
-      web_search: key,
+      web_search: GROK_LIVE_MODEL_KEY,
     })
     expect(next.model).toMatchObject({
       [key]: {

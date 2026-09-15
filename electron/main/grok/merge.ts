@@ -19,6 +19,7 @@ const OWNED_MODEL_KEYS = new Set([
   'reasoning_effort',
   'reasoning_efforts',
   'supports_reasoning_effort',
+  'supports_backend_search',
   'context_window',
   'auto_compact_threshold_percent',
 ])
@@ -176,6 +177,7 @@ function applySession(table: TomlTable, session: GrokSession): void {
     table.reasoning_efforts = grokEffortMenu()
   }
   table.context_window = session.contextWindow ?? GROK_DEFAULT_CONTEXT_WINDOW
+  table.supports_backend_search = true
   if (session.autoCompact != null) table.auto_compact_threshold_percent = session.autoCompact
 }
 
@@ -260,7 +262,7 @@ function ensureUiTable(doc: TomlTable): TomlTable {
   return created
 }
 
-// 内置 web_search / 摘要 / fork 默认走 grok.com 会话；钉到当前 BYOK 模型，避免 Custom 主会话仍弹出 /login。
+// 内置 web_search / 摘要 / fork 钉到当前 BYOK。Responses 网关要打开 hosted search，否则工具空返回并掐断会话。
 function pinLiveModel(doc: TomlTable, key: string, session: GrokSession): void {
   const models = ensureModelsTable(doc)
   models.default = key
