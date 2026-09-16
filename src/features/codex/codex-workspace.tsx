@@ -4,15 +4,15 @@ import type { TableColumnsType } from "antd"
 import type { ProviderListItem } from "@shared/types"
 import { Button } from "@/components/ui/button"
 import * as m from "@/paraglide/messages.js"
-import { DeleteProviderDialog } from "./delete-provider-dialog"
-import { ProviderEditor } from "./provider-editor"
-import { ProviderListScroll } from "./provider-list-scroll"
-import { ProviderRoutingActions } from "./provider-routing-actions"
-import { SortableAntdTable } from "./sortable-antd-table"
-import type { ProvidersSession } from "./use-providers"
+import { DeleteProviderDialog } from "@/features/providers/delete-provider-dialog"
+import { ProviderListScroll } from "@/features/providers/provider-list-scroll"
+import { ProviderRoutingActions } from "@/features/providers/provider-routing-actions"
+import { SortableAntdTable } from "@/features/providers/sortable-antd-table"
+import { CodexProviderEditor } from "./codex-editor"
+import type { CodexProvidersSession } from "./use-codex-providers"
 
 type Props = {
-  session: ProvidersSession
+  session: CodexProvidersSession
 }
 
 function providerDescription(provider: ProviderListItem): string {
@@ -20,7 +20,7 @@ function providerDescription(provider: ProviderListItem): string {
   return [provider.model, provider.baseUrl].filter(Boolean).join(" · ") || m.provider_custom_fallback()
 }
 
-export function ProviderWorkspace({ session }: Props) {
+export function CodexWorkspace({ session }: Props) {
   const columns = useMemo<TableColumnsType<ProviderListItem>>(
     () => [
       {
@@ -79,7 +79,7 @@ export function ProviderWorkspace({ session }: Props) {
       <main className="mx-auto flex w-full max-w-5xl min-h-0 flex-1 flex-col overflow-hidden px-6 py-6">
         {body}
       </main>
-      <ProviderEditor
+      <CodexProviderEditor
         open={session.editorOpen}
         presets={session.presets}
         editing={session.editing}

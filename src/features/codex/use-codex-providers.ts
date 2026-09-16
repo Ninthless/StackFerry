@@ -18,7 +18,7 @@ function tipError(description: string, id?: string): void {
 
 const EMPTY_ROUTING = emptyRoutingSnapshot().lanes.codex
 
-export function useProviders() {
+export function useCodexProviders() {
   const [providers, setProviders] = useState<ProviderListItem[]>([])
   const [routing, setRouting] = useState<RoutingLaneState>(EMPTY_ROUTING)
   const [presets, setPresets] = useState<Preset[]>([])
@@ -188,4 +188,4 @@ export function useProviders() {
   }
 }
 
-export type ProvidersSession = ReturnType<typeof useProviders>
+export type CodexProvidersSession = ReturnType<typeof useCodexProviders>

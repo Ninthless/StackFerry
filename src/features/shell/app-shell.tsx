@@ -7,8 +7,8 @@ import { GrokWorkspace } from "@/features/grok/grok-workspace"
 import { useGrokProviders } from "@/features/grok/use-grok-providers"
 import { McpWorkspace } from "@/features/mcp/mcp-workspace"
 import { useMcps } from "@/features/mcp/use-mcp"
-import { ProviderWorkspace } from "@/features/providers/provider-workspace"
-import { useProviders } from "@/features/providers/use-providers"
+import { CodexWorkspace } from "@/features/codex/codex-workspace"
+import { useCodexProviders } from "@/features/codex/use-codex-providers"
 import { SettingsPage } from "@/features/settings/settings-page"
 import { SkillWorkspace } from "@/features/skills/skill-workspace"
 import { useSkills } from "@/features/skills/use-skills"
@@ -66,7 +66,7 @@ function ClaudeCodeView() {
 }
 
 function CodexView() {
-  const session = useProviders()
+  const session = useCodexProviders()
   const cli = cliById("codex")
 
   return (
@@ -86,7 +86,7 @@ function CodexView() {
         }
       />
       <Separator />
-      <ProviderWorkspace session={session} />
+      <CodexWorkspace session={session} />
     </>
   )
 }

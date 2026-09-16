@@ -122,10 +122,10 @@ To ship all three platforms, add a `CHANGELOG.md` section for the new version, b
 Layout:
 
 - `CHANGELOG.md` — user-facing release notes
-- `electron/main` — window, tray, IPC; per-CLI writers, routing, Skills, MCP, CLI install
+- `electron/main` — window, tray; per-CLI IPC/writers, routing, Skills, MCP, CLI install
 - `electron/preload` — `window.stackferry`
 - `shared` — types, IPC names, presets
-- `src/features` — CLI workspaces, Skills, MCP, settings
+- `src/features` — per-CLI workspaces (`codex`/`claude`/`grok`), shared provider widgets, Skills, MCP, settings
 - `test` — Vitest
 
 ## Contributing

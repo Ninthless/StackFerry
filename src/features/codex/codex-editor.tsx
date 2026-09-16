@@ -35,9 +35,9 @@ import { formatAppError } from "@/lib/format-app-error"
 import { presetLabel } from "@/lib/preset-label"
 import { HintLabel } from "@/features/settings/settings-hint"
 import * as m from "@/paraglide/messages.js"
-import { missingText, useEditorSubmit } from "./editor-validation"
-import { ApiKeyInput } from "./api-key-input"
-import { TomlEditor } from "./toml-editor"
+import { ApiKeyInput } from "@/features/providers/api-key-input"
+import { missingText, useEditorSubmit } from "@/features/providers/editor-validation"
+import { TomlEditor } from "@/features/providers/toml-editor"
 import { CodexSessionFields } from "./codex-session-fields"
 
 type Props = {
@@ -48,7 +48,7 @@ type Props = {
   onSubmit: (draft: ProviderDraft) => Promise<void>
 }
 
-export function ProviderEditor({ open, presets, editing, onOpenChange, onSubmit }: Props) {
+export function CodexProviderEditor({ open, presets, editing, onOpenChange, onSubmit }: Props) {
   const formId = useId()
   const [presetId, setPresetId] = useState("custom")
   const [name, setName] = useState("")

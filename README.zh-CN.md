@@ -122,10 +122,10 @@ pnpm build:linux   # AppImage + deb
 目录：
 
 - `CHANGELOG.md` — 面向用户的更新说明
-- `electron/main` — 窗口、托盘、IPC；各 CLI 写盘、路由、Skills、MCP、CLI 安装
+- `electron/main` — 窗口、托盘；各 CLI 的 IPC/写盘、路由、Skills、MCP、CLI 安装
 - `electron/preload` — `window.stackferry`
 - `shared` — 类型、IPC 名、预设
-- `src/features` — 各 CLI 工作区、Skills、MCP、设置
+- `src/features` — 各 CLI 工作区（`codex`/`claude`/`grok`）、共用供应商控件、Skills、MCP、设置
 - `test` — Vitest
 
 ## 参与贡献
