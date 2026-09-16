@@ -34,7 +34,7 @@ import { LocaleStore } from './locale-store'
 import { CcswImportService } from './ccsw/service'
 import { LegacyImportService } from './legacy/service'
 import {
-  applyWindowMica,
+  applyWindowAppearance,
   currentMicaState,
   MICA_WINDOW_BACKGROUND,
   solidWindowBackground,
@@ -51,7 +51,7 @@ import { McpService } from './mcp/service'
 import { broadcastSkillsChanged } from './skills/ipc'
 import { SkillService } from './skills/service'
 import { AppTray } from './tray'
-import { windowChromeOptions } from './window-chrome'
+import { titleBarOverlayAppearance, windowChromeOptions } from './window-chrome'
 import {
   bindProviderImportWindow,
   flushProviderImportOffer,
@@ -132,7 +132,12 @@ async function createWindow(): Promise<void> {
     roundedCorners: true,
     hasShadow: true,
     icon: appIconPath,
-    ...windowChromeOptions(process.platform),
+    ...windowChromeOptions(
+      process.platform,
+      process.platform === 'win32'
+        ? titleBarOverlayAppearance(nativeTheme.shouldUseDarkColors, windowUsesMicaSurface(mica))
+        : undefined,
+    ),
     webPreferences: {
       preload,
       sandbox: true,
@@ -141,7 +146,7 @@ async function createWindow(): Promise<void> {
     },
   })
   bindWindowState(win)
-  applyWindowMica(win, micaPreference)
+  applyWindowAppearance(win, micaPreference)
 
   if (VITE_DEV_SERVER_URL) {
     await win.loadURL(VITE_DEV_SERVER_URL)
@@ -199,7 +204,7 @@ app.whenReady().then(async () => {
   micaPreference = await appearanceStore.getMicaPreference()
   nativeTheme.themeSource = await appearanceStore.getThemePreference()
   nativeTheme.on('updated', () => {
-    if (win && !win.isDestroyed()) applyWindowMica(win, micaPreference)
+    if (win && !win.isDestroyed()) applyWindowAppearance(win, micaPreference)
   })
   setMainLocale(await localeStore.resolveLocale())
   claude = new ClaudeEnableService({
@@ -311,14 +316,14 @@ app.whenReady().then(async () => {
     getMicaState: async () => currentMicaState(micaPreference),
     setMicaPreference: async (enabled: boolean) => {
       micaPreference = await appearanceStore!.setMicaPreference(enabled)
-      if (win && !win.isDestroyed()) applyWindowMica(win, micaPreference)
+      if (win && !win.isDestroyed()) applyWindowAppearance(win, micaPreference)
       return currentMicaState(micaPreference)
     },
     getThemePreference: () => appearanceStore!.getThemePreference(),
     setThemePreference: async (preference: ThemePreference) => {
       const next = await appearanceStore!.setThemePreference(preference)
       nativeTheme.themeSource = next
-      if (win && !win.isDestroyed()) applyWindowMica(win, micaPreference)
+      if (win && !win.isDestroyed()) applyWindowAppearance(win, micaPreference)
       return next
     },
     getOnboardingCompleted: () => appearanceStore!.getOnboardingCompleted(),

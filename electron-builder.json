@@ -63,7 +63,7 @@
     "artifactName": "${productName}-${version}-${arch}.${ext}"
   },
   "linux": {
-    "icon": "public/icon.png",
+    "icon": "build/icons",
     "category": "Development",
     "maintainer": "Ninthless <ninthless@users.noreply.github.com>",
     "desktop": {

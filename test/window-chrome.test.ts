@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { titleBarDoubleClickAction, windowChromeOptions } from '../electron/main/window-chrome'
+import {
+  MICA_TITLEBAR_OVERLAY_COLOR,
+  TITLEBAR_OVERLAY_HEIGHT,
+  WINDOW_BACKGROUND_DARK,
+  WINDOW_BACKGROUND_LIGHT,
+  titleBarDoubleClickAction,
+  titleBarOverlayAppearance,
+  windowChromeOptions,
+} from '../electron/main/window-chrome'
 
 describe('windowChromeOptions', () => {
   it('uses inset traffic lights on macOS', () => {
@@ -10,17 +18,70 @@ describe('windowChromeOptions', () => {
     })
   })
 
-  it('uses a frameless window on Linux', () => {
+  it('ignores overlay appearance on macOS', () => {
+    expect(windowChromeOptions('darwin', titleBarOverlayAppearance(true, false))).toEqual(
+      windowChromeOptions('darwin'),
+    )
+  })
+
+  it('uses a hidden title bar with native overlay controls on Linux', () => {
     expect(windowChromeOptions('linux')).toEqual({
-      frame: false,
+      titleBarStyle: 'hidden',
+      titleBarOverlay: { height: TITLEBAR_OVERLAY_HEIGHT },
       autoHideMenuBar: true,
     })
   })
 
-  it('hides the native caption on Windows', () => {
+  it('keeps Linux overlay colors on the system default', () => {
+    expect(windowChromeOptions('linux', titleBarOverlayAppearance(true, false))).toEqual({
+      titleBarStyle: 'hidden',
+      titleBarOverlay: { height: TITLEBAR_OVERLAY_HEIGHT },
+      autoHideMenuBar: true,
+    })
+  })
+
+  it('uses a hidden title bar with native overlay controls on Windows', () => {
     expect(windowChromeOptions('win32')).toEqual({
       titleBarStyle: 'hidden',
+      titleBarOverlay: { height: TITLEBAR_OVERLAY_HEIGHT },
       autoHideMenuBar: true,
+    })
+  })
+
+  it('applies overlay colors on Windows when provided', () => {
+    const overlay = titleBarOverlayAppearance(true, false)
+    expect(windowChromeOptions('win32', overlay)).toEqual({
+      titleBarStyle: 'hidden',
+      titleBarOverlay: overlay,
+      autoHideMenuBar: true,
+    })
+  })
+})
+
+describe('titleBarOverlayAppearance', () => {
+  it('matches the solid window background in dark and light', () => {
+    expect(titleBarOverlayAppearance(true, false)).toEqual({
+      height: TITLEBAR_OVERLAY_HEIGHT,
+      color: WINDOW_BACKGROUND_DARK,
+      symbolColor: WINDOW_BACKGROUND_LIGHT,
+    })
+    expect(titleBarOverlayAppearance(false, false)).toEqual({
+      height: TITLEBAR_OVERLAY_HEIGHT,
+      color: WINDOW_BACKGROUND_LIGHT,
+      symbolColor: WINDOW_BACKGROUND_DARK,
+    })
+  })
+
+  it('uses near-transparent overlay color when mica is on', () => {
+    expect(titleBarOverlayAppearance(true, true)).toEqual({
+      height: TITLEBAR_OVERLAY_HEIGHT,
+      color: MICA_TITLEBAR_OVERLAY_COLOR,
+      symbolColor: WINDOW_BACKGROUND_LIGHT,
+    })
+    expect(titleBarOverlayAppearance(false, true)).toEqual({
+      height: TITLEBAR_OVERLAY_HEIGHT,
+      color: MICA_TITLEBAR_OVERLAY_COLOR,
+      symbolColor: WINDOW_BACKGROUND_DARK,
     })
   })
 })

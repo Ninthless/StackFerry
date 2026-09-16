@@ -213,6 +213,7 @@ export type GrokAppStatus = {
 export type StackferryApi = {
   showWindowControls: boolean
   usesMacChrome: boolean
+  usesWindowControlsOverlay: boolean
   listProviders: () => Promise<ProviderListItem[]>
   readProviderApiKey: (id: string) => Promise<string>
   listPresets: () => Promise<Preset[]>

@@ -3,8 +3,9 @@ import { IpcChannel } from '../../shared/ipc'
 import type { AppUpdateStatus, ClaudeProviderDraft, ProviderDraft, ProviderImportOffer, StackferryApi } from '../../shared/types'
 
 const api: StackferryApi = {
-  showWindowControls: process.platform !== 'darwin',
+  showWindowControls: false,
   usesMacChrome: process.platform === 'darwin',
+  usesWindowControlsOverlay: process.platform === 'linux' || process.platform === 'win32',
   listProviders: () => ipcRenderer.invoke(IpcChannel.listProviders),
   readProviderApiKey: (id) => ipcRenderer.invoke(IpcChannel.readProviderApiKey, id),
   listPresets: () => ipcRenderer.invoke(IpcChannel.listPresets),

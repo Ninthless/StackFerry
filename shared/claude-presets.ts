@@ -13,6 +13,15 @@ export const CLAUDE_PRESETS: ClaudePreset[] = [
     requiresApiKey: false,
   },
   {
+    id: 'xfcode',
+    name: 'XFCode',
+    kind: 'custom',
+    baseUrl: 'https://api.orangecc.cc',
+    model: '',
+    authScheme: 'bearer',
+    requiresApiKey: true,
+  },
+  {
     id: 'custom',
     name: 'Custom',
     kind: 'custom',

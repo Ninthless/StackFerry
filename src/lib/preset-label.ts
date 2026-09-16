@@ -11,6 +11,7 @@ const PRESET_LABELS: Record<string, () => string> = {
 
 const CLAUDE_PRESET_LABELS: Record<string, () => string> = {
   official: () => m.preset_claude_official(),
+  xfcode: () => m.preset_xfcode(),
   custom: () => m.preset_custom(),
 }
 

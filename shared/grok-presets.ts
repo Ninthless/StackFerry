@@ -16,6 +16,15 @@ export const GROK_PRESETS: GrokPreset[] = [
     requiresApiKey: false,
   },
   {
+    id: 'xfcode',
+    name: 'XFCode',
+    kind: 'custom',
+    baseUrl: 'https://api.orangecc.cc/v1',
+    model: '',
+    apiBackend: 'responses',
+    requiresApiKey: true,
+  },
+  {
     id: 'custom',
     name: 'Custom',
     kind: 'custom',

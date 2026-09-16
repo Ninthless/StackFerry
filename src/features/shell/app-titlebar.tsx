@@ -9,9 +9,18 @@ type Props = {
 }
 
 export function AppTitlebar({ title, action }: Props) {
+  const overlay = window.stackferry?.usesWindowControlsOverlay === true
   return (
     <header
       className="app-region-drag bg-background flex h-10 w-full shrink-0 items-center select-none"
+      style={
+        overlay
+          ? {
+              marginLeft: 'env(titlebar-area-x, 0px)',
+              width: 'env(titlebar-area-width, 100%)',
+            }
+          : undefined
+      }
       onDoubleClick={() => {
         void window.stackferry?.windowTitleBarDoubleClick()
       }}

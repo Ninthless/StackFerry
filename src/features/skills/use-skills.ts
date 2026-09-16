@@ -3,6 +3,7 @@ import type { SkillImportCandidate, SkillListItem, SkillRepo, SkillRepoDraft, Sk
 import { toast } from "@/components/ui/toast"
 import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
+import { isRepoListResult, isSkillListResult } from "./action-kind"
 import { filterSkills, isMarketStatus, MARKET_REPO_ALL, type MarketStatus } from "./filter"
 
 function desktopApi() {
@@ -57,9 +58,9 @@ export function useSkills() {
     ): Promise<void> => {
       try {
         const result = await action()
-        if (isSkillList(result)) {
+        if (isSkillListResult(result)) {
           setSkills(result)
-        } else if (Array.isArray(result)) {
+        } else if (isRepoListResult(result)) {
           setRepos(result)
         } else {
           await refresh()
@@ -83,7 +84,9 @@ export function useSkills() {
       timeout: 0,
     })
     try {
-      await run(() => desktopApi().refreshSkills())
+      await run(async () => {
+        await desktopApi().refreshSkills()
+      })
       toast.add({
         id: toastId,
         type: "success",
@@ -213,7 +216,9 @@ export function useSkills() {
       await run(() => desktopApi().addSkillRepo(draft), { toast: m.toast_skill_repo_added() })
       setRefreshing(true)
       try {
-        await run(() => desktopApi().refreshSkills())
+        await run(async () => {
+          await desktopApi().refreshSkills()
+        })
       } finally {
         setRefreshing(false)
       }
@@ -279,7 +284,3 @@ export function useSkills() {
 }
 
 export type SkillsSession = ReturnType<typeof useSkills>
-
-function isSkillList(value: SkillListItem[] | SkillRepo[] | void): value is SkillListItem[] {
-  return Array.isArray(value) && value.length > 0 && "installed" in value[0]
-}

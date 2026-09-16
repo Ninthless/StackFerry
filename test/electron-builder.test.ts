@@ -9,11 +9,12 @@ type BuilderConfig = {
   win: { target: BuilderTarget[]; artifactName: string }
   mac: { artifactName: string }
   linux: {
+    icon: string
     target: BuilderTarget[]
     artifactName: string
     desktop: { entry: { MimeType: string } }
   }
-  deb: { depends: string[] }
+  deb: { depends: string[]; afterInstall?: string; afterRemove?: string }
 }
 
 describe('windows packages', () => {
@@ -37,6 +38,21 @@ describe('linux packages', () => {
     expect(config.linux.artifactName).toBe('${productName}-${version}-${arch}.${ext}')
     expect(config.mac.artifactName).toBe('${productName}-${version}-${arch}.${ext}')
     expect(config.deb.depends.some((item) => item.includes('libgtk-3-0t64'))).toBe(true)
+  })
+
+  it('ships hicolor PNG sizes that GTK indexes, without replacing the default deb postinst', () => {
+    const config = JSON.parse(
+      readFileSync(path.join(process.cwd(), 'electron-builder.json'), 'utf8'),
+    ) as BuilderConfig
+    expect(config.linux.icon).toBe('build/icons')
+    expect(config.deb.afterInstall).toBeUndefined()
+    expect(config.deb.afterRemove).toBeUndefined()
+    for (const size of [16, 32, 48, 64, 128, 256, 512]) {
+      const file = path.join(process.cwd(), 'build/icons', `${size}x${size}.png`)
+      const png = readFileSync(file)
+      expect(png.readUInt32BE(16)).toBe(size)
+      expect(png.readUInt32BE(20)).toBe(size)
+    }
   })
 
   it('registers the stackferry import protocol', () => {
