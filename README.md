@@ -12,6 +12,7 @@
   <a href="https://github.com/Ninthless/StackFerry/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/Ninthless/StackFerry"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/Ninthless/StackFerry"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0A0A0A">
+  <a href="https://x.com/ninthless"><img alt="X @ninthless" src="https://img.shields.io/badge/X-%40ninthless-0A0A0A?logo=x&logoColor=white"></a>
 </p>
 
 Desktop provider manager and local failover router for Codex, Claude Code, and Grok.
