@@ -2,7 +2,7 @@
   "name": "stackferry",
   "productName": "StackFerry",
   "desktopName": "stackferry",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "private": true,
   "description": "Desktop provider manager and local failover router for Codex, Claude Code, and Grok.",
   "license": "GPL-3.0",
@@ -29,7 +29,8 @@
     "@codeproxy/core": "0.1.26",
     "electron-updater": "6.6.4",
     "fflate": "^0.8.3",
-    "smol-toml": "^1.5.2"
+    "smol-toml": "^1.5.2",
+    "undici": "^8.11.2"
   },
   "devDependencies": {
     "@ant-design/cssinjs": "^2.1.2",

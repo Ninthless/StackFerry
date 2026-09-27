@@ -16,6 +16,7 @@ export const APP_ERROR_CODES = [
   'overlay_positive_int',
   'models_missing_base_url',
   'models_invalid_url',
+  'egress_proxy_url',
   'models_unsupported_protocol',
   'models_invalid_payload',
   'models_empty',
@@ -128,12 +129,23 @@ export function encodeAppErrorMessage(code: AppErrorCode, params: AppErrorParams
 export function decodeAppErrorMessage(
   message: string,
 ): { code: AppErrorCode; params: AppErrorParams } | null {
-  const start = message.indexOf(PREFIX)
-  if (start < 0) return null
-  const rest = message.slice(start + PREFIX.length)
+  let from = 0
+  while (from < message.length) {
+    const start = message.indexOf(PREFIX, from)
+    if (start < 0) return null
+    const decoded = decodeAppErrorAt(message.slice(start + PREFIX.length))
+    if (decoded) return decoded
+    from = start + PREFIX.length
+  }
+  return null
+}
+
+function decodeAppErrorAt(
+  rest: string,
+): { code: AppErrorCode; params: AppErrorParams } | null {
   const separator = rest.indexOf(':')
   if (separator < 0) return null
-  const code = rest.slice(0, separator)
+  const code = rest.slice(0, separator).trim()
   if (!isAppErrorCode(code)) return null
   try {
     const params = JSON.parse(rest.slice(separator + 1)) as unknown

@@ -45,13 +45,15 @@ import { AppReleaseService } from './releases/service'
 import { AnnouncementStore } from './releases/store'
 import { createElectronUpdateFeed, readLinuxPackageType } from './releases/updater'
 import { RoutingService } from './routing/service'
+import { bindEgressStore, closeOutboundProxy } from './egress/fetch'
+import { EgressProxyStore } from './egress/store'
 import { RoutingStore } from './routing/store'
 import { broadcastMcpsChanged } from './mcp/ipc'
 import { McpService } from './mcp/service'
 import { broadcastSkillsChanged } from './skills/ipc'
 import { SkillService } from './skills/service'
 import { AppTray } from './tray'
-import { titleBarOverlayAppearance, windowChromeOptions } from './window-chrome'
+import { windowChromeOptions } from './window-chrome'
 import {
   bindProviderImportWindow,
   flushProviderImportOffer,
@@ -132,12 +134,7 @@ async function createWindow(): Promise<void> {
     roundedCorners: true,
     hasShadow: true,
     icon: appIconPath,
-    ...windowChromeOptions(
-      process.platform,
-      process.platform === 'win32'
-        ? titleBarOverlayAppearance(nativeTheme.shouldUseDarkColors, windowUsesMicaSurface(mica))
-        : undefined,
-    ),
+    ...windowChromeOptions(process.platform),
     webPreferences: {
       preload,
       sandbox: true,
@@ -199,6 +196,8 @@ app.whenReady().then(async () => {
   claudeStore = new ClaudeProviderStore(path.join(app.getPath('userData'), 'claude-providers.json'))
   grokStore = new GrokProviderStore(path.join(app.getPath('userData'), 'grok-providers.json'))
   routingStore = new RoutingStore(path.join(app.getPath('userData'), 'routing.json'))
+  const egressStore = new EgressProxyStore(path.join(app.getPath('userData'), 'egress-proxy.json'))
+  bindEgressStore(egressStore)
   localeStore = new LocaleStore(path.join(app.getPath('userData'), 'locale.json'))
   appearanceStore = new AppearanceStore(path.join(app.getPath('userData'), 'appearance.json'))
   micaPreference = await appearanceStore.getMicaPreference()
@@ -230,6 +229,7 @@ app.whenReady().then(async () => {
     setNeedsRestart: (value) => {
       needsRestart = value
     },
+    egress: egressStore,
   })
   const skills = new SkillService({
     userData: app.getPath('userData'),
@@ -378,6 +378,7 @@ async function prepareQuitForUpdate(): Promise<void> {
   quitRestored = true
   isQuitting = true
   await routing?.restoreOnQuit()
+  closeOutboundProxy()
 }
 
 async function restoreThenQuit(): Promise<void> {

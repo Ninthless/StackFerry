@@ -44,6 +44,24 @@ describe('Codex catalog encoding', () => {
     const levels = encoded.models[0]?.supported_reasoning_levels ?? []
     expect(levels.map((level) => level.effort)).toEqual([...REASONING_EFFORTS])
     expect(levels.every((level) => level.description.length > 0)).toBe(true)
+    expect(encoded.models[0]).not.toHaveProperty('context_window')
+    expect(encoded.models[0]).not.toHaveProperty('max_context_window')
+  })
+
+  it('raises every catalog model to the configured context window', () => {
+    const encoded = encodeCodexCatalog(['grok-4.7', 'grok-4.6'], 400_000)
+    expect(encoded.models).toEqual([
+      expect.objectContaining({
+        slug: 'grok-4.7',
+        context_window: 400_000,
+        max_context_window: 400_000,
+      }),
+      expect.objectContaining({
+        slug: 'grok-4.6',
+        context_window: 400_000,
+        max_context_window: 400_000,
+      }),
+    ])
   })
 
   it('treats Windows and POSIX paths to the same catalog as owned', () => {

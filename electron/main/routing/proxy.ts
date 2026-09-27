@@ -12,6 +12,7 @@ import {
   upstreamRequestUrl,
   type ProxyRoute,
 } from './policy'
+import { outboundFetch } from '../egress/fetch'
 import { translateChatResponse, translateResponsesRequest, type ChatTranslation } from './translate'
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024
@@ -231,7 +232,7 @@ export class RoutingProxy {
     const onClientClose = () => controller.abort()
     incoming.on('close', onClientClose)
     try {
-      const response = await (this.deps.fetch ?? fetch)(url, {
+      const response = await (this.deps.fetch ?? outboundFetch)(url, {
         method: incoming.method ?? 'GET',
         headers,
         body: incoming.method === 'GET' || incoming.method === 'HEAD' ? undefined : new Uint8Array(outboundBody),

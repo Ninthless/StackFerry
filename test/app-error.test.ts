@@ -24,6 +24,13 @@ describe('app error', () => {
         new Error(`Error invoking remote method 'providers:add': ${error.message}`),
       )?.params,
     ).toEqual({ key: 'approval_policy' })
+    expect(
+      appErrorFromUnknown(
+        new Error(
+          `Error invoking remote method 'egress:set': AppError: ${new AppError('egress_proxy_url').message}`,
+        ),
+      )?.code,
+    ).toBe('egress_proxy_url')
   })
 
   it('ignores ordinary error messages', () => {

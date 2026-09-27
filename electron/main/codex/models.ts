@@ -1,3 +1,4 @@
+import { outboundFetch } from '../egress/fetch'
 import { AppError } from '../../../shared/app-error'
 import { modelsUrl, parseModelsResponse } from '../../../shared/provider-models'
 import type { ProviderStore } from './store'
@@ -38,7 +39,7 @@ async function fetchModelsJson(url: string, apiKey: string): Promise<unknown> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   try {
-    const response = await fetch(url, {
+    const response = await outboundFetch(url, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${apiKey}`,

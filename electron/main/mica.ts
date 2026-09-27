@@ -1,11 +1,7 @@
 import { nativeTheme, type BrowserWindow } from 'electron'
 import os from 'node:os'
 import { isMicaSupported, resolveMicaState, type MicaState } from '../../shared/mica'
-import {
-  titleBarOverlayAppearance,
-  WINDOW_BACKGROUND_DARK,
-  WINDOW_BACKGROUND_LIGHT,
-} from './window-chrome'
+import { WINDOW_BACKGROUND_DARK, WINDOW_BACKGROUND_LIGHT } from './window-chrome'
 
 export const MICA_WINDOW_BACKGROUND = '#00000000'
 
@@ -29,15 +25,6 @@ function applyWindowMica(win: BrowserWindow, enabled: boolean): void {
   win.setBackgroundMaterial(useMica ? 'mica' : 'none')
 }
 
-function applyTitleBarOverlay(win: BrowserWindow, enabled: boolean): void {
-  if (process.platform !== 'win32' || win.isDestroyed()) return
-  if (typeof win.setTitleBarOverlay !== 'function') return
-  win.setTitleBarOverlay(
-    titleBarOverlayAppearance(nativeTheme.shouldUseDarkColors, currentMicaSupport() && enabled),
-  )
-}
-
 export function applyWindowAppearance(win: BrowserWindow, micaEnabled: boolean): void {
   applyWindowMica(win, micaEnabled)
-  applyTitleBarOverlay(win, micaEnabled)
 }

@@ -6,6 +6,7 @@ import type {
 import type { CliToolId, CliToolStatus } from './cli-tools'
 import type { LanguagePreference } from './locale'
 import type { MicaState } from './mica'
+import type { EgressProxyPatch, EgressProxyView } from './egress-proxy'
 import type { RoutingSettingsPatch, RoutingSnapshot, RoutingLaneState } from './routing'
 import type { McpDraft, McpListItem, McpTarget } from './mcp'
 import type { ProviderImportOffer } from './provider-import'
@@ -50,7 +51,7 @@ export type {
   CcswProviderRow,
   CcswSkipReason,
 } from './ccsw-import'
-export type { LanguagePreference, MicaState, RoutingLaneState, RoutingSettingsPatch, RoutingSnapshot, ThemePreference }
+export type { EgressProxyPatch, EgressProxyView, LanguagePreference, MicaState, RoutingLaneState, RoutingSettingsPatch, RoutingSnapshot, ThemePreference }
 
 export type ProviderKind = 'official' | 'custom'
 
@@ -213,7 +214,6 @@ export type GrokAppStatus = {
 export type StackferryApi = {
   showWindowControls: boolean
   usesMacChrome: boolean
-  usesWindowControlsOverlay: boolean
   listProviders: () => Promise<ProviderListItem[]>
   readProviderApiKey: (id: string) => Promise<string>
   listPresets: () => Promise<Preset[]>
@@ -244,6 +244,8 @@ export type StackferryApi = {
   setThemePreference: (preference: ThemePreference) => Promise<ThemePreference>
   getOnboardingCompleted: () => Promise<boolean>
   setOnboardingCompleted: (completed: boolean) => Promise<boolean>
+  getEgressProxy: () => Promise<EgressProxyView>
+  setEgressProxy: (patch: EgressProxyPatch) => Promise<EgressProxyView>
   getRouting: () => Promise<RoutingSnapshot>
   setRoutingSettings: (patch: RoutingSettingsPatch) => Promise<RoutingSnapshot>
   setProviderQueued: (cliId: CliToolId, id: string, queued: boolean) => Promise<RoutingSnapshot>

@@ -1,3 +1,4 @@
+import { outboundFetch } from '../egress/fetch'
 import { AppError } from '../../../shared/app-error'
 import { isClaudeAuthScheme } from '../../../shared/claude-presets'
 import { claudeModelsHeaders, claudeModelsUrl } from '../../../shared/claude-models'
@@ -55,7 +56,7 @@ async function fetchClaudeModelsJson(
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   try {
-    const response = await fetch(url, {
+    const response = await outboundFetch(url, {
       method: 'GET',
       headers: claudeModelsHeaders(apiKey, authScheme),
       signal: controller.signal,

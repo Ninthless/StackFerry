@@ -2,6 +2,7 @@ import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promis
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { encodeCodexCatalog, uniqueCodexModelIds } from '../../../shared/codex-models'
+import { parseProviderOverlay } from '../../../shared/provider-overlay'
 import { migrateCodexHistoryProviderBucket } from './history'
 import { codexAuthPath, codexConfigPath, stackferryCatalogPath } from './home'
 import {
@@ -28,7 +29,7 @@ export async function enableThirdPartyLiveConfig(options: {
   const configPath = codexConfigPath(options.codexHome)
   const backupPath = await backupLiveFiles(options.codexHome, options.backupRoot)
   const current = await readTomlOrEmpty(configPath)
-  await writeStackferryCatalog(options.codexHome, options.provider.models)
+  await writeStackferryCatalog(options.codexHome, options.provider.models, options.provider.tomlText)
   const next = applyThirdPartyProvider(current, withCatalog(options.codexHome, options.provider))
   await mkdir(options.codexHome, { recursive: true })
   await atomicWriteFile(configPath, stringifyToml(next))
@@ -58,7 +59,7 @@ export async function enableRouterLiveConfig(options: {
   const configPath = codexConfigPath(options.codexHome)
   const backupPath = await backupLiveFiles(options.codexHome, options.backupRoot)
   const current = await readTomlOrEmpty(configPath)
-  await writeStackferryCatalog(options.codexHome, options.provider.models)
+  await writeStackferryCatalog(options.codexHome, options.provider.models, options.provider.tomlText)
   const next = applyRouterProvider(current, {
     port: options.port,
     ...withCatalog(options.codexHome, options.provider),
@@ -89,6 +90,7 @@ function withCatalog<T extends { models?: readonly string[] }>(
 async function writeStackferryCatalog(
   codexHome: string,
   models: readonly string[] | undefined,
+  tomlText: string,
 ): Promise<void> {
   const listed = uniqueCodexModelIds(
     (models ?? []).filter((item): item is string => typeof item === 'string'),
@@ -96,7 +98,11 @@ async function writeStackferryCatalog(
   if (listed.length === 0) return
   const filePath = stackferryCatalogPath(codexHome)
   await mkdir(path.dirname(filePath), { recursive: true })
-  await atomicWriteFile(filePath, `${JSON.stringify(encodeCodexCatalog(listed), null, 2)}\n`)
+  const contextWindow = parseProviderOverlay(tomlText).contextWindow
+  await atomicWriteFile(
+    filePath,
+    `${JSON.stringify(encodeCodexCatalog(listed, contextWindow), null, 2)}\n`,
+  )
 }
 
 export async function backupLiveFiles(codexHome: string, backupRoot: string): Promise<string> {

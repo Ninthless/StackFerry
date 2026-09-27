@@ -26,6 +26,8 @@ export type CodexCatalogEntry = {
   truncation_policy: { mode: 'bytes'; limit: 10_000 }
   supports_parallel_tool_calls: false
   experimental_supported_tools: []
+  context_window?: number
+  max_context_window?: number
 }
 
 export type CodexCatalogFile = {
@@ -60,14 +62,17 @@ export function persistCodexModels(
   return { model: ordered[0] ?? '', models: ordered }
 }
 
-export function encodeCodexCatalog(models: readonly string[]): CodexCatalogFile {
+export function encodeCodexCatalog(
+  models: readonly string[],
+  contextWindow?: number | null,
+): CodexCatalogFile {
   return {
-    models: uniqueCodexModelIds(models).map(codexCatalogEntry),
+    models: uniqueCodexModelIds(models).map((slug) => codexCatalogEntry(slug, contextWindow)),
   }
 }
 
-function codexCatalogEntry(slug: string): CodexCatalogEntry {
-  return {
+function codexCatalogEntry(slug: string, contextWindow?: number | null): CodexCatalogEntry {
+  const entry: CodexCatalogEntry = {
     slug,
     display_name: slug,
     description: slug,
@@ -90,6 +95,11 @@ function codexCatalogEntry(slug: string): CodexCatalogEntry {
     supports_parallel_tool_calls: false,
     experimental_supported_tools: [],
   }
+  if (contextWindow != null) {
+    entry.context_window = contextWindow
+    entry.max_context_window = contextWindow
+  }
+  return entry
 }
 
 function catalogReasoningLevels(): CodexReasoningLevel[] {

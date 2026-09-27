@@ -12,6 +12,9 @@ import type { ClaudeProviderStore } from '../claude/store'
 import type { GrokEnableService } from '../grok/service'
 import type { GrokProviderStore } from '../grok/store'
 import type { ProviderStore } from '../codex/store'
+import { emptyEgressProxyView, type EgressProxyPatch, type EgressProxyView } from '../../../shared/egress-proxy'
+import { closeOutboundProxy } from '../egress/fetch'
+import type { EgressProxyStore } from '../egress/store'
 import { createClaudeAdapter } from './claude-adapter'
 import { createCodexAdapter } from './codex-adapter'
 import { createGrokAdapter } from './grok-adapter'
@@ -20,6 +23,7 @@ import { RoutingStore } from './store'
 
 export class RoutingService {
   private settings: RoutingSettings | null = null
+  private egressEnabled = false
   private readonly lanes: Record<RoutingLaneId, RoutingLane>
 
   constructor(
@@ -33,6 +37,7 @@ export class RoutingService {
       getCodexHome: () => string
       backupRoot: string
       setNeedsRestart: (value: boolean) => void
+      egress?: EgressProxyStore
     },
   ) {
     this.lanes = {
@@ -50,6 +55,7 @@ export class RoutingService {
 
   async start(): Promise<void> {
     await this.refresh()
+    if (this.options.egress) this.egressEnabled = (await this.options.egress.get()).enabled
     for (const id of ROUTING_LANE_IDS) await this.lanes[id].reenterIfNeeded()
   }
 
@@ -64,6 +70,20 @@ export class RoutingService {
       logRetention: settings.logRetention,
       lanes,
     }
+  }
+
+  async egressView(): Promise<EgressProxyView> {
+    if (!this.options.egress) return emptyEgressProxyView()
+    return this.options.egress.get()
+  }
+
+  async setEgress(patch: EgressProxyPatch): Promise<EgressProxyView> {
+    if (!this.options.egress) return this.egressView()
+    const view = await this.options.egress.set(patch)
+    this.egressEnabled = view.enabled
+    closeOutboundProxy()
+    for (const id of ROUTING_LANE_IDS) await this.lanes[id].reconcile()
+    return view
   }
 
   async setSettings(patch: RoutingSettingsPatch): Promise<RoutingSnapshot> {
@@ -114,6 +134,7 @@ export class RoutingService {
         this.settings = await this.options.store.setQueue(id, queue)
       },
       setNeedsRestart: this.options.setNeedsRestart,
+      egressActive: () => this.egressEnabled,
       routes,
     }
   }

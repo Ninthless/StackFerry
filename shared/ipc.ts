@@ -25,6 +25,8 @@ export const IpcChannel = {
   setTheme: 'app:setTheme',
   getOnboardingCompleted: 'app:getOnboardingCompleted',
   setOnboardingCompleted: 'app:setOnboardingCompleted',
+  getEgressProxy: 'egress:get',
+  setEgressProxy: 'egress:set',
   getRouting: 'routing:get',
   setRoutingSettings: 'routing:setSettings',
   setProviderQueued: 'routing:setQueued',

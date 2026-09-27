@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { clis, type CliId } from "@/features/clis/registry"
 import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
+import { EgressProxyCard } from "./egress-proxy-card"
 import { RoutingLogsCard } from "./routing-logs"
 import { RoutingQueueField } from "./routing-queue"
 import { HintLabel, HintTitle } from "./settings-hint"
@@ -130,6 +131,7 @@ export function RoutingSettings() {
 
   return (
     <div className="flex flex-col gap-6">
+      <EgressProxyCard onChanged={() => { void refresh() }} />
       {error ? (
         <Alert variant="destructive">
           <AlertTitle>{m.status_read_failed()}</AlertTitle>
@@ -278,7 +280,7 @@ function LanePanel({
   const names = new Map(providers.map((provider) => [provider.id, provider.name]))
   const breakerById = new Map(lane.breakers.map((item) => [item.providerId, item.state]))
   const currentId = lane.queue[0] ?? null
-  const failover = lane.active && lane.queue.length > 0
+  const failover = lane.active
   const copy = laneCopy(cliId)
 
   return (

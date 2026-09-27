@@ -40,6 +40,7 @@ export class RoutingLane {
       setQueue: (queue: string[]) => Promise<void>
       setNeedsRestart: (value: boolean) => void
       routes: readonly ProxyRoute[]
+      egressActive?: () => boolean
     },
   ) {
     this.breaker = new CircuitBreaker(() => {
@@ -120,7 +121,7 @@ export class RoutingLane {
     const persist = this.options.persist()
     const queue = kind === 'custom' ? queueAfterEnable(persist.queue, id) : persist.queue
     if (queue !== persist.queue) await this.options.setQueue(queue)
-    const needsRouter = await this.adapter.overlayNeedsRouter(id)
+    const needsRouter = await this.localRouterRequired(id)
     const plan = planEnable(kind, queue.length, needsRouter)
     await this.executeEnable(plan, id)
     await this.adapter.markEnabled(id)
@@ -142,7 +143,7 @@ export class RoutingLane {
     const persist = this.options.persist()
     const active = await this.adapter.peekActive()
     if (active?.kind !== 'custom') return
-    const needsRouter = await this.adapter.overlayNeedsRouter(active.id)
+    const needsRouter = await this.localRouterRequired(active.id)
     if (persist.queue.length < 1 && !needsRouter) return
     const port = await this.ensureProxy()
     await this.adapter.writeRouter(port, active.id)
@@ -169,7 +170,7 @@ export class RoutingLane {
   private async applyQueuePlan(): Promise<void> {
     const persist = this.options.persist()
     const active = await this.adapter.peekActive()
-    const needsRouter = active ? await this.adapter.overlayNeedsRouter(active.id) : false
+    const needsRouter = active ? await this.localRouterRequired(active.id) : false
     const plan = planAfterQueueChange({
       queueLength: persist.queue.length,
       routerLive: this.live,
@@ -197,6 +198,15 @@ export class RoutingLane {
       return
     }
     await this.adapter.writeDirect(active.id)
+  }
+
+  async reconcile(): Promise<void> {
+    await this.applyQueuePlan()
+  }
+
+  private async localRouterRequired(id: string): Promise<boolean> {
+    const overlay = await this.adapter.overlayNeedsRouter(id)
+    return overlay || (this.options.egressActive?.() ?? false)
   }
 
   private async ensureProxy(): Promise<number> {

@@ -3,6 +3,7 @@ import { existsSync, realpathSync, rmSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import { outboundFetch } from '../egress/fetch'
 import { AppError } from '../../../shared/app-error'
 import {
   CLI_TOOL_IDS,
@@ -198,7 +199,7 @@ export class CliToolService {
     const pkg = CLI_NPM_PACKAGES[id]
     if (!pkg) return null
     try {
-      const response = await fetch(npmLatestUrl(pkg), { signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) })
+      const response = await outboundFetch(npmLatestUrl(pkg), { signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) })
       if (!response.ok) return null
       return parseNpmLatestVersion(await response.text())
     } catch {

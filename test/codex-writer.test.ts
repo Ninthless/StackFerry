@@ -156,4 +156,50 @@ wire_api = "responses"
     expect(afterOfficial).not.toContain('model_catalog_json')
     expect(afterOfficial).toContain('notify = [ "keep" ]')
   })
+
+  it('writes the session context window onto every catalog model', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-window-'))
+    const codexHome = path.join(root, 'codex')
+    const backupRoot = path.join(root, 'backups')
+    await mkdir(codexHome, { recursive: true })
+
+    await enableThirdPartyLiveConfig({
+      codexHome,
+      backupRoot,
+      provider: {
+        id: 'prov-window',
+        name: 'Window',
+        tomlText: `model = "grok-4.7"
+model_context_window = 400000
+model_auto_compact_token_limit = 360000
+model_provider = "provider_w"
+
+[model_providers.provider_w]
+name = "Window"
+base_url = "https://w.example/v1"
+wire_api = "responses"
+`,
+        apiKey: 'key-w',
+        models: ['grok-4.7', 'grok-4.6'],
+      },
+    })
+
+    const catalog = JSON.parse(
+      await readFile(path.join(codexHome, 'model-catalogs', 'stackferry.json'), 'utf8'),
+    ) as { models: { slug: string; context_window?: number; max_context_window?: number }[] }
+    expect(catalog.models).toEqual([
+      expect.objectContaining({
+        slug: 'grok-4.7',
+        context_window: 400_000,
+        max_context_window: 400_000,
+      }),
+      expect.objectContaining({
+        slug: 'grok-4.6',
+        context_window: 400_000,
+        max_context_window: 400_000,
+      }),
+    ])
+    const config = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
+    expect(config).toContain('model_context_window = 400000')
+  })
 })

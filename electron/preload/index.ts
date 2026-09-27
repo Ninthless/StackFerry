@@ -3,9 +3,8 @@ import { IpcChannel } from '../../shared/ipc'
 import type { AppUpdateStatus, ClaudeProviderDraft, ProviderDraft, ProviderImportOffer, StackferryApi } from '../../shared/types'
 
 const api: StackferryApi = {
-  showWindowControls: false,
+  showWindowControls: process.platform !== 'darwin',
   usesMacChrome: process.platform === 'darwin',
-  usesWindowControlsOverlay: process.platform === 'linux' || process.platform === 'win32',
   listProviders: () => ipcRenderer.invoke(IpcChannel.listProviders),
   readProviderApiKey: (id) => ipcRenderer.invoke(IpcChannel.readProviderApiKey, id),
   listPresets: () => ipcRenderer.invoke(IpcChannel.listPresets),
@@ -44,6 +43,8 @@ const api: StackferryApi = {
   setThemePreference: (preference) => ipcRenderer.invoke(IpcChannel.setTheme, preference),
   getOnboardingCompleted: () => ipcRenderer.invoke(IpcChannel.getOnboardingCompleted),
   setOnboardingCompleted: (completed) => ipcRenderer.invoke(IpcChannel.setOnboardingCompleted, completed),
+  getEgressProxy: () => ipcRenderer.invoke(IpcChannel.getEgressProxy),
+  setEgressProxy: (patch) => ipcRenderer.invoke(IpcChannel.setEgressProxy, patch),
   getRouting: () => ipcRenderer.invoke(IpcChannel.getRouting),
   setRoutingSettings: (patch) => ipcRenderer.invoke(IpcChannel.setRoutingSettings, patch),
   setProviderQueued: (cliId, id, queued) => ipcRenderer.invoke(IpcChannel.setProviderQueued, cliId, id, queued),

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -17,6 +17,7 @@ import { ClaudeProviderStore } from '../electron/main/claude/store'
 import { GrokEnableService } from '../electron/main/grok/service'
 import { GrokProviderStore } from '../electron/main/grok/store'
 import { ProviderStore } from '../electron/main/codex/store'
+import { EgressProxyStore } from '../electron/main/egress/store'
 import { RoutingService } from '../electron/main/routing/service'
 import { RoutingStore } from '../electron/main/routing/store'
 
@@ -104,6 +105,25 @@ describe('enable vs failover queue', () => {
     }
   })
 
+  it('routes a custom provider through the local router while a remote proxy is on', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-egress-router-'))
+    const egress = new EgressProxyStore(path.join(dir, 'egress-proxy.json'))
+    const { routing } = await harness(dir, ['a'], [], 'responses', egress, 'responses')
+
+    try {
+      await routing.enable('codex', 'a')
+      expect((await routing.snapshot()).lanes.codex.active).toBe(false)
+      await routing.setEgress({ enabled: true, url: 'https://proxy.example.com:8443' })
+      expect((await routing.snapshot()).lanes.codex.active).toBe(true)
+      const config = await readFile(path.join(dir, 'codex', 'config.toml'), 'utf8')
+      expect(config).toContain('127.0.0.1')
+      await routing.setEgress({ enabled: false })
+      expect((await routing.snapshot()).lanes.codex.active).toBe(false)
+    } finally {
+      await routing.restoreOnQuit()
+    }
+  })
+
   it('leaves an explicit failover queue unchanged when enabling someone else', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-enable-keep-queue-'))
     const { store, routing } = await harness(dir, ['a', 'b', 'c'])
@@ -138,12 +158,14 @@ async function harness(
   ids: string[],
   grokIds: string[] = [],
   grokBackend: 'responses' | 'chat_completions' = 'responses',
+  egress?: EgressProxyStore,
+  wireApi: 'responses' | 'chat' = 'chat',
 ) {
   const providers = new ProviderStore(path.join(dir, 'providers.json'))
   const claudeStore = new ClaudeProviderStore(path.join(dir, 'claude-providers.json'))
   const grokStore = new GrokProviderStore(path.join(dir, 'grok-providers.json'))
   const store = new RoutingStore(path.join(dir, 'routing.json'))
-  await writeFile(path.join(dir, 'providers.json'), `${JSON.stringify(providerFile(ids), null, 2)}\n`)
+    await writeFile(path.join(dir, 'providers.json'), `${JSON.stringify(providerFile(ids, wireApi), null, 2)}\n`)
   if (grokIds.length > 0) {
     await writeFile(
       path.join(dir, 'grok-providers.json'),
@@ -178,6 +200,7 @@ async function harness(
     setNeedsRestart: (value) => {
       restart.value = value
     },
+    egress,
   })
   return { store, routing, providers, grokStore, restart }
 }
@@ -201,7 +224,7 @@ function grokProviderFile(ids: string[], apiBackend: 'responses' | 'chat_complet
   }
 }
 
-function providerFile(ids: string[]) {
+function providerFile(ids: string[], wireApi: 'responses' | 'chat' = 'chat') {
   return {
     version: 2,
     activeProviderId: null,
@@ -219,7 +242,7 @@ function providerFile(ids: string[]) {
           baseUrl: 'https://example.test/v1',
           model: 'demo',
         }),
-        'chat',
+        wireApi,
       ),
       apiKeyPayload: Buffer.from('key').toString('base64'),
       createdAt: '2026-01-01T00:00:00.000Z',
