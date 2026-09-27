@@ -33,7 +33,7 @@ StackFerry 是本地 Electron 桌面应用。它按 CLI 保存官方 / 自定义
 
 各家 Coding CLI 的配置、登录态、MCP / Skills 目录都不一样。StackFerry 不替代这些工具，而是放在旁边的控制面：
 
-- **供应商** — 为 Codex、Claude Code、Grok 保存官方登录或自定义网关。启用时先备份再写 live 配置。中转站可发 `stackferry://` 导入链接，协议见 [docs/provider-import.md](docs/provider-import.md)。
+- **供应商** — 为 Codex、Claude Code、Grok 保存官方登录或自定义网关。启用时先备份再写 live 配置。中转站可发 `stackferry://` 导入链接，协议见 [docs/provider-import.zh-CN.md](docs/provider-import.zh-CN.md)。
 - **本地路由** — 每条 CLI 一条 failover 队列。队列非空时请求走本机代理，并带熔断。官方登录不进队列。
 - **Skills** — 从 GitHub 仓库或本地文件夹导入 `SKILL.md`，在应用内保留一份，再投影到 Claude、Codex、Grok。
 - **MCP** — 添加 stdio / HTTP 服务器，或从 CLI 已有定义导入，并应用到 Claude、Codex 和/或 Grok。
@@ -70,7 +70,7 @@ StackFerry 是本地 Electron 桌面应用。它按 CLI 保存官方 / 自定义
 stackferry://import/providers?v=1&data=<base64url(JSON)>
 ```
 
-应用会先弹出确认，只新增自定义供应商，不会自动启用，也不会覆盖同名条目。字段说明见 [docs/provider-import.md](docs/provider-import.md)。
+应用会先弹出确认，只新增自定义供应商，不会自动启用，也不会覆盖同名条目。字段说明见 [docs/provider-import.zh-CN.md](docs/provider-import.zh-CN.md)。
 
 ## macOS
 

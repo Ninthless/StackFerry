@@ -28,6 +28,7 @@ release
 test/screenshots
 .tmp-codex
 .tmp-*
+video/
 .agents
 .cursor
 

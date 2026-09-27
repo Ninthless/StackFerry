@@ -1,54 +1,58 @@
-# 一键导入供应商
+# Import a provider
 
-中转站或供应商网站打开 `stackferry://` 链接，已安装 StackFerry 的用户会看到确认框。确认后只新增自定义供应商，不会自动启用，也不会覆盖同名条目。未安装应用时系统打不开该链接。
+<p align="center">
+  <b>English</b> · <a href="./provider-import.zh-CN.md">简体中文</a>
+</p>
 
-## 链接
+A gateway or provider site opens a `stackferry://` link. A user who already has StackFerry installed sees a confirmation dialog. Confirming only adds custom providers. It does not enable them, and it does not overwrite an entry with the same name. If the app is not installed, the operating system cannot open the link.
 
-完整 payload 用 `data`：
+## Link
+
+A full payload uses `data`:
 
 ```text
 stackferry://import/providers?v=1&data=<base64url(JSON)>
 ```
 
-NewAPI 聊天设置没有 `{stackferryConfig}`，用查询参数：
+NewAPI chat settings have no `{stackferryConfig}`, so use query parameters:
 
 ```text
 stackferry://import/providers?v=1&name=New%20API&baseUrl={address}&apiKey={key}&targets=codex,claude,grok
 ```
 
-| 参数 | 存在性 | 说明 |
+| Parameter | Presence | Description |
 | --- | --- | --- |
-| `v` | 可选 | 协议版本。缺省视为 `1`；出现时必须是 `1`，否则拒绝。 |
-| `data` | 条件必填 | UTF-8 JSON 的 Base64URL（`-` `_`，无 padding）。解码后 JSON 不得超过 32768 字节。出现时忽略查询参数字段。 |
-| `name` | 可选 | 仅无 `data` 时有效。缺省为 `baseUrl` 的 hostname。 |
-| `baseUrl` | 条件必填 | 仅无 `data` 时有效。`http` 或 `https`。 |
-| `apiKey` | 条件必填 | 仅无 `data` 时有效。去空白后非空。 |
-| `targets` | 可选 | 仅无 `data` 时有效。逗号分隔。缺省 `codex,claude,grok`。 |
-| `model` | 可选 | 仅无 `data` 时有效。与 JSON `model` 相同。 |
-| `models` | 可选 | 仅无 `data` 时有效。逗号分隔的模型 id。 |
-| `wireApi` | 可选 | 仅无 `data` 时有效。与 JSON `wireApi` 相同。 |
-| `claudeAuthScheme` | 可选 | 仅无 `data` 时有效。与 JSON `claudeAuthScheme` 相同。 |
-| `grokApiBackend` | 可选 | 仅无 `data` 时有效。与 JSON `grokApiBackend` 相同。 |
+| `v` | optional | Protocol version. Missing means `1`. When present it must be `1`, otherwise the link is rejected. |
+| `data` | conditionally required | Base64URL of UTF-8 JSON (`-` and `_`, no padding). The decoded JSON must be at most 32768 bytes. When present, query-parameter fields are ignored. |
+| `name` | optional | Used only when `data` is absent. Defaults to the hostname of `baseUrl`. |
+| `baseUrl` | conditionally required | Used only when `data` is absent. `http` or `https`. |
+| `apiKey` | conditionally required | Used only when `data` is absent. Must be non-empty after trimming whitespace. |
+| `targets` | optional | Used only when `data` is absent. Comma-separated. Defaults to `codex,claude,grok`. |
+| `model` | optional | Used only when `data` is absent. Same as JSON `model`. |
+| `models` | optional | Used only when `data` is absent. Comma-separated model ids. |
+| `wireApi` | optional | Used only when `data` is absent. Same as JSON `wireApi`. |
+| `claudeAuthScheme` | optional | Used only when `data` is absent. Same as JSON `claudeAuthScheme`. |
+| `grokApiBackend` | optional | Used only when `data` is absent. Same as JSON `grokApiBackend`. |
 
-无 `data` 且无 `baseUrl` / `apiKey` 时拒绝。不要使用标准 Base64 的 `+` `/`：它们会被 URL 吃掉。应用也能读带 `+` `/` 的标准 Base64，对接方仍应只发 Base64URL。
+The link is rejected when both `data` and `baseUrl` / `apiKey` are missing. Do not use standard Base64 `+` and `/`: a URL consumes them. The app can still read standard Base64 that contains `+` and `/`, but integrators should send Base64URL only.
 
-## JSON 字段
+## JSON fields
 
-| 字段 | 存在性 | 类型 | 约束 |
+| Field | Presence | Type | Constraint |
 | --- | --- | --- | --- |
-| `name` | 必填 | string | 去空白后非空。 |
-| `baseUrl` | 必填 | string | 可被 URL 解析，协议仅 `http` 或 `https`。 |
-| `apiKey` | 必填 | string | 去空白后非空。 |
-| `targets` | 必填 | string[] | 非空。每项只能是 `codex`、`claude`、`grok`。重复项去重并保留顺序。 |
-| `model` | 可选 | string | 三端默认模型。缺省或非字符串视为空。 |
-| `models` | 可选 | string[] | 去空白、去重后的模型 id。写入 Codex 与 Claude；Grok 忽略。 |
-| `wireApi` | 可选 | string | 仅 Codex。`responses`（默认）或 `chat`。 |
-| `claudeAuthScheme` | 可选 | string | 仅 Claude。`bearer`（默认）或 `x-api-key`。 |
-| `grokApiBackend` | 可选 | string | 仅 Grok。`responses`（默认）或 `chat_completions`。 |
+| `name` | required | string | Non-empty after trimming whitespace. |
+| `baseUrl` | required | string | Must parse as a URL. Scheme is only `http` or `https`. |
+| `apiKey` | required | string | Non-empty after trimming whitespace. |
+| `targets` | required | string[] | Non-empty. Each item is only `codex`, `claude`, or `grok`. Duplicates are removed and order is kept. |
+| `model` | optional | string | Default model for all three CLIs. Missing, or a non-string, is treated as empty. |
+| `models` | optional | string[] | Model ids, trimmed and de-duplicated. Written for Codex and Claude. Grok ignores this field. |
+| `wireApi` | optional | string | Codex only. `responses` (default) or `chat`. |
+| `claudeAuthScheme` | optional | string | Claude only. `bearer` (default) or `x-api-key`. |
+| `grokApiBackend` | optional | string | Grok only. `responses` (default) or `chat_completions`. |
 
-未列出的字段会被忽略。`null` 不当作缺省，必填字段传 `null` 会失败。
+Fields that are not listed are ignored. `null` is not treated as missing. A required field set to `null` fails.
 
-最小示例：
+Minimal example:
 
 ```json
 {
@@ -59,7 +63,7 @@ stackferry://import/providers?v=1&name=New%20API&baseUrl={address}&apiKey={key}&
 }
 ```
 
-完整示例：
+Full example:
 
 ```json
 {
@@ -75,9 +79,9 @@ stackferry://import/providers?v=1&name=New%20API&baseUrl={address}&apiKey={key}&
 }
 ```
 
-## 编码
+## Encoding
 
-Node.js：
+Node.js:
 
 ```js
 const payload = {
@@ -90,7 +94,7 @@ const data = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url")
 const url = `stackferry://import/providers?v=1&data=${data}`
 ```
 
-Python：
+Python:
 
 ```python
 import base64, json
@@ -107,37 +111,37 @@ url = f"stackferry://import/providers?v=1&data={data}"
 
 ## NewAPI
 
-在控制台「系统设置 → 聊天设置」加入：
+Add this under console **System settings → Chat settings**:
 
 ```json
 { "StackFerry": "stackferry://import/providers?v=1&name=New%20API&baseUrl={address}&apiKey={key}&targets=codex,claude,grok" }
 ```
 
-NewAPI 只替换 `{address}`（站点地址，末尾不含 `/` 和 `/v1`，并做 `encodeURIComponent`）和 `{key}`（密钥；不以 `sk-` 开头时 NewAPI 会补上）。令牌页选 StackFerry 后会打开本应用。不要写 `{stackferryConfig}`，NewAPI 不会编码它。
+NewAPI replaces only `{address}` (site address, with no trailing `/` or `/v1`, passed through `encodeURIComponent`) and `{key}` (the key; NewAPI prefixes `sk-` when the key does not already start with it). Choosing StackFerry on the token page opens this app. Do not write `{stackferryConfig}`: NewAPI does not encode it.
 
-站长自建按钮、需要 `models` / `wireApi` 等字段时，改用上面的 `data` JSON 链接。
+A site-owned button that needs `models`, `wireApi`, or the other JSON fields should use the `data` JSON link above.
 
-## 应用内结果
+## Result in the app
 
-链接有效时弹出确认框（名称、Base URL、目标 CLI、打码后的密钥）。确认后按 `targets` 顺序调用现有新增接口：
+A valid link opens a confirmation dialog showing the name, Base URL, target CLIs, and a masked key. Confirming calls the existing add APIs in `targets` order:
 
-- Codex：自定义 overlay（`wireApi` 写入 toml）
-- Claude：自定义供应商（`claudeAuthScheme`）
-- Grok：自定义供应商（`grokApiBackend`）
+- Codex: a custom overlay (`wireApi` is written into the toml)
+- Claude: a custom provider (`claudeAuthScheme`)
+- Grok: a custom provider (`grokApiBackend`)
 
-导入不会 Enable，也不会改正在用的 CLI 配置。取消则丢弃，密钥不另存。同一时刻只保留最新一条待确认链接。
+Import does not enable the provider and does not change the CLI config that is currently in use. Cancelling discards the offer. The key is not stored separately. Only the latest pending link is kept.
 
-## 对接方可预期的失败
+## Failures an integrator should expect
 
-| 原因 | 应用错误码 |
+| Cause | App error code |
 | --- | --- |
-| 不是 `stackferry://import/providers` | `import_url` |
-| `v` 不是 `1` | `import_version` |
-| 缺少 `data` 且缺少 `baseUrl` / `apiKey`，或 `data` 无法解码 / 超过大小，或 JSON 不是对象 | `import_payload` |
-| 缺少 `name` 或 `baseUrl`，或 `baseUrl` 不是合法 URL | `import_invalid` |
-| `baseUrl` 不是 `http`/`https` | `models_unsupported_protocol` |
-| `apiKey` 为空 | `api_key_required` |
-| `targets` 为空或含未知值 | `import_targets` |
-| `wireApi` 非法 | `overlay_wire_api` |
-| `claudeAuthScheme` 非法 | `claude_auth_scheme` |
-| `grokApiBackend` 非法 | `grok_api_backend` |
+| Not `stackferry://import/providers` | `import_url` |
+| `v` is not `1` | `import_version` |
+| `data` is missing and `baseUrl` / `apiKey` are missing, or `data` cannot be decoded or exceeds the size limit, or the JSON is not an object | `import_payload` |
+| `name` or `baseUrl` is missing, or `baseUrl` is not a valid URL | `import_invalid` |
+| `baseUrl` is not `http` or `https` | `models_unsupported_protocol` |
+| `apiKey` is empty | `api_key_required` |
+| `targets` is empty or contains an unknown value | `import_targets` |
+| `wireApi` is invalid | `overlay_wire_api` |
+| `claudeAuthScheme` is invalid | `claude_auth_scheme` |
+| `grokApiBackend` is invalid | `grok_api_backend` |
