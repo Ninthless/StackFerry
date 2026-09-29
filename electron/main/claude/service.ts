@@ -5,13 +5,15 @@ import { desktopSupports1m, parseClaudeSession } from '../../../shared/claude-se
 import type { ClaudeAppStatus } from '../../../shared/types'
 import { enableCodeGateway, enableCodeOfficial } from './code-writer'
 import { enableDesktopGateway, enableDesktopOfficial } from './desktop-writer'
-import { claudeSettingsPath } from './home'
+import { claudeSettingsPath, claudeUserJsonPath } from './home'
+import { ensureClaudeOnboardingComplete } from './onboarding'
 import { createWindowsClaudePolicyProbe, type ManagedPolicyProbe } from './policy'
 import type { ClaudeProviderStore, StoredClaudeProvider } from './store'
 
 export type ClaudeEnableServiceOptions = {
   store: ClaudeProviderStore
   getClaudeHome: () => string
+  getClaudeUserJsonPath?: () => string
   getDesktopLibraries: () => string[]
   backupRoot: string
   isManaged?: ManagedPolicyProbe
@@ -59,6 +61,10 @@ export class ClaudeEnableService {
     }
   }
 
+  userJsonPath(): string {
+    return this.options.getClaudeUserJsonPath?.() ?? claudeUserJsonPath()
+  }
+
   private async writeGateway(
     provider: StoredClaudeProvider,
     baseUrl: string,
@@ -85,6 +91,7 @@ export class ClaudeEnableService {
     const backupRoot = this.options.backupRoot
     const isManaged = this.probe()
     await enableCodeGateway({ claudeHome, backupRoot, provider: live })
+    await ensureClaudeOnboardingComplete(this.userJsonPath())
     for (const library of this.options.getDesktopLibraries()) {
       await enableDesktopGateway({ library, backupRoot, provider: live, isManaged })
     }

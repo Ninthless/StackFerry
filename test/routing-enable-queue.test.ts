@@ -177,6 +177,7 @@ async function harness(
   const claude = new ClaudeEnableService({
     store: claudeStore,
     getClaudeHome: () => path.join(dir, 'claude'),
+    getClaudeUserJsonPath: () => path.join(dir, '.claude.json'),
     getDesktopLibraries: () => [],
     backupRoot: path.join(dir, 'backups', 'claude'),
     isManaged: async () => false,

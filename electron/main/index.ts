@@ -9,6 +9,7 @@ import { windowUsesMicaSurface } from '../../shared/mica'
 import type { ThemePreference } from '../../shared/theme'
 import { AppearanceStore } from './appearance-store'
 import { resolveClaudeDesktopLibraries, resolveClaudeHome } from './claude/home'
+import { reapplyClaudeGatewayOnStartup } from './claude/reapply'
 import { ClaudeEnableService } from './claude/service'
 import { ClaudeProviderStore } from './claude/store'
 import { resolveCodexHome } from './codex/home'
@@ -352,6 +353,7 @@ app.whenReady().then(async () => {
   await seedOfficialClaudeProvider(claudeStore)
   await seedOfficialGrokProvider(grokStore)
   await routing.start()
+  await reapplyClaudeGatewayOnStartup(ipcContext)
   await grok.restoreMedia()
   tray.create()
   await refreshTray()

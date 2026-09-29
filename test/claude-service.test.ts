@@ -40,6 +40,7 @@ describe('ClaudeEnableService', () => {
     const service = new ClaudeEnableService({
       store,
       getClaudeHome: () => path.join(root, 'claude'),
+      getClaudeUserJsonPath: () => path.join(root, '.claude.json'),
       getDesktopLibraries: () => [first, second],
       backupRoot: path.join(root, 'backups'),
       isManaged: async () => false,
@@ -77,9 +78,11 @@ describe('ClaudeEnableService', () => {
       getActiveId: async () => provider.id,
     } as unknown as ClaudeProviderStore
     const claudeHome = path.join(root, 'claude')
+    const userJsonPath = path.join(root, '.claude.json')
     const service = new ClaudeEnableService({
       store,
       getClaudeHome: () => claudeHome,
+      getClaudeUserJsonPath: () => userJsonPath,
       getDesktopLibraries: () => [],
       backupRoot: path.join(root, 'backups'),
       isManaged: async () => false,
@@ -96,5 +99,7 @@ describe('ClaudeEnableService', () => {
     expect(settings.env.CLAUDE_CODE_ATTRIBUTION_HEADER).toBe('0')
     expect(settings.env.DISABLE_PROMPT_CACHING).toBeUndefined()
     expect(JSON.stringify(settings)).not.toContain('gw-key')
+    const userJson = JSON.parse(await readFile(userJsonPath, 'utf8')) as { hasCompletedOnboarding?: boolean }
+    expect(userJson.hasCompletedOnboarding).toBe(true)
   })
 })

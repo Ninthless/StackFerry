@@ -6,6 +6,7 @@ import type { LanguagePreference } from '../../shared/types'
 import { emptyWriteChains, type AppIpcContext } from './app-ipc'
 import { registerCcswIpc } from './ccsw/ipc'
 import { registerClaudeIpc } from './claude/ipc'
+import { reapplyClaudeGatewayIfNeeded } from './claude/reapply'
 import { registerCliToolIpc } from './cli-tools/ipc'
 import { registerCodexIpc } from './codex/ipc'
 import { registerGrokIpc } from './grok/ipc'
@@ -89,7 +90,10 @@ export function registerIpc(context: AppIpcContext): void {
   registerGrokIpc(context, writeChains)
   registerSkillIpc(context)
   registerMcpIpc(context)
-  registerCliToolIpc()
+  registerCliToolIpc(undefined, {
+    writeChains,
+    afterClaudeInstall: () => reapplyClaudeGatewayIfNeeded(context),
+  })
   registerReleaseIpc(context.releases)
   registerLegacyImportIpc(context)
   registerCcswIpc(context)
