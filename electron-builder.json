@@ -84,6 +84,9 @@
     ],
     "artifactName": "${productName}-${version}-${arch}.${ext}"
   },
+  "appImage": {
+    "compression": "gzip"
+  },
   "deb": {
     "depends": [
       "libgtk-3-0 | libgtk-3-0t64",

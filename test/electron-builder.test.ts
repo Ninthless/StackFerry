@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 type BuilderTarget = { target: string; arch: string[] }
 
 type BuilderConfig = {
+  compression: string
   protocols: { name: string; schemes: string[] }
   win: { target: BuilderTarget[]; artifactName: string }
   mac: { artifactName: string }
@@ -14,6 +15,7 @@ type BuilderConfig = {
     artifactName: string
     desktop: { entry: { MimeType: string } }
   }
+  appImage: { compression: string }
   deb: { depends: string[]; afterInstall?: string; afterRemove?: string }
 }
 
@@ -38,6 +40,8 @@ describe('linux packages', () => {
     expect(config.linux.artifactName).toBe('${productName}-${version}-${arch}.${ext}')
     expect(config.mac.artifactName).toBe('${productName}-${version}-${arch}.${ext}')
     expect(config.deb.depends.some((item) => item.includes('libgtk-3-0t64'))).toBe(true)
+    expect(config.compression).toBe('maximum')
+    expect(config.appImage).toEqual({ compression: 'gzip' })
   })
 
   it('ships hicolor PNG sizes that GTK indexes, without replacing the default deb postinst', () => {
