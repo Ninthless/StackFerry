@@ -118,7 +118,7 @@ pnpm build:mac     # ad-hoc DMG (macOS or CI)
 pnpm build:linux   # AppImage + deb
 ```
 
-To ship all three platforms, add a `CHANGELOG.md` section for the new version, bump `package.json` `version`, and push a matching `v*` tag (for `1.0.8`, push `v1.0.8`). GitHub Actions builds Windows / macOS / Linux, publishes a Latest GitHub Release from that changelog section, and writes `latest.yml` / `latest-linux.yml` for Windows and Linux auto-update. You can also run the `Release` workflow by hand to upload artifacts without publishing.
+To ship all three platforms, add a `CHANGELOG.md` section for the new version with both `### English` and `### 中文`, bump `package.json` `version`, and push a matching `v*` tag (for `1.0.8`, push `v1.0.8`). GitHub Actions builds Windows / macOS / Linux, publishes a Latest GitHub Release from that changelog section, and writes `latest.yml` / `latest-linux.yml` for Windows and Linux auto-update. The app shows the block for the current language. You can also run the `Release` workflow by hand to upload artifacts without publishing.
 
 Layout:
 

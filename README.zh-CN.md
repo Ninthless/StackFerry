@@ -118,7 +118,7 @@ pnpm build:mac     # ad-hoc DMG（须 macOS 或 CI）
 pnpm build:linux   # AppImage + deb
 ```
 
-要发三端包：在 `CHANGELOG.md` 写好新版本一节，改 `package.json` 的 `version`，再推匹配的 `v*` 标签（例如 `1.0.8` 推 `v1.0.8`）。GitHub Actions 会打 Windows / macOS / Linux，用该节作为 Latest Release 说明，并写出 Windows / Linux 应用内更新用的 `latest.yml` / `latest-linux.yml`。也可手动跑 `Release` 工作流，只上传产物、不发版。
+要发三端包：在 `CHANGELOG.md` 写好新版本一节，同一节里要有 `### English` 和 `### 中文`，改 `package.json` 的 `version`，再推匹配的 `v*` 标签（例如 `1.0.8` 推 `v1.0.8`）。GitHub Actions 会打 Windows / macOS / Linux，用该节作为 Latest Release 说明，并写出 Windows / Linux 应用内更新用的 `latest.yml` / `latest-linux.yml`。应用按当前语言只显示其中一段。也可手动跑 `Release` 工作流，只上传产物、不发版。
 
 目录：
 
