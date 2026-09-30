@@ -12,6 +12,7 @@ import {
   latestUnreadAnnouncement,
   nextUnreadAnnouncement,
   normalizeAppReleaseNotes,
+  releaseNotesForLocale,
   parseAnnouncementFeed,
   unreadAnnouncements,
 } from '../shared/app-releases'
@@ -88,6 +89,35 @@ describe('normalizeAppReleaseNotes', () => {
     expect(normalizeAppReleaseNotes('<p></p>')).toBeNull()
     expect(normalizeAppReleaseNotes(null)).toBeNull()
     expect(normalizeAppReleaseNotes({ note: 'x' })).toBeNull()
+  })
+})
+
+describe('releaseNotesForLocale', () => {
+  const bilingual = `## 1.1.3 - 2026-09-30
+
+### English
+
+- gzip AppImage
+
+### 中文
+
+- gzip 安装包
+`
+
+  it('returns the block for the app language', () => {
+    expect(releaseNotesForLocale(bilingual, 'en')).toBe('- gzip AppImage')
+    expect(releaseNotesForLocale(bilingual, 'zh')).toBe('- gzip 安装包')
+  })
+
+  it('reads the language line left after GitHub turns headings into HTML', () => {
+    const plain = normalizeAppReleaseNotes(bilingual.replace('### English', '<h3>English</h3>').replace('### 中文', '<h3>中文</h3>'))
+    expect(plain).not.toBeNull()
+    expect(releaseNotesForLocale(plain ?? '', 'en')).toBe('- gzip AppImage')
+    expect(releaseNotesForLocale(plain ?? '', 'zh')).toBe('- gzip 安装包')
+  })
+
+  it('keeps notes that have no language blocks', () => {
+    expect(releaseNotesForLocale('只有中文', 'en')).toBe('只有中文')
   })
 })
 

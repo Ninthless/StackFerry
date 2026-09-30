@@ -1,4 +1,5 @@
 import { AppError } from './app-error'
+import type { AppLocale } from './locale'
 
 // 自有公告源，必须是 https://。部署 noticeboard 后填
 // https://<host>/v1/apps/stackferry/announcements.json ；留空则不拉取。
@@ -183,6 +184,27 @@ export function normalizeAppReleaseNotes(notes: unknown): string | null {
     parts.push(version ? `${version}\n${note}` : note)
   }
   return parts.length > 0 ? parts.join('\n\n') : null
+}
+
+const RELEASE_NOTE_LOCALE_LINE = {
+  en: /^(?:#{1,6}\s*)?English\s*$/,
+  zh: /^(?:#{1,6}\s*)?中文\s*$/,
+} as const
+
+export function releaseNotesForLocale(notes: string, locale: AppLocale): string {
+  const lines = notes.replace(/\r\n?/g, '\n').split('\n')
+  const start = lines.findIndex((line) => RELEASE_NOTE_LOCALE_LINE[locale].test(line.trim()))
+  if (start < 0) return notes.trim()
+  const other = locale === 'en' ? 'zh' : 'en'
+  let end = lines.length
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (RELEASE_NOTE_LOCALE_LINE[other].test(lines[index].trim())) {
+      end = index
+      break
+    }
+  }
+  const body = lines.slice(start + 1, end).join('\n').trim()
+  return body || notes.trim()
 }
 
 function plainReleaseNotes(raw: string): string | null {

@@ -1,6 +1,10 @@
+import { releaseNotesForLocale } from "@shared/app-releases"
+import type { AppLocale } from "@shared/locale"
+import { getLocale } from "@/paraglide/runtime.js"
 import { cn } from "@/lib/utils"
 
 export function ReleaseNotes({ notes }: { notes: string }) {
+  const locale: AppLocale = getLocale() === "zh" ? "zh" : "en"
   return (
     <pre
       className={cn(
@@ -11,7 +15,7 @@ export function ReleaseNotes({ notes }: { notes: string }) {
         "[&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-foreground/25",
       )}
     >
-      {notes}
+      {releaseNotesForLocale(notes, locale)}
     </pre>
   )
 }
