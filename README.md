@@ -15,7 +15,7 @@
   <a href="https://x.com/ninthless"><img alt="X @ninthless" src="https://img.shields.io/badge/X-%40ninthless-0A0A0A?logo=x&logoColor=white"></a>
 </p>
 
-Desktop provider manager and local failover router for Codex, Claude Code, and Grok.
+Desktop control plane for coding CLIs. It keeps providers, local failover, Skills, and MCP in one place, then writes them into the CLI you enable. Codex, Claude Code, and Grok work today. More CLIs will be added the same way.
 
 <p align="center">
   <img src="docs/media/home.png" width="796" alt="StackFerry home, with the welcome dialog in front of the Codex page">
@@ -28,11 +28,12 @@ https://github.com/user-attachments/assets/d73a89a6-6dde-4cb2-8d1f-55257e16d8b3
 
 </details>
 
-StackFerry is a local Electron desktop app. It stores official and custom gateways per CLI, writes the enabled provider into that CLI’s config (after a backup), optionally fronts traffic with a per-CLI failover queue on `127.0.0.1`, and keeps Skills plus MCP servers in one place so you can project them onto the tools you actually run.
+StackFerry does not replace those CLIs. It sits beside them: official login or a custom gateway, a backup before each write, and an optional failover queue on `127.0.0.1`.
 
-## Table of Contents
+## Contents
 
-- [Why](#why)
+- [CLIs](#clis)
+- [What it does](#what-it-does)
 - [Install](#install)
 - [Usage](#usage)
 - [macOS](#macos)
@@ -41,18 +42,23 @@ StackFerry is a local Electron desktop app. It stores official and custom gatewa
 - [Contributing](#contributing)
 - [License](#license)
 
-## Why
+## CLIs
 
-Coding CLIs each have their own config files, auth files, and MCP/Skills layouts. StackFerry does not replace those tools. It is the control plane next to them:
+| | |
+| --- | --- |
+| Today | Codex, Claude Code, Grok |
+| Later | More coding CLIs. Each one gets the same provider, routing, Skills, and MCP flow. |
 
-- **Providers** — official login or custom gateways for Codex, Claude Code, and Grok. Enable one, and StackFerry backs up then writes the live CLI config. Gateways can ship a `stackferry://` import link; see [docs/provider-import.md](docs/provider-import.md).
-- **Local routing** — one failover queue per CLI. When the queue is non-empty, requests go through a loopback proxy with circuit breaking. Official login stays out of the queue.
-- **Skills** — import `SKILL.md` from a GitHub repo or a local folder, keep an app-owned copy, then project it to Claude, Codex, and Grok.
-- **MCP** — add stdio/HTTP servers, import definitions already in the CLIs, and apply them to Claude, Codex, and/or Grok.
-- **CLI tools** — detect, install, update, or uninstall the local Codex / Claude Code / Grok Build binaries. Uninstalling a CLI does not delete StackFerry provider data.
-- **Desktop** — English / 简体中文 UI, theme, Windows 11 Mica, first-launch tour, tray (closing the window hides; Quit restores routed configs to direct).
+## What it does
 
-Packaged Windows and Linux builds check [GitHub Releases](https://github.com/Ninthless/StackFerry/releases) for updates. macOS builds are ad-hoc signed, so in-app update is unavailable — redownload the DMG.
+- **Providers.** Official login or a custom gateway, per CLI. Enable one and StackFerry backs up, then writes that CLI's live config. A gateway can hand the user a `stackferry://` import link; fields are in [docs/provider-import.md](docs/provider-import.md).
+- **Local routing.** One failover queue per CLI. A non-empty queue sends that CLI through a loopback proxy with a circuit breaker. Official login stays out of the queue.
+- **Skills.** Import `SKILL.md` from a GitHub repo or a local folder, keep StackFerry's copy, then project it onto Claude, Codex, and Grok.
+- **MCP.** Add stdio or HTTP servers, or import definitions already in a CLI, and apply them to Claude, Codex, and/or Grok.
+- **CLI binaries.** Detect, install, update, or uninstall the local Codex, Claude Code, and Grok Build binaries. Uninstalling a CLI does not delete StackFerry's provider data.
+- **Desktop.** English and 简体中文, theme, Windows 11 Mica, a first-launch tour, and a tray. Closing the window hides the app. Quit restores routing-written configs to direct.
+
+Windows and Linux packages check [GitHub Releases](https://github.com/Ninthless/StackFerry/releases) for updates. macOS builds are ad-hoc signed, so in-app update is unavailable. Download a new DMG.
 
 ## Install
 
@@ -64,29 +70,28 @@ Download the latest build from **[Releases](https://github.com/Ninthless/StackFe
 | Linux | AppImage and deb (`x64` / `arm64`) | Yes. `chmod +x` the AppImage first. AppImageUpdate can update the AppImage from GitHub Releases. deb updates may ask for a system password. |
 | macOS | ad-hoc signed DMG (`arm64` / `x64`) | No. Follow [macOS](#macos). |
 
-After enabling a provider, restart that CLI or its terminal.
-
 ## Usage
 
 1. Open StackFerry and pick Codex, Claude, or Grok.
-2. Add a custom gateway or keep official login.
-3. Enable the provider you want. StackFerry writes the CLI config; Codex `auth.json` is left untouched so a ChatGPT login survives switching back to official.
-4. Optionally order a routing queue. Official login never enters the queue.
-5. Import Skills / MCP and apply them to the CLIs you use.
+2. Add a custom gateway, or keep official login.
+3. Enable the provider you want. StackFerry writes that CLI's config. Codex `auth.json` is left untouched, so a ChatGPT login is still there when you switch back to official.
+4. Restart that CLI or its terminal.
+5. Optionally order a routing queue. Official login never enters the queue.
+6. Import Skills and MCP, then apply them to the CLIs you use.
 
-Closing the window hides to the tray. **Quit** restores routing-written configs to direct.
+Closing the window hides StackFerry in the tray. **Quit** restores routing-written configs to direct.
 
-Gateway vendors can deep-link users in with:
+A gateway can send someone straight to the import dialog:
 
 ```text
 stackferry://import/providers?v=1&data=<base64url(JSON)>
 ```
 
-The app confirms before adding a custom provider. It does not enable the provider or overwrite an existing name. Protocol fields: [docs/provider-import.md](docs/provider-import.md).
+StackFerry asks before adding a custom provider. It does not enable that provider, and it does not overwrite an existing name. Protocol fields: [docs/provider-import.md](docs/provider-import.md).
 
 ## macOS
 
-CI produces an **ad-hoc signed DMG**, not a notarized Developer ID build. Gatekeeper often says the app is “damaged”. That is the quarantine flag, not a corrupt download.
+CI produces an **ad-hoc signed DMG**, not a notarized Developer ID build. Gatekeeper often says the app is damaged. That message is the quarantine flag, not a corrupt download.
 
 1. Download `arm64` (Apple silicon) or `x64` (Intel).
 2. Open the DMG and drag `StackFerry.app` to `/Applications`. Do not run it from the DMG.
@@ -108,11 +113,11 @@ Do not disable Gatekeeper with `spctl --master-disable`. Repeat steps 3–4 afte
 | Claude Code / Desktop | Claude Code `settings.json`, synced to Claude Desktop (`LOCALAPPDATA` / `~/Library/Application Support` / `XDG_CONFIG_HOME`). |
 | Grok | `~/.grok/config.toml` |
 
-Provider lists, routing queues, Skills, and MCP live under the app `userData` directory, not inside those CLI homes.
+Provider lists, routing queues, Skills, and MCP live in the app `userData` directory, not inside those CLI homes.
 
 ## Development
 
-Requires Node `>=22.12` and pnpm 11.
+Node `>=22.12` and pnpm 11.
 
 ```bash
 pnpm install
@@ -121,7 +126,7 @@ pnpm typecheck
 pnpm dev
 ```
 
-`pnpm build` packages the current machine only.
+`pnpm build` packages the machine you are on.
 
 ```bash
 pnpm build:win     # NSIS
@@ -129,20 +134,20 @@ pnpm build:mac     # ad-hoc DMG (macOS or CI)
 pnpm build:linux   # AppImage + deb
 ```
 
-To ship all three platforms, add a `CHANGELOG.md` section for the new version with both `### English` and `### 中文`, bump `package.json` `version`, and push a matching `v*` tag (for `1.0.8`, push `v1.0.8`). GitHub Actions builds Windows / macOS / Linux, publishes a Latest GitHub Release from that changelog section, and writes `latest.yml` / `latest-linux.yml` for Windows and Linux auto-update. The Linux job also embeds AppImage update information and uploads a `.zsync` next to each AppImage. The app shows the block for the current language. You can also run the `Release` workflow by hand to upload artifacts without publishing.
+To publish all three platforms, add a `CHANGELOG.md` section for the new version with both `### English` and `### 中文`, bump `package.json` `version`, and push a matching `v*` tag (`1.0.8` means tag `v1.0.8`). GitHub Actions builds Windows, macOS, and Linux, publishes a Latest GitHub Release from that section, and writes `latest.yml` / `latest-linux.yml` for Windows and Linux auto-update. The Linux job embeds AppImage update information and uploads a `.zsync` next to each AppImage. The app shows the notes for the current language. You can also run the `Release` workflow by hand to upload artifacts without publishing.
 
 Layout:
 
 - `CHANGELOG.md` — user-facing release notes
-- `electron/main` — window, tray; per-CLI IPC/writers, routing, Skills, MCP, CLI install
+- `electron/main` — window, tray; per-CLI IPC and writers, routing, Skills, MCP, CLI install
 - `electron/preload` — `window.stackferry`
 - `shared` — types, IPC names, presets
-- `src/features` — per-CLI workspaces (`codex`/`claude`/`grok`), shared provider widgets, Skills, MCP, settings
+- `src/features` — CLI workspaces (`codex`, `claude`, `grok`), shared provider widgets, Skills, MCP, settings
 - `test` — Vitest
 
 ## Contributing
 
-Questions and bugs: [GitHub Issues](https://github.com/Ninthless/StackFerry/issues). Pull requests are welcome; please open an issue first for larger changes.
+Questions and bugs: [GitHub Issues](https://github.com/Ninthless/StackFerry/issues). Pull requests are welcome. Please open an issue first for a larger change.
 
 ## License
 
