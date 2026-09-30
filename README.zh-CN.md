@@ -50,7 +50,7 @@ StackFerry 是本地 Electron 桌面应用。它按 CLI 保存官方 / 自定义
 | 平台 | 安装包 | 应用内更新 |
 | --- | --- | --- |
 | Windows | NSIS `*-Setup.exe`（`x64` / `arm64`） | 可用。SmartScreen 可能拦截未签名安装包，选 **仍要运行**。 |
-| Linux | AppImage、deb（`x64` / `arm64`） | 可用。AppImage 先 `chmod +x`。deb 更新时可能弹出系统密码框。 |
+| Linux | AppImage、deb（`x64` / `arm64`） | 可用。AppImage 先 `chmod +x`。AppImageUpdate 也可以从 GitHub Releases 更新 AppImage。deb 更新时可能弹出系统密码框。 |
 | macOS | ad-hoc 签名 DMG（`arm64` / `x64`） | 不可用。见 [macOS](#macos)。 |
 
 启用供应商后请重启对应 CLI 或终端。
@@ -118,7 +118,7 @@ pnpm build:mac     # ad-hoc DMG（须 macOS 或 CI）
 pnpm build:linux   # AppImage + deb
 ```
 
-要发三端包：在 `CHANGELOG.md` 写好新版本一节，同一节里要有 `### English` 和 `### 中文`，改 `package.json` 的 `version`，再推匹配的 `v*` 标签（例如 `1.0.8` 推 `v1.0.8`）。GitHub Actions 会打 Windows / macOS / Linux，用该节作为 Latest Release 说明，并写出 Windows / Linux 应用内更新用的 `latest.yml` / `latest-linux.yml`。应用按当前语言只显示其中一段。也可手动跑 `Release` 工作流，只上传产物、不发版。
+要发三端包：在 `CHANGELOG.md` 写好新版本一节，同一节里要有 `### English` 和 `### 中文`，改 `package.json` 的 `version`，再推匹配的 `v*` 标签（例如 `1.0.8` 推 `v1.0.8`）。GitHub Actions 会打 Windows / macOS / Linux，用该节作为 Latest Release 说明，并写出 Windows / Linux 应用内更新用的 `latest.yml` / `latest-linux.yml`。Linux 任务还会把 AppImage 更新信息写进包内，并在每个 AppImage 旁上传 `.zsync`。应用按当前语言只显示其中一段。也可手动跑 `Release` 工作流，只上传产物、不发版。
 
 目录：
 

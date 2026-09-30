@@ -50,7 +50,7 @@ Download the latest build from **[Releases](https://github.com/Ninthless/StackFe
 | Platform | Artifact | In-app update |
 | --- | --- | --- |
 | Windows | NSIS `*-Setup.exe` (`x64` / `arm64`) | Yes. SmartScreen may warn on an unsigned installer; choose **Run anyway**. |
-| Linux | AppImage and deb (`x64` / `arm64`) | Yes. `chmod +x` the AppImage first. deb updates may ask for a system password. |
+| Linux | AppImage and deb (`x64` / `arm64`) | Yes. `chmod +x` the AppImage first. AppImageUpdate can update the AppImage from GitHub Releases. deb updates may ask for a system password. |
 | macOS | ad-hoc signed DMG (`arm64` / `x64`) | No. Follow [macOS](#macos). |
 
 After enabling a provider, restart that CLI or its terminal.
@@ -118,7 +118,7 @@ pnpm build:mac     # ad-hoc DMG (macOS or CI)
 pnpm build:linux   # AppImage + deb
 ```
 
-To ship all three platforms, add a `CHANGELOG.md` section for the new version with both `### English` and `### 中文`, bump `package.json` `version`, and push a matching `v*` tag (for `1.0.8`, push `v1.0.8`). GitHub Actions builds Windows / macOS / Linux, publishes a Latest GitHub Release from that changelog section, and writes `latest.yml` / `latest-linux.yml` for Windows and Linux auto-update. The app shows the block for the current language. You can also run the `Release` workflow by hand to upload artifacts without publishing.
+To ship all three platforms, add a `CHANGELOG.md` section for the new version with both `### English` and `### 中文`, bump `package.json` `version`, and push a matching `v*` tag (for `1.0.8`, push `v1.0.8`). GitHub Actions builds Windows / macOS / Linux, publishes a Latest GitHub Release from that changelog section, and writes `latest.yml` / `latest-linux.yml` for Windows and Linux auto-update. The Linux job also embeds AppImage update information and uploads a `.zsync` next to each AppImage. The app shows the block for the current language. You can also run the `Release` workflow by hand to upload artifacts without publishing.
 
 Layout:
 

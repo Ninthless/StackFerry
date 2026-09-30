@@ -45,6 +45,12 @@ jobs:
       - run: pnpm exec electron-builder ${{ matrix.args }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Embed AppImage update information
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y zsync
+          node scripts/embed-appimage-update-info.mjs
       - name: Check updater manifests
         shell: bash
         run: |
@@ -58,6 +64,8 @@ jobs:
               test -f release/*/latest-linux.yml
               test -f release/*/latest-linux-arm64.yml
               ls release/*/*.AppImage
+              ls release/*/*.AppImage.zsync
+              test "$(ls release/*/*.AppImage | wc -l)" -eq "$(ls release/*/*.AppImage.zsync | wc -l)"
               ls release/*/*.deb
               ;;
             macos-latest)
@@ -71,6 +79,7 @@ jobs:
             release/*/*-Setup.exe
             release/*/*.dmg
             release/*/*.AppImage
+            release/*/*.AppImage.zsync
             release/*/*.deb
             release/*/latest*.yml
             release/*/*.blockmap
