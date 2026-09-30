@@ -21,7 +21,12 @@
   <img src="docs/media/home.png" width="796" alt="StackFerry 首页，欢迎说明盖在 Codex 页面上">
 </p>
 
+<details>
+<summary>演示</summary>
+
 https://github.com/user-attachments/assets/d73a89a6-6dde-4cb2-8d1f-55257e16d8b3
+
+</details>
 
 StackFerry 是本地 Electron 桌面应用。它按 CLI 保存官方 / 自定义网关，启用时先备份再写入该 CLI 的配置；队列非空时在 `127.0.0.1` 做按 CLI 的 failover；并把 Skills 与 MCP 收在一处，投影到你真正在用的工具上。
 

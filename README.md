@@ -21,7 +21,12 @@ Desktop provider manager and local failover router for Codex, Claude Code, and G
   <img src="docs/media/home.png" width="796" alt="StackFerry home, with the welcome dialog in front of the Codex page">
 </p>
 
+<details>
+<summary>Demo</summary>
+
 https://github.com/user-attachments/assets/d73a89a6-6dde-4cb2-8d1f-55257e16d8b3
+
+</details>
 
 StackFerry is a local Electron desktop app. It stores official and custom gateways per CLI, writes the enabled provider into that CLI’s config (after a backup), optionally fronts traffic with a per-CLI failover queue on `127.0.0.1`, and keeps Skills plus MCP servers in one place so you can project them onto the tools you actually run.
 
