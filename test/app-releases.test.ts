@@ -19,7 +19,7 @@ import electronUpdater from 'electron-updater'
 import { fetchAnnouncementFeed } from '../electron/main/releases/feed'
 import { AppReleaseService } from '../electron/main/releases/service'
 import { AnnouncementStore } from '../electron/main/releases/store'
-import { readLinuxPackageType, type AppUpdateFeed } from '../electron/main/releases/updater'
+import { packagedUpdaterKind, readLinuxPackageType, type AppUpdateFeed } from '../electron/main/releases/updater'
 
 const sampleAnnouncement = {
   id: '42',
@@ -36,6 +36,22 @@ describe('electron-updater module', () => {
     expect(typeof electronUpdater.AppImageUpdater).toBe('function')
     expect(typeof electronUpdater.DebUpdater).toBe('function')
     expect('autoUpdater' in electronUpdater).toBe(true)
+  })
+})
+
+describe('packagedUpdaterKind', () => {
+  it('keeps an AppImage on the AppImage updater when the shared build also wrote a deb package-type', () => {
+    expect(
+      packagedUpdaterKind({
+        appImagePath: '/tmp/StackFerry.AppImage',
+        linuxPackageType: 'deb',
+      }),
+    ).toBe('appimage')
+  })
+
+  it('uses the deb updater only for a deb install', () => {
+    expect(packagedUpdaterKind({ linuxPackageType: 'deb' })).toBe('deb')
+    expect(packagedUpdaterKind({})).toBe('auto')
   })
 })
 

@@ -23,6 +23,27 @@ export function readLinuxPackageType(resourcesPath: string): string | null {
   }
 }
 
+export type PackagedUpdaterKind = 'appimage' | 'deb' | 'auto'
+
+export function packagedUpdaterKind(input: {
+  appImagePath?: string | null
+  linuxPackageType?: string | null
+}): PackagedUpdaterKind {
+  if (input.appImagePath?.trim()) return 'appimage'
+  if (input.linuxPackageType === 'deb') return 'deb'
+  return 'auto'
+}
+
+export function createPackagedAppUpdater(input: {
+  appImagePath?: string | null
+  linuxPackageType?: string | null
+}): AppUpdater {
+  const kind = packagedUpdaterKind(input)
+  if (kind === 'appimage') return new electronUpdater.AppImageUpdater()
+  if (kind === 'deb') return new electronUpdater.DebUpdater()
+  return electronUpdater.autoUpdater
+}
+
 export function configureAppUpdater(updater: AppUpdater = electronUpdater.autoUpdater): AppUpdater {
   updater.autoDownload = false
   updater.autoInstallOnAppQuit = false

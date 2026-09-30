@@ -44,7 +44,7 @@ import { ProviderStore } from './codex/store'
 import { fetchAnnouncementFeed } from './releases/feed'
 import { AppReleaseService } from './releases/service'
 import { AnnouncementStore } from './releases/store'
-import { createElectronUpdateFeed, readLinuxPackageType } from './releases/updater'
+import { createElectronUpdateFeed, createPackagedAppUpdater, readLinuxPackageType } from './releases/updater'
 import { RoutingService } from './routing/service'
 import { bindEgressStore, closeOutboundProxy } from './egress/fetch'
 import { EgressProxyStore } from './egress/store'
@@ -266,7 +266,7 @@ app.whenReady().then(async () => {
     fetchReleases: () => fetchAnnouncementFeed(),
     feed:
       app.isPackaged && isPackagedUpdatePlatform(process.platform, appImagePath, linuxPackageType)
-        ? createElectronUpdateFeed()
+        ? createElectronUpdateFeed(createPackagedAppUpdater({ appImagePath, linuxPackageType }))
         : null,
     prepareQuit: prepareQuitForUpdate,
   })
