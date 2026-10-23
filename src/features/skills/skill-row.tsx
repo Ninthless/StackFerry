@@ -1,6 +1,6 @@
 import { memo } from "react"
 import { EllipsisVertical } from "lucide-react"
-import type { SkillListItem, SkillTarget } from "@shared/types"
+import { SKILL_TARGETS, type SkillListItem, type SkillTarget } from "@shared/skills"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,6 +19,18 @@ import {
 } from "@/components/ui/item"
 import { Switch } from "@/components/ui/switch"
 import * as m from "@/paraglide/messages.js"
+
+const TARGET_LABEL: Record<SkillTarget, () => string> = {
+  claude: () => m.skills_claude(),
+  codex: () => m.skills_codex(),
+  grok: () => m.skills_grok(),
+  dsh: () => m.skills_dsh(),
+}
+
+const TARGET_HINT: Partial<Record<SkillTarget, () => string>> = {
+  grok: () => m.skills_grok_hint(),
+  dsh: () => m.skills_dsh_hint(),
+}
 
 export type SkillRowActions = {
   busyId: string | null
@@ -50,7 +62,7 @@ export const SkillRow = memo(function SkillRow({
   const local = pane === "local"
 
   return (
-    <Item variant="outline" className="flex-nowrap">
+    <Item variant="outline">
       <ItemContent className="min-w-0">
         <ItemTitle>
           <span>{skill.name}</span>
@@ -59,26 +71,17 @@ export const SkillRow = memo(function SkillRow({
         <ItemDescription title={skill.description}>{skill.description}</ItemDescription>
       </ItemContent>
       {local ? (
-        <ItemActions>
-          <TargetSwitch
-            label={m.skills_claude()}
-            checked={skill.appliedTo.includes("claude")}
-            disabled={busy}
-            onCheckedChange={(checked) => void actions.setTarget(skill.name, "claude", checked)}
-          />
-          <TargetSwitch
-            label={m.skills_codex()}
-            checked={skill.appliedTo.includes("codex")}
-            disabled={busy}
-            onCheckedChange={(checked) => void actions.setTarget(skill.name, "codex", checked)}
-          />
-          <TargetSwitch
-            label={m.skills_grok()}
-            hint={m.skills_grok_hint()}
-            checked={skill.appliedTo.includes("grok")}
-            disabled={busy}
-            onCheckedChange={(checked) => void actions.setTarget(skill.name, "grok", checked)}
-          />
+        <ItemActions className="flex-wrap justify-end">
+          {SKILL_TARGETS.map((target) => (
+            <TargetSwitch
+              key={target}
+              label={TARGET_LABEL[target]()}
+              hint={TARGET_HINT[target]?.()}
+              checked={skill.appliedTo.includes(target)}
+              disabled={busy}
+              onCheckedChange={(checked) => void actions.setTarget(skill.name, target, checked)}
+            />
+          ))}
         </ItemActions>
       ) : null}
       <ItemActions className="w-40 justify-end">
