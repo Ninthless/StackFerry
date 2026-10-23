@@ -28,6 +28,7 @@ describe('skill service', () => {
       getClaudeHome: () => claudeHome,
       getCodexHome: () => codexHome,
       homedir: () => homedir,
+      env: {},
       fetch: async () => archiveResponse(),
     })
     await service.addRepo(skillRepo('anthropics', 'skills', 'main', 'skills'))
@@ -53,7 +54,40 @@ describe('skill service', () => {
     expect(await readFile(path.join(homedir, '.grok', 'skills', 'pdf', 'SKILL.md'), 'utf8')).toContain('name: pdf')
     await service.setTarget('pdf', 'grok', false)
     await expect(readFile(path.join(homedir, '.grok', 'skills', 'pdf', 'SKILL.md'), 'utf8')).rejects.toThrow()
+    await service.setTarget('pdf', 'dsh', true)
+    expect((await service.list()).find((item) => item.name === 'pdf')?.appliedTo).toEqual(['claude', 'dsh'])
+    expect(await readFile(path.join(homedir, '.dsh', 'skills', 'pdf', 'SKILL.md'), 'utf8')).toContain('name: pdf')
+    await service.setTarget('pdf', 'dsh', false)
+    await expect(readFile(path.join(homedir, '.dsh', 'skills', 'pdf', 'SKILL.md'), 'utf8')).rejects.toThrow()
     expect(await readFile(path.join(claudeHome, 'skills', 'pdf', 'SKILL.md'), 'utf8')).toContain('name: pdf')
+  })
+
+  it('links DSH skills under DSH_HOME and discovers orphans there', async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), 'stackferry-skill-user-'))
+    const claudeHome = await mkdtemp(path.join(os.tmpdir(), 'stackferry-skill-claude-'))
+    const homedir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-skill-home-'))
+    const codexHome = await mkdtemp(path.join(os.tmpdir(), 'stackferry-skill-codex-'))
+    const dshHome = await mkdtemp(path.join(os.tmpdir(), 'stackferry-skill-dsh-'))
+    await writeSkillDir(path.join(dshHome, 'skills'), 'local-dsh', 'Use for DeepSeek Harness.')
+    const service = new SkillService({
+      userData,
+      getClaudeHome: () => claudeHome,
+      getCodexHome: () => codexHome,
+      homedir: () => homedir,
+      env: { DSH_HOME: dshHome },
+      fetch: async () => archiveResponse(),
+    })
+    const orphan = (await service.list()).find((item) => item.name === 'local-dsh')
+    expect(orphan?.orphan).toBe(true)
+    expect(orphan?.appliedTo).toEqual(['dsh'])
+    await service.addRepo(skillRepo('anthropics', 'skills', 'main', 'skills'))
+    await service.refreshCatalog()
+    await service.install('pdf')
+    await service.setTarget('pdf', 'dsh', true)
+    expect(await readFile(path.join(dshHome, 'skills', 'pdf', 'SKILL.md'), 'utf8')).toContain('name: pdf')
+    await expect(readFile(path.join(homedir, '.dsh', 'skills', 'pdf', 'SKILL.md'), 'utf8')).rejects.toThrow()
+    await service.uninstall('pdf')
+    await expect(readFile(path.join(dshHome, 'skills', 'pdf', 'SKILL.md'), 'utf8')).rejects.toThrow()
   })
 
   it('treats leftover ~/.codex/skills as orphans and writes both Codex roots on enable', async () => {
@@ -71,6 +105,7 @@ describe('skill service', () => {
       getClaudeHome: () => claudeHome,
       getCodexHome: () => codexHome,
       homedir: () => homedir,
+      env: {},
     })
     const orphan = (await service.list()).find((item) => item.name === 'legacy-pdf')
     expect(orphan?.orphan).toBe(true)
@@ -92,6 +127,7 @@ describe('skill service', () => {
       getClaudeHome: () => claudeHome,
       getCodexHome: () => codexHome,
       homedir: () => homedir,
+      env: {},
       fetch: async () => archiveResponse(),
     })
     await service.addRepo(skillRepo('anthropics', 'skills', 'main', 'skills'))
@@ -180,6 +216,7 @@ async function tempSkillEnv() {
       getClaudeHome: () => claudeHome,
       getCodexHome: () => codexHome,
       homedir: () => homedir,
+      env: {},
     }),
   }
 }

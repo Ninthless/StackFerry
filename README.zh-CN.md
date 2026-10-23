@@ -53,7 +53,7 @@ StackFerry 不替代这些 CLI。它放在旁边：官方登录或自定义网�
 
 - **供应商。** 每个 CLI 可以是官方登录，也可以是自定义网关。启用时先备份，再写 live 配置。中转站可以发 `stackferry://` 导入链接，字段见 [docs/provider-import.zh-CN.md](docs/provider-import.zh-CN.md)。
 - **本地路由。** 每个 CLI 一条 failover 队列。队列非空时，请求走本机代理，并带熔断。官方登录不进队列。
-- **Skills。** 从 GitHub 仓库或本地文件夹导入 `SKILL.md`，在 StackFerry 里留一份，再投影到 Claude、Codex、Grok。
+- **Skills。** 从 GitHub 仓库或本地文件夹导入 `SKILL.md`，在 StackFerry 里留一份，再投影到 Claude、Codex、Grok 和 DeepSeek Harness。
 - **MCP。** 添加 stdio 或 HTTP 服务器，或从 CLI 已有定义导入，并应用到 Claude、Codex 和/或 Grok。
 - **CLI 程序。** 检测、安装、更新、卸载本机的 Codex、Claude Code、Grok Build。卸载 CLI 不会删掉 StackFerry 里的供应商数据。
 - **桌面。** 简体中文和 English、主题、Windows 11 Mica、首次启动指引、托盘。关窗口是隐藏。退出时把路由写回的配置还原成直连。

@@ -14,18 +14,16 @@ import {
 import { loadCatalogCache, loadRepoArchive, refreshCatalogRepos, saveCatalogCache, syncCatalogSkillHash } from './catalog'
 import { discoverSkills, unzipSkillArchive } from './github'
 import { hashSkillDirectory } from './hash'
-import { grokSkillsRoot, resolveGrokHome } from '../grok/home'
+import { resolveGrokHome } from '../grok/home'
 import {
-  agentsSkillsRoot,
-  claudeSkillsRoot,
-  legacyCodexSkillsRoot,
   skillSsotDirectory,
   skillsBackupRoot,
   skillsCachePath,
   skillsSsotRoot,
   skillsStorePath,
 } from './home'
-import { appliedTargets, mergeSkillList, originFromCache } from './list'
+import { appliedTargets, mergeSkillList, originFromCache, type ScannedSkillRoot } from './list'
+import { skillProjections, type SkillProjection } from './projections'
 import { isInsideDirectory } from './safe-path'
 import { discoverImportableSkills, scanSkillRoot, type DiskSkill } from './scan'
 import { SkillStore } from './store'
@@ -39,6 +37,7 @@ export type SkillServiceDeps = {
   getCodexHome: () => string
   getGrokHome?: () => string
   homedir?: () => string
+  env?: NodeJS.ProcessEnv
   platform?: NodeJS.Platform
   fetch?: typeof fetch
 }
@@ -167,11 +166,7 @@ export class SkillService {
 
   async adopt(name: string): Promise<SkillListItem[]> {
     const skillName = requireSkillName(name)
-    const orphan =
-      (await scanSkillRoot(this.claudeRoot())).get(skillName) ??
-      (await scanSkillRoot(this.agentsRoot())).get(skillName) ??
-      (await scanSkillRoot(this.legacyCodexRoot())).get(skillName) ??
-      (await scanSkillRoot(this.grokRoot())).get(skillName)
+    const orphan = await this.findOnDisk(skillName)
     if (!orphan) throw new AppError('skill_missing')
     await this.importOne(orphan)
     return this.merge()
@@ -182,10 +177,7 @@ export class SkillService {
       file: await this.store.read(),
       cache: await loadCatalogCache(skillsCachePath(this.deps.userData)),
       ssot: await scanSkillRoot(skillsSsotRoot(this.deps.userData)),
-      claude: await scanSkillRoot(this.claudeRoot()),
-      agents: await scanSkillRoot(this.agentsRoot()),
-      legacy: await scanSkillRoot(this.legacyCodexRoot()),
-      grok: await scanSkillRoot(this.grokRoot()),
+      roots: await this.scanRoots(),
     })
   }
 
@@ -236,10 +228,9 @@ export class SkillService {
   }
 
   private async unapplyAll(name: string): Promise<void> {
-    await removeSkillLink(this.claudeRoot(), name)
-    await removeSkillLink(this.agentsRoot(), name)
-    await removeSkillLink(this.legacyCodexRoot(), name)
-    await removeSkillLink(this.grokRoot(), name)
+    for (const root of this.projectionRoots()) {
+      await removeSkillLink(root, name)
+    }
   }
 
   private async backupSkill(ssot: string, name: string): Promise<void> {
@@ -258,35 +249,43 @@ export class SkillService {
   }
 
   private async liveAppliedTo(name: string): Promise<SkillTarget[]> {
-    return appliedTargets(
-      name,
-      await scanSkillRoot(this.claudeRoot()),
-      await scanSkillRoot(this.agentsRoot()),
-      await scanSkillRoot(this.legacyCodexRoot()),
-      await scanSkillRoot(this.grokRoot()),
-    )
+    return appliedTargets(name, await this.scanRoots())
   }
 
-  private claudeRoot(): string {
-    return claudeSkillsRoot(this.deps.getClaudeHome())
+  private async findOnDisk(name: string): Promise<DiskSkill | undefined> {
+    for (const root of await this.scanRoots()) {
+      const skill = root.skills.get(name)
+      if (skill) return skill
+    }
+    return undefined
   }
 
-  private agentsRoot(): string {
-    return agentsSkillsRoot(this.homedir())
+  private async scanRoots(): Promise<ScannedSkillRoot[]> {
+    const scanned: ScannedSkillRoot[] = []
+    for (const projection of this.projections()) {
+      for (const root of projection.roots) {
+        scanned.push({ target: projection.target, skills: await scanSkillRoot(root) })
+      }
+    }
+    return scanned
   }
 
-  private legacyCodexRoot(): string {
-    return legacyCodexSkillsRoot(this.deps.getCodexHome())
+  private projections(): SkillProjection[] {
+    return skillProjections({
+      claudeHome: this.deps.getClaudeHome(),
+      codexHome: this.deps.getCodexHome(),
+      grokHome: this.deps.getGrokHome?.() ?? resolveGrokHome(this.deps.env ?? process.env, this.homedir),
+      homedir: this.homedir(),
+      env: this.deps.env ?? process.env,
+    })
   }
 
-  private grokRoot(): string {
-    return grokSkillsRoot(this.deps.getGrokHome?.() ?? resolveGrokHome(process.env, this.homedir))
+  private projectionRoots(): string[] {
+    return this.projections().flatMap((projection) => [...projection.roots])
   }
 
-  private targetRoots(target: SkillTarget): string[] {
-    if (target === 'claude') return [this.claudeRoot()]
-    if (target === 'grok') return [this.grokRoot()]
-    return [this.agentsRoot(), this.legacyCodexRoot()]
+  private targetRoots(target: SkillTarget): readonly string[] {
+    return this.projections().find((projection) => projection.target === target)?.roots ?? []
   }
 
   private async importOne(source: DiskSkill): Promise<void> {
@@ -301,7 +300,7 @@ export class SkillService {
       contentHash: await hashSkillDirectory(ssot),
       appliedTo: [],
     })
-    for (const root of [this.claudeRoot(), this.agentsRoot(), this.legacyCodexRoot(), this.grokRoot()]) {
+    for (const root of this.projectionRoots()) {
       if (path.resolve(path.dirname(sourceDir)) !== path.resolve(root)) continue
       await applySkillLink(ssot, root, source.name, this.platform)
     }

@@ -53,7 +53,7 @@ StackFerry does not replace those CLIs. It sits beside them: official login or a
 
 - **Providers.** Official login or a custom gateway, per CLI. Enable one and StackFerry backs up, then writes that CLI's live config. A gateway can hand the user a `stackferry://` import link; fields are in [docs/provider-import.md](docs/provider-import.md).
 - **Local routing.** One failover queue per CLI. A non-empty queue sends that CLI through a loopback proxy with a circuit breaker. Official login stays out of the queue.
-- **Skills.** Import `SKILL.md` from a GitHub repo or a local folder, keep StackFerry's copy, then project it onto Claude, Codex, and Grok.
+- **Skills.** Import `SKILL.md` from a GitHub repo or a local folder, keep StackFerry's copy, then project it onto Claude, Codex, Grok, and DeepSeek Harness.
 - **MCP.** Add stdio or HTTP servers, or import definitions already in a CLI, and apply them to Claude, Codex, and/or Grok.
 - **CLI binaries.** Detect, install, update, or uninstall the local Codex, Claude Code, and Grok Build binaries. Uninstalling a CLI does not delete StackFerry's provider data.
 - **Desktop.** English and 简体中文, theme, Windows 11 Mica, a first-launch tour, and a tray. Closing the window hides the app. Quit restores routing-written configs to direct.

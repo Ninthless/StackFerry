@@ -37,6 +37,16 @@ export function legacyCodexSkillsRoot(codexHome: string): string {
   return path.join(codexHome, 'skills')
 }
 
+export function resolveDshHome(homedir: string, env: NodeJS.ProcessEnv): string {
+  const fromEnv = env.DSH_HOME?.trim()
+  if (fromEnv) return fromEnv
+  return path.join(homedir, '.dsh')
+}
+
+export function dshSkillsRoot(homedir: string, env: NodeJS.ProcessEnv): string {
+  return path.join(resolveDshHome(homedir, env), 'skills')
+}
+
 export function zipCacheFile(userData: string, owner: string, repo: string, branch: string): string {
   return path.join(skillsZipCacheRoot(userData), `${owner}__${repo}__${encodeURIComponent(branch)}.zip`)
 }

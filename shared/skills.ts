@@ -1,6 +1,8 @@
 import { AppError } from './app-error'
 
-export type SkillTarget = 'claude' | 'codex' | 'grok'
+export const SKILL_TARGETS = ['claude', 'codex', 'grok', 'dsh'] as const
+
+export type SkillTarget = (typeof SKILL_TARGETS)[number]
 
 export type SkillOrigin = {
   owner: string
@@ -52,7 +54,6 @@ export type SkillImportCandidate = {
   installed: boolean
 }
 
-export const SKILL_TARGETS: readonly SkillTarget[] = ['claude', 'codex', 'grok']
 export const SKILL_NAME_MAX = 64
 export const SKILL_DESCRIPTION_MAX = 1024
 

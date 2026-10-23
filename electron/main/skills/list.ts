@@ -1,21 +1,20 @@
-import type { SkillListItem, SkillOrigin, SkillTarget } from '../../../shared/skills'
+import { SKILL_TARGETS, type SkillListItem, type SkillOrigin, type SkillTarget } from '../../../shared/skills'
 import { remoteHashFor, type CatalogCache } from './catalog'
 import { hashSkillDirectory } from './hash'
 import { type DiskSkill } from './scan'
 import type { SkillsFile } from './store'
 
-export function appliedTargets(
-  name: string,
-  claude: Map<string, DiskSkill>,
-  agents: Map<string, DiskSkill>,
-  legacy: Map<string, DiskSkill>,
-  grok: Map<string, DiskSkill>,
-): SkillTarget[] {
-  const applied: SkillTarget[] = []
-  if (claude.has(name)) applied.push('claude')
-  if (agents.has(name) || legacy.has(name)) applied.push('codex')
-  if (grok.has(name)) applied.push('grok')
-  return applied
+export type ScannedSkillRoot = {
+  target: SkillTarget
+  skills: Map<string, DiskSkill>
+}
+
+export function appliedTargets(name: string, roots: readonly ScannedSkillRoot[]): SkillTarget[] {
+  const found = new Set<SkillTarget>()
+  for (const root of roots) {
+    if (root.skills.has(name)) found.add(root.target)
+  }
+  return SKILL_TARGETS.filter((target) => found.has(target))
 }
 
 export function originFromCache(cache: CatalogCache, name: string): SkillOrigin | null {
@@ -37,10 +36,7 @@ export async function mergeSkillList(options: {
   file: SkillsFile
   cache: CatalogCache
   ssot: Map<string, DiskSkill>
-  claude: Map<string, DiskSkill>
-  agents: Map<string, DiskSkill>
-  legacy: Map<string, DiskSkill>
-  grok: Map<string, DiskSkill>
+  roots: readonly ScannedSkillRoot[]
 }): Promise<SkillListItem[]> {
   const byName = new Map<string, SkillListItem>()
   for (const repo of options.cache.repos) {
@@ -53,7 +49,7 @@ export async function mergeSkillList(options: {
     const record = options.file.installed[local.name]
     const existing = byName.get(local.name)
     const origin = record?.origin ?? existing?.origin ?? null
-    const appliedTo = appliedTargets(local.name, options.claude, options.agents, options.legacy, options.grok)
+    const appliedTo = appliedTargets(local.name, options.roots)
     const remoteHash = remoteHashFor(options.cache, origin)
     const localHash = record?.contentHash || (await hashSkillDirectory(local.directory))
     byName.set(local.name, {
@@ -68,25 +64,22 @@ export async function mergeSkillList(options: {
       repoLabel: origin ? `${origin.owner}/${origin.repo}` : null,
     })
   }
-  for (const orphan of [
-    ...options.claude.values(),
-    ...options.agents.values(),
-    ...options.legacy.values(),
-    ...options.grok.values(),
-  ]) {
-    const current = byName.get(orphan.name)
-    if (current?.installed) continue
-    byName.set(orphan.name, {
-      id: orphan.name,
-      name: orphan.name,
-      description: orphan.description,
-      installed: false,
-      orphan: true,
-      appliedTo: appliedTargets(orphan.name, options.claude, options.agents, options.legacy, options.grok),
-      updateAvailable: false,
-      origin: current?.origin ?? null,
-      repoLabel: current?.repoLabel ?? null,
-    })
+  for (const root of options.roots) {
+    for (const orphan of root.skills.values()) {
+      const current = byName.get(orphan.name)
+      if (current?.installed) continue
+      byName.set(orphan.name, {
+        id: orphan.name,
+        name: orphan.name,
+        description: orphan.description,
+        installed: false,
+        orphan: true,
+        appliedTo: appliedTargets(orphan.name, options.roots),
+        updateAvailable: false,
+        origin: current?.origin ?? null,
+        repoLabel: current?.repoLabel ?? null,
+      })
+    }
   }
   return [...byName.values()].sort(compareSkills)
 }

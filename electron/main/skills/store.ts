@@ -6,6 +6,7 @@ import {
   DEFAULT_SKILL_REPOS,
   isSkillTarget,
   normalizeSkillRepo,
+  SKILL_TARGETS,
   pinPreferredSkillRepo,
   requireSkillName,
   type SkillOrigin,
@@ -118,10 +119,8 @@ function uniqueTargets(value: unknown): SkillTarget[] {
   for (const item of value) {
     if (isSkillTarget(item)) seen.add(item)
   }
-  return SKILL_TARGET_ORDER.filter((item) => seen.has(item))
+  return SKILL_TARGETS.filter((item) => seen.has(item))
 }
-
-const SKILL_TARGET_ORDER: SkillTarget[] = ['claude', 'codex', 'grok']
 
 function uniqueRepos(value: unknown): SkillRepo[] {
   if (!Array.isArray(value)) return DEFAULT_SKILL_REPOS.map((repo) => ({ ...repo }))
