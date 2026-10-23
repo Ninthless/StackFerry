@@ -4,6 +4,32 @@ User-visible changes live here. GitHub Releases and in-app update notes use the 
 
 用户能感知的变化写在这里。GitHub Release 和应用内更新说明都读当前 `package.json` 版本对应的一节。每个版本先写 `### English`，再写 `### 中文`。内部重构、测试和 chore 不必写入。
 
+## 1.1.4 - 2026-10-23
+
+### English
+
+#### Added
+
+- Skills can be linked to DeepSeek Harness. The DSH switch writes the user skill directory `~/.dsh/skills`, or `$DSH_HOME/skills` when `DSH_HOME` is set. Skills you already have stay off until you turn DSH on.
+- Linux AppImages include the update information AppImageUpdate needs, so it can update from GitHub Releases. In-app update still replaces the running AppImage.
+
+#### Upgrade notes
+
+- After updating, open Skills and turn on DSH for each skill DeepSeek Harness should use. Harness watches that directory, so StackFerry does not need a restart for the new link.
+- On Linux, install this AppImage once. AppImageUpdate can read the update information from this build on.
+
+### 中文
+
+#### 新增
+
+- 技能可以链接到 DeepSeek Harness。DSH 开关写入用户级目录 `~/.dsh/skills`；设置了 `DSH_HOME` 时改为该目录下的 `skills`。已经装好的技能不会自动打开，需要自己开启
+- Linux AppImage 写入 AppImageUpdate 需要的更新信息，可以用它从 GitHub Releases 更新。应用内更新仍是替换当前正在运行的 AppImage
+
+#### 升级注意
+
+- 更新后打开技能页，给要让 DeepSeek Harness 使用的技能打开 DSH。Harness 会监视这个目录，一般不用为了新链接重启 StackFerry
+- Linux 先安装这一版 AppImage。从这一版起，AppImageUpdate 才能读到更新信息
+
 ## 1.1.3 - 2026-09-30
 
 ### English
