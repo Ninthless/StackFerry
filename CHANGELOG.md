@@ -4,6 +4,46 @@ User-visible changes live here. GitHub Releases and in-app update notes use the 
 
 用户能感知的变化写在这里。GitHub Release 和应用内更新说明都读当前 `package.json` 版本对应的一节。每个版本先写 `### English`，再写 `### 中文`。内部重构、测试和 chore 不必写入。
 
+## 1.1.5 - 2026-10-27
+
+### English
+
+#### Added
+
+- Pi Coding Agent sits next to Codex, Claude Code, and Grok. StackFerry can detect, install, update, and uninstall the `pi` binary.
+- Pi providers can be the official login already stored by Pi, or a custom gateway. Official login does not overwrite `auth.json`. A custom gateway can use OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages.
+- The Pi editor has presets, a thinking level, an optional context window, and a model list fetched from the gateway. A thinking level is stored for that provider and model. Leave it empty to keep Pi's own startup default.
+- Skills can be linked to Pi at `~/.pi/agent/skills`, or `$PI_CODING_AGENT_DIR/skills` when `PI_CODING_AGENT_DIR` is set. Pi still reads `~/.agents/skills` on its own.
+- MCP servers can be applied to Pi's user-level config. Pi has its own failover queue, and every provider in that queue must use the same API. Official login stays out of the queue.
+
+#### Fixed
+
+- Official login rows for Codex, Claude Code, Grok, and Pi no longer offer edit or delete. Enabling one still works.
+
+#### Upgrade notes
+
+- After updating, a Pi session that is already open needs a new session or `/reload` before a newly enabled provider takes effect.
+- Existing official login entries stay in the list. They can still be enabled. They can no longer be renamed or removed.
+
+### 中文
+
+#### 新增
+
+- Pi Coding Agent 与 Codex、Claude Code、Grok 并列。StackFerry 可以检测、安装、更新和卸载 `pi`
+- Pi 供应商可以是 Pi 里已经登录的官方账号，也可以是自定义网关。官方登录不会覆盖 `auth.json`。自定义网关可选 OpenAI Chat Completions、OpenAI Responses 或 Anthropic Messages
+- Pi 的编辑页有预设、思考等级、可选的上下文窗口，并能从网关拉取模型列表。思考等级按该供应商和模型保存。留空则继续用 Pi 自己的启动默认值
+- 技能可以链接到 Pi 的 `~/.pi/agent/skills`；设置了 `PI_CODING_AGENT_DIR` 时改为该目录下的 `skills`。Pi 仍会自行读取 `~/.agents/skills`
+- MCP 可以应用到 Pi 的用户级配置。Pi 有自己的故障切换队列，队列里的供应商必须使用同一种 API。官方登录不进队列
+
+#### 修复
+
+- Codex、Claude Code、Grok 和 Pi 的官方登录不再提供编辑和删除。启用仍然可用
+
+#### 升级注意
+
+- 更新后，已经打开的 Pi 会话需要新开一次，或执行 `/reload`，新启用的供应商才会生效
+- 已有的官方登录会留在列表里，仍可启用，但不能再改名或删除
+
 ## 1.1.4 - 2026-10-23
 
 ### English
