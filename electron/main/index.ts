@@ -16,6 +16,9 @@ import { resolveCodexHome } from './codex/home'
 import { resolveGrokHome } from './grok/home'
 import { GrokEnableService } from './grok/service'
 import { GrokProviderStore } from './grok/store'
+import { resolvePiHome } from './pi/home'
+import { PiEnableService } from './pi/service'
+import { PiProviderStore } from './pi/store'
 import { formatAppError } from './format-error'
 import { setMainLocale, m } from './i18n'
 import {
@@ -23,12 +26,15 @@ import {
   broadcastChanged,
   broadcastClaudeChanged,
   broadcastGrokChanged,
+  broadcastPiChanged,
   enableClaudeProvider,
   enableGrokProvider,
+  enablePiProvider,
   enableProvider,
   registerIpc,
   seedOfficialClaudeProvider,
   seedOfficialGrokProvider,
+  seedOfficialPiProvider,
   seedOfficialProvider,
 } from './ipc'
 import { LocaleStore } from './locale-store'
@@ -110,10 +116,12 @@ let needsRestart = false
 let store: ProviderStore | null = null
 let claudeStore: ClaudeProviderStore | null = null
 let grokStore: GrokProviderStore | null = null
+let piStore: PiProviderStore | null = null
 let routingStore: RoutingStore | null = null
 let routing: RoutingService | null = null
 let claude: ClaudeEnableService | null = null
 let grok: GrokEnableService | null = null
+let pi: PiEnableService | null = null
 let localeStore: LocaleStore | null = null
 let appearanceStore: AppearanceStore | null = null
 let tray: AppTray | null = null
@@ -181,11 +189,12 @@ function showWindow(): void {
 }
 
 async function refreshTray(): Promise<void> {
-  if (!store || !claudeStore || !grokStore || !tray) return
+  if (!store || !claudeStore || !grokStore || !piStore || !tray) return
   tray.update({
     codex: await store.list(),
     claude: await claudeStore.list(),
     grok: await grokStore.list(),
+    pi: await piStore.list(),
   })
 }
 
@@ -196,6 +205,7 @@ app.whenReady().then(async () => {
   store = new ProviderStore(path.join(app.getPath('userData'), 'providers.json'))
   claudeStore = new ClaudeProviderStore(path.join(app.getPath('userData'), 'claude-providers.json'))
   grokStore = new GrokProviderStore(path.join(app.getPath('userData'), 'grok-providers.json'))
+  piStore = new PiProviderStore(path.join(app.getPath('userData'), 'pi-providers.json'))
   routingStore = new RoutingStore(path.join(app.getPath('userData'), 'routing.json'))
   const egressStore = new EgressProxyStore(path.join(app.getPath('userData'), 'egress-proxy.json'))
   bindEgressStore(egressStore)
@@ -218,6 +228,11 @@ app.whenReady().then(async () => {
     getGrokHome: () => resolveGrokHome(),
     backupRoot: path.join(app.getPath('userData'), 'backups', 'grok'),
   })
+  pi = new PiEnableService({
+    store: piStore,
+    getPiHome: () => resolvePiHome(),
+    backupRoot: path.join(app.getPath('userData'), 'backups', 'pi'),
+  })
   routing = new RoutingService({
     store: routingStore,
     providers: store,
@@ -225,6 +240,8 @@ app.whenReady().then(async () => {
     claude,
     grokStore,
     grok,
+    piStore,
+    pi,
     getCodexHome: () => resolveCodexHome(),
     backupRoot: path.join(app.getPath('userData'), 'backups'),
     setNeedsRestart: (value) => {
@@ -237,12 +254,14 @@ app.whenReady().then(async () => {
     getClaudeHome: () => resolveClaudeHome(),
     getCodexHome: () => resolveCodexHome(),
     getGrokHome: () => resolveGrokHome(),
+    getPiHome: () => resolvePiHome(),
   })
   const mcp = new McpService({
     userData: app.getPath('userData'),
     getCodexHome: () => resolveCodexHome(),
     getGrokHome: () => resolveGrokHome(),
     getHomedir: () => os.homedir(),
+    getPiHome: () => resolvePiHome(),
   })
   const legacyImport = new LegacyImportService({
     getHomedir: () => os.homedir(),
@@ -277,6 +296,8 @@ app.whenReady().then(async () => {
     claude: claude!,
     grokStore: grokStore!,
     grok: grok!,
+    piStore: piStore!,
+    pi: pi!,
     skills,
     mcp,
     releases,
@@ -284,6 +305,7 @@ app.whenReady().then(async () => {
     ccswImport,
     getCodexHome: () => resolveCodexHome(),
     getGrokHome: () => resolveGrokHome(),
+    getPiHome: () => resolvePiHome(),
     backupRoot: path.join(app.getPath('userData'), 'backups'),
     getNeedsRestart: () => needsRestart,
     setNeedsRestart: (value: boolean) => {
@@ -299,6 +321,10 @@ app.whenReady().then(async () => {
     },
     onGrokChanged: () => {
       broadcastGrokChanged()
+      void refreshTray()
+    },
+    onPiChanged: () => {
+      broadcastPiChanged()
       void refreshTray()
     },
     onSkillsChanged: () => {
@@ -340,6 +366,7 @@ app.whenReady().then(async () => {
       try {
         if (cliId === 'claude-code') await enableClaudeProvider(ipcContext, id)
         else if (cliId === 'grok-build') await enableGrokProvider(ipcContext, id)
+        else if (cliId === 'pi') await enablePiProvider(ipcContext, id)
         else await enableProvider(ipcContext, id)
       } catch (error) {
         dialog.showErrorBox(m.tray_enable_failed(), formatAppError(error))
@@ -352,6 +379,7 @@ app.whenReady().then(async () => {
   await seedOfficialProvider(store)
   await seedOfficialClaudeProvider(claudeStore)
   await seedOfficialGrokProvider(grokStore)
+  await seedOfficialPiProvider(piStore)
   await routing.start()
   await reapplyClaudeGatewayOnStartup(ipcContext)
   await grok.restoreMedia()

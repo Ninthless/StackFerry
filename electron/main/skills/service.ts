@@ -15,6 +15,7 @@ import { loadCatalogCache, loadRepoArchive, refreshCatalogRepos, saveCatalogCach
 import { discoverSkills, unzipSkillArchive } from './github'
 import { hashSkillDirectory } from './hash'
 import { resolveGrokHome } from '../grok/home'
+import { resolvePiHome } from '../pi/home'
 import {
   skillSsotDirectory,
   skillsBackupRoot,
@@ -36,6 +37,7 @@ export type SkillServiceDeps = {
   getClaudeHome: () => string
   getCodexHome: () => string
   getGrokHome?: () => string
+  getPiHome?: () => string
   homedir?: () => string
   env?: NodeJS.ProcessEnv
   platform?: NodeJS.Platform
@@ -275,6 +277,7 @@ export class SkillService {
       claudeHome: this.deps.getClaudeHome(),
       codexHome: this.deps.getCodexHome(),
       grokHome: this.deps.getGrokHome?.() ?? resolveGrokHome(this.deps.env ?? process.env, this.homedir),
+      piHome: this.deps.getPiHome?.() ?? resolvePiHome(this.deps.env ?? process.env, this.homedir),
       homedir: this.homedir(),
       env: this.deps.env ?? process.env,
     })

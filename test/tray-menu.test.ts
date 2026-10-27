@@ -9,6 +9,7 @@ const labels = {
     codex: 'Codex',
     'claude-code': 'Claude',
     'grok-build': 'Grok',
+    pi: 'Pi',
   },
 }
 
@@ -22,6 +23,7 @@ describe('buildTrayMenuTemplate', () => {
         ],
         'claude-code': [{ id: 'claude-official', name: 'Claude Official', enabled: true }],
         'grok-build': [],
+        pi: [],
       },
       labels,
     )

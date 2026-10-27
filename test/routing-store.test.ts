@@ -17,6 +17,7 @@ describe('routing store', () => {
         codex: { queue: [], port: null },
         'claude-code': { queue: [], port: null },
         'grok-build': { queue: [], port: null },
+        pi: { queue: [], port: null },
       },
     })
   })

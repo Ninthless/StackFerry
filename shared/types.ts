@@ -211,6 +211,64 @@ export type GrokAppStatus = {
   needsRestart: boolean
 }
 
+export const PI_APIS = ['openai-completions', 'openai-responses', 'anthropic-messages'] as const
+
+export type PiApi = (typeof PI_APIS)[number]
+
+export const PI_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+
+export type PiThinkingLevel = (typeof PI_THINKING_LEVELS)[number]
+
+export type PiPreset = {
+  id: string
+  name: string
+  kind: ProviderKind
+  baseUrl: string
+  model: string
+  api: PiApi
+  requiresApiKey: boolean
+}
+
+export type PiProviderDraft = {
+  name: string
+  kind: ProviderKind
+  baseUrl?: string
+  model?: string
+  api?: PiApi
+  apiKey?: string
+  thinkingLevel?: string
+  contextWindow?: string
+}
+
+export type PiProviderListItem = {
+  id: string
+  name: string
+  kind: ProviderKind
+  baseUrl: string
+  model: string
+  api: PiApi
+  thinkingLevel: string
+  contextWindow: string
+  hasApiKey: boolean
+  enabled: boolean
+}
+
+export type PiAppStatus = {
+  piHome: string
+  configExists: boolean
+  lastWriteAt: string | null
+  activeProviderId: string | null
+  needsRestart: boolean
+}
+
+export function isPiApi(value: unknown): value is PiApi {
+  return typeof value === 'string' && (PI_APIS as readonly string[]).includes(value)
+}
+
+export function isPiThinkingLevel(value: unknown): value is PiThinkingLevel {
+  return typeof value === 'string' && (PI_THINKING_LEVELS as readonly string[]).includes(value)
+}
+
 export type StackferryApi = {
   showWindowControls: boolean
   usesMacChrome: boolean
@@ -276,6 +334,22 @@ export type StackferryApi = {
   reorderGrokProviders: (ids: string[]) => Promise<GrokProviderListItem[]>
   enableGrokProvider: (id: string) => Promise<GrokAppStatus>
   getGrokStatus: () => Promise<GrokAppStatus>
+  listPiProviders: () => Promise<PiProviderListItem[]>
+  readPiProviderApiKey: (id: string) => Promise<string>
+  listPiPresets: () => Promise<PiPreset[]>
+  addPiProvider: (draft: PiProviderDraft) => Promise<PiProviderListItem>
+  updatePiProvider: (id: string, draft: PiProviderDraft) => Promise<PiProviderListItem>
+  deletePiProvider: (id: string) => Promise<void>
+  reorderPiProviders: (ids: string[]) => Promise<PiProviderListItem[]>
+  enablePiProvider: (id: string) => Promise<PiAppStatus>
+  getPiStatus: () => Promise<PiAppStatus>
+  listPiModels: (input: {
+    baseUrl: string
+    api?: PiApi
+    apiKey?: string
+    providerId?: string
+  }) => Promise<string[]>
+  onPiChanged: (listener: () => void) => () => void
   listGrokModels: (input: {
     baseUrl: string
     apiKey?: string

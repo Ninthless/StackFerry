@@ -5,6 +5,8 @@ import { useClaudeProviders } from "@/features/claude/use-claude-providers"
 import { cliById, defaultCliId } from "@/features/clis/registry"
 import { GrokWorkspace } from "@/features/grok/grok-workspace"
 import { useGrokProviders } from "@/features/grok/use-grok-providers"
+import { PiWorkspace } from "@/features/pi/pi-workspace"
+import { usePiProviders } from "@/features/pi/use-pi-providers"
 import { McpWorkspace } from "@/features/mcp/mcp-workspace"
 import { useMcps } from "@/features/mcp/use-mcp"
 import { CodexWorkspace } from "@/features/codex/codex-workspace"
@@ -87,6 +89,27 @@ function CodexView() {
       />
       <Separator />
       <CodexWorkspace session={session} />
+    </>
+  )
+}
+
+function PiView() {
+  const session = usePiProviders()
+  const cli = cliById("pi")
+
+  return (
+    <>
+      <AppTitlebar
+        title={cli.name}
+        action={
+          <Button className="app-region-no-drag" type="button" onClick={session.openCreate}>
+            <Plus data-icon="inline-start" />
+            {m.action_add()}
+          </Button>
+        }
+      />
+      <Separator />
+      <PiWorkspace session={session} />
     </>
   )
 }
@@ -221,6 +244,9 @@ export function AppShell() {
         </KeepAlivePane>
         <KeepAlivePane active={navId === "grok-build"}>
           <GrokView />
+        </KeepAlivePane>
+        <KeepAlivePane active={navId === "pi"}>
+          <PiView />
         </KeepAlivePane>
         <KeepAlivePane active={navId === "skills"}>
           <SkillsView />

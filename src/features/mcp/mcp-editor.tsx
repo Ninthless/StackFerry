@@ -277,7 +277,13 @@ export function McpEditor({ open, editing, onOpenChange, onSubmit }: Props) {
                   {MCP_TARGETS.map((target) => (
                     <Field key={target} orientation="horizontal">
                       <FieldLabel htmlFor={`${formId}-${target}`}>
-                        {target === "claude" ? m.skills_claude() : target === "codex" ? m.skills_codex() : m.skills_grok()}
+                        {target === "claude"
+                          ? m.skills_claude()
+                          : target === "codex"
+                            ? m.skills_codex()
+                            : target === "grok"
+                              ? m.skills_grok()
+                              : m.skills_pi()}
                       </FieldLabel>
                       <Switch
                         id={`${formId}-${target}`}

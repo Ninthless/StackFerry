@@ -7,6 +7,8 @@ import type { ClaudeProviderStore } from './claude/store'
 import type { ProviderStore } from './codex/store'
 import type { GrokEnableService } from './grok/service'
 import type { GrokProviderStore } from './grok/store'
+import type { PiEnableService } from './pi/service'
+import type { PiProviderStore } from './pi/store'
 import type { McpService } from './mcp/service'
 import type { CcswImportService } from './ccsw/service'
 import type { LegacyImportService } from './legacy/service'
@@ -21,14 +23,18 @@ export type AppIpcContext = {
   claude: ClaudeEnableService
   grokStore: GrokProviderStore
   grok: GrokEnableService
+  piStore: PiProviderStore
+  pi: PiEnableService
   getCodexHome: () => string
   getGrokHome: () => string
+  getPiHome: () => string
   backupRoot: string
   getNeedsRestart: () => boolean
   setNeedsRestart: (value: boolean) => void
   onChanged: () => void
   onClaudeChanged: () => void
   onGrokChanged: () => void
+  onPiChanged: () => void
   skills: SkillService
   mcp: McpService
   releases: AppReleaseService

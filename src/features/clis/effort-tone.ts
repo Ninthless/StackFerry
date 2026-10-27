@@ -1,4 +1,4 @@
-export type EffortToneId = "codex" | "claude" | "grok"
+export type EffortToneId = "codex" | "claude" | "grok" | "pi"
 
 type EffortSwatch = {
   main: string
@@ -17,6 +17,10 @@ export const EFFORT_TONES: Record<EffortToneId, { light: EffortSwatch; dark: Eff
   grok: {
     light: { main: "#7c43c7", base: "#f0eff2" },
     dark: { main: "#a857f7", base: "#111015" },
+  },
+  pi: {
+    light: { main: "#b8860b", base: "#f6f1e4" },
+    dark: { main: "#f1be58", base: "#1c170c" },
   },
 }
 

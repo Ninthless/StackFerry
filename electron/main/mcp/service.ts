@@ -11,6 +11,7 @@ import {
 import { claudeUserJsonPath } from '../claude/home'
 import { codexConfigPath } from '../codex/home'
 import { grokConfigPath } from '../grok/home'
+import { piMcpPath, resolvePiHome } from '../pi/home'
 import { readLiveMcpServers, writeLiveMcpServers, type McpLivePaths } from './live'
 import { McpStore, mcpStorePath } from './store'
 
@@ -19,6 +20,7 @@ export type McpServiceDeps = {
   getCodexHome: () => string
   getGrokHome: () => string
   getHomedir: () => string
+  getPiHome?: () => string
   storePath?: string
   paths?: McpLivePaths
 }
@@ -34,6 +36,7 @@ export class McpService {
         codexConfigPath: codexConfigPath(deps.getCodexHome()),
         grokConfigPath: grokConfigPath(deps.getGrokHome()),
         claudeUserJsonPath: claudeUserJsonPath(() => deps.getHomedir()),
+        piMcpPath: piMcpPath(deps.getPiHome?.() ?? resolvePiHome(process.env, deps.getHomedir)),
       }
   }
 

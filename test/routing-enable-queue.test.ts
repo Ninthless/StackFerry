@@ -16,6 +16,8 @@ import { ClaudeEnableService } from '../electron/main/claude/service'
 import { ClaudeProviderStore } from '../electron/main/claude/store'
 import { GrokEnableService } from '../electron/main/grok/service'
 import { GrokProviderStore } from '../electron/main/grok/store'
+import { PiEnableService } from '../electron/main/pi/service'
+import { PiProviderStore } from '../electron/main/pi/store'
 import { ProviderStore } from '../electron/main/codex/store'
 import { EgressProxyStore } from '../electron/main/egress/store'
 import { RoutingService } from '../electron/main/routing/service'
@@ -188,6 +190,12 @@ async function harness(
     backupRoot: path.join(dir, 'backups', 'grok'),
     isManaged: () => false,
   })
+  const piStore = new PiProviderStore(path.join(dir, 'pi-providers.json'))
+  const pi = new PiEnableService({
+    store: piStore,
+    getPiHome: () => path.join(dir, 'pi'),
+    backupRoot: path.join(dir, 'backups', 'pi'),
+  })
   const restart = { value: false }
   const routing = new RoutingService({
     store,
@@ -196,6 +204,8 @@ async function harness(
     claude,
     grokStore,
     grok,
+    piStore,
+    pi,
     getCodexHome: () => path.join(dir, 'codex'),
     backupRoot: path.join(dir, 'backups'),
     setNeedsRestart: (value) => {

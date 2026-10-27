@@ -44,6 +44,7 @@ const BINARY_BASE_NAMES: Record<CliToolId, string> = {
   codex: 'codex',
   'claude-code': 'claude',
   'grok-build': 'grok',
+  pi: 'pi',
 }
 
 export function binaryBaseName(id: CliToolId): string {
@@ -174,6 +175,10 @@ export function nativeUninstallTargets(id: CliToolId, ctx: PathContext & ConfigH
     return targets
   }
   if (id === 'grok-build') return grokNativeBinaries(ctx.grokHome)
+  if (id === 'pi') {
+    const bin = ctx.platform === 'win32' ? 'pi.exe' : 'pi'
+    return [path.join(ctx.home, '.local', 'bin', bin)]
+  }
   const claudeBin = ctx.platform === 'win32' ? 'claude.exe' : 'claude'
   return [path.join(ctx.home, '.local', 'bin', claudeBin), path.join(ctx.home, '.local', 'share', 'claude')]
 }

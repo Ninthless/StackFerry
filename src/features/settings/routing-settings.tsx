@@ -5,7 +5,7 @@ import {
   type RoutingLaneState,
   type RoutingSnapshot,
 } from "@shared/routing"
-import type { ClaudeProviderListItem, GrokProviderListItem, ProviderListItem } from "@shared/types"
+import type { ClaudeProviderListItem, GrokProviderListItem, PiProviderListItem, ProviderListItem } from "@shared/types"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Card,
@@ -41,6 +41,7 @@ export function RoutingSettings() {
   const [codexProviders, setCodexProviders] = useState<ProviderListItem[]>([])
   const [claudeProviders, setClaudeProviders] = useState<ClaudeProviderListItem[]>([])
   const [grokProviders, setGrokProviders] = useState<GrokProviderListItem[]>([])
+  const [piProviders, setPiProviders] = useState<PiProviderListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
@@ -51,16 +52,18 @@ export function RoutingSettings() {
       return
     }
     try {
-      const [nextRouting, nextCodex, nextClaude, nextGrok] = await Promise.all([
+      const [nextRouting, nextCodex, nextClaude, nextGrok, nextPi] = await Promise.all([
         api.getRouting(),
         api.listProviders(),
         api.listClaudeProviders(),
         api.listGrokProviders(),
+        api.listPiProviders(),
       ])
       setRouting(nextRouting)
       setCodexProviders(nextCodex)
       setClaudeProviders(nextClaude)
       setGrokProviders(nextGrok)
+      setPiProviders(nextPi)
       setError("")
     } catch (loadError) {
       setError(formatAppError(loadError))
@@ -93,12 +96,16 @@ export function RoutingSettings() {
     const unsubGrok = api.onGrokChanged(() => {
       void refresh()
     })
+    const unsubPi = api.onPiChanged(() => {
+      void refresh()
+    })
 
     return () => {
       cancelled = true
       unsubCodex()
       unsubClaude()
       unsubGrok()
+      unsubPi()
     }
   }, [refresh])
 
@@ -165,7 +172,7 @@ export function RoutingSettings() {
                   <LanePanel
                     cliId={cli.id}
                     lane={routing.lanes[cli.id]}
-                    providers={providersFor(cli.id, codexProviders, claudeProviders, grokProviders)}
+                    providers={providersFor(cli.id, codexProviders, claudeProviders, grokProviders, piProviders)}
                     onRefresh={refresh}
                     onReorder={(ids) => {
                       void reorderQueue(cli.id, ids)
@@ -313,9 +320,11 @@ function providersFor(
   codex: ProviderListItem[],
   claude: ClaudeProviderListItem[],
   grok: GrokProviderListItem[],
+  pi: PiProviderListItem[],
 ): NamedProvider[] {
   if (cliId === "claude-code") return claude
   if (cliId === "grok-build") return grok
+  if (cliId === "pi") return pi
   return codex
 }
 
@@ -325,6 +334,9 @@ function laneCopy(cliId: CliId): { hint: string; active: string } {
   }
   if (cliId === "grok-build") {
     return { hint: m.routing_description_grok(), active: m.routing_active_description_grok() }
+  }
+  if (cliId === "pi") {
+    return { hint: m.routing_description_pi(), active: m.routing_active_description_pi() }
   }
   return { hint: m.routing_description_codex(), active: m.routing_active_description_codex() }
 }

@@ -84,6 +84,7 @@ describe('routing policy', () => {
     expect(classifyProxyPath('/v1/responses')).toBe('responses')
     expect(classifyProxyPath('/v1/models/')).toBe('models')
     expect(classifyProxyPath('/v1/messages')).toBe('messages')
+    expect(classifyProxyPath('/v1/chat/completions')).toBe('chat')
     expect(classifyProxyPath('/health')).toBeNull()
     expect(upstreamProxyPath('/v1/responses', 'chat')).toBe('/v1/chat/completions')
     expect(upstreamProxyPath('/v1/models', 'chat')).toBe('/v1/models')

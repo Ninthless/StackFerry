@@ -25,11 +25,13 @@ const TARGET_LABEL: Record<SkillTarget, () => string> = {
   codex: () => m.skills_codex(),
   grok: () => m.skills_grok(),
   dsh: () => m.skills_dsh(),
+  pi: () => m.skills_pi(),
 }
 
 const TARGET_HINT: Partial<Record<SkillTarget, () => string>> = {
   grok: () => m.skills_grok_hint(),
   dsh: () => m.skills_dsh_hint(),
+  pi: () => m.skills_pi_hint(),
 }
 
 export type SkillRowActions = {

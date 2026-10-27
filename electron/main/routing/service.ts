@@ -11,6 +11,8 @@ import type { ClaudeEnableService } from '../claude/service'
 import type { ClaudeProviderStore } from '../claude/store'
 import type { GrokEnableService } from '../grok/service'
 import type { GrokProviderStore } from '../grok/store'
+import type { PiEnableService } from '../pi/service'
+import type { PiProviderStore } from '../pi/store'
 import type { ProviderStore } from '../codex/store'
 import { emptyEgressProxyView, type EgressProxyPatch, type EgressProxyView } from '../../../shared/egress-proxy'
 import { closeOutboundProxy } from '../egress/fetch'
@@ -18,7 +20,9 @@ import type { EgressProxyStore } from '../egress/store'
 import { createClaudeAdapter } from './claude-adapter'
 import { createCodexAdapter } from './codex-adapter'
 import { createGrokAdapter } from './grok-adapter'
+import { createPiAdapter } from './pi-adapter'
 import { RoutingLane } from './lane'
+import type { ProxyRoute } from './policy'
 import { RoutingStore } from './store'
 
 export class RoutingService {
@@ -34,6 +38,8 @@ export class RoutingService {
       claude: ClaudeEnableService
       grokStore: GrokProviderStore
       grok: GrokEnableService
+      piStore: PiProviderStore
+      pi: PiEnableService
       getCodexHome: () => string
       backupRoot: string
       setNeedsRestart: (value: boolean) => void
@@ -49,6 +55,10 @@ export class RoutingService {
       'grok-build': new RoutingLane(
         createGrokAdapter({ store: options.grokStore, grok: options.grok }),
         this.laneOptions('grok-build', ['responses', 'models']),
+      ),
+      pi: new RoutingLane(
+        createPiAdapter({ store: options.piStore, pi: options.pi }),
+        this.laneOptions('pi', ['chat', 'responses', 'messages', 'models']),
       ),
     }
   }
@@ -123,7 +133,7 @@ export class RoutingService {
     return this.lanes[id]
   }
 
-  private laneOptions(id: RoutingLaneId, routes: readonly ['responses', 'models'] | readonly ['messages', 'models']) {
+  private laneOptions(id: RoutingLaneId, routes: readonly ProxyRoute[]) {
     return {
       persist: () => this.cached().lanes[id],
       policy: () => this.cached(),

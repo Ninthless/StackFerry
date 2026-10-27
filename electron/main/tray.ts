@@ -1,6 +1,6 @@
 import { Menu, Tray, nativeImage, type MenuItemConstructorOptions, type NativeImage } from 'electron'
 import type { CliToolId } from '../../shared/cli-tools'
-import type { ClaudeProviderListItem, GrokProviderListItem, ProviderListItem } from '../../shared/types'
+import type { ClaudeProviderListItem, GrokProviderListItem, PiProviderListItem, ProviderListItem } from '../../shared/types'
 import { m } from './i18n'
 import { buildTrayMenuTemplate, type TrayCliLists, type TrayMenuNode } from './tray-menu'
 
@@ -23,19 +23,21 @@ export class AppTray {
     if (process.platform !== 'darwin') {
       this.tray.on('click', () => this.options.onShow())
     }
-    this.update({ codex: [], claude: [], grok: [] })
+    this.update({ codex: [], claude: [], grok: [], pi: [] })
   }
 
   update(lists: {
     codex: ProviderListItem[]
     claude: ClaudeProviderListItem[]
     grok: GrokProviderListItem[]
+    pi: PiProviderListItem[]
   }): void {
     if (!this.tray) return
     const snapshot: TrayCliLists = {
       codex: lists.codex,
       'claude-code': lists.claude,
       'grok-build': lists.grok,
+      pi: lists.pi,
     }
     this.tray.setContextMenu(
       Menu.buildFromTemplate(
@@ -48,6 +50,7 @@ export class AppTray {
               codex: m.tray_cli_codex(),
               'claude-code': m.tray_cli_claude(),
               'grok-build': m.tray_cli_grok(),
+              pi: m.tray_cli_pi(),
             },
           }),
           this.options,

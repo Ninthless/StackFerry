@@ -1,6 +1,6 @@
 import { AppError } from './app-error'
 
-export const MCP_TARGETS = ['claude', 'codex', 'grok'] as const
+export const MCP_TARGETS = ['claude', 'codex', 'grok', 'pi'] as const
 export type McpTarget = (typeof MCP_TARGETS)[number]
 
 export const MCP_TRANSPORTS = ['stdio', 'http'] as const

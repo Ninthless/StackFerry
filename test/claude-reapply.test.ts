@@ -16,6 +16,8 @@ import { ClaudeProviderStore } from '../electron/main/claude/store'
 import { reapplyClaudeGatewayIfNeeded } from '../electron/main/claude/reapply'
 import { GrokEnableService } from '../electron/main/grok/service'
 import { GrokProviderStore } from '../electron/main/grok/store'
+import { PiEnableService } from '../electron/main/pi/service'
+import { PiProviderStore } from '../electron/main/pi/store'
 import { ProviderStore } from '../electron/main/codex/store'
 import { RoutingService } from '../electron/main/routing/service'
 import { RoutingStore } from '../electron/main/routing/store'
@@ -47,6 +49,12 @@ describe('reapply claude gateway after the cli config is gone', () => {
         getGrokHome: () => path.join(dir, 'grok'),
         backupRoot: path.join(dir, 'backups', 'grok'),
         isManaged: () => false,
+      }),
+      piStore: new PiProviderStore(path.join(dir, 'pi-providers.json')),
+      pi: new PiEnableService({
+        store: new PiProviderStore(path.join(dir, 'pi-providers.json')),
+        getPiHome: () => path.join(dir, 'pi'),
+        backupRoot: path.join(dir, 'backups', 'pi'),
       }),
       getCodexHome: () => path.join(dir, 'codex'),
       backupRoot: path.join(dir, 'backups'),
