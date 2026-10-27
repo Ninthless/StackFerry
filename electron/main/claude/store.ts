@@ -82,6 +82,7 @@ export class ClaudeProviderStore {
   async update(id: string, draft: ClaudeProviderDraft): Promise<ClaudeProviderListItem> {
     const file = await this.read()
     const provider = this.requireProvider(file, id)
+    if (provider.kind === 'official') throw new AppError('official_locked')
     provider.name = this.requireName(draft.name)
     if (provider.kind === 'custom') {
       provider.baseUrl = this.requireBaseUrl(draft.baseUrl)
@@ -146,8 +147,9 @@ export class ClaudeProviderStore {
 
   async delete(id: string): Promise<void> {
     const file = await this.read()
-    this.requireProvider(file, id)
-    file.providers = file.providers.filter((provider) => provider.id !== id)
+    const provider = this.requireProvider(file, id)
+    if (provider.kind === 'official') throw new AppError('official_locked')
+    file.providers = file.providers.filter((item) => item.id !== id)
     if (file.activeProviderId === id) {
       file.activeProviderId = null
     }

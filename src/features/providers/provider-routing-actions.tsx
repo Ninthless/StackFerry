@@ -86,27 +86,29 @@ export function ProviderRoutingActions({
           {m.provider_enable()}
         </Button>
       )}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={m.provider_more()} />
-          }
-        >
-          <EllipsisVertical />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-auto min-w-36">
-          {official || enabled ? null : (
-            <DropdownMenuItem disabled={busy} onClick={() => onSetQueued(providerId, !queued)}>
-              {queued ? m.routing_queue_leave() : m.routing_queue_join()}
+      {official ? null : (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button type="button" variant="ghost" size="icon-sm" aria-label={m.provider_more()} />
+            }
+          >
+            <EllipsisVertical />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-auto min-w-36">
+            {enabled ? null : (
+              <DropdownMenuItem disabled={busy} onClick={() => onSetQueued(providerId, !queued)}>
+                {queued ? m.routing_queue_leave() : m.routing_queue_join()}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={onEdit}>{m.provider_edit()}</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={onDelete}>
+              {m.provider_delete()}
             </DropdownMenuItem>
-          )}
-          <DropdownMenuItem onClick={onEdit}>{m.provider_edit()}</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={onDelete}>
-            {m.provider_delete()}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   )
 }
