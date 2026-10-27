@@ -15,7 +15,7 @@
   <a href="https://x.com/ninthless"><img alt="X @ninthless" src="https://img.shields.io/badge/X-%40ninthless-0A0A0A?logo=x&logoColor=white"></a>
 </p>
 
-给 Coding CLI 用的桌面控制面。供应商、本地 failover、Skills 和 MCP 收在一处，再写进你启用的那个 CLI。现在可用的是 Codex、Claude Code 和 Grok。以后会按同样的方式加入更多 CLI。
+给 Coding CLI 用的桌面控制面。供应商、本地 failover、Skills 和 MCP 收在一处，再写进你启用的那个 CLI。现在可用的是 Codex、Claude Code、Grok 和 Pi。以后会按同样的方式加入更多 CLI。
 
 <p align="center">
   <img src="docs/media/home.png" width="796" alt="StackFerry 首页，欢迎说明盖在 Codex 页面上">
@@ -46,16 +46,16 @@ StackFerry 不替代这些 CLI。它放在旁边：官方登录或自定义网�
 
 | | |
 | --- | --- |
-| 现在 | Codex、Claude Code、Grok |
+| 现在 | Codex、Claude Code、Grok、Pi |
 | 以后 | 更多 Coding CLI。每一家都走同一套供应商、路由、Skills 和 MCP。 |
 
 ## 它做什么
 
 - **供应商。** 每个 CLI 可以是官方登录，也可以是自定义网关。启用时先备份，再写 live 配置。中转站可以发 `stackferry://` 导入链接，字段见 [docs/provider-import.zh-CN.md](docs/provider-import.zh-CN.md)。
 - **本地路由。** 每个 CLI 一条 failover 队列。队列非空时，请求走本机代理，并带熔断。官方登录不进队列。
-- **Skills。** 从 GitHub 仓库或本地文件夹导入 `SKILL.md`，在 StackFerry 里留一份，再投影到 Claude、Codex、Grok 和 DeepSeek Harness。
-- **MCP。** 添加 stdio 或 HTTP 服务器，或从 CLI 已有定义导入，并应用到 Claude、Codex 和/或 Grok。
-- **CLI 程序。** 检测、安装、更新、卸载本机的 Codex、Claude Code、Grok Build。卸载 CLI 不会删掉 StackFerry 里的供应商数据。
+- **Skills。** 从 GitHub 仓库或本地文件夹导入 `SKILL.md`，在 StackFerry 里留一份，再投影到 Claude、Codex、Grok、DeepSeek Harness 和 Pi。
+- **MCP。** 添加 stdio 或 HTTP 服务器，或从 CLI 已有定义导入，并应用到 Claude、Codex、Grok 和/或 Pi。
+- **CLI 程序。** 检测、安装、更新、卸载本机的 Codex、Claude Code、Grok Build 和 Pi。卸载 CLI 不会删掉 StackFerry 里的供应商数据。
 - **桌面。** 简体中文和 English、主题、Windows 11 Mica、首次启动指引、托盘。关窗口是隐藏。退出时把路由写回的配置还原成直连。
 
 已打包的 Windows 和 Linux 会检查 [GitHub Releases](https://github.com/Ninthless/StackFerry/releases) 更新。macOS 是 ad-hoc 签名，应用内更新不可用，请重新下载 DMG。
@@ -112,6 +112,7 @@ xattr -dr com.apple.quarantine /Applications/StackFerry.app
 | Codex | `~/.codex/config.toml`（Windows 为 `%USERPROFILE%\.codex\config.toml`）。不覆盖 `auth.json`。 |
 | Claude Code / Desktop | Claude Code `settings.json`，并同步 Claude Desktop（`LOCALAPPDATA` / `~/Library/Application Support` / `XDG_CONFIG_HOME`）。 |
 | Grok | `~/.grok/config.toml` |
+| Pi | `~/.pi/agent/models.json` 和 `settings.json`（设置了 `PI_CODING_AGENT_DIR` 时用该目录）。不覆盖 `auth.json`。 |
 
 供应商列表、路由队列、Skills、MCP 在应用 `userData` 目录，不在各 CLI 自己的目录里。
 

@@ -7,7 +7,7 @@ import { enqueue, type AppIpcContext, type WriteChains } from '../app-ipc'
 
 export type RoutingIpcContext = Pick<
   AppIpcContext,
-  'routing' | 'onChanged' | 'onClaudeChanged' | 'onGrokChanged'
+  'routing' | 'onChanged' | 'onClaudeChanged' | 'onGrokChanged' | 'onPiChanged'
 >
 
 export function registerRoutingIpc(context: RoutingIpcContext, writeChains: WriteChains): void {
@@ -18,6 +18,7 @@ export function registerRoutingIpc(context: RoutingIpcContext, writeChains: Writ
     context.onChanged()
     context.onClaudeChanged()
     context.onGrokChanged()
+    context.onPiChanged()
     return next
   })
   ipcMain.handle(IpcChannel.getRouting, () => context.routing.snapshot())
@@ -29,6 +30,7 @@ export function registerRoutingIpc(context: RoutingIpcContext, writeChains: Writ
     context.onChanged()
     context.onClaudeChanged()
     context.onGrokChanged()
+    context.onPiChanged()
     return next
   })
   ipcMain.handle(IpcChannel.setProviderQueued, async (_event, cliId: unknown, id: string, queued: boolean) => {
@@ -74,5 +76,6 @@ function isEgressPatch(value: unknown): value is EgressProxyPatch {
 function notifyLane(context: RoutingIpcContext, cliId: CliToolId): void {
   if (cliId === 'codex') context.onChanged()
   else if (cliId === 'claude-code') context.onClaudeChanged()
-  else context.onGrokChanged()
+  else if (cliId === 'grok-build') context.onGrokChanged()
+  else if (cliId === 'pi') context.onPiChanged()
 }

@@ -67,6 +67,12 @@ export const McpRow = memo(function McpRow({
           disabled={busy}
           onCheckedChange={(checked) => void actions.setTarget(server.id, "grok", checked)}
         />
+        <TargetSwitch
+          label={m.skills_pi()}
+          checked={server.appliedTo.includes("pi")}
+          disabled={busy}
+          onCheckedChange={(checked) => void actions.setTarget(server.id, "pi", checked)}
+        />
       </ItemActions>
       <ItemActions className="w-10 justify-end">
         <DropdownMenu>

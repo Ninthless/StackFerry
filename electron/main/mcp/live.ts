@@ -5,11 +5,13 @@ import { AppError } from '../../../shared/app-error'
 import type { McpServer } from '../../../shared/mcp'
 import {
   desiredClaudeTable,
+  desiredPiTable,
   desiredTomlTable,
   encodeCodexMcp,
   encodeGrokMcp,
   mergeImportedServers,
   parseClaudeMcpTable,
+  parsePiMcpTable,
   parseTomlMcpTable,
   projectClaudeMcpServers,
   projectTomlMcpServers,
@@ -22,18 +24,21 @@ export type McpLivePaths = {
   codexConfigPath: string
   grokConfigPath: string
   claudeUserJsonPath: string
+  piMcpPath: string
 }
 
 export async function readLiveMcpServers(paths: McpLivePaths): Promise<McpServer[]> {
-  const [codex, grok, claude] = await Promise.all([
+  const [codex, grok, claude, pi] = await Promise.all([
     readTomlServers(paths.codexConfigPath, 'http_headers'),
     readTomlServers(paths.grokConfigPath, 'headers'),
     readClaudeServers(paths.claudeUserJsonPath),
+    readPiServers(paths.piMcpPath),
   ])
   return mergeImportedServers([
     { target: 'codex', servers: codex },
     { target: 'claude', servers: claude },
     { target: 'grok', servers: grok },
+    { target: 'pi', servers: pi },
   ])
 }
 
@@ -42,6 +47,7 @@ export async function writeLiveMcpServers(paths: McpLivePaths, servers: readonly
   await writeTomlMcp(paths.codexConfigPath, managedIds, desiredTomlTable(servers, 'codex', encodeCodexMcp))
   await writeTomlMcp(paths.grokConfigPath, managedIds, desiredTomlTable(servers, 'grok', encodeGrokMcp))
   await writeClaudeMcp(paths.claudeUserJsonPath, managedIds, desiredClaudeTable(servers))
+  await writeClaudeMcp(paths.piMcpPath, managedIds, desiredPiTable(servers))
 }
 
 async function readTomlServers(
@@ -55,6 +61,11 @@ async function readTomlServers(
 async function readClaudeServers(filePath: string): Promise<McpServer[]> {
   const doc = await readJsonOrEmpty(filePath)
   return parseClaudeMcpTable(doc.mcpServers)
+}
+
+async function readPiServers(filePath: string): Promise<McpServer[]> {
+  const doc = await readJsonOrEmpty(filePath)
+  return parsePiMcpTable(doc.mcpServers)
 }
 
 async function writeTomlMcp(

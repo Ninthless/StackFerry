@@ -9,6 +9,7 @@ export const CLI_NPM_PACKAGES: Partial<Record<CliToolId, string>> = {
   codex: '@openai/codex',
   'claude-code': '@anthropic-ai/claude-code',
   'grok-build': '@xai-official/grok',
+  pi: '@earendil-works/pi-coding-agent',
 }
 
 export const CLI_WINGET_IDS: Partial<Record<CliToolId, string>> = {
@@ -34,6 +35,10 @@ export const CLI_INSTALL_URLS: Record<CliToolId, { win32: string; posix: string 
   'grok-build': {
     win32: 'https://x.ai/cli/install.ps1',
     posix: 'https://x.ai/cli/install.sh',
+  },
+  pi: {
+    win32: 'https://pi.dev/install.ps1',
+    posix: 'https://pi.dev/install.sh',
   },
 }
 
@@ -82,9 +87,11 @@ export function packageManagerArgs(
   const timeoutMs = action === 'uninstall' ? UNINSTALL_TIMEOUT_MS : INSTALL_TIMEOUT_MS
   if (method === 'npm') {
     const pkg = requireCliPackage(CLI_NPM_PACKAGES, id)
+    const args = action === 'update' ? ['install', '-g', `${pkg}@latest`] : ['uninstall', '-g', pkg]
+    if (id === 'pi') args.splice(2, 0, '--ignore-scripts')
     return {
       tool: 'npm',
-      args: action === 'update' ? ['install', '-g', `${pkg}@latest`] : ['uninstall', '-g', pkg],
+      args,
       timeoutMs,
     }
   }

@@ -18,6 +18,7 @@ export function classifyInstallMethod(
   if (n.includes('/.codex/packages/standalone')) return 'native'
   if (n === `${home}/.local/bin/codex` || n === `${home}/.local/bin/codex.exe`) return 'native'
   if (n === `${home}/.local/bin/claude` || n === `${home}/.local/bin/claude.exe`) return 'native'
+  if (n === `${home}/.local/bin/pi` || n === `${home}/.local/bin/pi.exe`) return 'native'
   if (n.includes('/.local/share/claude')) return 'native'
 
   if (

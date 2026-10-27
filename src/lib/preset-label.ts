@@ -27,3 +27,8 @@ export function grokPresetLabel(id: string, fallback: string): string {
   if (id === "official") return m.preset_grok_official()
   return CLAUDE_PRESET_LABELS[id]?.() ?? fallback
 }
+
+export function piPresetLabel(id: string, fallback: string): string {
+  if (id === "official") return m.preset_pi_official()
+  return PRESET_LABELS[id]?.() ?? fallback
+}

@@ -39,14 +39,16 @@ describe('skill paths', () => {
       claudeHome: path.join(home, '.claude'),
       codexHome: path.join(home, '.codex'),
       grokHome: path.join(home, '.grok'),
+      piHome: path.join(home, '.pi', 'agent'),
       homedir: home,
       env: {},
     })
-    expect(projections.map((item) => item.target)).toEqual(['claude', 'codex', 'grok', 'dsh'])
+    expect(projections.map((item) => item.target)).toEqual(['claude', 'codex', 'grok', 'dsh', 'pi'])
     expect(projections.find((item) => item.target === 'codex')?.roots).toEqual([
       path.join(home, '.agents', 'skills'),
       path.join(home, '.codex', 'skills'),
     ])
     expect(projections.find((item) => item.target === 'dsh')?.roots).toEqual([path.join(home, '.dsh', 'skills')])
+    expect(projections.find((item) => item.target === 'pi')?.roots).toEqual([path.join(home, '.pi', 'agent', 'skills')])
   })
 })

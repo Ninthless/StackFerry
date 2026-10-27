@@ -120,6 +120,30 @@ export function desiredClaudeTable(servers: readonly McpServer[]): Record<string
   return desired
 }
 
+export function encodePiMcp(server: McpServer): JsonObject {
+  if (server.transport === 'stdio') {
+    return compactRecord({
+      command: server.command,
+      args: server.args,
+      env: server.env,
+      cwd: server.cwd,
+    })
+  }
+  return compactRecord({
+    url: server.url,
+    headers: server.headers,
+  })
+}
+
+export function desiredPiTable(servers: readonly McpServer[]): Record<string, JsonObject> {
+  const desired: Record<string, JsonObject> = {}
+  for (const server of servers) {
+    if (!server.appliedTo.includes('pi')) continue
+    desired[server.id] = encodePiMcp(server)
+  }
+  return desired
+}
+
 export function parseTomlMcpTable(
   value: unknown,
   headersKey: 'http_headers' | 'headers',
@@ -155,6 +179,16 @@ export function parseClaudeMcpTable(value: unknown): McpServer[] {
   const servers: McpServer[] = []
   for (const [id, raw] of Object.entries(value)) {
     const parsed = parseClaudeMcpEntry(id, raw)
+    if (parsed) servers.push(parsed)
+  }
+  return servers
+}
+
+export function parsePiMcpTable(value: unknown): McpServer[] {
+  if (!isPlainObject(value)) return []
+  const servers: McpServer[] = []
+  for (const [id, raw] of Object.entries(value)) {
+    const parsed = parsePiMcpEntry(id, raw)
     if (parsed) servers.push(parsed)
   }
   return servers
@@ -218,6 +252,35 @@ function parseClaudeMcpEntry(rawId: string, raw: unknown): McpServer | null {
     command,
     args: stringList(raw.args),
     env: cleanStringMap(raw.env),
+  })
+}
+
+function parsePiMcpEntry(rawId: string, raw: unknown): McpServer | null {
+  if (!isPlainObject(raw)) return null
+  const id = safeMcpId(rawId)
+  if (!id) return null
+  const url = stringValue(raw.url)
+  const command = stringValue(raw.command)
+  if (url) {
+    const remote = raw.type === undefined ? 'http' : claudeRemoteType(raw.type)
+    if (remote !== 'http') return null
+    return liveServer({
+      id,
+      name: id,
+      transport: 'http',
+      url,
+      headers: cleanStringMap(raw.headers),
+    })
+  }
+  if (!command) return null
+  return liveServer({
+    id,
+    name: id,
+    transport: 'stdio',
+    command,
+    args: stringList(raw.args),
+    env: cleanStringMap(raw.env),
+    cwd: stringValue(raw.cwd),
   })
 }
 

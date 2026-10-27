@@ -52,7 +52,7 @@ describe('dsh-reasoning-slider Energy port', () => {
   it('gives each CLI a distinct light/dark fire and track pair', () => {
     const hex = /^#[0-9a-f]{6}$/
     const mains = new Set<string>()
-    for (const id of ['codex', 'claude', 'grok'] as const) {
+    for (const id of ['codex', 'claude', 'grok', 'pi'] as const) {
       const light = EFFORT_TONES[id].light
       const dark = EFFORT_TONES[id].dark
       expect(light.main).toMatch(hex)
@@ -66,6 +66,6 @@ describe('dsh-reasoning-slider Energy port', () => {
       mains.add(light.main)
       mains.add(dark.main)
     }
-    expect(mains.size).toBe(6)
+    expect(mains.size).toBe(8)
   })
 })

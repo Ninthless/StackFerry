@@ -23,6 +23,7 @@ export type LaneAdapter = {
   writeDirect(id: string): Promise<void>
   writeRouter(port: number, activeId: string): Promise<void>
   markEnabled(id: string): Promise<void>
+  assertQueue?(ids: readonly string[]): Promise<void>
 }
 
 export class RoutingLane {
@@ -104,6 +105,7 @@ export class RoutingLane {
     const active = await this.adapter.peekActive()
     const rest = persist.queue.filter((item) => item !== id)
     const queue = queued ? (id === active?.id ? [id, ...rest] : [...rest, id]) : rest
+    await this.adapter.assertQueue?.(queue)
     await this.options.setQueue(queue)
     await this.applyQueuePlan()
   }
@@ -120,6 +122,7 @@ export class RoutingLane {
     if (!kind) return
     const persist = this.options.persist()
     const queue = kind === 'custom' ? queueAfterEnable(persist.queue, id) : persist.queue
+    if (kind === 'custom') await this.adapter.assertQueue?.(queue)
     if (queue !== persist.queue) await this.options.setQueue(queue)
     const needsRouter = await this.localRouterRequired(id)
     const plan = planEnable(kind, queue.length, needsRouter)

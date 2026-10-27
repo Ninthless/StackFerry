@@ -15,7 +15,7 @@
   <a href="https://x.com/ninthless"><img alt="X @ninthless" src="https://img.shields.io/badge/X-%40ninthless-0A0A0A?logo=x&logoColor=white"></a>
 </p>
 
-Desktop control plane for coding CLIs. It keeps providers, local failover, Skills, and MCP in one place, then writes them into the CLI you enable. Codex, Claude Code, and Grok work today. More CLIs will be added the same way.
+Desktop control plane for coding CLIs. It keeps providers, local failover, Skills, and MCP in one place, then writes them into the CLI you enable. Codex, Claude Code, Grok, and Pi work today. More CLIs will be added the same way.
 
 <p align="center">
   <img src="docs/media/home.png" width="796" alt="StackFerry home, with the welcome dialog in front of the Codex page">
@@ -46,16 +46,16 @@ StackFerry does not replace those CLIs. It sits beside them: official login or a
 
 | | |
 | --- | --- |
-| Today | Codex, Claude Code, Grok |
+| Today | Codex, Claude Code, Grok, Pi |
 | Later | More coding CLIs. Each one gets the same provider, routing, Skills, and MCP flow. |
 
 ## What it does
 
 - **Providers.** Official login or a custom gateway, per CLI. Enable one and StackFerry backs up, then writes that CLI's live config. A gateway can hand the user a `stackferry://` import link; fields are in [docs/provider-import.md](docs/provider-import.md).
 - **Local routing.** One failover queue per CLI. A non-empty queue sends that CLI through a loopback proxy with a circuit breaker. Official login stays out of the queue.
-- **Skills.** Import `SKILL.md` from a GitHub repo or a local folder, keep StackFerry's copy, then project it onto Claude, Codex, Grok, and DeepSeek Harness.
-- **MCP.** Add stdio or HTTP servers, or import definitions already in a CLI, and apply them to Claude, Codex, and/or Grok.
-- **CLI binaries.** Detect, install, update, or uninstall the local Codex, Claude Code, and Grok Build binaries. Uninstalling a CLI does not delete StackFerry's provider data.
+- **Skills.** Import `SKILL.md` from a GitHub repo or a local folder, keep StackFerry's copy, then project it onto Claude, Codex, Grok, DeepSeek Harness, and Pi.
+- **MCP.** Add stdio or HTTP servers, or import definitions already in a CLI, and apply them to Claude, Codex, Grok, and/or Pi.
+- **CLI binaries.** Detect, install, update, or uninstall the local Codex, Claude Code, Grok Build, and Pi binaries. Uninstalling a CLI does not delete StackFerry's provider data.
 - **Desktop.** English and 简体中文, theme, Windows 11 Mica, a first-launch tour, and a tray. Closing the window hides the app. Quit restores routing-written configs to direct.
 
 Windows and Linux packages check [GitHub Releases](https://github.com/Ninthless/StackFerry/releases) for updates. macOS builds are ad-hoc signed, so in-app update is unavailable. Download a new DMG.
@@ -112,6 +112,7 @@ Do not disable Gatekeeper with `spctl --master-disable`. Repeat steps 3–4 afte
 | Codex | `~/.codex/config.toml` (`%USERPROFILE%\.codex\config.toml` on Windows). `auth.json` is not overwritten. |
 | Claude Code / Desktop | Claude Code `settings.json`, synced to Claude Desktop (`LOCALAPPDATA` / `~/Library/Application Support` / `XDG_CONFIG_HOME`). |
 | Grok | `~/.grok/config.toml` |
+| Pi | `~/.pi/agent/models.json` and `settings.json` (`PI_CODING_AGENT_DIR` when set). `auth.json` is not overwritten. |
 
 Provider lists, routing queues, Skills, and MCP live in the app `userData` directory, not inside those CLI homes.
 

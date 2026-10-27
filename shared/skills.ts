@@ -1,6 +1,6 @@
 import { AppError } from './app-error'
 
-export const SKILL_TARGETS = ['claude', 'codex', 'grok', 'dsh'] as const
+export const SKILL_TARGETS = ['claude', 'codex', 'grok', 'dsh', 'pi'] as const
 
 export type SkillTarget = (typeof SKILL_TARGETS)[number]
 

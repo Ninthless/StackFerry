@@ -86,6 +86,23 @@ const api: StackferryApi = {
       ipcRenderer.removeListener(IpcChannel.grokChanged, wrapped)
     }
   },
+  listPiProviders: () => ipcRenderer.invoke(IpcChannel.listPiProviders),
+  readPiProviderApiKey: (id) => ipcRenderer.invoke(IpcChannel.readPiProviderApiKey, id),
+  listPiPresets: () => ipcRenderer.invoke(IpcChannel.listPiPresets),
+  addPiProvider: (draft) => ipcRenderer.invoke(IpcChannel.addPiProvider, draft),
+  updatePiProvider: (id, draft) => ipcRenderer.invoke(IpcChannel.updatePiProvider, id, draft),
+  deletePiProvider: (id) => ipcRenderer.invoke(IpcChannel.deletePiProvider, id),
+  reorderPiProviders: (ids) => ipcRenderer.invoke(IpcChannel.reorderPiProviders, ids),
+  enablePiProvider: (id) => ipcRenderer.invoke(IpcChannel.enablePiProvider, id),
+  getPiStatus: () => ipcRenderer.invoke(IpcChannel.getPiStatus),
+  listPiModels: (input) => ipcRenderer.invoke(IpcChannel.listPiModels, input),
+  onPiChanged: (listener) => {
+    const wrapped = () => listener()
+    ipcRenderer.on(IpcChannel.piChanged, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IpcChannel.piChanged, wrapped)
+    }
+  },
   listSkills: () => ipcRenderer.invoke(IpcChannel.listSkills),
   refreshSkills: () => ipcRenderer.invoke(IpcChannel.refreshSkills),
   installSkill: (name) => ipcRenderer.invoke(IpcChannel.installSkill, name),

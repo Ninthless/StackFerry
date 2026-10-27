@@ -7,6 +7,7 @@ import {
   mergeImportedServers,
   mergeManagedRecord,
   parseClaudeMcpTable,
+  parsePiMcpTable,
   parseTomlMcpTable,
   projectClaudeMcpServers,
   projectTomlMcpServers,
@@ -119,6 +120,16 @@ describe('mcp live projection', () => {
     })
     expect(fromClaude).toHaveLength(1)
     expect(fromClaude[0]?.claudeRemoteType).toBe('sse')
+    const fromPi = parsePiMcpTable({
+      linear: { url: 'https://mcp.linear.app/mcp', headers: { Authorization: 'Bearer x' } },
+      typed: { type: 'streamable-http', url: 'https://mcp.example.com/http' },
+      sse: { type: 'sse', url: 'https://mcp.example.com/sse' },
+      local: { command: 'docs-mcp', cwd: '/work' },
+    })
+    expect(fromPi.map((server) => server.id)).toEqual(['linear', 'typed', 'local'])
+    expect(fromPi[0]?.url).toBe('https://mcp.linear.app/mcp')
+    expect(fromPi[0]?.headers).toEqual({ Authorization: 'Bearer x' })
+    expect(fromPi[2]?.cwd).toBe('/work')
   })
 
   it('unions CLI targets when the same id is imported from multiple files', () => {

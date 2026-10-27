@@ -1,4 +1,4 @@
-export const CLI_TOOL_IDS = ['codex', 'claude-code', 'grok-build'] as const
+export const CLI_TOOL_IDS = ['codex', 'claude-code', 'grok-build', 'pi'] as const
 
 export type CliToolId = (typeof CLI_TOOL_IDS)[number]
 

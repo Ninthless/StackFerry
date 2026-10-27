@@ -10,6 +10,7 @@ import { reapplyClaudeGatewayIfNeeded } from './claude/reapply'
 import { registerCliToolIpc } from './cli-tools/ipc'
 import { registerCodexIpc } from './codex/ipc'
 import { registerGrokIpc } from './grok/ipc'
+import { registerPiIpc } from './pi/ipc'
 import { registerLegacyImportIpc } from './legacy/ipc'
 import { registerMcpIpc } from './mcp/ipc'
 import { registerReleaseIpc } from './releases/ipc'
@@ -21,6 +22,7 @@ export type { AppIpcContext } from './app-ipc'
 export { enableClaudeProvider, seedOfficialClaudeProvider } from './claude/ipc'
 export { enableProvider, seedOfficialProvider } from './codex/ipc'
 export { enableGrokProvider, seedOfficialGrokProvider } from './grok/ipc'
+export { enablePiProvider, seedOfficialPiProvider } from './pi/ipc'
 
 export function registerIpc(context: AppIpcContext): void {
   const writeChains = emptyWriteChains()
@@ -88,6 +90,7 @@ export function registerIpc(context: AppIpcContext): void {
   registerCodexIpc(context, writeChains)
   registerClaudeIpc(context, writeChains)
   registerGrokIpc(context, writeChains)
+  registerPiIpc(context, writeChains)
   registerSkillIpc(context)
   registerMcpIpc(context)
   registerCliToolIpc(undefined, {
@@ -129,5 +132,11 @@ export function broadcastClaudeChanged(): void {
 export function broadcastGrokChanged(): void {
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send(IpcChannel.grokChanged)
+  }
+}
+
+export function broadcastPiChanged(): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send(IpcChannel.piChanged)
   }
 }

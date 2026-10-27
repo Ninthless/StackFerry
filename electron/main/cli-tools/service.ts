@@ -78,6 +78,8 @@ export class CliToolService {
     if (method === 'native') {
       if (id === 'grok-build' && current.path) {
         await this.runExec(current.path, ['update'], INSTALL_TIMEOUT_MS)
+      } else if (id === 'pi' && current.path) {
+        await this.runExec(current.path, ['update'], INSTALL_TIMEOUT_MS)
       } else {
         await this.runNativeInstall(id)
       }
