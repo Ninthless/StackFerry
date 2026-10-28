@@ -40,6 +40,9 @@ export type AppIpcContext = {
   releases: AppReleaseService
   legacyImport: LegacyImportService
   ccswImport: CcswImportService
+  egress?: {
+    route: () => Promise<{ proxyUri: string | null; bypass: string }>
+  }
   onSkillsChanged: () => void
   onMcpsChanged: () => void
   getLocalePreference: () => Promise<LanguagePreference>

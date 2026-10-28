@@ -306,6 +306,7 @@ app.whenReady().then(async () => {
     getCodexHome: () => resolveCodexHome(),
     getGrokHome: () => resolveGrokHome(),
     getPiHome: () => resolvePiHome(),
+    egress: egressStore,
     backupRoot: path.join(app.getPath('userData'), 'backups'),
     getNeedsRestart: () => needsRestart,
     setNeedsRestart: (value: boolean) => {

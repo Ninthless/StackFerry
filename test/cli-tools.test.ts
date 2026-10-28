@@ -1,8 +1,13 @@
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { AppError } from '../shared/app-error'
-import { CLI_INSTALL_URLS, nativeInstallArgs, packageManagerArgs } from '../electron/main/cli-tools/commands'
+import { CLI_INSTALL_URLS, PI_INSTALL_TIMEOUT_MS, nativeInstallArgs, packageManagerArgs } from '../electron/main/cli-tools/commands'
 import { classifyInstallMethod, parseCliVersion, parseWhereOutput } from '../electron/main/cli-tools/detect'
+import {
+  installProxyEnv,
+  powershellWithProxy,
+  windowsSystemProxyUrl,
+} from '../electron/main/cli-tools/install-proxy'
 import {
   brewCaskOutdatedAvailable,
   cliVersionOutdated,
@@ -17,9 +22,20 @@ import {
   expandWindowsEnv,
   isInside,
   isProtectedConfigPath,
+  execFileCaptured,
+  insertPiPathLine,
   knownSearchDirs,
   knownToolPaths,
   nativeUninstallTargets,
+  pathHasEntry,
+  piAgentBinDir,
+  piOwnedCommandDir,
+  piPathExportLine,
+  piShellName,
+  piShellRcPath,
+  portableWindowsPathEntry,
+  prependPathEntry,
+  stripPiPathLine,
   parseRegPathQuery,
   reconstructSearchDirs,
   removePathEntry,
@@ -89,6 +105,14 @@ describe('classifyInstallMethod', () => {
     expect(classifyInstallMethod('/opt/homebrew/bin/claude', { home })).toBe('homebrew')
     expect(classifyInstallMethod('/usr/local/Caskroom/claude-code/latest/claude', { home })).toBe('homebrew')
   })
+
+  it('detects Pi managed and legacy layouts as native', () => {
+    expect(classifyInstallMethod(path.join(home, '.local', 'bin', 'pi'), { home })).toBe('native')
+    expect(classifyInstallMethod(path.join(home, '.pi', 'agent', 'bin', 'pi.cmd'), { home })).toBe('native')
+    expect(classifyInstallMethod(path.join(home, '.pi', 'agent', 'bin', 'pi'), { home })).toBe('native')
+    const customPi = win ? 'D:\\pi-home' : '/opt/pi-home'
+    expect(classifyInstallMethod(path.join(customPi, 'bin', 'pi.cmd'), { home, piHome: customPi })).toBe('native')
+  })
 })
 
 describe('reconstructSearchDirs', () => {
@@ -97,6 +121,7 @@ describe('reconstructSearchDirs', () => {
     const known = path.join(home, '.local', 'bin')
     expect(dirs[0]).toBe(known)
     expect(dirs).toContain(path.join(home, '.grok', 'bin'))
+    expect(dirs).toContain(piAgentBinDir(home))
     expect(dirs).toContain(win ? 'C:\\Windows\\System32' : '/usr/bin')
   })
 
@@ -137,6 +162,12 @@ describe('native uninstall targets', () => {
     expect(targets).not.toContain(path.join(home, '.claude.json'))
     expect(targets).toContain(path.join(homes.grokHome, 'bin', 'grok'))
     expect(targets).toContain(path.join(homes.grokHome, 'bin', 'grok.exe'))
+    const piTargets = nativeUninstallTargets('pi', ctx)
+    expect(piTargets).toContain(path.join(piAgentBinDir(home), 'pi'))
+    expect(piTargets).toContain(path.join(home, '.pi', 'agent', 'install'))
+    expect(piTargets).not.toContain(path.join(home, '.pi', 'agent'))
+    expect(piTargets).not.toContain(path.join(home, '.pi', 'agent', 'auth.json'))
+    expect(piTargets).not.toContain(path.join(home, '.pi', 'agent', 'settings.json'))
     for (const target of targets) {
       expect(isProtectedConfigPath(target, homes)).toBe(false)
     }
@@ -193,6 +224,10 @@ describe('install commands', () => {
     expect(nativeInstallArgs('grok-build', 'win32').args.join(' ')).toContain(CLI_INSTALL_URLS['grok-build'].win32)
     expect(nativeInstallArgs('grok-build', 'darwin').args.join(' ')).toContain(CLI_INSTALL_URLS['grok-build'].posix)
     expect(nativeInstallArgs('grok-build', 'linux').args.join(' ')).toContain(CLI_INSTALL_URLS['grok-build'].posix)
+    expect(nativeInstallArgs('pi', 'win32').timeoutMs).toBe(PI_INSTALL_TIMEOUT_MS)
+    expect(nativeInstallArgs('pi', 'linux').args.join(' ')).toContain('setsid')
+    expect(nativeInstallArgs('pi', 'linux').args.join(' ')).toContain(CLI_INSTALL_URLS.pi.posix)
+    expect(nativeInstallArgs('codex', 'win32').timeoutMs).toBe(5 * 60_000)
   })
 
   it('updates npm packages with @latest rather than npm update -g', () => {
@@ -216,6 +251,24 @@ describe('install commands', () => {
     ])
     expect(() => packageManagerArgs('claude-code', 'homebrew', 'update', 'linux')).toThrow(AppError)
     expect(() => packageManagerArgs('claude-code', 'homebrew', 'update', 'win32')).toThrow(AppError)
+  })
+
+  it('closes stdin so a PowerShell prompt returns instead of waiting', async () => {
+    if (process.platform !== 'win32') return
+    const started = Date.now()
+    const { stdout } = await execFileCaptured(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-Command',
+        'Write-Output "redirected=$([Console]::IsInputRedirected)"; $answer = Read-Host "prompt"; Write-Output "answer=[$answer]"',
+      ],
+      { timeout: 8_000, closeStdin: true },
+    )
+    const text = stdout.toString('utf8')
+    expect(Date.now() - started).toBeLessThan(4_000)
+    expect(text).toContain('redirected=True')
+    expect(text).toContain('answer=[]')
   })
 })
 
@@ -317,5 +370,91 @@ describe('outdated parsers', () => {
     expect(cliVersionOutdated('v1.0.13', '1.0.13')).toBe(false)
     expect(cliVersionOutdated('1.0.10', '1.0.13')).toBe(true)
     expect(cliVersionOutdated(null, '1.0.13')).toBe(false)
+  })
+})
+
+describe('pi command path helpers', () => {
+  it('keeps the user PATH token when prepending and removing the Pi bin', () => {
+    const homeDir = 'C:\\Users\\demo'
+    const bin = path.join(homeDir, '.pi', 'agent', 'bin')
+    const entry = portableWindowsPathEntry(bin, homeDir)
+    expect(entry).toBe('%USERPROFILE%\\.pi\\agent\\bin')
+    expect(portableWindowsPathEntry('D:\\tools\\pi\\bin', homeDir)).toBe('D:\\tools\\pi\\bin')
+    const current = '%APPDATA%\\npm;C:\\Windows'
+    const expand = (value: string) =>
+      value.replaceAll('%USERPROFILE%', homeDir).replaceAll('%APPDATA%', 'C:\\Users\\demo\\AppData\\Roaming')
+    expect(pathHasEntry(current, entry, ';', expand)).toBe(false)
+    const next = prependPathEntry(current, entry, ';')
+    expect(next.startsWith('%USERPROFILE%\\.pi\\agent\\bin;')).toBe(true)
+    expect(next).toContain('%APPDATA%\\npm')
+    const removed = removePathEntry(next, bin, ';', expand)
+    expect(removed.removed).toBe(true)
+    expect(removed.next).toBe('%APPDATA%\\npm;C:\\Windows')
+  })
+
+  it('writes the shell rc line the installer would add when there is no terminal', () => {
+    const homeDir = '/home/demo'
+    const bin = path.join(homeDir, '.pi', 'agent', 'bin')
+    expect(piShellRcPath(homeDir, 'bash', { bashRcExists: true })).toBe(path.join(homeDir, '.bashrc'))
+    expect(piShellRcPath(homeDir, 'zsh', { zdotdir: '/home/demo/.config/zsh' })).toBe(
+      path.join('/home/demo/.config/zsh', '.zshrc'),
+    )
+    expect(piPathExportLine('/home/demo/.pi/agent/bin', 'bash', '/home/demo')).toBe(
+      'export PATH="/home/demo/.pi/agent/bin:$PATH"',
+    )
+    expect(piPathExportLine(path.join(homeDir, '.local', 'bin'), 'fish', homeDir)).toBe('fish_add_path "$HOME/.local/bin"')
+    const line = piPathExportLine(bin, 'zsh', homeDir)
+    const written = insertPiPathLine('export EDITOR=vi\n', line)
+    expect(written).toContain(`# Pi\n${line}`)
+    expect(insertPiPathLine(written, line)).toBe(written)
+    expect(stripPiPathLine(written, line).trim()).toBe('export EDITOR=vi')
+    expect(stripPiPathLine(written, line)).not.toContain(line)
+  })
+
+  it('only owns the managed Pi bin and uses the login shell when SHELL is unset', () => {
+    const homeDir = '/home/demo'
+    const managed = piAgentBinDir(homeDir)
+    expect(piOwnedCommandDir(path.join(managed, 'pi'), homeDir)).toBe(managed)
+    expect(piOwnedCommandDir(managed, homeDir)).toBe(managed)
+    expect(piOwnedCommandDir(path.join(homeDir, '.local', 'bin', 'pi'), homeDir)).toBeNull()
+    expect(piOwnedCommandDir('/usr/lib/node_modules/bin/pi', homeDir)).toBeNull()
+    const custom = '/opt/pi-home'
+    expect(piOwnedCommandDir(path.join(custom, 'bin', 'pi'), homeDir, custom)).toBe(piAgentBinDir(homeDir, custom))
+    expect(piShellName(undefined, '/bin/zsh')).toBe('zsh')
+    expect(piShellName('/bin/bash', '/bin/zsh')).toBe('bash')
+    expect(piShellName('  ', null)).toBe('sh')
+    expect(piShellRcPath(homeDir, piShellName(undefined, '/bin/zsh'), { zdotdir: homeDir })).toBe(path.join(homeDir, '.zshrc'))
+  })
+})
+
+describe('install proxy', () => {
+  it('reads a Windows system proxy only when it is enabled', () => {
+    expect(windowsSystemProxyUrl(false, '127.0.0.1:7890')).toBeNull()
+    expect(windowsSystemProxyUrl(true, '127.0.0.1:7890')).toBe('http://127.0.0.1:7890')
+    expect(windowsSystemProxyUrl(true, 'http=127.0.0.1:7890;https=127.0.0.1:7891')).toBe('http://127.0.0.1:7891')
+  })
+
+  it('keeps an existing proxy and otherwise injects the egress or system proxy', () => {
+    const existing = { HTTPS_PROXY: 'http://already:1', PATH: 'x' }
+    expect(installProxyEnv({ env: existing, egressUri: 'http://egress:2', windowsProxy: 'http://system:3' })).toBe(existing)
+    const injected = installProxyEnv({
+      env: { PATH: 'x', NO_PROXY: 'example.com' },
+      egressUri: 'http://egress:2',
+      bypass: 'internal',
+      windowsProxy: 'http://system:3',
+    })
+    expect(injected.HTTPS_PROXY).toBe('http://egress:2')
+    expect(injected.NO_PROXY).toContain('example.com')
+    expect(injected.NO_PROXY).toContain('127.0.0.1')
+    expect(injected.NO_PROXY).toContain('internal')
+    const system = installProxyEnv({ env: { PATH: 'x' }, windowsProxy: 'http://system:3' })
+    expect(system.HTTP_PROXY).toBe('http://system:3')
+  })
+
+  it('sets the PowerShell web proxy before the installer command', () => {
+    const command = powershellWithProxy("irm https://pi.dev/install.ps1 | iex", 'http://127.0.0.1:7890')
+    expect(command).toContain("$env:HTTPS_PROXY='http://127.0.0.1:7890'")
+    expect(command).toContain('[System.Net.WebRequest]::DefaultWebProxy')
+    expect(command.endsWith('irm https://pi.dev/install.ps1 | iex')).toBe(true)
   })
 })

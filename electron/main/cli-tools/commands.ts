@@ -3,6 +3,7 @@ import type { CliToolId } from '../../../shared/cli-tools'
 
 export const VERSION_TIMEOUT_MS = 8_000
 export const INSTALL_TIMEOUT_MS = 5 * 60_000
+export const PI_INSTALL_TIMEOUT_MS = 20 * 60_000
 export const UNINSTALL_TIMEOUT_MS = 2 * 60_000
 
 export const CLI_NPM_PACKAGES: Partial<Record<CliToolId, string>> = {
@@ -62,12 +63,23 @@ export function nativeInstallArgs(
   id: CliToolId,
   platform: NodeJS.Platform,
 ): { tool: 'powershell' | 'sh'; args: string[]; timeoutMs: number } {
+  if (id === 'pi' && platform !== 'win32') {
+    const script = `curl -fsSL ${CLI_INSTALL_URLS.pi.posix} | sh`
+    return {
+      tool: 'sh',
+      args: [
+        '-c',
+        `if command -v setsid >/dev/null 2>&1; then exec setsid sh -c '${script}'; else exec sh -c '${script}'; fi`,
+      ],
+      timeoutMs: PI_INSTALL_TIMEOUT_MS,
+    }
+  }
   if (platform === 'win32') {
     const url = CLI_INSTALL_URLS[id].win32
     return {
       tool: 'powershell',
       args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `irm ${url} | iex`],
-      timeoutMs: INSTALL_TIMEOUT_MS,
+      timeoutMs: id === 'pi' ? PI_INSTALL_TIMEOUT_MS : INSTALL_TIMEOUT_MS,
     }
   }
   const url = CLI_INSTALL_URLS[id].posix
@@ -84,7 +96,12 @@ export function packageManagerArgs(
   action: 'update' | 'uninstall',
   platform: NodeJS.Platform = process.platform,
 ): { tool: 'npm' | 'brew' | 'winget'; args: string[]; timeoutMs: number } {
-  const timeoutMs = action === 'uninstall' ? UNINSTALL_TIMEOUT_MS : INSTALL_TIMEOUT_MS
+  const timeoutMs =
+    id === 'pi' && action === 'update'
+      ? PI_INSTALL_TIMEOUT_MS
+      : action === 'uninstall'
+        ? UNINSTALL_TIMEOUT_MS
+        : INSTALL_TIMEOUT_MS
   if (method === 'npm') {
     const pkg = requireCliPackage(CLI_NPM_PACKAGES, id)
     const args = action === 'update' ? ['install', '-g', `${pkg}@latest`] : ['uninstall', '-g', pkg]
