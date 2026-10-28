@@ -4,7 +4,7 @@ User-visible changes live here. GitHub Releases and in-app update notes use the 
 
 用户能感知的变化写在这里。GitHub Release 和应用内更新说明都读当前 `package.json` 版本对应的一节。每个版本先写 `### English`，再写 `### 中文`。内部重构、测试和 chore 不必写入。
 
-## 1.1.5 - 2026-10-27
+## 1.1.5 - 2026-10-28
 
 ### English
 
@@ -19,6 +19,8 @@ User-visible changes live here. GitHub Releases and in-app update notes use the 
 #### Fixed
 
 - Official login rows for Codex, Claude Code, Grok, and Pi no longer offer edit or delete. Enabling one still works.
+- Installing Pi no longer waits on the installer's PATH question until StackFerry times out. A completed official install is recognized at `~/.pi/agent/bin`, or `$PI_CODING_AGENT_DIR/bin` when that variable is set. StackFerry adds that directory to PATH after an official install or update. Uninstall removes the Pi launchers and the `install` directory. `auth.json`, settings, and sessions stay.
+- Official Pi install and update can run for up to 20 minutes. The installer uses a proxy already present in the environment, StackFerry's egress proxy, or the Windows system proxy when that switch is on.
 
 #### Upgrade notes
 
@@ -38,6 +40,8 @@ User-visible changes live here. GitHub Releases and in-app update notes use the 
 #### 修复
 
 - Codex、Claude Code、Grok 和 Pi 的官方登录不再提供编辑和删除。启用仍然可用
+- 安装 Pi 不再停在安装脚本的 PATH 确认上，直到 StackFerry 超时。已经完成的官方安装会在 `~/.pi/agent/bin` 被识别；设置了 `PI_CODING_AGENT_DIR` 时改为该目录下的 `bin`。官方安装或更新之后，StackFerry 会把该目录写入 PATH。卸载删除 Pi 的启动器和 `install` 目录。`auth.json`、设置和会话保留
+- Pi 的官方安装和更新最多等待 20 分钟。安装使用环境里已有的代理、StackFerry 的出口代理，或已经打开的 Windows 系统代理
 
 #### 升级注意
 
