@@ -1,3 +1,4 @@
+import { execFile, type ExecFileException } from 'node:child_process'
 import path from 'node:path'
 import type { CliToolId } from '../../../shared/cli-tools'
 
@@ -67,6 +68,7 @@ export function knownSearchDirs(ctx: PathContext): string[] {
   if (platform === 'win32') {
     return [
       path.join(home, '.local', 'bin'),
+      piAgentBinDir(home),
       path.join(home, '.grok', 'bin'),
       nativeCodexWindowsBinDir(localAppData),
       path.join(appData, 'npm'),
@@ -78,6 +80,7 @@ export function knownSearchDirs(ctx: PathContext): string[] {
   }
   const posix = [
     path.join(home, '.local', 'bin'),
+    piAgentBinDir(home),
     path.join(home, '.grok', 'bin'),
     path.join(home, '.npm-global', 'bin'),
     path.join(home, '.volta', 'bin'),
@@ -123,6 +126,48 @@ export function knownToolPaths(name: 'npm' | 'brew' | 'winget' | 'powershell' | 
   return []
 }
 
+type CapturedError = ExecFileException & { stdout?: Buffer; stderr?: Buffer }
+
+export function execFileCaptured(
+  file: string,
+  args: string[],
+  options: {
+    timeout: number
+    env?: NodeJS.ProcessEnv
+    windowsVerbatimArguments?: boolean
+    maxBuffer?: number
+    closeStdin?: boolean
+  },
+): Promise<{ stdout: Buffer; stderr: Buffer }> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      file,
+      args,
+      {
+        timeout: options.timeout,
+        windowsHide: true,
+        encoding: 'buffer',
+        maxBuffer: options.maxBuffer ?? 2 * 1024 * 1024,
+        env: options.env,
+        windowsVerbatimArguments: options.windowsVerbatimArguments,
+      },
+      (error, stdout, stderr) => {
+        const out = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout ?? '')
+        const errOut = Buffer.isBuffer(stderr) ? stderr : Buffer.from(stderr ?? '')
+        if (error) {
+          const failed = error as CapturedError
+          failed.stdout = out
+          failed.stderr = errOut
+          reject(failed)
+          return
+        }
+        resolve({ stdout: out, stderr: errOut })
+      },
+    )
+    if (options.closeStdin) child.stdin?.end()
+  })
+}
+
 export function wrapWindowsScript(
   file: string,
   args: string[],
@@ -160,11 +205,131 @@ function commandBaseName(file: string): string {
   return (file.replaceAll('\\', '/').split('/').pop() ?? file).toLowerCase()
 }
 
+export function piAgentDir(home: string, piHome?: string): string {
+  const configured = piHome?.trim()
+  if (configured) return configured
+  return path.join(home, '.pi', 'agent')
+}
+
+export function piAgentBinDir(home: string, piHome?: string): string {
+  return path.join(piAgentDir(home, piHome), 'bin')
+}
+
+export function piOwnedCommandDir(binaryOrDir: string, home: string, piHome?: string): string | null {
+  const managed = piAgentBinDir(home, piHome)
+  const normalizedManaged = normalizeFsPath(managed)
+  const normalizedInput = normalizeFsPath(binaryOrDir)
+  if (normalizedInput === normalizedManaged || normalizedInput.startsWith(`${normalizedManaged}/`)) return managed
+  return null
+}
+
+export function piShellName(envShell?: string, loginShell?: string | null): string {
+  const fromEnv = shellFileName(envShell)
+  if (fromEnv) return fromEnv
+  const fromLogin = shellFileName(loginShell)
+  if (fromLogin) return fromLogin
+  return 'sh'
+}
+
+function shellFileName(value?: string | null): string {
+  const trimmed = value?.trim()
+  if (!trimmed) return ''
+  return path.basename(trimmed)
+}
+
+export function piNativeUninstallTargets(
+  ctx: { home: string; platform: NodeJS.Platform; piHome?: string },
+): string[] {
+  const agent = piAgentDir(ctx.home, ctx.piHome)
+  const bin = path.join(agent, 'bin')
+  const names = ctx.platform === 'win32' ? ['pi', 'pi.cmd', 'pi.ps1', 'pi-launcher.js', 'pi.exe'] : ['pi']
+  const legacy = ctx.platform === 'win32' ? 'pi.exe' : 'pi'
+  return [
+    ...names.map((name) => path.join(bin, name)),
+    path.join(agent, 'install'),
+    path.join(ctx.home, '.local', 'bin', legacy),
+  ]
+}
+
+export function pathHasEntry(
+  pathValue: string,
+  entry: string,
+  delimiter: string,
+  expand: (value: string) => string = (value) => value,
+): boolean {
+  const needle = normalizeFsPath(expand(entry))
+  if (!needle) return false
+  return pathValue.split(delimiter).some((part) => normalizeFsPath(expand(part.trim())) === needle)
+}
+
+export function prependPathEntry(pathValue: string, entry: string, delimiter: string): string {
+  const kept = pathValue
+    .split(delimiter)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => normalizeFsPath(part) !== normalizeFsPath(entry))
+  return [entry, ...kept].join(delimiter)
+}
+
+export function portableWindowsPathEntry(entry: string, home: string): string {
+  const normalizedEntry = normalizeFsPath(entry)
+  const normalizedHome = normalizeFsPath(home)
+  if (!normalizedEntry.startsWith(`${normalizedHome}/`)) return entry
+  const rest = normalizedEntry.slice(normalizedHome.length)
+  return `%USERPROFILE%${rest.replaceAll('/', '\\')}`
+}
+
+export function piShellRcPath(
+  home: string,
+  shellName: string,
+  options?: { zdotdir?: string; bashRcExists?: boolean },
+): string {
+  switch (shellName) {
+    case 'fish':
+      return path.join(home, '.config', 'fish', 'config.fish')
+    case 'zsh':
+      return path.join(options?.zdotdir?.trim() || home, '.zshrc')
+    case 'bash':
+      return path.join(home, options?.bashRcExists ? '.bashrc' : '.profile')
+    default:
+      return path.join(home, '.profile')
+  }
+}
+
+export function piPathExportLine(binDir: string, shellName: string, home: string): string {
+  const expr = normalizeFsPath(binDir) === normalizeFsPath(path.join(home, '.local', 'bin')) ? '$HOME/.local/bin' : binDir
+  if (shellName === 'fish') return `fish_add_path "${expr}"`
+  return `export PATH="${expr}:$PATH"`
+}
+
+export function insertPiPathLine(content: string, line: string): string {
+  if (content.split(/\r?\n/).some((item) => item.trim() === line)) return content
+  const base = content.replace(/\s*$/, '')
+  return `${base}${base ? '\n' : ''}# Pi\n${line}\n`
+}
+
+export function stripPiPathLine(content: string, line: string): string {
+  const lines = content.split(/\r?\n/)
+  const kept: string[] = []
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index]?.trim() === '# Pi' && lines[index + 1]?.trim() === line) {
+      index += 1
+      continue
+    }
+    if (lines[index]?.trim() === line) continue
+    kept.push(lines[index] ?? '')
+  }
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n')
+}
+
 export function grokNativeBinaries(grokHome: string): string[] {
   return [path.join(grokHome, 'bin', 'grok'), path.join(grokHome, 'bin', 'grok.exe')]
 }
 
-export function nativeUninstallTargets(id: CliToolId, ctx: PathContext & ConfigHomes): string[] {
+export function nativeUninstallTargets(
+  id: CliToolId,
+  ctx: PathContext & ConfigHomes & { piHome?: string },
+): string[] {
   if (id === 'codex') {
     const targets = [path.join(ctx.codexHome, 'packages', 'standalone')]
     if (ctx.platform === 'win32') targets.push(nativeCodexWindowsBinDir(ctx.localAppData))
@@ -175,10 +340,7 @@ export function nativeUninstallTargets(id: CliToolId, ctx: PathContext & ConfigH
     return targets
   }
   if (id === 'grok-build') return grokNativeBinaries(ctx.grokHome)
-  if (id === 'pi') {
-    const bin = ctx.platform === 'win32' ? 'pi.exe' : 'pi'
-    return [path.join(ctx.home, '.local', 'bin', bin)]
-  }
+  if (id === 'pi') return piNativeUninstallTargets(ctx)
   const claudeBin = ctx.platform === 'win32' ? 'claude.exe' : 'claude'
   return [path.join(ctx.home, '.local', 'bin', claudeBin), path.join(ctx.home, '.local', 'share', 'claude')]
 }
@@ -233,14 +395,15 @@ export function removePathEntry(
   pathValue: string,
   entry: string,
   delimiter: string,
+  expand: (value: string) => string = (value) => value,
 ): { next: string; removed: boolean } {
-  const needle = normalizeFsPath(entry)
+  const needle = normalizeFsPath(expand(entry))
   const kept: string[] = []
   let removed = false
   for (const part of pathValue.split(delimiter)) {
     const trimmed = part.trim()
     if (!trimmed) continue
-    if (normalizeFsPath(trimmed) === needle) {
+    if (normalizeFsPath(expand(trimmed)) === needle) {
       removed = true
       continue
     }

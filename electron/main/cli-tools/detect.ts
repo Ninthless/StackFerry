@@ -4,10 +4,15 @@ import { binaryNames, grokNativeBinaries, normalizeFsPath } from './paths'
 
 export function classifyInstallMethod(
   binaryPath: string,
-  ctx: { home: string; grokHome?: string; npmPrefix?: string | null },
+  ctx: { home: string; grokHome?: string; piHome?: string; npmPrefix?: string | null },
 ): CliInstallMethod {
   const n = normalizeFsPath(binaryPath)
   const home = normalizeFsPath(ctx.home)
+
+  if (ctx.piHome) {
+    const bin = normalizeFsPath(path.join(ctx.piHome, 'bin'))
+    if (n === bin || n.startsWith(`${bin}/`)) return 'native'
+  }
 
   if (ctx.grokHome) {
     const grokBins = grokNativeBinaries(ctx.grokHome).map((item) => normalizeFsPath(item))
@@ -19,6 +24,7 @@ export function classifyInstallMethod(
   if (n === `${home}/.local/bin/codex` || n === `${home}/.local/bin/codex.exe`) return 'native'
   if (n === `${home}/.local/bin/claude` || n === `${home}/.local/bin/claude.exe`) return 'native'
   if (n === `${home}/.local/bin/pi` || n === `${home}/.local/bin/pi.exe`) return 'native'
+  if (n.includes('/.pi/agent/bin/')) return 'native'
   if (n.includes('/.local/share/claude')) return 'native'
 
   if (

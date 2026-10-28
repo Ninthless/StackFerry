@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { existsSync, realpathSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -15,9 +15,11 @@ import {
 import { resolveClaudeHome } from '../claude/home'
 import { resolveCodexHome } from '../codex/home'
 import { resolveGrokHome } from '../grok/home'
+import { resolvePiHome } from '../pi/home'
 import {
   CLI_NPM_PACKAGES,
   INSTALL_TIMEOUT_MS,
+  PI_INSTALL_TIMEOUT_MS,
   VERSION_TIMEOUT_MS,
   nativeInstallArgs,
   packageManagerArgs,
@@ -25,6 +27,14 @@ import {
   type ToolName,
 } from './commands'
 import { candidateBinaries, classifyInstallMethod, firstExisting, parseCliVersion, parseWhereOutput } from './detect'
+import {
+  installProxyEnv,
+  parseRegDword,
+  parseRegString,
+  powershellWithProxy,
+  proxyUrlFromEnv,
+  windowsSystemProxyUrl,
+} from './install-proxy'
 import {
   CHECK_TIMEOUT_MS,
   cliVersionOutdated,
@@ -42,11 +52,22 @@ import {
   isProtectedConfigPath,
   knownToolPaths,
   nativeCodexWindowsBinDir,
+  execFileCaptured,
+  insertPiPathLine,
   nativeUninstallTargets,
   parseRegPathQuery,
   pathDelimiter,
+  pathHasEntry,
+  piAgentBinDir,
+  piOwnedCommandDir,
+  piPathExportLine,
+  piShellName,
+  piShellRcPath,
+  portableWindowsPathEntry,
+  prependPathEntry,
   reconstructSearchDirs,
   removePathEntry,
+  stripPiPathLine,
   wrapWindowsScript,
   type PathContext,
 } from './paths'
@@ -55,7 +76,12 @@ const execFileAsync = promisify(execFile)
 
 type ExecError = NodeJS.ErrnoException & { killed?: boolean; stdout?: string; stderr?: string }
 
+type EgressRoute = {
+  route: () => Promise<{ proxyUri: string | null; bypass: string }>
+}
+
 export class CliToolService {
+  constructor(private readonly egress?: EgressRoute) {}
   async list(): Promise<CliToolStatus[]> {
     return this.inspectAll()
   }
@@ -68,6 +94,7 @@ export class CliToolService {
     requireId(id)
     const current = await this.inspect(id)
     if (!current.installed) await this.runNativeInstall(id)
+    else if (id === 'pi' && current.method === 'native' && current.path) await this.ensurePiCommandPath(current.path)
     return this.checkUpdates()
   }
 
@@ -77,9 +104,12 @@ export class CliToolService {
     const method = requireManagedMethod(current.method)
     if (method === 'native') {
       if (id === 'grok-build' && current.path) {
-        await this.runExec(current.path, ['update'], INSTALL_TIMEOUT_MS)
+        await this.runExec(current.path, ['update'], INSTALL_TIMEOUT_MS, await this.commandEnv())
       } else if (id === 'pi' && current.path) {
-        await this.runExec(current.path, ['update'], INSTALL_TIMEOUT_MS)
+        await this.runExec(current.path, ['update'], PI_INSTALL_TIMEOUT_MS, await this.commandEnv(), {
+          closeStdin: true,
+        })
+        await this.ensurePiCommandPath(current.path)
       } else {
         await this.runNativeInstall(id)
       }
@@ -125,6 +155,7 @@ export class CliToolService {
     const method = classifyInstallMethod(resolveRealPath(binary), {
       home: os.homedir(),
       grokHome: resolveGrokHome(),
+      piHome: resolvePiHome(),
       npmPrefix: npmPrefix ? resolveRealPath(npmPrefix) : null,
     })
     const version = await this.readVersion(binary)
@@ -163,7 +194,10 @@ export class CliToolService {
   private async runNativeInstall(id: CliToolId): Promise<void> {
     const spec = nativeInstallArgs(id, process.platform)
     const file = await this.resolveTool(spec.tool)
-    await this.runExec(file, spec.args, spec.timeoutMs)
+    const env = await this.commandEnv(id === 'codex' ? { CODEX_NON_INTERACTIVE: '1' } : undefined)
+    const args = spec.tool === 'powershell' ? applyPowershellProxy(spec.args, proxyUrlFromEnv(env)) : spec.args
+    await this.runExec(file, args, spec.timeoutMs, env, { closeStdin: id === 'pi' })
+    if (id === 'pi') await this.ensurePiCommandPath(piAgentBinDir(os.homedir(), resolvePiHome()))
   }
 
   private async hasUpdate(
@@ -216,7 +250,7 @@ export class CliToolService {
   ): Promise<void> {
     const spec = packageManagerArgs(id, method, action, this.pathContext().platform)
     const file = await this.resolveTool(spec.tool)
-    await this.runExec(file, spec.args, spec.timeoutMs)
+    await this.runExec(file, spec.args, spec.timeoutMs, await this.commandEnv())
   }
 
   private async uninstallNative(id: CliToolId): Promise<void> {
@@ -227,22 +261,83 @@ export class CliToolService {
       claudeHome: resolveClaudeHome(),
       grokHome: resolveGrokHome(),
     }
-    const targets = nativeUninstallTargets(id, { ...ctx, ...homes }).filter(
+    const targets = nativeUninstallTargets(id, { ...ctx, ...homes, piHome: resolvePiHome() }).filter(
       (target) => !isProtectedConfigPath(target, homes),
     )
     for (const target of targets) {
       if (!existsSync(target) || isProtectedConfigPath(target, homes)) continue
       rmSync(target, { recursive: true, force: true })
     }
-    if (id === 'codex' && process.platform === 'win32') await this.removeCodexPathEntry()
+    if (id === 'codex' && process.platform === 'win32') await this.removeUserPathEntry(nativeCodexWindowsBinDir(ctx.localAppData))
+    if (id === 'pi') await this.removePiCommandPath()
   }
 
-  private async removeCodexPathEntry(): Promise<void> {
+  private async removeUserPathEntry(entry: string): Promise<void> {
     const current = await this.queryUserPath()
     if (!current) return
-    const bin = nativeCodexWindowsBinDir(this.pathContext().localAppData)
-    const { next, removed } = removePathEntry(expandWindowsEnv(current, process.env), bin, ';')
+    const expand = (value: string) => expandWindowsEnv(value, process.env)
+    const { next, removed } = removePathEntry(current, entry, ';', expand)
     if (!removed) return
+    await this.writeWindowsUserPath(next)
+  }
+
+  private async commandEnv(extra?: Record<string, string>): Promise<NodeJS.ProcessEnv> {
+    const base = await this.spawnEnv()
+    const windowsProxy = process.platform === 'win32' ? await this.readWindowsProxyUrl() : null
+    let egressUri: string | null = null
+    let bypass = ''
+    if (this.egress) {
+      try {
+        const route = await this.egress.route()
+        egressUri = route.proxyUri
+        bypass = route.bypass
+      } catch {
+        egressUri = null
+      }
+    }
+    return { ...installProxyEnv({ env: base, egressUri, bypass, windowsProxy }), ...extra }
+  }
+
+  private async readWindowsProxyUrl(): Promise<string | null> {
+    const key = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'
+    try {
+      const enable = await execFileAsync('reg', ['query', key, '/v', 'ProxyEnable'], {
+        windowsHide: true,
+        encoding: 'utf8',
+        timeout: 5_000,
+      })
+      const server = await execFileAsync('reg', ['query', key, '/v', 'ProxyServer'], {
+        windowsHide: true,
+        encoding: 'utf8',
+        timeout: 5_000,
+      })
+      const enabled = parseRegDword(enable.stdout, 'ProxyEnable') === 1
+      return windowsSystemProxyUrl(enabled, parseRegString(server.stdout, 'ProxyServer') ?? '')
+    } catch {
+      return null
+    }
+  }
+
+  private async ensurePiCommandPath(binaryOrDir: string): Promise<void> {
+    const dir = piOwnedCommandDir(binaryOrDir, os.homedir(), resolvePiHome())
+    if (!dir) return
+    try {
+      if (process.platform === 'win32') await this.ensureWindowsUserPath(dir)
+      else this.ensurePosixPiPath(dir)
+    } catch {
+      return
+    }
+  }
+
+  private async ensureWindowsUserPath(dir: string): Promise<void> {
+    const current = (await this.queryUserPath()) ?? ''
+    const entry = portableWindowsPathEntry(dir, os.homedir())
+    const expand = (value: string) => expandWindowsEnv(value, process.env)
+    if (pathHasEntry(current, entry, ';', expand) || pathHasEntry(current, dir, ';', expand)) return
+    await this.writeWindowsUserPath(prependPathEntry(current, entry, ';'))
+  }
+
+  private async writeWindowsUserPath(next: string): Promise<void> {
     const powershell = await this.resolveTool('powershell')
     await this.runExec(
       powershell,
@@ -251,17 +346,55 @@ export class CliToolService {
         '-ExecutionPolicy',
         'Bypass',
         '-Command',
-        "[Environment]::SetEnvironmentVariable('Path', $env:STACKFERRY_NEXT_PATH, 'User')",
+        WINDOWS_USER_PATH_COMMAND,
       ],
       15_000,
       { ...process.env, STACKFERRY_NEXT_PATH: next },
     )
   }
 
+  private ensurePosixPiPath(dir: string): void {
+    const { rc, line } = this.piRcTarget(dir)
+    const current = existsSync(rc) ? readFileSync(rc, 'utf8') : ''
+    const next = insertPiPathLine(current, line)
+    if (next === current) return
+    mkdirSync(path.dirname(rc), { recursive: true })
+    writeFileSync(rc, next, 'utf8')
+  }
+
+  private async removePiCommandPath(): Promise<void> {
+    const dir = piAgentBinDir(os.homedir(), resolvePiHome())
+    if (process.platform === 'win32') {
+      const current = await this.queryUserPath()
+      if (!current) return
+      const expand = (value: string) => expandWindowsEnv(value, process.env)
+      const { next, removed } = removePathEntry(current, dir, ';', expand)
+      if (!removed) return
+      await this.writeWindowsUserPath(next)
+      return
+    }
+    const { rc, line } = this.piRcTarget(dir)
+    if (!existsSync(rc)) return
+    writeFileSync(rc, stripPiPathLine(readFileSync(rc, 'utf8'), line), 'utf8')
+  }
+
+  private piRcTarget(dir: string): { rc: string; line: string } {
+    const home = os.homedir()
+    const shell = piShellName(process.env.SHELL, os.userInfo().shell)
+    return {
+      rc: piShellRcPath(home, shell, {
+        zdotdir: process.env.ZDOTDIR,
+        bashRcExists: existsSync(path.join(home, '.bashrc')),
+      }),
+      line: piPathExportLine(dir, shell, home),
+    }
+  }
+
   private async searchDirs(): Promise<string[]> {
     const ctx = this.pathContext()
     const extraDirs = [
       path.join(resolveGrokHome(), 'bin'),
+      piAgentBinDir(ctx.home, resolvePiHome()),
       ...(process.platform === 'win32' ? await this.readWindowsExtraDirs() : []),
     ]
     return reconstructSearchDirs({ ...ctx, extraDirs })
@@ -371,8 +504,9 @@ export class CliToolService {
     args: string[],
     timeoutMs: number,
     env: NodeJS.ProcessEnv = process.env,
+    options?: { closeStdin?: boolean },
   ): Promise<{ stdout: string; stderr: string }> {
-    const captured = await this.runExecCapture(file, args, timeoutMs, env)
+    const captured = await this.runExecCapture(file, args, timeoutMs, env, options)
     if (captured.error) throw captured.error
     return { stdout: captured.stdout, stderr: captured.stderr }
   }
@@ -382,17 +516,16 @@ export class CliToolService {
     args: string[],
     timeoutMs: number,
     env: NodeJS.ProcessEnv = process.env,
+    options?: { closeStdin?: boolean },
   ): Promise<{ stdout: string; stderr: string; error: AppError | null }> {
     const spawnEnv = env === process.env ? await this.spawnEnv() : env
     const spawn = wrapWindowsScript(file, args)
     try {
-      const result = await execFileAsync(spawn.file, spawn.args, {
+      const result = await execFileCaptured(spawn.file, spawn.args, {
         timeout: timeoutMs,
-        windowsHide: true,
-        encoding: 'buffer',
-        maxBuffer: 2 * 1024 * 1024,
         env: spawnEnv,
         windowsVerbatimArguments: spawn.verbatim,
+        closeStdin: options?.closeStdin,
       })
       return { stdout: decodeConsole(result.stdout), stderr: decodeConsole(result.stderr), error: null }
     } catch (error) {
@@ -442,6 +575,22 @@ function resolveRealPath(file: string): string {
   } catch {
     return file
   }
+}
+
+const WINDOWS_USER_PATH_COMMAND = [
+  "$reg = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)",
+  'if (-not $reg) { exit 1 }',
+  "$reg.SetValue('Path', $env:STACKFERRY_NEXT_PATH, 'ExpandString')",
+  '$reg.Close()',
+  "try { if (-not ('Win32.StackFerryNative' -as [type])) { Add-Type -Namespace Win32 -Name StackFerryNative -MemberDefinition '[DllImport(\"user32.dll\", CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);' }; $broadcast = [UIntPtr]::Zero; [Win32.StackFerryNative]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$broadcast) | Out-Null } catch {}",
+].join('; ')
+
+function applyPowershellProxy(args: string[], proxyUrl: string | null): string[] {
+  if (!proxyUrl) return args
+  const commandIndex = args.lastIndexOf('-Command')
+  const command = args[commandIndex + 1]
+  if (commandIndex < 0 || commandIndex !== args.length - 2 || !command) return args
+  return [...args.slice(0, commandIndex + 1), powershellWithProxy(command, proxyUrl)]
 }
 
 function decodeConsole(bytes: Buffer): string {

@@ -8,6 +8,7 @@ import { registerCcswIpc } from './ccsw/ipc'
 import { registerClaudeIpc } from './claude/ipc'
 import { reapplyClaudeGatewayIfNeeded } from './claude/reapply'
 import { registerCliToolIpc } from './cli-tools/ipc'
+import { CliToolService } from './cli-tools/service'
 import { registerCodexIpc } from './codex/ipc'
 import { registerGrokIpc } from './grok/ipc'
 import { registerPiIpc } from './pi/ipc'
@@ -93,7 +94,7 @@ export function registerIpc(context: AppIpcContext): void {
   registerPiIpc(context, writeChains)
   registerSkillIpc(context)
   registerMcpIpc(context)
-  registerCliToolIpc(undefined, {
+  registerCliToolIpc(new CliToolService(context.egress), {
     writeChains,
     afterClaudeInstall: () => reapplyClaudeGatewayIfNeeded(context),
   })
