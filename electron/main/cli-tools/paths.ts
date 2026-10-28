@@ -164,7 +164,13 @@ export function execFileCaptured(
         resolve({ stdout: out, stderr: errOut })
       },
     )
-    if (options.closeStdin) child.stdin?.end()
+    if (options.closeStdin) {
+      const closeInput = () => {
+        if (child.stdin && !child.stdin.writableEnded) child.stdin.end()
+      }
+      child.once('spawn', closeInput)
+      if (child.pid) closeInput()
+    }
   })
 }
 
