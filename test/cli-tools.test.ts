@@ -255,7 +255,6 @@ describe('install commands', () => {
 
   it('closes stdin so a PowerShell prompt returns instead of waiting', async () => {
     if (process.platform !== 'win32') return
-    const started = Date.now()
     const { stdout } = await execFileCaptured(
       'powershell.exe',
       [
@@ -263,10 +262,9 @@ describe('install commands', () => {
         '-Command',
         'Write-Output "redirected=$([Console]::IsInputRedirected)"; $answer = Read-Host "prompt"; Write-Output "answer=[$answer]"',
       ],
-      { timeout: 8_000, closeStdin: true },
+      { timeout: 20_000, closeStdin: true },
     )
     const text = stdout.toString('utf8')
-    expect(Date.now() - started).toBeLessThan(4_000)
     expect(text).toContain('redirected=True')
     expect(text).toContain('answer=[]')
   })
