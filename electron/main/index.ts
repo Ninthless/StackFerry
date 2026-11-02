@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, Menu, nativeTheme, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
-import { resolveAppIconPath, resolveIconDir, resolveTrayIconPath } from './app-icon'
+import { resolveAppIconPath, resolveDockIconPath, resolveIconDir, resolveTrayIconPath } from './app-icon'
 import { isPackagedUpdatePlatform } from '../../shared/app-releases'
 import type { LanguagePreference } from '../../shared/locale'
 import { windowUsesMicaSurface } from '../../shared/mica'
@@ -208,7 +208,9 @@ async function refreshTray(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
-  if (process.platform !== 'darwin') {
+  if (process.platform === 'darwin') {
+    app.dock?.setIcon(resolveDockIconPath(iconDir))
+  } else {
     Menu.setApplicationMenu(null)
   }
   store = new ProviderStore(path.join(app.getPath('userData'), 'providers.json'))

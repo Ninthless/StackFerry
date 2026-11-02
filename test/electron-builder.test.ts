@@ -8,7 +8,8 @@ type BuilderConfig = {
   compression: string
   protocols: { name: string; schemes: string[] }
   win: { target: BuilderTarget[]; artifactName: string }
-  mac: { artifactName: string }
+  mac: { artifactName: string; icon: string }
+  extraResources: Array<{ from: string; filter?: string[] }>
   linux: {
     icon: string
     target: BuilderTarget[]
@@ -39,6 +40,8 @@ describe('linux packages', () => {
     expect(byName.deb).toEqual(['x64', 'arm64'])
     expect(config.linux.artifactName).toBe('${productName}-${version}-${arch}.${ext}')
     expect(config.mac.artifactName).toBe('${productName}-${version}-${arch}.${ext}')
+    expect(config.mac.icon).toBe('public/icon-mac.png')
+    expect(config.extraResources.some((item) => item.filter?.includes('icon-mac.png'))).toBe(true)
     expect(config.deb.depends.some((item) => item.includes('libgtk-3-0t64'))).toBe(true)
     expect(config.compression).toBe('maximum')
     expect(config.appImage).toEqual({ compression: 'gzip' })

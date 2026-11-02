@@ -13,6 +13,10 @@ export function resolveAppIconPath(iconDir: string, platform: NodeJS.Platform): 
   return path.join(iconDir, platform === 'win32' ? 'icon.ico' : 'icon.png')
 }
 
+export function resolveDockIconPath(iconDir: string): string {
+  return path.join(iconDir, 'icon-mac.png')
+}
+
 export function resolveTrayIconPath(iconDir: string, platform: NodeJS.Platform): string {
   if (platform === 'darwin') return path.join(iconDir, 'tray-icon-Template.png')
   if (platform === 'win32') return path.join(iconDir, 'icon.ico')

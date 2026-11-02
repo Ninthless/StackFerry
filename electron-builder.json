@@ -26,6 +26,7 @@
       "to": "icons",
       "filter": [
         "icon.png",
+        "icon-mac.png",
         "icon.ico",
         "tray-icon.png",
         "tray-icon-Template.png",
@@ -54,7 +55,7 @@
     "deleteAppDataOnUninstall": false
   },
   "mac": {
-    "icon": "public/icon.png",
+    "icon": "public/icon-mac.png",
     "category": "public.app-category.developer-tools",
     "identity": "-",
     "hardenedRuntime": true,
