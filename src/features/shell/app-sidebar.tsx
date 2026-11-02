@@ -76,7 +76,7 @@ export function AppSidebar({ activeId, onSelect }: Props) {
           }}
         />
       ) : null}
-      <SidebarHeader>
+      <SidebarHeader className={settingsMode ? undefined : "group-data-[collapsible=icon]:hidden"}>
         <SidebarMenu>
           <SidebarMenuItem>
             {settingsMode ? (

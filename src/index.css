@@ -173,6 +173,10 @@ html.mica [data-slot="sidebar-menu-button"] {
   appearance: none;
 }
 
+[data-collapsible="icon"] [data-slot="sidebar-menu-button"] {
+  margin-inline: auto;
+}
+
 html.mica [data-slot="sidebar-menu-button"]:not(:hover):not(:active):not([data-active]) {
   background-color: transparent;
 }

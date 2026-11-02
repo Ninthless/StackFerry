@@ -230,7 +230,7 @@ export function AppShell() {
       style={
         {
           "--sidebar-width": "13rem",
-          ...(macChrome ? { "--sidebar-width-icon": "4.5rem" } : {}),
+          ...(macChrome ? { "--sidebar-width-icon": "3.5rem" } : {}),
         } as CSSProperties
       }
     >
