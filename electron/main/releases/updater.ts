@@ -8,7 +8,11 @@ import { normalizeAppReleaseNotes } from '../../../shared/app-releases'
 const { NsisUpdater } = electronUpdater
 
 export type AppUpdateFeed = {
-  check: () => Promise<{ version: string; releaseNotes: string | null } | null>
+  check: () => Promise<{
+    version: string
+    releaseNotes: string | null
+    releaseUrl?: string | null
+  } | null>
   download: (onProgress: (transferred: number, total: number) => void) => Promise<void>
   install: () => void
 }

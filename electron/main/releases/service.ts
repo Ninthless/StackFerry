@@ -85,6 +85,7 @@ export class AppReleaseService {
           phase: 'upToDate',
           availableVersion: null,
           releaseNotes: null,
+          releaseUrl: null,
           downloadedBytes: 0,
           totalBytes: 0,
         })
@@ -94,6 +95,7 @@ export class AppReleaseService {
         phase: 'available',
         availableVersion: found.version,
         releaseNotes: found.releaseNotes,
+        releaseUrl: found.releaseUrl ?? null,
         downloadedBytes: 0,
         totalBytes: 0,
       })

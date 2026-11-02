@@ -9,15 +9,18 @@ import {
   formatAnnouncementPublishedAt,
   initialAppUpdateStatus,
   isAnnouncementFeedUrl,
+  isNewerReleaseVersion,
   latestUnreadAnnouncement,
   nextUnreadAnnouncement,
   normalizeAppReleaseNotes,
+  parseMacUpdateManifest,
   releaseNotesForLocale,
   parseAnnouncementFeed,
   unreadAnnouncements,
 } from '../shared/app-releases'
 import electronUpdater from 'electron-updater'
 import { fetchAnnouncementFeed } from '../electron/main/releases/feed'
+import { createGitHubReleaseNoticeFeed } from '../electron/main/releases/github-release'
 import { AppReleaseService } from '../electron/main/releases/service'
 import { AnnouncementStore } from '../electron/main/releases/store'
 import { packagedUpdaterKind, readLinuxPackageType, type AppUpdateFeed } from '../electron/main/releases/updater'
@@ -293,6 +296,52 @@ describe('announcement store', () => {
   })
 })
 
+const macManifest = (version: string) => `version: ${version}\nfiles:\n  - url: StackFerry-${version}-arm64.dmg\n`
+
+describe('github release notice', () => {
+  it('reads the mac update manifest and opens that tag page', () => {
+    expect(isNewerReleaseVersion('1.1.6', '1.1.7')).toBe(true)
+    expect(isNewerReleaseVersion('1.1.10', '1.2.0')).toBe(true)
+    expect(isNewerReleaseVersion('1.1.6', '1.1.6')).toBe(false)
+    expect(isNewerReleaseVersion('1.10.0', '1.9.0')).toBe(false)
+    expect(parseMacUpdateManifest(macManifest('1.1.7'))).toEqual({
+      version: '1.1.7',
+      releaseUrl: 'https://github.com/Ninthless/StackFerry/releases/tag/v1.1.7',
+    })
+    expect(parseMacUpdateManifest("version: '1.1.7'\n")).toMatchObject({ version: '1.1.7' })
+    expect(parseMacUpdateManifest('files:\n  - url: StackFerry-1.1.7-arm64.dmg\n')).toBeNull()
+  })
+
+  it('reports a newer mac release without installing it', async () => {
+    const feed = createGitHubReleaseNoticeFeed({
+      currentVersion: '1.1.6',
+      loadLatest: async () => macManifest('1.1.7'),
+    })
+    const service = await createService({ packaged: true, platform: 'darwin', feed })
+    const found = await service.check()
+    expect(found.phase).toBe('available')
+    expect(found.availableVersion).toBe('1.1.7')
+    expect(found.releaseNotes).toBeNull()
+    expect(found.releaseUrl).toBe('https://github.com/Ninthless/StackFerry/releases/tag/v1.1.7')
+    await expect(service.download()).rejects.toMatchObject({ code: 'app_update_unsupported' })
+    expect(service.snapshot().phase).toBe('available')
+
+    const current = createGitHubReleaseNoticeFeed({
+      currentVersion: '1.1.7',
+      loadLatest: async () => macManifest('1.1.7'),
+    })
+    const same = await createService({ packaged: true, platform: 'darwin', feed: current })
+    expect((await same.check()).phase).toBe('upToDate')
+    expect(same.snapshot().releaseUrl).toBeNull()
+
+    const broken = createGitHubReleaseNoticeFeed({
+      currentVersion: '1.1.6',
+      loadLatest: async () => 'not a manifest',
+    })
+    await expect(broken.check()).rejects.toMatchObject({ code: 'app_update_check_failed' })
+  })
+})
+
 describe('app release service', () => {
   it('starts unpackaged without a feed and idle only on Windows NSIS and Linux AppImage or deb', async () => {
     expect(initialAppUpdateStatus('0.1.0', false, 'win32').phase).toBe('unpackaged')
@@ -302,13 +351,15 @@ describe('app release service', () => {
     expect(initialAppUpdateStatus('0.1.0', true, 'linux').phase).toBe('unsupported')
     expect(initialAppUpdateStatus('0.1.0', true, 'linux', '  ').phase).toBe('unsupported')
     expect(initialAppUpdateStatus('0.1.0', true, 'linux', null, 'rpm').phase).toBe('unsupported')
-    expect(initialAppUpdateStatus('0.1.0', true, 'darwin').phase).toBe('unsupported')
+    expect(initialAppUpdateStatus('0.1.0', true, 'darwin').phase).toBe('idle')
+    expect(initialAppUpdateStatus('0.1.0', true, 'darwin').releaseUrl).toBeNull()
+    expect(initialAppUpdateStatus('0.1.0', false, 'darwin').phase).toBe('unpackaged')
     expect(initialAppUpdateStatus('0.1.0', true, 'freebsd').phase).toBe('unsupported')
     const unpackaged = await createService({ packaged: false, platform: 'win32', feed: null })
     expect((await unpackaged.check()).phase).toBe('unpackaged')
     await expect(unpackaged.download()).rejects.toMatchObject({ code: 'app_update_unsupported' })
     const mac = await createService({ packaged: true, platform: 'darwin', feed: null })
-    expect((await mac.check()).phase).toBe('unsupported')
+    await expect(mac.check()).rejects.toMatchObject({ code: 'app_update_unsupported' })
     const linuxDeb = await createService({ packaged: true, platform: 'linux', feed: null })
     expect((await linuxDeb.check()).phase).toBe('unsupported')
     const linuxAppImage = await createService({

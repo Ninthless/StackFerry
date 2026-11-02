@@ -136,6 +136,9 @@ export function AppUpdateCard() {
               busy={busy}
               downloading={downloading}
               onDownload={() => void download()}
+              onOpen={() => {
+                if (status?.releaseUrl) window.open(status.releaseUrl)
+              }}
               onInstall={() => setConfirmInstall(true)}
             />
           </FieldGroup>
@@ -179,6 +182,7 @@ function UpdateStatusBody({
   busy,
   downloading,
   onDownload,
+  onOpen,
   onInstall,
 }: {
   status: AppUpdateStatus
@@ -186,6 +190,7 @@ function UpdateStatusBody({
   busy: boolean
   downloading: boolean
   onDownload: () => void
+  onOpen: () => void
   onInstall: () => void
 }) {
   if (status.phase === "unpackaged") {
@@ -217,14 +222,18 @@ function UpdateStatusBody({
           <Alert><AlertDescription>{m.app_update_ready()}</AlertDescription></Alert>
         ) : null}
         <div className="flex flex-wrap gap-2">
-          {status.phase === "available" ? (
+          {status.phase === "ready" ? (
+            <Button type="button" size="sm" disabled={busy} onClick={onInstall}>
+              {m.app_update_install()}
+            </Button>
+          ) : status.releaseUrl ? (
+            <Button type="button" size="sm" disabled={busy} onClick={onOpen}>
+              {m.app_update_open()}
+            </Button>
+          ) : (
             <Button type="button" size="sm" disabled={busy} onClick={onDownload}>
               {downloading ? <Spinner data-icon="inline-start" /> : null}
               {downloading ? m.app_update_downloading() : m.app_update_download()}
-            </Button>
-          ) : (
-            <Button type="button" size="sm" disabled={busy} onClick={onInstall}>
-              {m.app_update_install()}
             </Button>
           )}
         </div>

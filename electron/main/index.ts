@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import path from 'node:path'
 import { resolveAppIconPath, resolveDockIconPath, resolveIconDir, resolveTrayIconPath } from './app-icon'
-import { isPackagedUpdatePlatform } from '../../shared/app-releases'
+import { isPackagedReleaseNoticePlatform, isPackagedUpdatePlatform } from '../../shared/app-releases'
 import type { LanguagePreference } from '../../shared/locale'
 import { windowUsesMicaSurface } from '../../shared/mica'
 import type { ThemePreference } from '../../shared/theme'
@@ -48,6 +48,7 @@ import {
 } from './mica'
 import { ProviderStore } from './codex/store'
 import { fetchAnnouncementFeed } from './releases/feed'
+import { createGitHubReleaseNoticeFeed } from './releases/github-release'
 import { AppReleaseService } from './releases/service'
 import { AnnouncementStore } from './releases/store'
 import { createElectronUpdateFeed, createPackagedAppUpdater, readLinuxPackageType } from './releases/updater'
@@ -207,6 +208,17 @@ async function refreshTray(): Promise<void> {
   })
 }
 
+function packagedUpdateFeed(appImagePath: string | undefined, linuxPackageType: string | null) {
+  if (!app.isPackaged) return null
+  if (isPackagedUpdatePlatform(process.platform, appImagePath, linuxPackageType)) {
+    return createElectronUpdateFeed(createPackagedAppUpdater({ appImagePath, linuxPackageType }))
+  }
+  if (isPackagedReleaseNoticePlatform(process.platform)) {
+    return createGitHubReleaseNoticeFeed({ currentVersion: app.getVersion() })
+  }
+  return null
+}
+
 app.whenReady().then(async () => {
   if (process.platform === 'darwin') {
     app.dock?.setIcon(resolveDockIconPath(iconDir))
@@ -294,10 +306,7 @@ app.whenReady().then(async () => {
     linuxPackageType,
     store: new AnnouncementStore(path.join(app.getPath('userData'), 'announcements.json')),
     fetchReleases: () => fetchAnnouncementFeed(),
-    feed:
-      app.isPackaged && isPackagedUpdatePlatform(process.platform, appImagePath, linuxPackageType)
-        ? createElectronUpdateFeed(createPackagedAppUpdater({ appImagePath, linuxPackageType }))
-        : null,
+    feed: packagedUpdateFeed(appImagePath, linuxPackageType),
     prepareQuit: prepareQuitForUpdate,
   })
   const ipcContext = {

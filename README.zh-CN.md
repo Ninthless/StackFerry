@@ -63,7 +63,7 @@ StackFerry 不替代这些 CLI。它放在旁边：官方登录或自定义网�
 - **CLI 程序。** 检测、安装、更新、卸载本机的 Codex、Claude Code、Grok Build 和 Pi。卸载 CLI 不会删掉 StackFerry 里的供应商数据。
 - **桌面。** 简体中文和 English、主题、Windows 11 Mica、首次启动指引、托盘。关窗口是隐藏。退出时把路由写回的配置还原成直连。
 
-已打包的 Windows 和 Linux 会检查 [GitHub Releases](https://github.com/Ninthless/StackFerry/releases) 更新。macOS 是 ad-hoc 签名，应用内更新不可用，请重新下载 DMG。
+已打包的 Windows 和 Linux 会检查 [GitHub Releases](https://github.com/Ninthless/StackFerry/releases) 并安装更新。macOS 发现新版本时会提示，并打开发布页下载 DMG。
 
 ## 安装
 
@@ -73,7 +73,7 @@ StackFerry 不替代这些 CLI。它放在旁边：官方登录或自定义网�
 | --- | --- | --- |
 | Windows | NSIS `*-Setup.exe`（`x64` / `arm64`） | 可用。SmartScreen 可能拦截未签名安装包，选 **仍要运行**。 |
 | Linux | AppImage、deb（`x64` / `arm64`） | 可用。AppImage 先 `chmod +x`。AppImageUpdate 也可以从 GitHub Releases 更新 AppImage。deb 更新时可能弹出系统密码框。 |
-| macOS | ad-hoc 签名 DMG（`arm64` / `x64`） | 不可用。见 [macOS](#macos)。 |
+| macOS | ad-hoc 签名 DMG（`arm64` / `x64`） | 提示新版本，并打开发布页。安装方式见 [macOS](#macos)。 |
 
 ## 使用
 

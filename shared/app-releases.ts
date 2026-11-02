@@ -43,8 +43,17 @@ export type AppUpdateStatus = {
   currentVersion: string
   availableVersion: string | null
   releaseNotes: string | null
+  releaseUrl: string | null
   downloadedBytes: number
   totalBytes: number
+}
+
+export const APP_MAC_UPDATE_MANIFEST_URL =
+  'https://github.com/Ninthless/StackFerry/releases/latest/download/latest-mac.yml'
+
+export type MacUpdateNotice = {
+  version: string
+  releaseUrl: string
 }
 
 export function isAnnouncementFeedUrl(url: string): boolean {
@@ -148,6 +157,37 @@ export function isPackagedUpdatePlatform(
   return Boolean(appImagePath?.trim()) || linuxPackageType === 'deb'
 }
 
+export function isPackagedReleaseNoticePlatform(platform: string): boolean {
+  return platform === 'darwin'
+}
+
+export function releaseVersionParts(value: string): [number, number, number] | null {
+  const match = /^(?:v)?(\d+)\.(\d+)\.(\d+)$/.exec(value.trim())
+  if (!match) return null
+  return [Number(match[1]), Number(match[2]), Number(match[3])]
+}
+
+export function isNewerReleaseVersion(current: string, latest: string): boolean {
+  const left = releaseVersionParts(current)
+  const right = releaseVersionParts(latest)
+  if (!left || !right) return false
+  for (let index = 0; index < 3; index += 1) {
+    if (right[index] !== left[index]) return right[index] > left[index]
+  }
+  return false
+}
+
+export function parseMacUpdateManifest(payload: string): MacUpdateNotice | null {
+  const match = /^version:\s*['"]?v?(\d+\.\d+\.\d+)['"]?\s*$/m.exec(payload)
+  if (!match) return null
+  const version = match[1]
+  if (!releaseVersionParts(version)) return null
+  return {
+    version,
+    releaseUrl: `https://github.com/Ninthless/StackFerry/releases/tag/v${version}`,
+  }
+}
+
 export function initialAppUpdateStatus(
   currentVersion: string,
   packaged: boolean,
@@ -155,15 +195,15 @@ export function initialAppUpdateStatus(
   appImagePath?: string | null,
   linuxPackageType?: string | null,
 ): AppUpdateStatus {
+  const checksForRelease =
+    isPackagedUpdatePlatform(platform, appImagePath, linuxPackageType) ||
+    isPackagedReleaseNoticePlatform(platform)
   return {
-    phase: packaged
-      ? isPackagedUpdatePlatform(platform, appImagePath, linuxPackageType)
-        ? 'idle'
-        : 'unsupported'
-      : 'unpackaged',
+    phase: packaged ? (checksForRelease ? 'idle' : 'unsupported') : 'unpackaged',
     currentVersion,
     availableVersion: null,
     releaseNotes: null,
+    releaseUrl: null,
     downloadedBytes: 0,
     totalBytes: 0,
   }
