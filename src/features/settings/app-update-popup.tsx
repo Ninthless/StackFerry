@@ -48,12 +48,13 @@ export function AppUpdatePopup() {
     return unsub
   }, [])
 
-  function openReleasePage(): void {
-    if (status?.releaseUrl) window.open(status.releaseUrl, "_blank", "noopener")
-    setOpen(false)
-  }
-
   async function download(): Promise<void> {
+    const page = status?.releaseUrl
+    if (page) {
+      window.open(page)
+      setOpen(false)
+      return
+    }
     const api = window.stackferry
     if (!api) {
       setOpen(false)
@@ -86,15 +87,13 @@ export function AppUpdatePopup() {
         {status?.releaseNotes ? <ReleaseNotes notes={status.releaseNotes} /> : null}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>{m.announcements_popup_later()}</AlertDialogCancel>
-          {status?.releaseUrl ? (
-            <AlertDialogAction type="button" onClick={openReleasePage}>
-              {m.app_update_open()}
-            </AlertDialogAction>
-          ) : (
-            <AlertDialogAction type="button" disabled={busy} onClick={() => void download()}>
-              {busy ? m.app_update_downloading() : m.app_update_download()}
-            </AlertDialogAction>
-          )}
+          <AlertDialogAction type="button" disabled={busy} onClick={() => void download()}>
+            {status?.releaseUrl
+              ? m.app_update_open()
+              : busy
+                ? m.app_update_downloading()
+                : m.app_update_download()}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

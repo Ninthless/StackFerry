@@ -137,7 +137,7 @@ export function AppUpdateCard() {
               downloading={downloading}
               onDownload={() => void download()}
               onOpen={() => {
-                if (status?.releaseUrl) window.open(status.releaseUrl, "_blank", "noopener")
+                if (status?.releaseUrl) window.open(status.releaseUrl)
               }}
               onInstall={() => setConfirmInstall(true)}
             />
