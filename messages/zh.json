@@ -316,6 +316,8 @@
   "error_models_unsupported_endpoint": "该端点不支持 /v1/models，请手动输入模型 ID",
   "error_models_http": "获取模型列表失败（{status}）",
   "error_models_timeout": "获取模型列表超时",
+  "error_models_pagination_invalid": "模型目录返回了无效或重复的分页游标，请手动输入模型 ID",
+  "error_models_pagination_limit": "模型目录超过了发现页数上限，请手动输入模型 ID",
   "error_claude_base_url_required": "请填写 Base URL",
   "error_claude_base_url_invalid": "Base URL 不是有效的 http 或 https 地址",
   "error_claude_auth_scheme": "鉴权方式仅支持 bearer 或 x-api-key",
