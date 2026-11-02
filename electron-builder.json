@@ -4,6 +4,7 @@
   "productName": "StackFerry",
   "executableName": "stackferry",
   "asar": true,
+  "asarUnpack": ["**/node_modules/koffi/**"],
   "compression": "maximum",
   "electronLanguages": ["en-US", "zh-CN"],
   "directories": {
@@ -16,6 +17,10 @@
     "!dist-electron/**/*.{png,ico,svg}"
   ],
   "extraResources": [
+    {
+      "from": "native/macos",
+      "filter": ["traffic-lights.dylib"]
+    },
     {
       "from": "public",
       "to": "icons",

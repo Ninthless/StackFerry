@@ -60,6 +60,7 @@ import { McpService } from './mcp/service'
 import { broadcastSkillsChanged } from './skills/ipc'
 import { SkillService } from './skills/service'
 import { AppTray } from './tray'
+import { bindTrafficLights, trafficLightLibraryPath } from './traffic-lights'
 import { windowChromeOptions } from './window-chrome'
 import {
   bindProviderImportWindow,
@@ -152,6 +153,14 @@ async function createWindow(): Promise<void> {
     },
   })
   bindWindowState(win)
+  bindTrafficLights(
+    win,
+    trafficLightLibraryPath({
+      packaged: app.isPackaged,
+      appRoot: process.env.APP_ROOT,
+      resourcesPath: process.resourcesPath,
+    }),
+  )
   applyWindowAppearance(win, micaPreference)
 
   if (VITE_DEV_SERVER_URL) {

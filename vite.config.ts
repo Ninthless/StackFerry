@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { rmSync } from 'node:fs'
 import path from 'node:path'
 import { defineConfig } from 'vite'
@@ -13,6 +14,10 @@ const external = Object.keys(
 )
 
 // https://vitejs.dev/config/
+execFileSync(process.execPath, [path.join(import.meta.dirname, 'scripts/build-traffic-lights.mjs')], {
+  stdio: 'inherit',
+})
+
 export default defineConfig(({ command }) => {
   rmSync('dist-electron', { recursive: true, force: true })
 

@@ -7,7 +7,8 @@ export type WindowChromeOptions = {
 
 export type TitleBarDoubleClickAction = 'none' | 'minimize' | 'toggleMaximize'
 
-export const MAC_TRAFFIC_LIGHT = { x: 16, y: 12 } as const
+export const MAC_TRAFFIC_LIGHT = { x: 6, y: 10 } as const
+export const MAC_TRAFFIC_LIGHT_GAP = 4
 export const WINDOW_BACKGROUND_DARK = '#0a0a0a'
 export const WINDOW_BACKGROUND_LIGHT = '#ffffff'
 

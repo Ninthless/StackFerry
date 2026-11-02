@@ -14,6 +14,7 @@ dist-electron
 src/paraglide
 release
 *.local
+native/macos/*.dylib
 
 # Editor directories and files
 .vscode/.debug.env

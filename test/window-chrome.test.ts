@@ -1,5 +1,8 @@
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { trafficLightLibraryPath } from '../electron/main/traffic-lights'
 import {
+  MAC_TRAFFIC_LIGHT_GAP,
   titleBarDoubleClickAction,
   windowChromeOptions,
 } from '../electron/main/window-chrome'
@@ -8,7 +11,7 @@ describe('windowChromeOptions', () => {
   it('uses inset traffic lights on macOS', () => {
     expect(windowChromeOptions('darwin')).toEqual({
       titleBarStyle: 'hiddenInset',
-      trafficLightPosition: { x: 16, y: 12 },
+      trafficLightPosition: { x: 6, y: 10 },
       autoHideMenuBar: false,
     })
   })
@@ -24,6 +27,26 @@ describe('windowChromeOptions', () => {
     })
     expect(windowChromeOptions('win32')).not.toHaveProperty('titleBarOverlay')
     expect(windowChromeOptions('linux')).not.toHaveProperty('titleBarOverlay')
+  })
+})
+
+describe('traffic light gap', () => {
+  it('uses a tighter gap than the system pitch and resolves the helper library', () => {
+    expect(MAC_TRAFFIC_LIGHT_GAP).toBe(4)
+    expect(
+      trafficLightLibraryPath({
+        packaged: false,
+        appRoot: '/app',
+        resourcesPath: '/resources',
+      }),
+    ).toBe(path.join('/app', 'native/macos/traffic-lights.dylib'))
+    expect(
+      trafficLightLibraryPath({
+        packaged: true,
+        appRoot: '/app',
+        resourcesPath: '/resources',
+      }),
+    ).toBe(path.join('/resources', 'traffic-lights.dylib'))
   })
 })
 

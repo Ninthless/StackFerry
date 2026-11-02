@@ -29,6 +29,7 @@
     "@codeproxy/core": "0.1.26",
     "electron-updater": "6.6.4",
     "fflate": "^0.8.3",
+    "koffi": "^3.3.6",
     "smol-toml": "^1.5.2",
     "undici": "^8.11.2"
   },
