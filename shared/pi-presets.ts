@@ -47,6 +47,15 @@ export const PI_PRESETS: PiPreset[] = [
     requiresApiKey: true,
   },
   {
+    id: 'a2agent',
+    name: 'A2Agent',
+    kind: 'custom',
+    baseUrl: 'https://api.a2agent.me/v1',
+    model: '',
+    api: 'openai-completions',
+    requiresApiKey: true,
+  },
+  {
     id: 'custom',
     name: 'Custom',
     kind: 'custom',

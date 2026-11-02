@@ -25,6 +25,15 @@ export const GROK_PRESETS: GrokPreset[] = [
     requiresApiKey: true,
   },
   {
+    id: 'a2agent',
+    name: 'A2Agent',
+    kind: 'custom',
+    baseUrl: 'https://api.a2agent.me/v1',
+    model: '',
+    apiBackend: 'responses',
+    requiresApiKey: true,
+  },
+  {
     id: 'custom',
     name: 'Custom',
     kind: 'custom',

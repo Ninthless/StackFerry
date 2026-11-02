@@ -33,6 +33,7 @@ StackFerry 不替代这些 CLI。它放在旁边：官方登录或自定义网�
 ## 目录
 
 - [CLI](#cli)
+- [集成 / 支持的供应商](#集成--支持的供应商)
 - [它做什么](#它做什么)
 - [安装](#安装)
 - [使用](#使用)
@@ -48,6 +49,10 @@ StackFerry 不替代这些 CLI。它放在旁边：官方登录或自定义网�
 | --- | --- |
 | 现在 | Codex、Claude Code、Grok、Pi |
 | 以后 | 更多 Coding CLI。每一家都走同一套供应商、路由、Skills 和 MCP。 |
+
+## 集成 / 支持的供应商
+
+- [A2Agent](https://a2agent.me/) — API 网关，已验证模型发现及基础 Messages、Responses、Chat Completions 请求；参见[配置与验证范围](docs/a2agent-compatibility.md)。
 
 ## 它做什么
 
