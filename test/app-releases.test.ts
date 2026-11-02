@@ -20,7 +20,10 @@ import {
 } from '../shared/app-releases'
 import electronUpdater from 'electron-updater'
 import { fetchAnnouncementFeed } from '../electron/main/releases/feed'
-import { createGitHubReleaseNoticeFeed } from '../electron/main/releases/github-release'
+import {
+  createGitHubReleaseNoticeFeed,
+  releaseNotesForVersion,
+} from '../electron/main/releases/github-release'
 import { AppReleaseService } from '../electron/main/releases/service'
 import { AnnouncementStore } from '../electron/main/releases/store'
 import { packagedUpdaterKind, readLinuxPackageType, type AppUpdateFeed } from '../electron/main/releases/updater'
@@ -313,15 +316,17 @@ describe('github release notice', () => {
   })
 
   it('reports a newer mac release without installing it', async () => {
+    const notes = '### English\n\n- narrower sidebar\n\n### 中文\n\n- 侧栏更窄\n'
     const feed = createGitHubReleaseNoticeFeed({
       currentVersion: '1.1.6',
       loadLatest: async () => macManifest('1.1.7'),
+      loadReleaseNotes: async (version) => (version === '1.1.7' ? notes : null),
     })
     const service = await createService({ packaged: true, platform: 'darwin', feed })
     const found = await service.check()
     expect(found.phase).toBe('available')
     expect(found.availableVersion).toBe('1.1.7')
-    expect(found.releaseNotes).toBeNull()
+    expect(found.releaseNotes).toBe(notes)
     expect(found.releaseUrl).toBe('https://github.com/Ninthless/StackFerry/releases/tag/v1.1.7')
     await expect(service.download()).rejects.toMatchObject({ code: 'app_update_unsupported' })
     expect(service.snapshot().phase).toBe('available')
@@ -339,6 +344,32 @@ describe('github release notice', () => {
       loadLatest: async () => 'not a manifest',
     })
     await expect(broken.check()).rejects.toMatchObject({ code: 'app_update_check_failed' })
+  })
+
+  it('reads release notes only for the exact published version', () => {
+    const body = '### English\n\n- narrower sidebar\n'
+    const payload = JSON.stringify({ tag_name: 'v1.1.7', prerelease: false, body })
+    expect(releaseNotesForVersion(payload, '1.1.7')).toBe(body.trim())
+    expect(releaseNotesForVersion(payload, '1.1.8')).toBeNull()
+    expect(releaseNotesForVersion(JSON.stringify({ tag_name: 'v1.1.7', prerelease: true, body }), '1.1.7')).toBeNull()
+    expect(releaseNotesForVersion(JSON.stringify({ tag_name: 'v1.1.7', draft: true, body }), '1.1.7')).toBeNull()
+    expect(releaseNotesForVersion('not json', '1.1.7')).toBeNull()
+  })
+
+  it('still reports the release when the notes cannot be loaded', async () => {
+    const feed = createGitHubReleaseNoticeFeed({
+      currentVersion: '1.1.6',
+      loadLatest: async () => macManifest('1.1.7'),
+      loadReleaseNotes: async () => {
+        throw new Error('notes down')
+      },
+    })
+    const found = await feed.check()
+    expect(found).toMatchObject({
+      version: '1.1.7',
+      releaseNotes: null,
+      releaseUrl: 'https://github.com/Ninthless/StackFerry/releases/tag/v1.1.7',
+    })
   })
 })
 
