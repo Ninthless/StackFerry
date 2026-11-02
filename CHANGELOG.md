@@ -4,6 +4,30 @@ User-visible changes live here. GitHub Releases and in-app update notes use the 
 
 用户能感知的变化写在这里。GitHub Release 和应用内更新说明都读当前 `package.json` 版本对应的一节。每个版本先写 `### English`，再写 `### 中文`。内部重构、测试和 chore 不必写入。
 
+## 1.1.6 - 2026-11-02
+
+### English
+
+#### Added
+
+- A2Agent is a built-in gateway preset for Codex, Claude Code, Grok, and Pi. You still supply the API key. The model stays empty until you choose one.
+- Claude model discovery keeps reading later pages of an Anthropic-compatible catalog. A catalog longer than one page comes back complete. If a later page rejects the key, the whole fetch fails instead of keeping a partial list.
+
+#### Fixed
+
+- On Mac, the collapsed sidebar is narrower. The StackFerry mark hides while the rail is collapsed, the icons stay centered, and the window buttons sit closer together.
+
+### 中文
+
+#### 新增
+
+- A2Agent 成为 Codex、Claude Code、Grok 和 Pi 的内置网关预设。密钥仍由你填写，模型留空，等你自己选
+- Claude 拉取模型时会继续翻页。目录超过一页时会拿全。后面某一页认证失败时，整次失败，不会只留下前面的结果
+
+#### 修复
+
+- Mac 上收起的侧栏更窄。收起时品牌标志会藏起来，图标保持居中，三颗窗口按钮靠得更近
+
 ## 1.1.5 - 2026-10-28
 
 ### English
