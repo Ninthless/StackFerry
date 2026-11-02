@@ -316,6 +316,8 @@
   "error_models_unsupported_endpoint": "This endpoint does not support /v1/models. Enter a model ID manually.",
   "error_models_http": "Failed to fetch the model list ({status})",
   "error_models_timeout": "Timed out while fetching the model list",
+  "error_models_pagination_invalid": "The model catalog returned an invalid or repeated pagination cursor. Enter a model ID manually.",
+  "error_models_pagination_limit": "The model catalog exceeded the discovery page limit. Enter a model ID manually.",
   "error_claude_base_url_required": "Enter a Base URL",
   "error_claude_base_url_invalid": "Base URL is not a valid http or https address",
   "error_claude_auth_scheme": "Auth scheme only supports bearer or x-api-key",

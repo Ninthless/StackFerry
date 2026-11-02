@@ -34,6 +34,8 @@ export const APP_ERROR_CODES = [
   'models_unsupported_endpoint',
   'models_http',
   'models_timeout',
+  'models_pagination_invalid',
+  'models_pagination_limit',
   'claude_base_url_required',
   'claude_base_url_invalid',
   'claude_auth_scheme',
