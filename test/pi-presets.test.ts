@@ -10,6 +10,7 @@ describe('pi presets', () => {
       'openrouter',
       'deepseek',
       'xfcode',
+      'a2agent',
       'custom',
     ])
     expect(PI_PRESETS[0]).toMatchObject({ kind: 'official', requiresApiKey: false })
@@ -17,5 +18,13 @@ describe('pi presets', () => {
     for (const preset of PI_PRESETS) {
       if (preset.kind === 'custom') expect(PI_APIS).toContain(preset.api)
     }
+  })
+
+  it('offers A2Agent using Chat Completions without a default model', () => {
+    expect(findPiPreset('a2agent')).toEqual({
+      id: 'a2agent', name: 'A2Agent', kind: 'custom',
+      baseUrl: 'https://api.a2agent.me/v1', model: '',
+      api: 'openai-completions', requiresApiKey: true,
+    })
   })
 })

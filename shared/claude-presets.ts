@@ -22,6 +22,15 @@ export const CLAUDE_PRESETS: ClaudePreset[] = [
     requiresApiKey: true,
   },
   {
+    id: 'a2agent',
+    name: 'A2Agent',
+    kind: 'custom',
+    baseUrl: 'https://api.a2agent.me',
+    model: '',
+    authScheme: 'bearer',
+    requiresApiKey: true,
+  },
+  {
     id: 'custom',
     name: 'Custom',
     kind: 'custom',

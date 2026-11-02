@@ -58,6 +58,18 @@ export const PRESETS: Preset[] = [
     requiresApiKey: true,
   },
   {
+    id: 'a2agent',
+    name: 'A2Agent',
+    kind: 'custom',
+    tomlText: starterOverlayToml({
+      providerId: 'a2agent',
+      name: 'A2Agent',
+      baseUrl: 'https://api.a2agent.me/v1',
+      model: '',
+    }),
+    requiresApiKey: true,
+  },
+  {
     id: 'custom',
     name: 'Custom',
     kind: 'custom',

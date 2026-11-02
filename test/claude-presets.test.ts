@@ -15,8 +15,16 @@ describe('claude presets', () => {
     expect(xfcode?.baseUrl).toBe('https://api.orangecc.cc')
     expect(xfcode?.authScheme).toBe('bearer')
     expect(xfcode?.requiresApiKey).toBe(true)
-    expect(CLAUDE_PRESETS).toHaveLength(3)
+    expect(CLAUDE_PRESETS).toHaveLength(4)
     expect(isClaudeAuthScheme('bearer')).toBe(true)
     expect(isClaudeAuthScheme('responses')).toBe(false)
+  })
+
+  it('offers A2Agent with bearer auth and leaves model selection to the user', () => {
+    expect(findClaudePreset('a2agent')).toEqual({
+      id: 'a2agent', name: 'A2Agent', kind: 'custom',
+      baseUrl: 'https://api.a2agent.me', model: '',
+      authScheme: 'bearer', requiresApiKey: true,
+    })
   })
 })

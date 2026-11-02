@@ -33,6 +33,7 @@ StackFerry does not replace those CLIs. It sits beside them: official login or a
 ## Contents
 
 - [CLIs](#clis)
+- [Integrations / Supported Providers](#integrations--supported-providers)
 - [What it does](#what-it-does)
 - [Install](#install)
 - [Usage](#usage)
@@ -48,6 +49,10 @@ StackFerry does not replace those CLIs. It sits beside them: official login or a
 | --- | --- |
 | Today | Codex, Claude Code, Grok, Pi |
 | Later | More coding CLIs. Each one gets the same provider, routing, Skills, and MCP flow. |
+
+## Integrations / Supported Providers
+
+- [A2Agent](https://a2agent.me/) — an API gateway with tested model discovery and basic Messages, Responses, and Chat Completions requests; see [configuration and verification scope](docs/a2agent-compatibility.md).
 
 ## What it does
 

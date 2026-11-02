@@ -11,6 +11,14 @@ describe('grok presets', () => {
     expect(xfcode?.apiBackend).toBe('responses')
     expect(xfcode?.requiresApiKey).toBe(true)
     expect(findGrokPreset('custom')?.baseUrl).toBe('')
-    expect(GROK_PRESETS).toHaveLength(3)
+    expect(GROK_PRESETS).toHaveLength(4)
+  })
+
+  it('offers A2Agent using Responses without a default model', () => {
+    expect(findGrokPreset('a2agent')).toEqual({
+      id: 'a2agent', name: 'A2Agent', kind: 'custom',
+      baseUrl: 'https://api.a2agent.me/v1', model: '',
+      apiBackend: 'responses', requiresApiKey: true,
+    })
   })
 })
