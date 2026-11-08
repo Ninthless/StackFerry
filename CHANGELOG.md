@@ -4,6 +4,38 @@ User-visible changes live here. GitHub Releases and in-app update notes use the 
 
 用户能感知的变化写在这里。GitHub Release 和应用内更新说明都读当前 `package.json` 版本对应的一节。每个版本先写 `### English`，再写 `### 中文`。内部重构、测试和 chore 不必写入。
 
+## 1.1.7 - 2026-11-08
+
+### English
+
+#### Added
+
+- Packaged Mac builds check for a newer GitHub release and open the download page. The prompt includes the release notes for the current language. The check uses StackFerry's egress proxy when that switch is on. Installing the update in the app stays on Windows and Linux.
+
+#### Fixed
+
+- The Mac Dock icon fills the system icon shape.
+- A Codex provider with a model list keeps image input available for those models.
+
+#### Upgrade notes
+
+- Enable that Codex provider again, then quit Codex completely and open it again. The model catalog is rewritten when the provider is enabled.
+
+### 中文
+
+#### 新增
+
+- 已打包的 Mac 会检查 GitHub 上的新版本，并打开发布页下载。提示里带当前语言的更新说明。打开了出口代理时，这次检查会走代理。应用内安装仍在 Windows 和 Linux
+
+#### 修复
+
+- Mac 的 Dock 图标铺满系统图标形状
+- 填了模型列表的 Codex 供应商会保留图片输入，这些模型不再被当成纯文本
+
+#### 升级注意
+
+- 把这个 Codex 供应商再启用一次，然后完全退出 Codex 再打开。模型目录在启用时重写
+
 ## 1.1.6 - 2026-11-02
 
 ### English
