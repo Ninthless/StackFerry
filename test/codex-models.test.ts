@@ -83,7 +83,7 @@ function expectedCatalogEntry(slug: string) {
       effort,
       description: expect.any(String) as string,
     })),
-    input_modalities: ['text'],
+    input_modalities: ['text', 'image'],
     supported_in_api: true,
     priority: 1000,
     availability_nux: null,
