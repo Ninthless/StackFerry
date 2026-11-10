@@ -4,6 +4,32 @@ User-visible changes live here. GitHub Releases and in-app update notes use the 
 
 用户能感知的变化写在这里。GitHub Release 和应用内更新说明都读当前 `package.json` 版本对应的一节。每个版本先写 `### English`，再写 `### 中文`。内部重构、测试和 chore 不必写入。
 
+## 1.1.9 - Unreleased
+
+### English
+
+#### Added
+
+- Each Codex model in a provider has its own "Accepts images" switch. A model with the switch off is written to the catalog as text only, so Codex no longer offers image input for it.
+- Fetching the model list sets that switch from the gateway's answer. A model the gateway lists as text only is switched off. When the gateway does not say, the switch follows models.dev if most providers there list the model as accepting images. A switch you changed stays as you left it.
+- A Pi provider has an "Accepts images" switch. Turn it off for a text-only model and Pi writes the model with text input only. Fetching the model list sets the switch the same way when the current model is in the list, unless you already changed it.
+
+#### Upgrade notes
+
+- Existing models and newly added models accept images by default, as in 1.1.8. A model you have not switched keeps that default until a fetch or the next enable finds a clearer answer. After changing a switch, enable the provider again and restart the CLI.
+
+### 中文
+
+#### 新增
+
+- Codex 供应商里的每个模型都有单独的「能看图」开关。关掉后，这个模型在模型目录里只声明文本输入，Codex 不再为它提供图片输入
+- 获取模型列表时，开关会按网关的回答设置。网关标明纯文本的模型会被关掉。网关没说的，如果 models.dev 上多数供应商标明能看图，开关会打开。你手动改过的开关保持原样
+- Pi 供应商有「能看图」开关。纯文本模型可以关掉，Pi 会把这个模型写成只接受文本。获取模型列表时，当前模型在列表里也会按同样规则设置，除非你已经手动改过
+
+#### 升级注意
+
+- 已有的模型和新加的模型默认能看图，与 1.1.8 一致。没手动改过的，要等获取列表或下次启用才按更明确的结果调整。改完开关后，重新启用一次供应商，再重启对应的 CLI
+
 ## 1.1.8 - 2026-11-10
 
 ### English
