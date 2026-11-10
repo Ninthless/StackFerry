@@ -153,15 +153,19 @@ base_url = "https://c.example/v1"
 wire_api = "responses"
 `,
         apiKey: 'key-c',
-        models: ['gpt-5.4', 'gpt-5'],
+        models: [
+          { id: 'gpt-5.4', images: true },
+          { id: 'gpt-5', images: false },
+        ],
       },
     })
 
     const catalogPath = path.join(codexHome, 'model-catalogs', 'stackferry.json')
     const catalog = JSON.parse(await readFile(catalogPath, 'utf8')) as {
-      models: { slug: string; supported_reasoning_levels?: { effort: string }[] }[]
+      models: { slug: string; input_modalities: string[]; supported_reasoning_levels?: { effort: string }[] }[]
     }
     expect(catalog.models.map((item) => item.slug)).toEqual(['gpt-5.4', 'gpt-5'])
+    expect(catalog.models.map((item) => item.input_modalities)).toEqual([['text', 'image'], ['text']])
     expect(catalog.models[0]).toMatchObject({
       slug: 'gpt-5.4',
       priority: 1000,

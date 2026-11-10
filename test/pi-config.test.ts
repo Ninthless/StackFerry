@@ -125,6 +125,12 @@ describe('pi config documents', () => {
     expect(await store.getPreviousDefault()).toBeNull()
   })
 
+  it('writes a text-only model when image input is turned off', () => {
+    const next = applyDirectPiDocuments({}, {}, { ...provider, images: false })
+    const managed = (next.models.providers as Record<string, { models: unknown[] }>)[piProviderKey('gateway')]
+    expect(managed.models).toEqual([{ id: 'demo-model', input: ['text'] }])
+  })
+
   it('writes the thinking level and context window, then drops the managed level on official', () => {
     const next = applyDirectPiDocuments(
       {},

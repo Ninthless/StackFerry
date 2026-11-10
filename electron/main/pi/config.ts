@@ -13,6 +13,7 @@ export type PiLiveConfig = {
   model: string
   api: PiApi
   apiKey: string
+  images?: boolean
   thinkingLevel?: string
   contextWindow?: string
 }
@@ -142,7 +143,10 @@ function applyPiDocuments(
 
 function piModelRecord(provider: PiLiveConfig): Record<string, unknown> {
   // Pi 省略 input 时默认纯文本，自定义模型贴图会被拒。
-  const model: Record<string, unknown> = { id: provider.model, input: ['text', 'image'] }
+  const model: Record<string, unknown> = {
+    id: provider.model,
+    input: provider.images === false ? ['text'] : ['text', 'image'],
+  }
   const level = provider.thinkingLevel?.trim() ?? ''
   if (level) model.reasoning = true
   const context = provider.contextWindow?.trim() ?? ''

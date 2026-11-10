@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { CheckCircle2Icon, CircleHelp, Download, InfoIcon } from "lucide-react"
 import { persistCodexModels, uniqueCodexModelIds } from "@shared/codex-models"
+import { modelEntriesFromIds, modelEntryIds, type ModelEntry } from "@shared/model-entry"
+import { applyListedImages } from "@shared/provider-models"
 import {
   APPROVAL_POLICIES,
   REASONING_EFFORTS,
@@ -27,6 +29,7 @@ import {
   ComboboxValue,
 } from "@/components/ui/combobox"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { InputGroupAddon, InputGroupButton } from "@/components/ui/input-group"
 import {
   Select,
@@ -105,9 +108,9 @@ type Props = {
   tomlText: string
   apiKey: string
   providerId?: string
-  models: string[]
+  models: ModelEntry[]
   onTomlChange: (value: string) => void
-  onModelsChange: (value: string[]) => void
+  onModelsChange: (value: ModelEntry[]) => void
   onError: (message: string) => void
 }
 
@@ -127,13 +130,14 @@ export function CodexSessionFields({
   const [fetching, setFetching] = useState(false)
   const [fetchedCount, setFetchedCount] = useState<number | null>(null)
   const items = reasoningItems()
+  const modelIds = useMemo(() => modelEntryIds(models), [models])
   const catalogItems = useMemo(
-    () => uniqueCodexModelIds([query, ...suggestions, ...models]),
-    [models, query, suggestions],
+    () => uniqueCodexModelIds([query, ...suggestions, ...modelIds]),
+    [modelIds, query, suggestions],
   )
   const defaultItems = useMemo(
-    () => models.map((id) => ({ label: id, value: id })),
-    [models],
+    () => modelIds.map((id) => ({ label: id, value: id })),
+    [modelIds],
   )
   const defaultComboboxItems = useMemo(
     () => uniqueCodexModelIds([session.model, ...suggestions]),
@@ -156,9 +160,13 @@ export function CodexSessionFields({
   }
 
   function handleModelsChange(next: string[]): void {
-    const persisted = persistCodexModels(session.model, next)
+    const persisted = persistCodexModels(session.model, modelEntriesFromIds(next, models))
     onModelsChange(persisted.models)
     if (persisted.model !== session.model) patchSession({ model: persisted.model })
+  }
+
+  function handleImagesChange(id: string, images: boolean): void {
+    onModelsChange(models.map((entry) => (entry.id === id ? { ...entry, images, imagesSet: true } : entry)))
   }
 
   async function handleFetchModels(): Promise<void> {
@@ -169,13 +177,14 @@ export function CodexSessionFields({
     }
     setFetching(true)
     try {
-      const ids = await api.listModels({
+      const listed = await api.listModels({
         baseUrl: overlayBaseUrl(tomlText),
         apiKey,
         providerId,
       })
-      setSuggestions(ids)
-      setFetchedCount(ids.length)
+      setSuggestions(listed.map((model) => model.id))
+      setFetchedCount(listed.length)
+      onModelsChange(applyListedImages(models, listed))
       onError("")
     } catch (error) {
       setFetchedCount(null)
@@ -199,7 +208,7 @@ export function CodexSessionFields({
               items={catalogItems}
               multiple
               autoHighlight
-              value={models}
+              value={modelIds}
               onValueChange={(value) => {
                 if (!Array.isArray(value)) return
                 handleModelsChange(value.filter((item): item is string => typeof item === "string"))
@@ -208,7 +217,7 @@ export function CodexSessionFields({
             >
               <ComboboxChips>
                 <ComboboxValue>
-                  {models.map((item) => (
+                  {modelIds.map((item) => (
                     <ComboboxChip key={item}>{item}</ComboboxChip>
                   ))}
                 </ComboboxValue>
@@ -232,6 +241,9 @@ export function CodexSessionFields({
           </div>
           <ModelsFetchButton fetching={fetching} onFetch={() => void handleFetchModels()} />
         </div>
+        {models.length > 0 ? (
+          <ModelImageList formId={formId} models={models} onImagesChange={handleImagesChange} />
+        ) : null}
         {fetchedCount == null ? null : (
           <Alert>
             {fetchedCount > 0 ? <CheckCircle2Icon /> : <InfoIcon />}
@@ -254,7 +266,7 @@ export function CodexSessionFields({
             <div className="min-w-0 flex-1">
               <Select
                 items={defaultItems}
-                value={models.includes(session.model) ? session.model : models[0]}
+                value={modelIds.includes(session.model) ? session.model : modelIds[0]}
                 onValueChange={(value) => {
                   if (typeof value === "string") patchSession({ model: value })
                 }}
@@ -427,6 +439,41 @@ function approvalItems() {
 
 function isReasoningOption(value: string): value is (typeof REASONING_EFFORTS)[number] {
   return (REASONING_EFFORTS as readonly string[]).includes(value)
+}
+
+function ModelImageList({
+  formId,
+  models,
+  onImagesChange,
+}: {
+  formId: string
+  models: ModelEntry[]
+  onImagesChange: (id: string, images: boolean) => void
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border px-3 py-2">
+      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>{m.session_model_images_title()}</span>
+        <span>{m.session_model_images()}</span>
+      </div>
+      {models.map((entry, index) => (
+        <label
+          key={entry.id}
+          htmlFor={`${formId}-images-${index}`}
+          className="flex items-center justify-between gap-2 text-sm"
+        >
+          <span className="min-w-0 truncate font-mono">{entry.id}</span>
+          <Switch
+            id={`${formId}-images-${index}`}
+            size="sm"
+            checked={entry.images}
+            aria-label={m.session_model_images_label({ model: entry.id })}
+            onCheckedChange={(checked) => onImagesChange(entry.id, checked)}
+          />
+        </label>
+      ))}
+    </div>
+  )
 }
 
 function ModelsFetchButton({

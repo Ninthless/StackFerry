@@ -1,6 +1,7 @@
 import { AppError } from './app-error'
 import { isClaudeAuthScheme } from './claude-presets'
 import { uniqueCodexModelIds } from './codex-models'
+import { modelEntriesFromIds } from './model-entry'
 import { isGrokApiBackend } from './grok-presets'
 import {
   isOverlayWireApi,
@@ -209,7 +210,7 @@ function toDrafts(payload: ProviderImportPayload): ProviderImportDrafts {
       name: payload.name,
       kind: 'custom',
       tomlText,
-      models: payload.models,
+      models: modelEntriesFromIds(payload.models),
       apiKey: payload.apiKey,
       presetId: 'custom',
     }

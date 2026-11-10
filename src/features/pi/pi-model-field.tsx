@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { CheckCircle2Icon, Download, InfoIcon } from "lucide-react"
 import type { PiApi } from "@shared/types"
+import type { ListedModel } from "@shared/provider-models"
 import { Alert, AlertTitle } from "@/components/ui/alert"
 import { Field, FieldError } from "@/components/ui/field"
 import {
@@ -26,6 +27,7 @@ type Props = {
   model: string
   invalid: boolean
   onModelChange: (value: string) => void
+  onListed: (listed: ListedModel[]) => void
   onError: (message: string) => void
 }
 
@@ -39,6 +41,7 @@ export function PiModelField({
   model,
   invalid,
   onModelChange,
+  onListed,
   onError,
 }: Props) {
   const [models, setModels] = useState<string[]>([])
@@ -63,9 +66,10 @@ export function PiModelField({
     }
     setFetching(true)
     try {
-      const ids = await desktop.listPiModels({ baseUrl, api, apiKey, providerId })
-      setModels(ids)
-      setFetchedCount(ids.length)
+      const listed = await desktop.listPiModels({ baseUrl, api, apiKey, providerId })
+      setModels(listed.map((item) => item.id))
+      setFetchedCount(listed.length)
+      onListed(listed)
       onError("")
     } catch (error) {
       setFetchedCount(null)

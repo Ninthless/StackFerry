@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react"
 import { AlignLeft } from "lucide-react"
-import type { Preset, ProviderDraft, ProviderKind, ProviderListItem } from "@shared/types"
+import type { ModelEntry, Preset, ProviderDraft, ProviderKind, ProviderListItem } from "@shared/types"
 import {
   formatToml,
   isOverlayWireApi,
@@ -53,7 +53,7 @@ export function CodexProviderEditor({ open, presets, editing, onOpenChange, onSu
   const [presetId, setPresetId] = useState("custom")
   const [name, setName] = useState("")
   const [tomlText, setTomlText] = useState("")
-  const [models, setModels] = useState<string[]>([])
+  const [models, setModels] = useState<ModelEntry[]>([])
   const [apiKey, setApiKey] = useState("")
   const [error, setError] = useState("")
   const [pending, setPending] = useState(false)

@@ -22,6 +22,8 @@ import type {
   SkillTarget,
 } from './skills'
 import type { ThemePreference } from './theme'
+import type { ModelEntry } from './model-entry'
+import type { ListedModel } from './provider-models'
 
 export type {
   AnnouncementItem,
@@ -53,6 +55,8 @@ export type {
 } from './ccsw-import'
 export type { EgressProxyPatch, EgressProxyView, LanguagePreference, MicaState, RoutingLaneState, RoutingSettingsPatch, RoutingSnapshot, ThemePreference }
 
+export type { ModelEntry } from './model-entry'
+
 export type ProviderKind = 'official' | 'custom'
 
 export type Preset = {
@@ -67,7 +71,7 @@ export type ProviderDraft = {
   name: string
   kind: ProviderKind
   tomlText?: string
-  models?: string[]
+  models?: ModelEntry[]
   apiKey?: string
   presetId?: string
 }
@@ -78,7 +82,7 @@ export type ProviderListItem = {
   kind: ProviderKind
   baseUrl: string
   model: string
-  models: string[]
+  models: ModelEntry[]
   tomlText: string
   hasApiKey: boolean
   enabled: boolean
@@ -239,6 +243,8 @@ export type PiProviderDraft = {
   model?: string
   api?: PiApi
   apiKey?: string
+  images?: boolean
+  imagesSet?: boolean
   thinkingLevel?: string
   contextWindow?: string
 }
@@ -250,6 +256,8 @@ export type PiProviderListItem = {
   baseUrl: string
   model: string
   api: PiApi
+  images: boolean
+  imagesSet: boolean
   thinkingLevel: string
   contextWindow: string
   hasApiKey: boolean
@@ -287,7 +295,7 @@ export type StackferryApi = {
     baseUrl: string
     apiKey?: string
     providerId?: string
-  }) => Promise<string[]>
+  }) => Promise<ListedModel[]>
   getStatus: () => Promise<AppStatus>
   restartCodexDaemon: () => Promise<AppStatus>
   openDevTools: () => Promise<void>
@@ -352,7 +360,7 @@ export type StackferryApi = {
     api?: PiApi
     apiKey?: string
     providerId?: string
-  }) => Promise<string[]>
+  }) => Promise<ListedModel[]>
   onPiChanged: (listener: () => void) => () => void
   listGrokModels: (input: {
     baseUrl: string

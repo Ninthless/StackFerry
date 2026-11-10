@@ -1,10 +1,15 @@
 import type { PiEnableService } from '../pi/service'
 import type { PiProviderStore } from '../pi/store'
+import type { ModelImageCatalog } from '../catalog/model-images'
 import { assertSamePiApi, piApisForQueue } from '../pi/config'
 import type { LaneAdapter } from './lane'
 import { readUpstreamApiKey, type UpstreamTarget } from './proxy'
 
-export function createPiAdapter(options: { store: PiProviderStore; pi: PiEnableService }): LaneAdapter {
+export function createPiAdapter(options: {
+  store: PiProviderStore
+  pi: PiEnableService
+  modelImages?: ModelImageCatalog
+}): LaneAdapter {
   return {
     async listCustomIds() {
       const providers = await options.store.list()
@@ -58,9 +63,11 @@ export function createPiAdapter(options: { store: PiProviderStore; pi: PiEnableS
       await options.pi.writeOfficial()
     },
     async writeDirect(id) {
+      await options.modelImages?.ready()
       await options.pi.writeDirect(await options.store.peek(id))
     },
     async writeRouter(port, activeId) {
+      await options.modelImages?.ready()
       await options.pi.writeRouter(await options.store.peek(activeId), port)
     },
     async markEnabled(id) {

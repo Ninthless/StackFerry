@@ -3,11 +3,8 @@ import {
   ROUTER_PROVIDER_NAME,
 } from '../../../shared/routing'
 import { AppError } from '../../../shared/app-error'
-import {
-  catalogPathForToml,
-  isOwnedCatalogPath,
-  uniqueCodexModelIds,
-} from '../../../shared/codex-models'
+import { catalogPathForToml, isOwnedCatalogPath } from '../../../shared/codex-models'
+import { normalizeModelEntries, type ModelEntry } from '../../../shared/model-entry'
 import {
   isPlainObject,
   overlayUsesExternalAuth,
@@ -28,7 +25,7 @@ export const OFFICIAL_MODEL_PROVIDER = 'openai'
 
 export type CatalogLiveConfig = {
   catalogPath?: string
-  models?: readonly string[]
+  models?: readonly ModelEntry[]
 }
 
 export type RouterLiveConfig = {
@@ -112,8 +109,7 @@ function writeOwnedProviderTables(providers: TomlTable, table: TomlTable): void 
 function applyCatalogPointer(doc: TomlTable, input: CatalogLiveConfig): void {
   const catalogPath = input.catalogPath?.trim() ?? ''
   if (!catalogPath) return
-  const listed = uniqueCodexModelIds(input.models ?? [])
-  if (listed.length > 0) {
+  if (normalizeModelEntries(input.models).length > 0) {
     doc.model_catalog_json = catalogPathForToml(catalogPath)
     return
   }

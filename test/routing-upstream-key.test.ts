@@ -83,7 +83,7 @@ function adapterWith(input: { decrypt: () => string; tomlText?: string }) {
     kind: 'custom',
     baseUrl: 'https://example.test/v1',
     model: 'gpt',
-    models: ['gpt'],
+    models: [{ id: 'gpt', images: true }],
     tomlText:
       input.tomlText ??
       starterOverlayToml({

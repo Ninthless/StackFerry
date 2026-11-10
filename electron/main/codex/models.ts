@@ -1,6 +1,6 @@
 import { outboundFetch } from '../egress/fetch'
 import { AppError } from '../../../shared/app-error'
-import { modelsUrl, parseModelsResponse } from '../../../shared/provider-models'
+import { modelsUrl, parseModelsResponse, type ListedModel } from '../../../shared/provider-models'
 import type { ProviderStore } from './store'
 
 const FETCH_TIMEOUT_MS = 15_000
@@ -14,11 +14,17 @@ export type ListModelsInput = {
 export async function listProviderModels(
   store: ProviderStore,
   input: ListModelsInput,
-): Promise<string[]> {
+  knownImages: (id: string) => boolean = () => false,
+): Promise<ListedModel[]> {
   const url = modelsUrl(input.baseUrl)
   const apiKey = await resolveApiKey(store, input)
   const payload = await fetchModelsJson(url, apiKey)
-  return parseModelsResponse(payload)
+  return parseModelsResponse(payload).map((model) => withKnownImages(model, knownImages))
+}
+
+function withKnownImages(model: ListedModel, knownImages: (id: string) => boolean): ListedModel {
+  if (model.images !== undefined || !knownImages(model.id)) return model
+  return { ...model, images: true }
 }
 
 async function resolveApiKey(store: ProviderStore, input: ListModelsInput): Promise<string> {

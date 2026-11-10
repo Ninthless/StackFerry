@@ -1,6 +1,6 @@
 import { AppError } from '../../../shared/app-error'
 import { piModelsRequest } from '../../../shared/pi-models'
-import { parseModelsResponse } from '../../../shared/provider-models'
+import { parseModelsResponse, type ListedModel } from '../../../shared/provider-models'
 import { isPiApi, type PiApi } from '../../../shared/types'
 import { outboundFetch } from '../egress/fetch'
 import type { PiProviderStore } from './store'
@@ -14,10 +14,16 @@ export type ListPiModelsInput = {
   providerId?: string
 }
 
-export async function listPiModels(store: PiProviderStore, input: ListPiModelsInput): Promise<string[]> {
+export async function listPiModels(
+  store: PiProviderStore,
+  input: ListPiModelsInput,
+  knownImages: (id: string) => boolean = () => false,
+): Promise<ListedModel[]> {
   const auth = await resolvePiModelsAuth(store, input)
   const request = piModelsRequest(input.baseUrl, auth.api, auth.apiKey)
-  return parseModelsResponse(await fetchPiModelsJson(request.url, request.headers))
+  return parseModelsResponse(await fetchPiModelsJson(request.url, request.headers)).map((model) =>
+    model.images === undefined && knownImages(model.id) ? { ...model, images: true } : model,
+  )
 }
 
 async function resolvePiModelsAuth(

@@ -5,6 +5,7 @@ import path from 'node:path'
 import { safeStorage } from 'electron'
 import { AppError } from '../../../shared/app-error'
 import { persistCodexModels } from '../../../shared/codex-models'
+import type { ModelEntry } from '../../../shared/model-entry'
 import { findPreset } from '../../../shared/presets'
 import {
   overlayRequiresApiKey,
@@ -26,7 +27,7 @@ export type StoredProvider = {
   kind: ProviderKind
   baseUrl: string
   model: string
-  models: string[]
+  models: ModelEntry[]
   tomlText: string
   apiKeyPayload: string
   createdAt: string
@@ -42,7 +43,7 @@ type StoreFile = {
 
 type LegacyStoredProvider = Omit<StoredProvider, 'tomlText' | 'models'> & {
   tomlText?: string
-  models?: string[]
+  models?: unknown[]
 }
 
 export class ProviderStore {
@@ -215,7 +216,7 @@ export class ProviderStore {
     tomlText: string
     baseUrl: string
     model: string
-    models: string[]
+    models: ModelEntry[]
   } {
     if (kind === 'official') {
       return { tomlText: '', baseUrl: '', model: '', models: [] }

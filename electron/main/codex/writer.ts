@@ -1,7 +1,8 @@
 import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { encodeCodexCatalog, uniqueCodexModelIds } from '../../../shared/codex-models'
+import { encodeCodexCatalog } from '../../../shared/codex-models'
+import { modelEntry, normalizeModelEntries, type ModelEntry } from '../../../shared/model-entry'
 import { parseProviderOverlay } from '../../../shared/provider-overlay'
 import { migrateCodexHistoryProviderBucket } from './history'
 import { codexAuthPath, codexConfigPath, stackferryCatalogPath } from './home'
@@ -16,6 +17,8 @@ import {
   type ThirdPartyLiveConfig,
 } from './merge'
 
+export type CatalogImageLookup = (id: string) => boolean
+
 export type EnableResult = {
   backupPath: string
   configPath: string
@@ -25,12 +28,13 @@ export async function enableThirdPartyLiveConfig(options: {
   codexHome: string
   backupRoot: string
   provider: ThirdPartyLiveConfig
+  knownImages?: CatalogImageLookup
 }): Promise<EnableResult> {
   const configPath = codexConfigPath(options.codexHome)
   const backupPath = await backupLiveFiles(options.codexHome, options.backupRoot)
   const current = await readTomlOrEmpty(configPath)
-  await writeStackferryCatalog(options.codexHome, options.provider.models, options.provider.tomlText)
-  const next = applyThirdPartyProvider(current, withCatalog(options.codexHome, options.provider))
+  await writeStackferryCatalog(options.codexHome, options.provider.models, options.provider.tomlText, options.knownImages)
+  const next = applyThirdPartyProvider(current, withCatalog(options.codexHome, options.provider, options.knownImages))
   await mkdir(options.codexHome, { recursive: true })
   await atomicWriteFile(configPath, stringifyToml(next))
   await migrateHistory(options.codexHome, options.backupRoot, next)
@@ -55,14 +59,15 @@ export async function enableRouterLiveConfig(options: {
   backupRoot: string
   port: number
   provider: Pick<RouterLiveConfig, 'tomlText' | 'models'>
+  knownImages?: CatalogImageLookup
 }): Promise<EnableResult> {
   const configPath = codexConfigPath(options.codexHome)
   const backupPath = await backupLiveFiles(options.codexHome, options.backupRoot)
   const current = await readTomlOrEmpty(configPath)
-  await writeStackferryCatalog(options.codexHome, options.provider.models, options.provider.tomlText)
+  await writeStackferryCatalog(options.codexHome, options.provider.models, options.provider.tomlText, options.knownImages)
   const next = applyRouterProvider(current, {
     port: options.port,
-    ...withCatalog(options.codexHome, options.provider),
+    ...withCatalog(options.codexHome, options.provider, options.knownImages),
   })
   await mkdir(options.codexHome, { recursive: true })
   await atomicWriteFile(configPath, stringifyToml(next))
@@ -80,32 +85,40 @@ async function migrateHistory(codexHome: string, backupRoot: string, doc: TomlTa
   })
 }
 
-function withCatalog<T extends { models?: readonly string[]; tomlText: string }>(
+function withCatalog<T extends { models?: readonly ModelEntry[]; tomlText: string }>(
   codexHome: string,
   provider: T,
-): T & { catalogPath: string; models: string[] } {
+  knownImages: CatalogImageLookup = () => false,
+): T & { catalogPath: string; models: ModelEntry[] } {
   return {
     ...provider,
     catalogPath: stackferryCatalogPath(codexHome),
-    models: catalogModelIds(provider.models, provider.tomlText),
+    models: catalogModelIds(provider.models, provider.tomlText, knownImages),
   }
 }
 
-function catalogModelIds(models: readonly string[] | undefined, tomlText: string): string[] {
-  const listed = uniqueCodexModelIds(
-    (models ?? []).filter((item): item is string => typeof item === 'string'),
-  )
+function catalogModelIds(
+  models: readonly ModelEntry[] | undefined,
+  tomlText: string,
+  knownImages: CatalogImageLookup,
+): ModelEntry[] {
+  const listed = normalizeModelEntries(models).map((entry) => {
+    if (entry.imagesSet || entry.images || !knownImages(entry.id)) return entry
+    return modelEntry(entry.id, true)
+  })
   if (listed.length > 0) return listed
   // 只填了当前模型时也要写目录。否则 Codex 用未知模型的回退元数据，桌面端会关掉贴图。
-  return uniqueCodexModelIds([parseProviderOverlay(tomlText).model])
+  const id = parseProviderOverlay(tomlText).model.trim()
+  return normalizeModelEntries([modelEntry(id, knownImages(id) || true)])
 }
 
 async function writeStackferryCatalog(
   codexHome: string,
-  models: readonly string[] | undefined,
+  models: readonly ModelEntry[] | undefined,
   tomlText: string,
+  knownImages: CatalogImageLookup = () => false,
 ): Promise<void> {
-  const listed = catalogModelIds(models, tomlText)
+  const listed = catalogModelIds(models, tomlText, knownImages)
   if (listed.length === 0) return
   const filePath = stackferryCatalogPath(codexHome)
   await mkdir(path.dirname(filePath), { recursive: true })

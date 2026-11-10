@@ -14,7 +14,7 @@ export type ListGrokModelsInput = {
 export async function listGrokModels(store: GrokProviderStore, input: ListGrokModelsInput): Promise<string[]> {
   const url = modelsUrl(input.baseUrl)
   const apiKey = await resolveApiKey(store, input)
-  return parseModelsResponse(await fetchModelsJson(url, apiKey))
+  return parseModelsResponse(await fetchModelsJson(url, apiKey)).map((model) => model.id)
 }
 
 async function resolveApiKey(store: GrokProviderStore, input: ListGrokModelsInput): Promise<string> {

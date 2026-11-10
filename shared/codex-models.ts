@@ -1,3 +1,4 @@
+import { normalizeModelEntries, type ModelEntry } from './model-entry'
 import { REASONING_EFFORTS, type ReasoningEffort } from './provider-overlay'
 
 export type CodexReasoningLevel = {
@@ -13,7 +14,7 @@ export type CodexCatalogEntry = {
   visibility: 'list'
   shell_type: 'default'
   supported_reasoning_levels: CodexReasoningLevel[]
-  input_modalities: ['text', 'image']
+  input_modalities: CodexInputModality[]
   supported_in_api: true
   priority: 1000
   availability_nux: null
@@ -29,6 +30,8 @@ export type CodexCatalogEntry = {
   context_window?: number
   max_context_window?: number
 }
+
+export type CodexInputModality = 'text' | 'image'
 
 export type CodexCatalogFile = {
   models: CodexCatalogEntry[]
@@ -49,29 +52,29 @@ export function uniqueCodexModelIds(ids: readonly string[]): string[] {
 export function persistCodexModels(
   defaultModel: string | undefined,
   models: readonly unknown[] | undefined,
-): { model: string; models: string[] } {
+): { model: string; models: ModelEntry[] } {
   // 合集为空时不把默认模型塞进去，避免启用后用单条 catalog 盖掉 Codex 内置 /model。
-  const listed = uniqueCodexModelIds(
-    (models ?? []).filter((item): item is string => typeof item === 'string'),
-  )
+  const listed = normalizeModelEntries(models)
   const fallback = (defaultModel ?? '').trim()
   if (listed.length === 0) {
     return { model: fallback, models: [] }
   }
-  const ordered = listed.includes(fallback) ? uniqueCodexModelIds([fallback, ...listed]) : listed
-  return { model: ordered[0] ?? '', models: ordered }
+  const head = listed.find((entry) => entry.id === fallback)
+  const ordered = head ? [head, ...listed.filter((entry) => entry !== head)] : listed
+  return { model: ordered[0]?.id ?? '', models: ordered }
 }
 
 export function encodeCodexCatalog(
-  models: readonly string[],
+  models: readonly ModelEntry[],
   contextWindow?: number | null,
 ): CodexCatalogFile {
   return {
-    models: uniqueCodexModelIds(models).map((slug) => codexCatalogEntry(slug, contextWindow)),
+    models: normalizeModelEntries(models).map((entry) => codexCatalogEntry(entry, contextWindow)),
   }
 }
 
-function codexCatalogEntry(slug: string, contextWindow?: number | null): CodexCatalogEntry {
+function codexCatalogEntry(model: ModelEntry, contextWindow?: number | null): CodexCatalogEntry {
+  const slug = model.id
   const entry: CodexCatalogEntry = {
     slug,
     display_name: slug,
@@ -80,7 +83,7 @@ function codexCatalogEntry(slug: string, contextWindow?: number | null): CodexCa
     shell_type: 'default',
     // 空数组时 Codex App 没有可选档位，思考等级会落在 ReasoningEffort 默认值 medium 且无法改。
     supported_reasoning_levels: catalogReasoningLevels(),
-    input_modalities: ['text', 'image'],
+    input_modalities: model.images ? ['text', 'image'] : ['text'],
     supported_in_api: true,
     priority: 1000,
     availability_nux: null,

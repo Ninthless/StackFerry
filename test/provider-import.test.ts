@@ -36,7 +36,10 @@ describe('provider import links', () => {
     expect(offer.drafts.codex?.presetId).toBe('custom')
     expect(overlayBaseUrl(offer.drafts.codex?.tomlText ?? '')).toBe(sample.baseUrl)
     expect(overlayWireApi(offer.drafts.codex?.tomlText ?? '')).toBe('chat')
-    expect(offer.drafts.codex?.models).toEqual(['gpt-5.4', 'claude-sonnet-4'])
+    expect(offer.drafts.codex?.models).toEqual([
+      { id: 'gpt-5.4', images: true },
+      { id: 'claude-sonnet-4', images: true },
+    ])
     expect(offer.drafts.claude).toMatchObject({
       kind: 'custom',
       baseUrl: sample.baseUrl,

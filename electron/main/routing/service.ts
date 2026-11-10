@@ -14,6 +14,7 @@ import type { GrokProviderStore } from '../grok/store'
 import type { PiEnableService } from '../pi/service'
 import type { PiProviderStore } from '../pi/store'
 import type { ProviderStore } from '../codex/store'
+import type { ModelImageCatalog } from '../catalog/model-images'
 import { emptyEgressProxyView, type EgressProxyPatch, type EgressProxyView } from '../../../shared/egress-proxy'
 import { closeOutboundProxy } from '../egress/fetch'
 import type { EgressProxyStore } from '../egress/store'
@@ -44,10 +45,14 @@ export class RoutingService {
       backupRoot: string
       setNeedsRestart: (value: boolean) => void
       egress?: EgressProxyStore
+      modelImages?: ModelImageCatalog
     },
   ) {
     this.lanes = {
-      codex: new RoutingLane(createCodexAdapter(options), this.laneOptions('codex', ['responses', 'models'])),
+      codex: new RoutingLane(
+        createCodexAdapter({ ...options, modelImages: options.modelImages }),
+        this.laneOptions('codex', ['responses', 'models']),
+      ),
       'claude-code': new RoutingLane(
         createClaudeAdapter({ store: options.claudeStore, claude: options.claude }),
         this.laneOptions('claude-code', ['messages', 'models']),
@@ -57,7 +62,7 @@ export class RoutingService {
         this.laneOptions('grok-build', ['responses', 'models']),
       ),
       pi: new RoutingLane(
-        createPiAdapter({ store: options.piStore, pi: options.pi }),
+        createPiAdapter({ store: options.piStore, pi: options.pi, modelImages: options.modelImages }),
         this.laneOptions('pi', ['chat', 'responses', 'messages', 'models']),
       ),
     }

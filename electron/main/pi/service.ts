@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import type { PiAppStatus } from '../../../shared/types'
+import type { ModelImageCatalog } from '../catalog/model-images'
 import { parsePiJson, rememberedPiDefault } from './config'
 import { piModelsPath, piSettingsPath } from './home'
 import type { PiProviderStore, StoredPiProvider } from './store'
@@ -10,6 +11,7 @@ export type PiEnableServiceOptions = {
   store: PiProviderStore
   getPiHome: () => string
   backupRoot: string
+  modelImages?: ModelImageCatalog
 }
 
 export class PiEnableService {
@@ -64,6 +66,7 @@ export class PiEnableService {
       model: provider.model,
       api: provider.api,
       apiKey: this.options.store.decryptApiKey(provider),
+      images: liveImages(provider, this.options.modelImages),
       thinkingLevel: provider.thinkingLevel,
       contextWindow: provider.contextWindow,
     }
@@ -76,4 +79,9 @@ export class PiEnableService {
     const previous = rememberedPiDefault(parsePiJson(await readFile(settingsPath, 'utf8')))
     if (previous) await this.options.store.setPreviousDefault(previous)
   }
+}
+
+function liveImages(provider: StoredPiProvider, catalog: ModelImageCatalog | undefined): boolean {
+  if (provider.imagesSet || provider.images || !catalog?.seesImages(provider.model)) return provider.images
+  return true
 }
