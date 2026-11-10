@@ -9,6 +9,7 @@ import { ProviderListScroll } from "@/features/providers/provider-list-scroll"
 import { ProviderRoutingActions } from "@/features/providers/provider-routing-actions"
 import { SortableAntdTable } from "@/features/providers/sortable-antd-table"
 import { CodexProviderEditor } from "./codex-editor"
+import { CodexRuntimeNotice } from "./codex-runtime-notice"
 import type { CodexProvidersSession } from "./use-codex-providers"
 
 type Props = {
@@ -77,6 +78,11 @@ export function CodexWorkspace({ session }: Props) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <main className="mx-auto flex w-full max-w-5xl min-h-0 flex-1 flex-col overflow-hidden px-6 py-6">
+        <CodexRuntimeNotice
+          state={session.daemonState}
+          busy={session.restartingDaemon}
+          onRestart={session.restartDaemon}
+        />
         {body}
       </main>
       <CodexProviderEditor

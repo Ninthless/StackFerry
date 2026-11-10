@@ -7,13 +7,20 @@ import { enqueue, type AppIpcContext, type WriteChains } from '../app-ipc'
 import { codexAuthPath, codexConfigPath } from './home'
 import { listProviderModels, type ListModelsInput } from './models'
 import type { ProviderStore } from './store'
+import type { CliToolService } from '../cli-tools/service'
+import { AppError } from '../../../shared/app-error'
+import { readCodexDaemonState } from './daemon'
 
 export type CodexIpcContext = Pick<
   AppIpcContext,
   'store' | 'routing' | 'getCodexHome' | 'getNeedsRestart' | 'onChanged'
 >
 
-export function registerCodexIpc(context: CodexIpcContext, writeChains: WriteChains): void {
+export function registerCodexIpc(
+  context: CodexIpcContext,
+  writeChains: WriteChains,
+  cli: Pick<CliToolService, 'restartCodexDaemon'>,
+): void {
   ipcMain.handle(IpcChannel.listProviders, () => context.store.list())
   ipcMain.handle(IpcChannel.readProviderApiKey, (_event, id: string) => context.store.readApiKey(id))
   ipcMain.handle(IpcChannel.listPresets, () => PRESETS)
@@ -46,6 +53,20 @@ export function registerCodexIpc(context: CodexIpcContext, writeChains: WriteCha
     return listProviderModels(context.store, input)
   })
   ipcMain.handle(IpcChannel.getStatus, () => readStatus(context))
+  ipcMain.handle(IpcChannel.restartCodexDaemon, async () => {
+    writeChains.codex = enqueue(writeChains.codex, async () => {
+      const codexHome = context.getCodexHome()
+      if (await readCodexDaemonState(codexHome) === 'stopped') return
+      await cli.restartCodexDaemon(codexHome)
+      const state = await readCodexDaemonState(codexHome)
+      if (state !== 'current') {
+        throw new AppError('cli_spawn_failed', { detail: 'Codex app-server did not reload the current configuration' })
+      }
+      context.onChanged()
+    })
+    await writeChains.codex
+    return readStatus(context)
+  })
 }
 
 export async function enableProvider(context: CodexIpcContext, id: string): Promise<void> {
@@ -62,6 +83,7 @@ export async function readStatus(context: CodexIpcContext): Promise<AppStatus> {
     lastWriteAt: await context.store.getLastWriteAt(),
     activeProviderId: await context.store.getActiveId(),
     needsRestart: context.getNeedsRestart(),
+    codexDaemon: await readCodexDaemonState(codexHome),
   }
 }
 

@@ -9,6 +9,7 @@ export const IpcChannel = {
   enableProvider: 'providers:enable',
   listModels: 'providers:list-models',
   getStatus: 'app:status',
+  restartCodexDaemon: 'codex:restartDaemon',
   openDevTools: 'app:devtools',
   windowMinimize: 'window:minimize',
   windowToggleMaximize: 'window:toggle-maximize',

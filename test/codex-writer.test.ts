@@ -7,6 +7,28 @@ import { enableOfficialLiveConfig, enableRouterLiveConfig, enableThirdPartyLiveC
 const originalAuth = '{"OPENAI_API_KEY":"keep-me","tokens":{"access_token":"chatgpt"}}'
 
 describe('codex live writer', () => {
+  it('replaces an old text-only catalog when the same provider is re-enabled', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-catalog-upgrade-'))
+    const codexHome = path.join(root, 'codex')
+    const catalogPath = path.join(codexHome, 'model-catalogs', 'stackferry.json')
+    await mkdir(path.dirname(catalogPath), { recursive: true })
+    await writeFile(catalogPath, JSON.stringify({ models: [{ slug: 'gpt-6.1-sol', input_modalities: ['text'] }] }))
+    await enableThirdPartyLiveConfig({
+      codexHome,
+      backupRoot: path.join(root, 'backups'),
+      provider: {
+        id: 'same-provider',
+        name: 'Relay',
+        apiKey: 'test-key',
+        models: ['gpt-6.1-sol'],
+        tomlText: 'model = "gpt-6.1-sol"\n[model_providers.custom]\nbase_url = "https://relay.example/v1"\nwire_api = "responses"\n',
+      },
+    })
+    expect(JSON.parse(await readFile(catalogPath, 'utf8')).models).toEqual([
+      expect.objectContaining({ slug: 'gpt-6.1-sol', input_modalities: ['text', 'image'] }),
+    ])
+  })
+
   it('merges config, backups live files, and leaves auth.json untouched', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-'))
     const codexHome = path.join(root, 'codex')
