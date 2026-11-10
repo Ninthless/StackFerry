@@ -157,6 +157,44 @@ wire_api = "responses"
     expect(afterOfficial).toContain('notify = [ "keep" ]')
   })
 
+  it('writes a catalog for the current model when the list is empty', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-catalog-current-'))
+    const codexHome = path.join(root, 'codex')
+    const backupRoot = path.join(root, 'backups')
+    await mkdir(codexHome, { recursive: true })
+
+    await enableThirdPartyLiveConfig({
+      codexHome,
+      backupRoot,
+      provider: {
+        id: 'prov-current',
+        name: 'Current',
+        tomlText: `model = "relay-model"
+model_provider = "provider_current"
+
+[model_providers.provider_current]
+name = "Current"
+base_url = "https://current.example/v1"
+wire_api = "responses"
+`,
+        apiKey: 'key-current',
+        models: [],
+      },
+    })
+
+    const catalog = JSON.parse(
+      await readFile(path.join(codexHome, 'model-catalogs', 'stackferry.json'), 'utf8'),
+    ) as { models: { slug: string; input_modalities: string[] }[] }
+    expect(catalog.models).toEqual([
+      expect.objectContaining({
+        slug: 'relay-model',
+        input_modalities: ['text', 'image'],
+      }),
+    ])
+    const written = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
+    expect(written.replaceAll('\\', '/')).toContain('model-catalogs/stackferry.json')
+  })
+
   it('writes the session context window onto every catalog model', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-window-'))
     const codexHome = path.join(root, 'codex')

@@ -49,7 +49,7 @@ describe('pi config documents', () => {
         baseUrl: 'https://relay.example/v1',
         api: 'openai-completions',
         apiKey: 'secret',
-        models: [{ id: 'demo-model' }],
+        models: [{ id: 'demo-model', input: ['text', 'image'] }],
       },
     })
     expect(next.settings).toMatchObject({
@@ -132,7 +132,9 @@ describe('pi config documents', () => {
       { ...provider, thinkingLevel: 'high', contextWindow: '200000' },
     )
     const managed = (next.models.providers as Record<string, { models: unknown[] }>)[piProviderKey('gateway')]
-    expect(managed.models).toEqual([{ id: 'demo-model', reasoning: true, contextWindow: 200000 }])
+    expect(managed.models).toEqual([
+      { id: 'demo-model', input: ['text', 'image'], reasoning: true, contextWindow: 200000 },
+    ])
     expect(next.settings.modelThinkingLevels).toEqual({
       'openai/gpt': 'low',
       [`${piProviderKey('gateway')}/demo-model`]: 'high',

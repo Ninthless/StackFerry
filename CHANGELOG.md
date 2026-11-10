@@ -4,6 +4,30 @@ User-visible changes live here. GitHub Releases and in-app update notes use the 
 
 用户能感知的变化写在这里。GitHub Release 和应用内更新说明都读当前 `package.json` 版本对应的一节。每个版本先写 `### English`，再写 `### 中文`。内部重构、测试和 chore 不必写入。
 
+## 1.1.8 - 2026-11-10
+
+### English
+
+#### Fixed
+
+- A Codex provider keeps image input available, including when only the current model is set.
+- A Pi provider keeps image input available for its model.
+
+#### Upgrade notes
+
+- Enable the Codex or Pi provider again, then quit that CLI completely and open it again. The model catalog is rewritten when the provider is enabled.
+
+### 中文
+
+#### 修复
+
+- Codex 供应商会保留图片输入，只填了当前模型时也一样
+- Pi 供应商会保留图片输入，模型不再被当成纯文本
+
+#### 升级注意
+
+- 把这个 Codex 或 Pi 供应商再启用一次，然后完全退出对应的 CLI 再打开。模型目录在启用时重写
+
 ## 1.1.7 - 2026-11-08
 
 ### English
@@ -15,11 +39,6 @@ User-visible changes live here. GitHub Releases and in-app update notes use the 
 #### Fixed
 
 - The Mac Dock icon fills the system icon shape.
-- A Codex provider with a model list keeps image input available for those models.
-
-#### Upgrade notes
-
-- Enable that Codex provider again, then quit Codex completely and open it again. The model catalog is rewritten when the provider is enabled.
 
 ### 中文
 
@@ -30,11 +49,6 @@ User-visible changes live here. GitHub Releases and in-app update notes use the 
 #### 修复
 
 - Mac 的 Dock 图标铺满系统图标形状
-- 填了模型列表的 Codex 供应商会保留图片输入，这些模型不再被当成纯文本
-
-#### 升级注意
-
-- 把这个 Codex 供应商再启用一次，然后完全退出 Codex 再打开。模型目录在启用时重写
 
 ## 1.1.6 - 2026-11-02
 

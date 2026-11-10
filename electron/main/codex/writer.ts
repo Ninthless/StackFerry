@@ -80,11 +80,24 @@ async function migrateHistory(codexHome: string, backupRoot: string, doc: TomlTa
   })
 }
 
-function withCatalog<T extends { models?: readonly string[] }>(
+function withCatalog<T extends { models?: readonly string[]; tomlText: string }>(
   codexHome: string,
   provider: T,
-): T & { catalogPath: string } {
-  return { ...provider, catalogPath: stackferryCatalogPath(codexHome) }
+): T & { catalogPath: string; models: string[] } {
+  return {
+    ...provider,
+    catalogPath: stackferryCatalogPath(codexHome),
+    models: catalogModelIds(provider.models, provider.tomlText),
+  }
+}
+
+function catalogModelIds(models: readonly string[] | undefined, tomlText: string): string[] {
+  const listed = uniqueCodexModelIds(
+    (models ?? []).filter((item): item is string => typeof item === 'string'),
+  )
+  if (listed.length > 0) return listed
+  // 只填了当前模型时也要写目录。否则 Codex 用未知模型的回退元数据，桌面端会关掉贴图。
+  return uniqueCodexModelIds([parseProviderOverlay(tomlText).model])
 }
 
 async function writeStackferryCatalog(
@@ -92,9 +105,7 @@ async function writeStackferryCatalog(
   models: readonly string[] | undefined,
   tomlText: string,
 ): Promise<void> {
-  const listed = uniqueCodexModelIds(
-    (models ?? []).filter((item): item is string => typeof item === 'string'),
-  )
+  const listed = catalogModelIds(models, tomlText)
   if (listed.length === 0) return
   const filePath = stackferryCatalogPath(codexHome)
   await mkdir(path.dirname(filePath), { recursive: true })

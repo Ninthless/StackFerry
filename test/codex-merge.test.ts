@@ -409,6 +409,24 @@ wire_api = "chat"
     })
   })
 
+  it('points a live config at the catalog when only the current model is set', () => {
+    const catalogPath = 'C:\\Users\\me\\.codex\\model-catalogs\\stackferry.json'
+    const next = applyThirdPartyProvider(existing, {
+      id: 'current-only',
+      name: 'Current',
+      tomlText: overlayFor({
+        providerId: 'provider_current',
+        name: 'Current',
+        baseUrl: 'https://current.example/v1',
+        model: 'relay-model',
+      }),
+      apiKey: 'key-current',
+      catalogPath,
+      models: [],
+    })
+    expect(next.model_catalog_json).toBeUndefined()
+  })
+
   it('clears only the StackFerry catalog pointer', () => {
     const owned = 'C:/Users/me/.codex/model-catalogs/stackferry.json'
     const other = '/tmp/custom-catalog.json'
