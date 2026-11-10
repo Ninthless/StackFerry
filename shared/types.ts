@@ -84,6 +84,8 @@ export type ProviderListItem = {
   enabled: boolean
 }
 
+export type CodexDaemonState = 'stopped' | 'current' | 'stale' | 'unknown'
+
 export type AppStatus = {
   codexHome: string
   configExists: boolean
@@ -91,6 +93,7 @@ export type AppStatus = {
   lastWriteAt: string | null
   activeProviderId: string | null
   needsRestart: boolean
+  codexDaemon: CodexDaemonState
 }
 
 export type ClaudeAuthScheme = 'bearer' | 'x-api-key'
@@ -286,6 +289,7 @@ export type StackferryApi = {
     providerId?: string
   }) => Promise<string[]>
   getStatus: () => Promise<AppStatus>
+  restartCodexDaemon: () => Promise<AppStatus>
   openDevTools: () => Promise<void>
   windowMinimize: () => Promise<void>
   windowToggleMaximize: () => Promise<void>

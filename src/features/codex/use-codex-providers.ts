@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { emptyRoutingSnapshot, type RoutingLaneState } from "@shared/routing"
-import type { Preset, ProviderDraft, ProviderListItem } from "@shared/types"
+import type { CodexDaemonState, Preset, ProviderDraft, ProviderListItem } from "@shared/types"
 import { toast } from "@/components/ui/toast"
 import { formatAppError } from "@/lib/format-app-error"
 import * as m from "@/paraglide/messages.js"
@@ -26,15 +26,19 @@ export function useCodexProviders() {
   const [editing, setEditing] = useState<ProviderListItem | null>(null)
   const [deleting, setDeleting] = useState<ProviderListItem | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [daemonState, setDaemonState] = useState<CodexDaemonState>("stopped")
+  const [restartingDaemon, setRestartingDaemon] = useState(false)
 
   const refresh = useCallback(async () => {
     const api = desktopApi()
-    const [nextProviders, nextRouting] = await Promise.all([
+    const [nextProviders, nextRouting, status] = await Promise.all([
       api.listProviders(),
       api.getRouting(),
+      api.getStatus(),
     ])
     setProviders(nextProviders)
     setRouting(nextRouting.lanes.codex)
+    setDaemonState(status.codexDaemon)
   }, [])
 
   useEffect(() => {
@@ -47,9 +51,13 @@ export function useCodexProviders() {
       window.setTimeout(() => tipError(formatAppError(loadError), "app-load"), 0)
     }
     if (!window.stackferry) return
-    return window.stackferry.onChanged(() => {
-      void refresh()
-    })
+    const refreshOnChange = () => { void refresh().catch(() => undefined) }
+    const unsubscribe = window.stackferry.onChanged(refreshOnChange)
+    window.addEventListener("focus", refreshOnChange)
+    return () => {
+      unsubscribe()
+      window.removeEventListener("focus", refreshOnChange)
+    }
   }, [refresh])
 
   async function run(
@@ -135,6 +143,21 @@ export function useCodexProviders() {
     }
   }
 
+  async function restartDaemon(): Promise<boolean> {
+    setRestartingDaemon(true)
+    try {
+      const status = await desktopApi().restartCodexDaemon()
+      setDaemonState(status.codexDaemon)
+      toast.add({ description: m.codex_daemon_restarted() })
+      return true
+    } catch (error) {
+      tipError(formatAppError(error))
+      return false
+    } finally {
+      setRestartingDaemon(false)
+    }
+  }
+
   async function setProviderQueued(id: string, queued: boolean): Promise<void> {
     try {
       await run(() => desktopApi().setProviderQueued("codex", id, queued))
@@ -176,6 +199,9 @@ export function useCodexProviders() {
     editing,
     deleting,
     busyId,
+    daemonState,
+    restartingDaemon,
+    restartDaemon,
     setDeleting,
     openCreate,
     openEdit,

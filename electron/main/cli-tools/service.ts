@@ -82,6 +82,18 @@ type EgressRoute = {
 
 export class CliToolService {
   constructor(private readonly egress?: EgressRoute) {}
+  async restartCodexDaemon(codexHome: string): Promise<void> {
+    const binary = await this.findBinary('codex')
+    if (!binary) throw new AppError('cli_not_found')
+    await this.runExec(
+      binary,
+      ['app-server', 'daemon', 'restart'],
+      30_000,
+      { ...(await this.spawnEnv()), CODEX_HOME: codexHome },
+      { closeStdin: true },
+    )
+  }
+
   async list(): Promise<CliToolStatus[]> {
     return this.inspectAll()
   }
@@ -137,9 +149,7 @@ export class CliToolService {
     id: CliToolId,
     options?: { check?: boolean; npmPrefix?: string | null },
   ): Promise<CliToolStatus> {
-    const dirs = await this.searchDirs()
-    let binary = firstExisting(candidateBinaries(id, dirs, process.platform), isRunnable)
-    if (!binary) binary = await this.whichBinary(id)
+    const binary = await this.findBinary(id)
     if (!binary) {
       return {
         id,
@@ -171,6 +181,11 @@ export class CliToolService {
       updateAvailable: outdated.available,
       latestVersion: outdated.latestVersion,
     }
+  }
+
+  private async findBinary(id: CliToolId): Promise<string | null> {
+    const dirs = await this.searchDirs()
+    return firstExisting(candidateBinaries(id, dirs, process.platform), isRunnable) ?? this.whichBinary(id)
   }
 
   private async requireInstalled(id: CliToolId): Promise<CliToolStatus> {

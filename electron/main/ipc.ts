@@ -87,14 +87,15 @@ export function registerIpc(context: AppIpcContext): void {
     return context.setOnboardingCompleted(completed === true)
   })
 
+  const cli = new CliToolService(context.egress)
   registerRoutingIpc(context, writeChains)
-  registerCodexIpc(context, writeChains)
+  registerCodexIpc(context, writeChains, cli)
   registerClaudeIpc(context, writeChains)
   registerGrokIpc(context, writeChains)
   registerPiIpc(context, writeChains)
   registerSkillIpc(context)
   registerMcpIpc(context)
-  registerCliToolIpc(new CliToolService(context.egress), {
+  registerCliToolIpc(cli, {
     writeChains,
     afterClaudeInstall: () => reapplyClaudeGatewayIfNeeded(context),
   })

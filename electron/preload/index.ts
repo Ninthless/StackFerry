@@ -15,6 +15,7 @@ const api: StackferryApi = {
   enableProvider: (id) => ipcRenderer.invoke(IpcChannel.enableProvider, id),
   listModels: (input) => ipcRenderer.invoke(IpcChannel.listModels, input),
   getStatus: () => ipcRenderer.invoke(IpcChannel.getStatus),
+  restartCodexDaemon: () => ipcRenderer.invoke(IpcChannel.restartCodexDaemon),
   openDevTools: () => ipcRenderer.invoke(IpcChannel.openDevTools),
   windowMinimize: () => ipcRenderer.invoke(IpcChannel.windowMinimize),
   windowToggleMaximize: () => ipcRenderer.invoke(IpcChannel.windowToggleMaximize),
