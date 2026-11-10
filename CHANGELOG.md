@@ -4,27 +4,35 @@ User-visible changes live here. GitHub Releases and in-app update notes use the 
 
 用户能感知的变化写在这里。GitHub Release 和应用内更新说明都读当前 `package.json` 版本对应的一节。每个版本先写 `### English`，再写 `### 中文`。内部重构、测试和 chore 不必写入。
 
-## 1.1.9 - Unreleased
+## 1.1.9 - 2026-11-11
 
 ### English
 
 #### Added
 
+- Codex shows when the shared backend is still using an older model catalog, and can restart that backend from the app. Reopening a terminal or resuming a session does not reload it.
+
+#### Fixed
+
 - Enabling a Codex or Pi provider writes the model with image input.
 
 #### Upgrade notes
 
-- Existing models keep image input until the next enable. Enable the provider again and restart the CLI for the written input to take effect.
+- Enable the Codex or Pi provider again, then quit that CLI completely and open it again. If Codex still rejects images, restart the Codex backend after running tasks finish, then reopen Codex.
 
 ### 中文
 
 #### 新增
 
+- Codex 会提示共享后台还在用旧的模型目录，并可以在应用里重启这个后台。重开终端或恢复会话不会重新载入
+
+#### 修复
+
 - 启用 Codex 或 Pi 供应商时，模型写成接受图片
 
 #### 升级注意
 
-- 已有的模型在下次启用前仍按原来的图片输入。重新启用一次供应商，再重启对应的 CLI，写入才会生效
+- 把这个 Codex 或 Pi 供应商再启用一次，然后完全退出对应的 CLI 再打开。如果 Codex 仍拒绝图片，等正在跑的任务结束后重启 Codex 后台，再重新打开 Codex
 
 ## 1.1.8 - 2026-11-10
 
