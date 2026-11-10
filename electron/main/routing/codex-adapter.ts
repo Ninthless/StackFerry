@@ -1,5 +1,4 @@
 import { isPlainObject, overlayNeedsRouter, parseProviderOverlay } from '../../../shared/provider-overlay'
-import type { ModelImageCatalog } from '../catalog/model-images'
 import {
   enableOfficialLiveConfig,
   enableRouterLiveConfig,
@@ -10,7 +9,6 @@ import type { LaneAdapter } from './lane'
 import { readUpstreamApiKey, type UpstreamTarget } from './proxy'
 
 export function createCodexAdapter(options: {
-  modelImages?: ModelImageCatalog
   providers: ProviderStore
   getCodexHome: () => string
   backupRoot: string
@@ -76,7 +74,6 @@ export function createCodexAdapter(options: {
       await enableOfficialLiveConfig(homes())
     },
     async writeDirect(id) {
-      await options.modelImages?.ready()
       const provider = await options.providers.peek(id)
       await enableThirdPartyLiveConfig({
         ...homes(),
@@ -87,11 +84,9 @@ export function createCodexAdapter(options: {
           apiKey: options.providers.decryptApiKey(provider),
           models: provider.models,
         },
-        knownImages: (id) => options.modelImages?.seesImages(id) ?? false,
       })
     },
     async writeRouter(port, activeId) {
-      await options.modelImages?.ready()
       const provider = await options.providers.peek(activeId)
       await enableRouterLiveConfig({
         ...homes(),
@@ -100,7 +95,6 @@ export function createCodexAdapter(options: {
           tomlText: provider.tomlText,
           models: provider.models,
         },
-        knownImages: (id) => options.modelImages?.seesImages(id) ?? false,
       })
     },
     async markEnabled(id) {

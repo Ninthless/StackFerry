@@ -14,16 +14,10 @@ export type ListPiModelsInput = {
   providerId?: string
 }
 
-export async function listPiModels(
-  store: PiProviderStore,
-  input: ListPiModelsInput,
-  knownImages: (id: string) => boolean = () => false,
-): Promise<ListedModel[]> {
+export async function listPiModels(store: PiProviderStore, input: ListPiModelsInput): Promise<ListedModel[]> {
   const auth = await resolvePiModelsAuth(store, input)
   const request = piModelsRequest(input.baseUrl, auth.api, auth.apiKey)
-  return parseModelsResponse(await fetchPiModelsJson(request.url, request.headers)).map((model) =>
-    model.images === undefined && knownImages(model.id) ? { ...model, images: true } : model,
-  )
+  return parseModelsResponse(await fetchPiModelsJson(request.url, request.headers))
 }
 
 async function resolvePiModelsAuth(

@@ -14,7 +14,6 @@ import type { CcswImportService } from './ccsw/service'
 import type { LegacyImportService } from './legacy/service'
 import type { AppReleaseService } from './releases/service'
 import type { RoutingService } from './routing/service'
-import type { ModelImageCatalog } from './catalog/model-images'
 import type { SkillService } from './skills/service'
 
 export type AppIpcContext = {
@@ -26,7 +25,6 @@ export type AppIpcContext = {
   grok: GrokEnableService
   piStore: PiProviderStore
   pi: PiEnableService
-  modelImages: ModelImageCatalog
   getCodexHome: () => string
   getGrokHome: () => string
   getPiHome: () => string

@@ -153,10 +153,7 @@ base_url = "https://c.example/v1"
 wire_api = "responses"
 `,
         apiKey: 'key-c',
-        models: [
-          { id: 'gpt-5.4', images: true },
-          { id: 'gpt-5', images: false },
-        ],
+        models: [{ id: 'gpt-5.4' }, { id: 'gpt-5' }],
       },
     })
 
@@ -165,7 +162,10 @@ wire_api = "responses"
       models: { slug: string; input_modalities: string[]; supported_reasoning_levels?: { effort: string }[] }[]
     }
     expect(catalog.models.map((item) => item.slug)).toEqual(['gpt-5.4', 'gpt-5'])
-    expect(catalog.models.map((item) => item.input_modalities)).toEqual([['text', 'image'], ['text']])
+    expect(catalog.models.map((item) => item.input_modalities)).toEqual([
+      ['text', 'image'],
+      ['text', 'image'],
+    ])
     expect(catalog.models[0]).toMatchObject({
       slug: 'gpt-5.4',
       priority: 1000,

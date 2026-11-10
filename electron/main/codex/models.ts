@@ -11,20 +11,11 @@ export type ListModelsInput = {
   providerId?: string
 }
 
-export async function listProviderModels(
-  store: ProviderStore,
-  input: ListModelsInput,
-  knownImages: (id: string) => boolean = () => false,
-): Promise<ListedModel[]> {
+export async function listProviderModels(store: ProviderStore, input: ListModelsInput): Promise<ListedModel[]> {
   const url = modelsUrl(input.baseUrl)
   const apiKey = await resolveApiKey(store, input)
   const payload = await fetchModelsJson(url, apiKey)
-  return parseModelsResponse(payload).map((model) => withKnownImages(model, knownImages))
-}
-
-function withKnownImages(model: ListedModel, knownImages: (id: string) => boolean): ListedModel {
-  if (model.images !== undefined || !knownImages(model.id)) return model
-  return { ...model, images: true }
+  return parseModelsResponse(payload)
 }
 
 async function resolveApiKey(store: ProviderStore, input: ListModelsInput): Promise<string> {

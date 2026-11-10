@@ -53,7 +53,6 @@ import { AppReleaseService } from './releases/service'
 import { AnnouncementStore } from './releases/store'
 import { createElectronUpdateFeed, createPackagedAppUpdater, readLinuxPackageType } from './releases/updater'
 import { RoutingService } from './routing/service'
-import { modelImageCatalog } from './catalog/model-images'
 import { bindEgressStore, closeOutboundProxy } from './egress/fetch'
 import { EgressProxyStore } from './egress/store'
 import { RoutingStore } from './routing/store'
@@ -252,12 +251,10 @@ app.whenReady().then(async () => {
     getGrokHome: () => resolveGrokHome(),
     backupRoot: path.join(app.getPath('userData'), 'backups', 'grok'),
   })
-  const modelImages = modelImageCatalog(app.getPath('userData'))
   pi = new PiEnableService({
     store: piStore,
     getPiHome: () => resolvePiHome(),
     backupRoot: path.join(app.getPath('userData'), 'backups', 'pi'),
-    modelImages,
   })
   routing = new RoutingService({
     store: routingStore,
@@ -274,7 +271,6 @@ app.whenReady().then(async () => {
       needsRestart = value
     },
     egress: egressStore,
-    modelImages,
   })
   const skills = new SkillService({
     userData: app.getPath('userData'),
@@ -322,7 +318,6 @@ app.whenReady().then(async () => {
     grok: grok!,
     piStore: piStore!,
     pi: pi!,
-    modelImages,
     skills,
     mcp,
     releases,

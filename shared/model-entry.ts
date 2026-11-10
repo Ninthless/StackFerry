@@ -1,11 +1,9 @@
 export type ModelEntry = {
   id: string
-  images: boolean
-  imagesSet?: boolean
 }
 
-export function modelEntry(id: string, images = true, imagesSet = false): ModelEntry {
-  return imagesSet ? { id, images, imagesSet } : { id, images }
+export function modelEntry(id: string): ModelEntry {
+  return { id }
 }
 
 export function normalizeModelEntries(raw: readonly unknown[] | undefined): ModelEntry[] {
@@ -47,5 +45,5 @@ function readModelEntry(item: unknown): ModelEntry | null {
   const row = item as Record<string, unknown>
   const id = typeof row.id === 'string' ? row.id.trim() : ''
   if (!id) return null
-  return modelEntry(id, row.images !== false, row.imagesSet === true)
+  return modelEntry(id)
 }

@@ -243,8 +243,6 @@ export type PiProviderDraft = {
   model?: string
   api?: PiApi
   apiKey?: string
-  images?: boolean
-  imagesSet?: boolean
   thinkingLevel?: string
   contextWindow?: string
 }
@@ -256,8 +254,6 @@ export type PiProviderListItem = {
   baseUrl: string
   model: string
   api: PiApi
-  images: boolean
-  imagesSet: boolean
   thinkingLevel: string
   contextWindow: string
   hasApiKey: boolean

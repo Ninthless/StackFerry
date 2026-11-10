@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react"
 import { CheckCircle2Icon, CircleHelp, Download, InfoIcon } from "lucide-react"
 import { persistCodexModels, uniqueCodexModelIds } from "@shared/codex-models"
 import { modelEntriesFromIds, modelEntryIds, type ModelEntry } from "@shared/model-entry"
-import { applyListedImages } from "@shared/provider-models"
 import {
   APPROVAL_POLICIES,
   REASONING_EFFORTS,
@@ -29,7 +28,6 @@ import {
   ComboboxValue,
 } from "@/components/ui/combobox"
 import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
 import { InputGroupAddon, InputGroupButton } from "@/components/ui/input-group"
 import {
   Select,
@@ -165,10 +163,6 @@ export function CodexSessionFields({
     if (persisted.model !== session.model) patchSession({ model: persisted.model })
   }
 
-  function handleImagesChange(id: string, images: boolean): void {
-    onModelsChange(models.map((entry) => (entry.id === id ? { ...entry, images, imagesSet: true } : entry)))
-  }
-
   async function handleFetchModels(): Promise<void> {
     const api = window.stackferry
     if (!api) {
@@ -184,7 +178,6 @@ export function CodexSessionFields({
       })
       setSuggestions(listed.map((model) => model.id))
       setFetchedCount(listed.length)
-      onModelsChange(applyListedImages(models, listed))
       onError("")
     } catch (error) {
       setFetchedCount(null)
@@ -241,9 +234,6 @@ export function CodexSessionFields({
           </div>
           <ModelsFetchButton fetching={fetching} onFetch={() => void handleFetchModels()} />
         </div>
-        {models.length > 0 ? (
-          <ModelImageList formId={formId} models={models} onImagesChange={handleImagesChange} />
-        ) : null}
         {fetchedCount == null ? null : (
           <Alert>
             {fetchedCount > 0 ? <CheckCircle2Icon /> : <InfoIcon />}
@@ -439,41 +429,6 @@ function approvalItems() {
 
 function isReasoningOption(value: string): value is (typeof REASONING_EFFORTS)[number] {
   return (REASONING_EFFORTS as readonly string[]).includes(value)
-}
-
-function ModelImageList({
-  formId,
-  models,
-  onImagesChange,
-}: {
-  formId: string
-  models: ModelEntry[]
-  onImagesChange: (id: string, images: boolean) => void
-}) {
-  return (
-    <div className="flex flex-col gap-1.5 rounded-md border px-3 py-2">
-      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span>{m.session_model_images_title()}</span>
-        <span>{m.session_model_images()}</span>
-      </div>
-      {models.map((entry, index) => (
-        <label
-          key={entry.id}
-          htmlFor={`${formId}-images-${index}`}
-          className="flex items-center justify-between gap-2 text-sm"
-        >
-          <span className="min-w-0 truncate font-mono">{entry.id}</span>
-          <Switch
-            id={`${formId}-images-${index}`}
-            size="sm"
-            checked={entry.images}
-            aria-label={m.session_model_images_label({ model: entry.id })}
-            onCheckedChange={(checked) => onImagesChange(entry.id, checked)}
-          />
-        </label>
-      ))}
-    </div>
-  )
 }
 
 function ModelsFetchButton({

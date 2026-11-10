@@ -20,8 +20,6 @@ export type StoredPiProvider = {
   model: string
   api: PiApi
   apiKeyPayload: string
-  images: boolean
-  imagesSet: boolean
   thinkingLevel: string
   contextWindow: string
   createdAt: string
@@ -60,8 +58,6 @@ export class PiProviderStore {
       model: kind === 'official' ? '' : requireModel(draft.model),
       api: kind === 'official' ? 'openai-completions' : requireApi(draft.api),
       apiKeyPayload: encryptApiKey(kind, draft.apiKey),
-      images: draft.images !== false,
-      imagesSet: draft.imagesSet === true,
       thinkingLevel: kind === 'official' ? '' : optionalThinking(draft.thinkingLevel),
       contextWindow: kind === 'official' ? '' : optionalContextWindow(draft.contextWindow),
       createdAt: now,
@@ -83,8 +79,6 @@ export class PiProviderStore {
       provider.model = requireModel(draft.model)
       provider.api = requireApi(draft.api)
       if (draft.apiKey?.trim()) provider.apiKeyPayload = encryptApiKey(provider.kind, draft.apiKey)
-      provider.images = draft.images !== false
-      provider.imagesSet = draft.imagesSet === true
       provider.thinkingLevel = optionalThinking(draft.thinkingLevel)
       provider.contextWindow = optionalContextWindow(draft.contextWindow)
     }
@@ -172,8 +166,6 @@ export class PiProviderStore {
       baseUrl: provider.baseUrl,
       model: provider.model,
       api: provider.api,
-      images: provider.images,
-      imagesSet: provider.imagesSet,
       thinkingLevel: provider.thinkingLevel,
       contextWindow: provider.contextWindow,
       hasApiKey: Boolean(provider.apiKeyPayload),
@@ -194,8 +186,6 @@ export class PiProviderStore {
       parsed.lastWriteAt = typeof parsed.lastWriteAt === 'string' ? parsed.lastWriteAt : null
       parsed.providers = parsed.providers.map((provider) => ({
         ...provider,
-        images: provider.images !== false,
-        imagesSet: provider.imagesSet === true,
         thinkingLevel: isPiThinkingLevel(provider.thinkingLevel) ? provider.thinkingLevel : '',
         contextWindow:
           typeof provider.contextWindow === 'string' && /^[1-9]\d*$/.test(provider.contextWindow)

@@ -1,13 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react"
-import type { ListedModel } from "@shared/provider-models"
 import { PI_APIS, isPiApi, type PiApi, type PiPreset, type PiProviderDraft, type PiProviderListItem } from "@shared/types"
 import { Button } from "@/components/ui/button"
-import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Switch } from "@/components/ui/switch"
 import { formatAppError } from "@/lib/format-app-error"
 import { piPresetLabel } from "@/lib/preset-label"
 import { ApiKeyInput } from "@/features/providers/api-key-input"
@@ -22,17 +20,6 @@ type Props = {
   editing: PiProviderListItem | null
   onOpenChange: (open: boolean) => void
   onSubmit: (draft: PiProviderDraft) => Promise<void>
-}
-
-function applyListedModel(
-  listed: readonly ListedModel[],
-  model: string,
-  imagesSet: boolean,
-  setImages: (images: boolean) => void,
-): void {
-  if (imagesSet) return
-  const match = listed.find((item) => item.id === model.trim())
-  if (match?.images !== undefined) setImages(match.images)
 }
 
 function apiLabel(api: PiApi): string {
@@ -55,8 +42,6 @@ export function PiProviderEditor({ open, presets = [], editing, onOpenChange, on
   const [model, setModel] = useState("")
   const [api, setApi] = useState<PiApi>("openai-completions")
   const [apiKey, setApiKey] = useState("")
-  const [images, setImages] = useState(true)
-  const [imagesSet, setImagesSet] = useState(false)
   const [thinkingLevel, setThinkingLevel] = useState("")
   const [contextWindow, setContextWindow] = useState("")
   const [error, setError] = useState("")
@@ -87,8 +72,6 @@ export function PiProviderEditor({ open, presets = [], editing, onOpenChange, on
       setBaseUrl(editing.baseUrl)
       setModel(editing.model)
       setApi(editing.api)
-      setImages(editing.images)
-      setImagesSet(editing.imagesSet)
       setThinkingLevel(editing.thinkingLevel)
       setContextWindow(editing.contextWindow)
       if (editing.kind === "custom" && window.stackferry) {
@@ -102,8 +85,6 @@ export function PiProviderEditor({ open, presets = [], editing, onOpenChange, on
     setBaseUrl(initial?.baseUrl ?? "")
     setModel(initial?.model ?? "")
     setApi(initial?.api ?? "openai-completions")
-    setImages(true)
-    setImagesSet(false)
     setThinkingLevel("")
     setContextWindow("")
   }, [open, editing, presets])
@@ -141,8 +122,6 @@ export function PiProviderEditor({ open, presets = [], editing, onOpenChange, on
         model: official ? undefined : model.trim(),
         api: official ? undefined : api,
         apiKey: official ? undefined : apiKey.trim(),
-        images: official ? undefined : images,
-        imagesSet: official ? undefined : imagesSet,
         thinkingLevel: official ? undefined : thinkingLevel,
         contextWindow: official ? undefined : contextWindow.trim(),
       })
@@ -241,22 +220,8 @@ export function PiProviderEditor({ open, presets = [], editing, onOpenChange, on
                     model={model}
                     invalid={modelInvalid}
                     onModelChange={setModel}
-                    onListed={(listed) => applyListedModel(listed, model, imagesSet, setImages)}
                     onError={setError}
                   />
-                  <Field orientation="horizontal">
-                    <FieldContent>
-                      <FieldLabel htmlFor={`${formId}-images`}>{m.session_model_images()}</FieldLabel>
-                    </FieldContent>
-                    <Switch
-                      id={`${formId}-images`}
-                      checked={images}
-                      onCheckedChange={(checked) => {
-                        setImages(checked)
-                        setImagesSet(true)
-                      }}
-                    />
-                  </Field>
                   <PiSessionFields
                     formId={formId}
                     thinkingLevel={thinkingLevel}

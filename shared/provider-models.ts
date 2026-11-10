@@ -1,5 +1,4 @@
 import { AppError } from './app-error'
-import { modelEntry, type ModelEntry } from './model-entry'
 
 export type ListedModel = {
   id: string
@@ -45,26 +44,6 @@ export function parseModelsResponse(payload: unknown): ListedModel[] {
   return models
 }
 
-export function applyListedImages(
-  entries: readonly ModelEntry[],
-  listed: readonly ListedModel[],
-  knownImages: (id: string) => boolean = () => false,
-): ModelEntry[] {
-  const stated = new Map(
-    listed.flatMap((model) => (model.images === undefined ? [] : [[model.id, model.images] as const])),
-  )
-  return entries.map((entry) => resolveListedImages(entry, stated.get(entry.id), knownImages))
-}
-
-function resolveListedImages(
-  entry: ModelEntry,
-  stated: boolean | undefined,
-  knownImages: (id: string) => boolean,
-): ModelEntry {
-  if (entry.imagesSet) return entry
-  const images = stated ?? (knownImages(entry.id) || entry.images)
-  return images === entry.images ? entry : modelEntry(entry.id, images)
-}
 
 function readListedModel(item: unknown): ListedModel | null {
   if (!isRecord(item) || typeof item.id !== 'string') return null

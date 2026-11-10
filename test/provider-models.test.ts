@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyListedImages, modelsUrl, parseModelsResponse } from '../shared/provider-models'
-import { modelEntry } from '../shared/model-entry'
+import { modelsUrl, parseModelsResponse } from '../shared/provider-models'
 import { expectAppError } from './expect-app-error'
 
 describe('provider models', () => {
@@ -44,23 +43,4 @@ describe('provider models', () => {
     ])
   })
 
-  it('applies a stated image answer and keeps a model the list did not mention', () => {
-    expect(
-      applyListedImages(
-        [modelEntry('gpt-5.4', false), modelEntry('kept', false), modelEntry('plain')],
-        [{ id: 'gpt-5.4', images: true }, { id: 'plain' }],
-      ),
-    ).toEqual([modelEntry('gpt-5.4'), modelEntry('kept', false), modelEntry('plain')])
-  })
-
-  it('keeps a manual image switch and only raises an unstated model from the catalog', () => {
-    const manual = modelEntry('deepseek-chat', false, true)
-    expect(
-      applyListedImages(
-        [manual, modelEntry('gpt-5.4', false), modelEntry('unknown', false)],
-        [{ id: 'deepseek-chat', images: true }, { id: 'gpt-5.4' }],
-        (id) => id === 'gpt-5.4',
-      ),
-    ).toEqual([manual, modelEntry('gpt-5.4'), modelEntry('unknown', false)])
-  })
 })

@@ -27,17 +27,14 @@ describe('provider list order', () => {
     await expect(store.reorder(['c', 'official'])).rejects.toMatchObject({ code: 'provider_order' })
   })
 
-  it('reads legacy Codex model ids as image models and keeps a saved text-only flag', async () => {
+  it('reads legacy Codex model ids and drops a stored image flag', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-codex-models-'))
     const file = path.join(dir, 'providers.json')
     const legacy = codexFile(['official', 'b'])
     Object.assign(legacy.providers[1] ?? {}, { models: ['demo', { id: 'text-only', images: false }] })
     await writeFile(file, `${JSON.stringify(legacy, null, 2)}\n`)
     const listed = await new ProviderStore(file).list()
-    expect(listed.find((item) => item.id === 'b')?.models).toEqual([
-      { id: 'demo', images: true },
-      { id: 'text-only', images: false },
-    ])
+    expect(listed.find((item) => item.id === 'b')?.models).toEqual([{ id: 'demo' }, { id: 'text-only' }])
   })
 
   it('persists a Claude provider permutation', async () => {

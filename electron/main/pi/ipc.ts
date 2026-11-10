@@ -11,7 +11,7 @@ import type { PiProviderStore } from './store'
 
 export type PiIpcContext = Pick<
   AppIpcContext,
-  'piStore' | 'pi' | 'routing' | 'getPiHome' | 'getNeedsRestart' | 'onPiChanged' | 'modelImages'
+  'piStore' | 'pi' | 'routing' | 'getPiHome' | 'getNeedsRestart' | 'onPiChanged'
 >
 
 export function registerPiIpc(context: PiIpcContext, writeChains: WriteChains): void {
@@ -45,10 +45,7 @@ export function registerPiIpc(context: PiIpcContext, writeChains: WriteChains): 
     return writeChains.pi.then(() => readPiStatus(context))
   })
   ipcMain.handle(IpcChannel.getPiStatus, () => readPiStatus(context))
-  ipcMain.handle(IpcChannel.listPiModels, async (_event, input: ListPiModelsInput) => {
-    await context.modelImages.ready()
-    return listPiModels(context.piStore, input, (id) => context.modelImages.seesImages(id))
-  })
+  ipcMain.handle(IpcChannel.listPiModels, (_event, input: ListPiModelsInput) => listPiModels(context.piStore, input))
 }
 
 async function assertPiQueueAfterUpdate(

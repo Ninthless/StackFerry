@@ -13,7 +13,7 @@ import { readCodexDaemonState } from './daemon'
 
 export type CodexIpcContext = Pick<
   AppIpcContext,
-  'store' | 'routing' | 'getCodexHome' | 'getNeedsRestart' | 'onChanged' | 'modelImages'
+  'store' | 'routing' | 'getCodexHome' | 'getNeedsRestart' | 'onChanged'
 >
 
 export function registerCodexIpc(
@@ -49,10 +49,7 @@ export function registerCodexIpc(
     writeChains.codex = enqueue(writeChains.codex, () => enableProvider(context, id))
     return writeChains.codex.then(() => readStatus(context))
   })
-  ipcMain.handle(IpcChannel.listModels, async (_event, input: ListModelsInput) => {
-    await context.modelImages.ready()
-    return listProviderModels(context.store, input, (id) => context.modelImages.seesImages(id))
-  })
+  ipcMain.handle(IpcChannel.listModels, (_event, input: ListModelsInput) => listProviderModels(context.store, input))
   ipcMain.handle(IpcChannel.getStatus, () => readStatus(context))
   ipcMain.handle(IpcChannel.restartCodexDaemon, async () => {
     writeChains.codex = enqueue(writeChains.codex, async () => {

@@ -83,7 +83,7 @@ function codexCatalogEntry(model: ModelEntry, contextWindow?: number | null): Co
     shell_type: 'default',
     // 空数组时 Codex App 没有可选档位，思考等级会落在 ReasoningEffort 默认值 medium 且无法改。
     supported_reasoning_levels: catalogReasoningLevels(),
-    input_modalities: model.images ? ['text', 'image'] : ['text'],
+    input_modalities: ['text', 'image'],
     supported_in_api: true,
     priority: 1000,
     availability_nux: null,

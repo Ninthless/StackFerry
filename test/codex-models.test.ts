@@ -23,32 +23,23 @@ describe('persist Codex models', () => {
   it('keeps the default first when it is already in the catalog', () => {
     expect(persistCodexModels(' gpt-5.4 ', ['gpt-5', 'gpt-5.4', 1, '  '])).toEqual({
       model: 'gpt-5.4',
-      models: [
-        { id: 'gpt-5.4', images: true },
-        { id: 'gpt-5', images: true },
-      ],
+      models: [{ id: 'gpt-5.4' }, { id: 'gpt-5' }],
     })
   })
 
-  it('keeps each model image flag and reads legacy string ids as image models', () => {
+  it('reads saved model rows as ids and drops a stored image flag', () => {
     expect(
       persistCodexModels('gpt-5', [{ id: 'deepseek-chat', images: false }, 'gpt-5', { id: 'deepseek-chat' }]),
     ).toEqual({
       model: 'gpt-5',
-      models: [
-        { id: 'gpt-5', images: true },
-        { id: 'deepseek-chat', images: false },
-      ],
+      models: [{ id: 'gpt-5' }, { id: 'deepseek-chat' }],
     })
   })
 
   it('falls back to the first catalog id when the default is missing', () => {
     expect(persistCodexModels('missing', ['gpt-5', 'gpt-5.4'])).toEqual({
       model: 'gpt-5',
-      models: [
-        { id: 'gpt-5', images: true },
-        { id: 'gpt-5.4', images: true },
-      ],
+      models: [{ id: 'gpt-5' }, { id: 'gpt-5.4' }],
     })
   })
 })
@@ -66,12 +57,12 @@ describe('Codex catalog encoding', () => {
     expect(encoded.models[0]).not.toHaveProperty('max_context_window')
   })
 
-  it('declares image input only for models marked as accepting images', () => {
-    const encoded = encodeCodexCatalog([
-      { id: 'gpt-5.4', images: true },
-      { id: 'deepseek-chat', images: false },
+  it('declares image input for every catalog model', () => {
+    const encoded = encodeCodexCatalog([{ id: 'gpt-5.4' }, { id: 'deepseek-chat' }])
+    expect(encoded.models.map((item) => item.input_modalities)).toEqual([
+      ['text', 'image'],
+      ['text', 'image'],
     ])
-    expect(encoded.models.map((item) => item.input_modalities)).toEqual([['text', 'image'], ['text']])
   })
 
   it('raises every catalog model to the configured context window', () => {
