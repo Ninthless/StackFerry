@@ -54,6 +54,7 @@ export async function enableGrokRouterConfig(
     grokHome: string
     backupRoot: string
     port: number
+    providerId: string
     model: string
     apiKey?: string
     media?: GrokDirectLiveConfig['media']

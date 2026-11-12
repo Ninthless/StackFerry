@@ -1,8 +1,10 @@
 import { AppError } from '../../../shared/app-error'
+import { gatewayModelId } from '../../../shared/codex-models'
 import { ROUTER_PLACEHOLDER_KEY } from '../../../shared/routing'
 import type { PiApi } from '../../../shared/types'
 
 export const STACKFERRY_PI_PREFIX = 'stackferry-'
+export const STACKFERRY_PI_PROVIDER_KEY = 'stackferry'
 
 export type PiJson = Record<string, unknown>
 
@@ -28,7 +30,7 @@ export function piProviderKey(id: string): string {
 }
 
 export function isStackferryPiKey(key: string): boolean {
-  return key.startsWith(STACKFERRY_PI_PREFIX)
+  return key === STACKFERRY_PI_PROVIDER_KEY || key.startsWith(STACKFERRY_PI_PREFIX)
 }
 
 export function parsePiJson(text: string): PiJson {
@@ -60,7 +62,7 @@ export function applyDirectPiDocuments(
   settings: PiJson,
   provider: PiLiveConfig,
 ): { models: PiJson; settings: PiJson } {
-  return applyPiDocuments(models, settings, provider, provider.baseUrl, provider.apiKey)
+  return applyPiDocuments(models, settings, provider, provider.baseUrl, provider.apiKey, provider.model)
 }
 
 export function applyRouterPiDocuments(
@@ -69,7 +71,14 @@ export function applyRouterPiDocuments(
   provider: PiLiveConfig,
   port: number,
 ): { models: PiJson; settings: PiJson } {
-  return applyPiDocuments(models, settings, provider, routerPiBaseUrl(port), ROUTER_PLACEHOLDER_KEY)
+  return applyPiDocuments(
+    models,
+    settings,
+    provider,
+    routerPiBaseUrl(port),
+    ROUTER_PLACEHOLDER_KEY,
+    gatewayModelId(provider.id, provider.model),
+  )
 }
 
 export function applyOfficialPiDocuments(
@@ -119,32 +128,36 @@ function applyPiDocuments(
   provider: PiLiveConfig,
   baseUrl: string,
   apiKey: string,
+  liveModel: string,
 ): { models: PiJson; settings: PiJson } {
-  const key = piProviderKey(provider.id)
+  const key = STACKFERRY_PI_PROVIDER_KEY
   const providers = withoutStackferryProviders(models)
   providers[key] = {
     name: provider.name,
     baseUrl,
     api: provider.api,
     apiKey,
-    models: [piModelRecord(provider)],
+    models: [piModelRecord(provider, liveModel)],
   }
   const nextSettings: PiJson = {
     ...settings,
     defaultProvider: key,
-    defaultModel: provider.model,
+    defaultModel: liveModel,
   }
-  assignThinkingLevels(nextSettings, retainedThinkingLevels(settings.modelThinkingLevels, key, provider))
+  assignThinkingLevels(
+    nextSettings,
+    retainedThinkingLevels(settings.modelThinkingLevels, key, liveModel, provider),
+  )
   return {
     models: { ...models, providers },
     settings: nextSettings,
   }
 }
 
-function piModelRecord(provider: PiLiveConfig): Record<string, unknown> {
+function piModelRecord(provider: PiLiveConfig, id = provider.model): Record<string, unknown> {
   // Pi 省略 input 时默认纯文本，自定义模型贴图会被拒。
   const model: Record<string, unknown> = {
-    id: provider.model,
+    id,
     input: ['text', 'image'],
   }
   const level = provider.thinkingLevel?.trim() ?? ''
@@ -157,16 +170,17 @@ function piModelRecord(provider: PiLiveConfig): Record<string, unknown> {
 function retainedThinkingLevels(
   current: unknown,
   key?: string,
+  liveModel?: string,
   provider?: PiLiveConfig,
 ): Record<string, unknown> | undefined {
   const next: Record<string, unknown> = {}
   if (current && typeof current === 'object' && !Array.isArray(current)) {
     for (const [entryKey, value] of Object.entries(current)) {
-      if (!entryKey.startsWith(STACKFERRY_PI_PREFIX)) next[entryKey] = value
+      if (!isStackferryPiKey(entryKey.split('/')[0] ?? '')) next[entryKey] = value
     }
   }
   const level = provider?.thinkingLevel?.trim() ?? ''
-  if (key && provider?.model && level) next[`${key}/${provider.model}`] = level
+  if (key && liveModel && level) next[`${key}/${liveModel}`] = level
   return Object.keys(next).length > 0 ? next : undefined
 }
 

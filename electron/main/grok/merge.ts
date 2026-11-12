@@ -1,3 +1,4 @@
+import { gatewayModelId } from '../../../shared/codex-models'
 import { ROUTER_BIND_HOST, ROUTER_PROVIDER_NAME } from '../../../shared/routing'
 import { GROK_DEFAULT_CONTEXT_WINDOW } from '../../../shared/grok-presets'
 import {
@@ -57,6 +58,7 @@ export type GrokDirectLiveConfig = {
 
 export type GrokRouterLiveConfig = {
   port: number
+  providerId: string
   model: string
   media?: GrokMediaLiveConfig | null
 } & GrokSessionInput
@@ -138,14 +140,14 @@ export function applyRouterModel(doc: TomlTable, input: GrokRouterLiveConfig): T
   if (session.overlay) applyOverlayRoot(next, session.overlay)
   const table: TomlTable = {
     name: ROUTER_PROVIDER_NAME,
-    model: input.model,
+    model: gatewayModelId(input.providerId, input.model),
     base_url: `http://${ROUTER_BIND_HOST}:${input.port}/v1`,
     api_backend: 'responses',
     api_key: 'stackferry-router',
   }
   applySession(table, session)
   writeOwnedModelTables(ensureModelTable(next), table)
-  syncCatalogOverlay(next, table)
+  syncCatalogOverlay(next, table, input.model)
   pinLiveModel(next, GROK_LIVE_MODEL_KEY, session)
   pinByokAuth(next)
   pinMediaGeneration(next, input.media)
@@ -209,10 +211,10 @@ function attachDirectModel(doc: TomlTable, table: TomlTable): void {
   syncCatalogOverlay(doc, table)
 }
 
-function syncCatalogOverlay(doc: TomlTable, table: TomlTable): void {
-  const modelId = typeof table.model === 'string' ? table.model.trim() : ''
+function syncCatalogOverlay(doc: TomlTable, table: TomlTable, catalogId = ''): void {
+  const modelId = (catalogId || (typeof table.model === 'string' ? table.model : '')).trim()
   if (isGrokBuiltinCatalogId(modelId)) markOwned(doc, modelId)
-  retargetOwnedCatalogOverlays(doc, table)
+  retargetOwnedCatalogOverlays(doc, table, modelId)
 }
 
 function writeOwnedModelTables(models: TomlTable, table: TomlTable): void {
@@ -223,14 +225,14 @@ function writeOwnedModelTables(models: TomlTable, table: TomlTable): void {
   }
 }
 
-function retargetOwnedCatalogOverlays(doc: TomlTable, table: TomlTable): void {
+function retargetOwnedCatalogOverlays(doc: TomlTable, table: TomlTable, catalogId = ''): void {
   const models = ensureModelTable(doc)
   for (const key of ownedCatalogKeys(doc)) {
     if (!key || isOwnedGrokModelKey(key)) continue
     if (key === GROK_IMAGINE_MODEL_KEY || key === GROK_IMAGINE_VIDEO_KEY) continue
     const overlay = { ...table }
     delete overlay.name
-    overlay.model = key
+    overlay.model = catalogId && key === catalogId ? table.model : key
     // 老会话仍读 grok-* 覆盖表；不写完整菜单时 /effort 里看不到 xhigh。
     overlay.supports_reasoning_effort = true
     overlay.reasoning_efforts = grokEffortMenu()

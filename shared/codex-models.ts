@@ -64,12 +64,22 @@ export function persistCodexModels(
   return { model: ordered[0]?.id ?? '', models: ordered }
 }
 
+export function gatewayModelId(providerId: string, model: string): string {
+  const id = model.trim()
+  const owner = providerId.trim()
+  if (!owner || !id || id.startsWith(`${owner}/`)) return id
+  return `${owner}/${id}`
+}
+
 export function encodeCodexCatalog(
   models: readonly ModelEntry[],
   contextWindow?: number | null,
+  providerId = '',
 ): CodexCatalogFile {
   return {
-    models: normalizeModelEntries(models).map((entry) => codexCatalogEntry(entry, contextWindow)),
+    models: normalizeModelEntries(models).map((entry) =>
+      codexCatalogEntry({ id: gatewayModelId(providerId, entry.id) }, contextWindow),
+    ),
   }
 }
 

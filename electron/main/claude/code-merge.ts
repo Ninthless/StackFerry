@@ -4,6 +4,7 @@ import {
   parseClaudeSession,
   type ClaudeSessionInput,
 } from '../../../shared/claude-session'
+import { gatewayModelId } from '../../../shared/codex-models'
 import type { ClaudeAuthScheme } from '../../../shared/types'
 
 export const MANAGED_CODE_ENV_KEYS = [
@@ -22,6 +23,7 @@ export const MANAGED_CODE_ENV_KEYS = [
 export const MANAGED_CODE_ROOT_KEYS = ['effortLevel', 'autoCompactWindow'] as const
 
 export type CodeLiveConfig = {
+  id: string
   baseUrl: string
   apiKey: string
   authScheme: ClaudeAuthScheme
@@ -44,7 +46,10 @@ export function applyCodeGateway(
     env.ANTHROPIC_API_KEY = provider.apiKey
     delete env.ANTHROPIC_AUTH_TOKEN
   }
-  const model = claudeLiveModelId(provider.model, session.contextWindow)
+  const model = gatewayModelId(
+    provider.id,
+    claudeLiveModelId(provider.model, session.contextWindow),
+  )
   if (model) env.ANTHROPIC_MODEL = model
   else delete env.ANTHROPIC_MODEL
   delete env.CLAUDE_CODE_EFFORT_LEVEL

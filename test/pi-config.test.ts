@@ -44,7 +44,7 @@ describe('pi config documents', () => {
     )
     expect(next.models.providers).toMatchObject({
       ollama: { baseUrl: 'http://localhost:11434/v1' },
-      [piProviderKey('gateway')]: {
+      stackferry: {
         name: 'Relay',
         baseUrl: 'https://relay.example/v1',
         api: 'openai-completions',
@@ -54,7 +54,7 @@ describe('pi config documents', () => {
     })
     expect(next.settings).toMatchObject({
       theme: 'dark',
-      defaultProvider: piProviderKey('gateway'),
+      defaultProvider: 'stackferry',
       defaultModel: 'demo-model',
     })
   })
@@ -62,10 +62,13 @@ describe('pi config documents', () => {
   it('points the router at localhost and restores the previous default without touching other providers', () => {
     const direct = applyDirectPiDocuments({}, { defaultProvider: 'openai', defaultModel: 'gpt' }, provider)
     const routed = applyRouterPiDocuments(direct.models, direct.settings, provider, 8787)
-    const managed = (routed.models.providers as Record<string, { baseUrl: string; apiKey: string }>)[
-      piProviderKey('gateway')
+    const managed = (routed.models.providers as Record<string, { baseUrl: string; apiKey: string; models: { id: string }[] }>)[
+      'stackferry'
     ]
     expect(managed.baseUrl).toBe('http://127.0.0.1:8787/v1')
+    expect(managed.models.map((item) => item.id)).toEqual(['gateway/demo-model'])
+    expect(routed.settings.defaultProvider).toBe('stackferry')
+    expect(routed.settings.defaultModel).toBe('gateway/demo-model')
     expect(managed.apiKey).not.toBe('secret')
     const official = applyOfficialPiDocuments(routed.models, routed.settings, {
       provider: 'openai',
@@ -132,13 +135,13 @@ describe('pi config documents', () => {
       { theme: 'dark', modelThinkingLevels: { 'openai/gpt': 'low' } },
       { ...provider, thinkingLevel: 'high', contextWindow: '200000' },
     )
-    const managed = (next.models.providers as Record<string, { models: unknown[] }>)[piProviderKey('gateway')]
+    const managed = (next.models.providers as Record<string, { models: unknown[] }>).stackferry
     expect(managed.models).toEqual([
       { id: 'demo-model', input: ['text', 'image'], reasoning: true, contextWindow: 200000 },
     ])
     expect(next.settings.modelThinkingLevels).toEqual({
       'openai/gpt': 'low',
-      [`${piProviderKey('gateway')}/demo-model`]: 'high',
+      'stackferry/demo-model': 'high',
     })
     const official = applyOfficialPiDocuments(next.models, next.settings, { provider: 'openai', model: 'gpt' })
     expect(official.settings.modelThinkingLevels).toEqual({ 'openai/gpt': 'low' })

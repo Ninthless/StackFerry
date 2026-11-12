@@ -12,6 +12,7 @@ describe('claude code merge', () => {
       {
         baseUrl: 'https://gateway.example/v1',
         apiKey: 'token-a',
+        id: 'provider-a',
         authScheme: 'bearer',
         model: 'claude-sonnet-4-6',
       },
@@ -22,11 +23,35 @@ describe('claude code merge', () => {
       KEEP_ME: 'yes',
       ANTHROPIC_BASE_URL: 'https://gateway.example/v1',
       ANTHROPIC_AUTH_TOKEN: 'token-a',
-      ANTHROPIC_MODEL: 'claude-sonnet-4-6',
+      ANTHROPIC_MODEL: 'provider-a/claude-sonnet-4-6',
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
       CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: '1',
     })
+  })
+
+  it('keeps the gateway address when only the default model changes', () => {
+    const first = applyCodeGateway(
+      {},
+      {
+        baseUrl: 'http://127.0.0.1:18765',
+        apiKey: 'stackferry-router',
+        id: 'provider-a',
+        authScheme: 'bearer',
+        model: 'claude-sonnet-4-6',
+      },
+    )
+    const second = applyCodeGateway(first, {
+      id: 'provider-a',
+      baseUrl: 'http://127.0.0.1:18765',
+      apiKey: 'stackferry-router',
+      authScheme: 'bearer',
+      model: 'claude-opus-4-7',
+    })
+    const env = second.env as Record<string, string>
+    expect(env.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:18765')
+    expect(env.ANTHROPIC_AUTH_TOKEN).toBe('stackferry-router')
+    expect(env.ANTHROPIC_MODEL).toBe('provider-a/claude-opus-4-7')
   })
 
   it('writes x-api-key and clears the bearer token', () => {
@@ -37,6 +62,7 @@ describe('claude code merge', () => {
       {
         baseUrl: 'https://api.anthropic.com',
         apiKey: 'sk-ant',
+        id: 'provider-a',
         authScheme: 'x-api-key',
         model: '',
       },
@@ -61,6 +87,7 @@ describe('claude code merge', () => {
       {
         baseUrl: 'https://gateway.example/v1',
         apiKey: 'token-a',
+        id: 'provider-a',
         authScheme: 'bearer',
         model: 'alias-1m',
         effortLevel: 'high',
@@ -91,7 +118,7 @@ describe('claude code merge', () => {
       KEEP_ME: 'from-overlay',
       ANTHROPIC_BASE_URL: 'https://gateway.example/v1',
       ANTHROPIC_AUTH_TOKEN: 'token-a',
-      ANTHROPIC_MODEL: 'alias-1m',
+      ANTHROPIC_MODEL: 'provider-a/alias-1m',
       CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1000000',
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
@@ -114,6 +141,7 @@ describe('claude code merge', () => {
       {
         baseUrl: 'https://gateway.example/v1',
         apiKey: 'token-a',
+        id: 'provider-a',
         authScheme: 'bearer',
         model: '',
       },
@@ -138,6 +166,7 @@ describe('claude code merge', () => {
       {
         baseUrl: 'https://gateway.example/v1',
         apiKey: 'token-a',
+        id: 'provider-a',
         authScheme: 'bearer',
         model: 'claude-sonnet-4-6',
         permissionMode: 'acceptEdits',
@@ -157,6 +186,7 @@ describe('claude code merge', () => {
       {
         baseUrl: 'https://gateway.example/v1',
         apiKey: 'token-a',
+        id: 'provider-a',
         authScheme: 'bearer',
         model: '',
         permissionMode: 'plan',
@@ -177,6 +207,7 @@ describe('claude code merge', () => {
       {
         baseUrl: 'https://gateway.example/v1',
         apiKey: 'token-a',
+        id: 'provider-a',
         authScheme: 'bearer',
         model: '',
       },
@@ -195,7 +226,7 @@ describe('claude code merge', () => {
         ANTHROPIC_BASE_URL: 'https://gateway.example/v1',
         ANTHROPIC_AUTH_TOKEN: 'token-a',
         ANTHROPIC_API_KEY: 'sk-ant',
-        ANTHROPIC_MODEL: 'claude-sonnet-4-6',
+        ANTHROPIC_MODEL: 'provider-a/claude-sonnet-4-6',
         CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1000000',
         CLAUDE_CODE_EFFORT_LEVEL: 'high',
         CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000',
@@ -224,6 +255,7 @@ describe('claude code merge', () => {
       {
         baseUrl: 'https://gateway.example/v1',
         apiKey: 'token-a',
+        id: 'provider-a',
         authScheme: 'bearer',
         model: 'sonnet-x',
         contextWindow: '200000',
@@ -240,13 +272,14 @@ describe('claude code merge', () => {
       {
         baseUrl: 'https://gateway.example/v1',
         apiKey: 'token-a',
+        id: 'provider-a',
         authScheme: 'bearer',
         model: 'claude-sonnet-4-6',
         contextWindow: '1000000',
       },
     )
     expect(withSuffix.env).toMatchObject({
-      ANTHROPIC_MODEL: 'claude-sonnet-4-6[1m]',
+      ANTHROPIC_MODEL: 'provider-a/claude-sonnet-4-6[1m]',
       CLAUDE_CODE_MAX_CONTEXT_TOKENS: '1000000',
     })
 
@@ -255,13 +288,14 @@ describe('claude code merge', () => {
       {
         baseUrl: 'https://gateway.example/v1',
         apiKey: 'token-a',
+        id: 'provider-a',
         authScheme: 'bearer',
         model: 'claude-sonnet-4-6[1m]',
         contextWindow: '200000',
       },
     )
     expect(stripped.env).toMatchObject({
-      ANTHROPIC_MODEL: 'claude-sonnet-4-6',
+      ANTHROPIC_MODEL: 'provider-a/claude-sonnet-4-6',
       CLAUDE_CODE_MAX_CONTEXT_TOKENS: '200000',
     })
 
@@ -270,12 +304,13 @@ describe('claude code merge', () => {
       {
         baseUrl: 'https://gateway.example/v1',
         apiKey: 'token-a',
+        id: 'provider-a',
         authScheme: 'bearer',
         model: 'alias-1m',
         contextWindow: '1000000',
       },
     )
-    expect(custom.env).toMatchObject({ ANTHROPIC_MODEL: 'alias-1m' })
+    expect(custom.env).toMatchObject({ ANTHROPIC_MODEL: 'provider-a/alias-1m' })
   })
 
   it('rejects corrupt settings json', () => {

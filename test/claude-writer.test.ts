@@ -23,6 +23,7 @@ describe('claude live writers', () => {
       claudeHome,
       backupRoot,
       provider: {
+        id: 'provider-a',
         baseUrl: 'https://a.example/v1',
         apiKey: 'key-a',
         authScheme: 'bearer',
@@ -39,7 +40,7 @@ describe('claude live writers', () => {
       KEEP_ME: 'yes',
       ANTHROPIC_BASE_URL: 'https://a.example/v1',
       ANTHROPIC_AUTH_TOKEN: 'key-a',
-      ANTHROPIC_MODEL: 'model-a',
+      ANTHROPIC_MODEL: 'provider-a/model-a',
       CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: '1',
       CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
       CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: '1',

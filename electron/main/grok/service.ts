@@ -69,6 +69,7 @@ export class GrokEnableService {
       grokHome: this.options.getGrokHome(),
       backupRoot: this.options.backupRoot,
       port,
+      providerId: provider.id,
       model: provider.model,
       apiKey: media?.apiKey || apiKey,
       media,

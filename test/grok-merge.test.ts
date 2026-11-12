@@ -249,7 +249,7 @@ describe('grok config merge', () => {
       apiKey: 'secret',
     }
     const direct = applyDirectModel({}, provider)
-    const routed = applyRouterModel(direct, { port: 41234, model: 'demo' })
+    const routed = applyRouterModel(direct, { port: 41234, providerId: 'grok-a', model: 'demo' })
     const back = applyDirectModel(routed, provider)
     expect(direct.models).toMatchObject({ default: GROK_LIVE_MODEL_KEY })
     expect(routed.models).toMatchObject({ default: GROK_LIVE_MODEL_KEY })
@@ -269,7 +269,7 @@ describe('grok config merge', () => {
   })
 
   it('keeps failover on the custom live table and overlays the catalog id', () => {
-    const next = applyRouterModel({}, { port: 41234, model: 'grok-4.6' })
+    const next = applyRouterModel({}, { port: 41234, providerId: 'grok-a', model: 'grok-4.6' })
     expect(next.models).toMatchObject({ default: GROK_LIVE_MODEL_KEY })
     expect(next.model).toEqual({
       [GROK_LIVE_MODEL_KEY]: {
@@ -277,7 +277,7 @@ describe('grok config merge', () => {
         base_url: 'http://127.0.0.1:41234/v1',
         api_backend: 'responses',
         api_key: 'stackferry-router',
-        model: 'grok-4.6',
+        model: 'grok-a/grok-4.6',
         context_window: GROK_DEFAULT_CONTEXT_WINDOW,
         supports_backend_search: true,
       },
@@ -285,7 +285,7 @@ describe('grok config merge', () => {
         base_url: 'http://127.0.0.1:41234/v1',
         api_backend: 'responses',
         api_key: 'stackferry-router',
-        model: 'grok-4.6',
+        model: 'grok-a/grok-4.6',
         context_window: GROK_DEFAULT_CONTEXT_WINDOW,
         supports_reasoning_effort: true,
         reasoning_efforts: GROK_EFFORT_MENU,
@@ -296,7 +296,7 @@ describe('grok config merge', () => {
   })
 
   it('points the default model at the local router', () => {
-    const next = applyRouterModel({ models: { default: 'grok-build' } }, { port: 41234, model: 'demo' })
+    const next = applyRouterModel({ models: { default: 'grok-build' } }, { port: 41234, providerId: 'grok-a', model: 'demo' })
     expect(next.models).toMatchObject({
       default: GROK_LIVE_MODEL_KEY,
       web_search: GROK_LIVE_MODEL_KEY,
@@ -315,7 +315,7 @@ describe('grok config merge', () => {
         base_url: 'http://127.0.0.1:41234/v1',
         api_backend: 'responses',
         api_key: 'stackferry-router',
-        model: 'demo',
+        model: 'grok-a/demo',
         context_window: GROK_DEFAULT_CONTEXT_WINDOW,
         supports_backend_search: true,
       },
@@ -583,7 +583,7 @@ permission_mode = "auto"
   it('keeps session fields on the router model table', () => {
     const next = applyRouterModel(
       {},
-      { port: 41234, model: 'demo', effortLevel: 'low', contextWindow: '128000' },
+      { port: 41234, providerId: 'grok-a', model: 'demo', effortLevel: 'low', contextWindow: '128000' },
     )
     expect(next.model).toMatchObject({
       [GROK_LIVE_MODEL_KEY]: {
@@ -642,6 +642,7 @@ permission_mode = "auto"
       {},
       {
         port: 41234,
+        providerId: 'grok-a',
         model: 'demo',
         media: {
           imageModel: 'flux-pro',
