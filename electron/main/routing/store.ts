@@ -6,6 +6,7 @@ import {
   ROUTING_LANE_IDS,
   emptyLanePersist,
   emptyRoutingSettings,
+  type RoutingGroup,
   type RoutingLaneId,
   type RoutingLanePersist,
   type RoutingSettings,
@@ -48,6 +49,13 @@ export class RoutingStore {
     return this.toSettings(current)
   }
 
+  async setGroups(laneId: RoutingLaneId, groups: RoutingGroup[]): Promise<RoutingSettings> {
+    const current = await this.read()
+    current.lanes[laneId] = { ...current.lanes[laneId], groups: readGroups(groups) }
+    await this.write(current)
+    return this.toSettings(current)
+  }
+
   async setPort(laneId: RoutingLaneId, port: number | null): Promise<RoutingSettings> {
     const current = await this.read()
     current.lanes[laneId] = { ...current.lanes[laneId], port: normalizePort(port) }
@@ -59,7 +67,7 @@ export class RoutingStore {
     const lanes = {} as Record<RoutingLaneId, RoutingLanePersist>
     for (const id of ROUTING_LANE_IDS) {
       const lane = file.lanes[id] ?? emptyLanePersist()
-      lanes[id] = { queue: [...lane.queue], port: lane.port }
+      lanes[id] = { queue: [...lane.queue], port: lane.port, groups: lane.groups.map(cloneGroup) }
     }
     return {
       failureThreshold: file.failureThreshold,
@@ -122,6 +130,7 @@ function readLanes(parsed: Record<string, unknown>): Record<RoutingLaneId, Routi
       lanes[id] = {
         queue: uniqueIds(raw.queue),
         port: normalizePort(raw.port),
+        groups: readGroups(raw.groups),
       }
     }
     return lanes
@@ -129,8 +138,27 @@ function readLanes(parsed: Record<string, unknown>): Record<RoutingLaneId, Routi
   lanes.codex = {
     queue: uniqueIds(parsed.queue),
     port: normalizePort(parsed.port),
+    groups: [],
   }
   return lanes
+}
+
+function readGroups(value: unknown): RoutingLanePersist['groups'] {
+  if (!Array.isArray(value)) return []
+  const groups: RoutingLanePersist['groups'] = []
+  for (const item of value) {
+    if (!isPlainObject(item) || typeof item.id !== 'string' || !item.id.trim()) continue
+    groups.push({
+      id: item.id.trim(),
+      members: uniqueIds(item.members),
+      strategy: item.strategy === 'turn' ? 'turn' : 'order',
+    })
+  }
+  return groups
+}
+
+function cloneGroup(group: RoutingLanePersist['groups'][number]): RoutingLanePersist['groups'][number] {
+  return { id: group.id, members: [...group.members], strategy: group.strategy }
 }
 
 function uniqueIds(value: unknown): string[] {

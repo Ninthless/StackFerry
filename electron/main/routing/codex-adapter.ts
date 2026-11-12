@@ -23,6 +23,15 @@ export function createCodexAdapter(options: {
       const providers = await options.providers.list()
       return providers.filter((item) => item.kind === 'custom').map((item) => item.id)
     },
+    async listModels(id) {
+      try {
+        const provider = await options.providers.peek(id)
+        const models = provider.models.map((entry) => entry.id).filter(Boolean)
+        return models.length > 0 ? models : provider.model ? [provider.model] : []
+      } catch {
+        return []
+      }
+    },
     async peekActive() {
       const id = await options.providers.getActiveId()
       if (!id) return null
@@ -92,6 +101,7 @@ export function createCodexAdapter(options: {
         ...homes(),
         port,
         provider: {
+          id: provider.id,
           tomlText: provider.tomlText,
           models: provider.models,
         },

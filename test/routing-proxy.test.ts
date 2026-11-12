@@ -4,6 +4,7 @@ import { CircuitBreaker } from '../electron/main/routing/breaker'
 import { RequestLog } from '../electron/main/routing/log'
 import { RoutingProxy, type UpstreamTarget } from '../electron/main/routing/proxy'
 import type { ProxyRoute } from '../electron/main/routing/policy'
+import type { RoutingGroup } from '../shared/routing'
 
 type FakeUpstream = {
   id: string
@@ -33,10 +34,24 @@ async function listenFake(
   return state
 }
 
+function tokenFor(id: string): string {
+  return `token-${id}`
+}
+
+async function readRequestBody(req: IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+  return Buffer.concat(chunks)
+}
+
 async function withProxy(
   targets: UpstreamTarget[],
   run: (base: string, log: RequestLog) => Promise<void>,
   routes?: readonly ProxyRoute[],
+  catalog: { providerId: string; id: string }[] = [],
+  groups: RoutingGroup[] = [],
 ): Promise<void> {
   const log = new RequestLog(() => 20)
   const breaker = new CircuitBreaker(() => ({
@@ -46,6 +61,8 @@ async function withProxy(
   }))
   const proxy = new RoutingProxy({
     listCandidates: async () => targets.map((item) => item.id),
+    listGroups: async () => groups,
+    listCatalog: async () => catalog,
     resolveUpstream: async (id) => targets.find((item) => item.id === id) ?? null,
     admit: (id) => breaker.admit(id),
     recordSuccess: (id) => breaker.recordSuccess(id),
@@ -101,6 +118,31 @@ describe('routing proxy', () => {
     }
   })
 
+  it('lists the gateway catalog as provider/model and does not call upstream', async () => {
+    const upstream = await listenFake('deepseek', (_req, res) => {
+      res.writeHead(200)
+      res.end('{"data":[]}')
+    })
+    try {
+      await withProxy(
+        [{ id: 'deepseek', baseUrl: upstream.url, apiKey: tokenFor('deepseek') }],
+        async (base) => {
+          const response = await fetch(`${base}/v1/models`)
+          expect(response.status).toBe(200)
+          expect(await response.json()).toEqual({
+            object: 'list',
+            data: [{ id: 'deepseek/deepseek-v4-pro', owned_by: 'deepseek' }],
+          })
+          expect(upstream.hits).toBe(0)
+        },
+        undefined,
+        [{ providerId: 'deepseek', id: 'deepseek-v4-pro' }],
+      )
+    } finally {
+      await upstream.close()
+    }
+  })
+
   it('fails over on 429 and does not switch after a 400', async () => {
     const first = await listenFake('one', (_req, res) => {
       res.writeHead(429, { 'content-type': 'application/json' })
@@ -117,7 +159,7 @@ describe('routing proxy', () => {
           { id: 'two', baseUrl: second.url, apiKey: 'k2' },
         ],
         async (base) => {
-          const response = await fetch(`${base}/v1/models`)
+          const response = await fetch(`${base}/v1/responses`, { method: 'POST', body: '{}' })
           expect(response.status).toBe(200)
           expect(await response.text()).toBe('{"ok":true}')
           expect(second.hits).toBe(1)
@@ -323,6 +365,102 @@ describe('routing proxy', () => {
     } finally {
       await first.close()
       await second.close()
+    }
+  })
+
+  it('sends two concurrent sessions to the provider each names, and fails a named 429 over to that lane backup', async () => {
+    const seen: Record<string, string[]> = { deepseek: [], kimi: [] }
+    const deepseek = await listenFake('deepseek', async (req, res) => {
+      const payload = JSON.parse((await readRequestBody(req)).toString('utf8')) as { model?: string }
+      seen.deepseek.push(payload.model ?? '')
+      res.writeHead(429, { 'content-type': 'application/json' })
+      res.end('{"error":"rate"}')
+    })
+    const kimi = await listenFake('kimi', async (req, res) => {
+      const payload = JSON.parse((await readRequestBody(req)).toString('utf8')) as { model?: string }
+      seen.kimi.push(payload.model ?? '')
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end('{"ok":"kimi"}')
+    })
+    try {
+      const targets: UpstreamTarget[] = [
+        { id: 'deepseek', baseUrl: deepseek.url, apiKey: tokenFor('deepseek') },
+        { id: 'kimi', baseUrl: kimi.url, apiKey: tokenFor('kimi') },
+      ]
+      await withProxy(
+        targets,
+        async (base) => {
+          const [left, right] = await Promise.all([
+            fetch(`${base}/v1/responses`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ model: 'deepseek/deepseek-v4-pro', input: 'a' }),
+            }),
+            fetch(`${base}/v1/responses`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ model: 'kimi/kimi-k2.5', input: 'b' }),
+            }),
+          ])
+          expect(left.status).toBe(200)
+          expect(right.status).toBe(200)
+          expect(deepseek.hits).toBe(1)
+          expect(kimi.hits).toBe(2)
+          expect(seen.deepseek).toEqual(['deepseek-v4-pro'])
+          expect(seen.kimi.sort()).toEqual(['deepseek-v4-pro', 'kimi-k2.5'])
+        },
+      )
+    } finally {
+      await deepseek.close()
+      await kimi.close()
+    }
+  })
+
+  it('walks a routing group in member order and does not leak to the lane queue', async () => {
+    const seen: string[] = []
+    const kimi = await listenFake('kimi', async (req, res) => {
+      const payload = JSON.parse((await readRequestBody(req)).toString('utf8')) as { model?: string }
+      seen.push(payload.model ?? '')
+      res.writeHead(429, { 'content-type': 'application/json' })
+      res.end('{"error":"rate"}')
+    })
+    const deepseek = await listenFake('deepseek', async (req, res) => {
+      const payload = JSON.parse((await readRequestBody(req)).toString('utf8')) as { model?: string }
+      seen.push(payload.model ?? '')
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end('{"ok":true}')
+    })
+    const glm = await listenFake('glm', (_req, res) => {
+      res.writeHead(200)
+      res.end('nope')
+    })
+    try {
+      await withProxy(
+        [
+          { id: 'kimi', baseUrl: kimi.url, apiKey: tokenFor('kimi') },
+          { id: 'deepseek', baseUrl: deepseek.url, apiKey: tokenFor('deepseek') },
+          { id: 'glm', baseUrl: glm.url, apiKey: tokenFor('glm') },
+        ],
+        async (base) => {
+          const response = await fetch(`${base}/v1/responses`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ model: 'fast/shared-model', input: 'a' }),
+          })
+          expect(response.status).toBe(200)
+          expect(seen).toEqual(['shared-model', 'shared-model'])
+          expect(kimi.hits).toBe(1)
+          expect(deepseek.hits).toBe(1)
+          expect(glm.hits).toBe(0)
+        },
+        undefined,
+        [],
+        [{ id: 'fast', members: ['kimi', 'deepseek'], strategy: 'order' }],
+      )
+    } finally {
+      await kimi.close()
+      await deepseek.close()
+      await glm.close()
     }
   })
 

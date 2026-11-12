@@ -12,6 +12,14 @@ export function createClaudeAdapter(options: {
       const providers = await options.store.list()
       return providers.filter((item) => item.kind === 'custom').map((item) => item.id)
     },
+    async listModels(id) {
+      try {
+        const provider = await options.store.peek(id)
+        return provider.models.length > 0 ? provider.models : provider.model ? [provider.model] : []
+      } catch {
+        return []
+      }
+    },
     async peekActive() {
       const id = await options.store.getActiveId()
       if (!id) return null

@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { isQueuePermutation, moveQueueItem } from '../shared/routing'
 import {
   classifyProxyPath,
+  candidatesForRequest,
   displayQueue,
+  groupOrder,
   planAfterQueueChange,
   planEnable,
+  namedFailoverOrder,
   planQuit,
+  replaceModelField,
   queueAfterEnable,
   requestOrder,
+  routeForModel,
   shouldFailoverHttp,
   upstreamProxyPath,
   upstreamRequestUrl,
@@ -78,6 +83,81 @@ describe('routing policy', () => {
     expect(shouldFailoverHttp(400)).toBe(false)
     expect(shouldFailoverHttp(401)).toBe(false)
     expect(shouldFailoverHttp(200)).toBe(false)
+  })
+
+  it('sends a provider/model request to that provider and leaves other models on the lane', () => {
+    const providers = ['deepseek', 'kimi']
+    expect(routeForModel('deepseek/deepseek-v4-pro', providers)).toEqual({
+      kind: 'named',
+      providerId: 'deepseek',
+      model: 'deepseek-v4-pro',
+    })
+    expect(routeForModel('gpt-5', providers)).toEqual({ kind: 'lane' })
+    expect(routeForModel('openai/gpt-5', providers)).toEqual({ kind: 'lane' })
+    expect(routeForModel('deepseek/', providers)).toEqual({ kind: 'lane' })
+    expect(routeForModel('/deepseek-v4-pro', providers)).toEqual({ kind: 'lane' })
+  })
+
+  it('orders a routing group and keeps a turn on the member that answered it', () => {
+    const known = ['deepseek', 'kimi', 'glm']
+    expect(
+      groupOrder({ id: 'fast', members: ['kimi', 'missing', 'deepseek'], strategy: 'order' }, known),
+    ).toEqual(['kimi', 'deepseek'])
+    expect(
+      groupOrder(
+        { id: 'fast', members: ['kimi', 'deepseek'], strategy: 'turn' },
+        known,
+        'deepseek',
+      ),
+    ).toEqual(['deepseek', 'kimi'])
+    expect(
+      groupOrder({ id: 'fast', members: ['kimi', 'deepseek'], strategy: 'turn' }, known, 'glm'),
+    ).toEqual(['kimi', 'deepseek'])
+  })
+
+  it('replaces only the model string and leaves the rest of the body byte for byte', () => {
+    const body = Buffer.from(
+      '{"model": "deepseek/deepseek-v4-pro", "system":[{"cache_control":{"type":"ephemeral"}}]}',
+    )
+    const next = replaceModelField(body, 'deepseek-v4-pro')
+    expect(next?.toString('utf8')).toBe(
+      '{"model": "deepseek-v4-pro", "system":[{"cache_control":{"type":"ephemeral"}}]}',
+    )
+    expect(replaceModelField(Buffer.from('{"model":1}'), 'x')).toBeNull()
+  })
+
+  it('walks a group in member order and leaves the lane queue out of it', () => {
+    const providers = ['deepseek', 'kimi', 'glm']
+    const groups = [{ id: 'fast', members: ['kimi', 'deepseek'], strategy: 'order' as const }]
+    expect(candidatesForRequest({ model: 'fast/m', providerIds: providers, groups })).toEqual({
+      order: ['kimi', 'deepseek'],
+      model: 'm',
+    })
+    expect(
+      candidatesForRequest({
+        model: 'fast/m',
+        providerIds: providers,
+        groups: [{ id: 'fast', members: ['kimi', 'deepseek'], strategy: 'turn' }],
+        stickyId: 'deepseek',
+      }),
+    ).toEqual({ order: ['deepseek', 'kimi'], model: 'm' })
+    expect(candidatesForRequest({ model: 'deepseek/m', providerIds: providers, groups })).toEqual({
+      order: ['deepseek', 'kimi', 'glm'],
+      model: 'm',
+    })
+    expect(candidatesForRequest({ model: 'gpt-5', providerIds: providers, groups })).toEqual({
+      order: providers,
+      model: null,
+    })
+  })
+
+  it('fails a named provider over to the lane backups, starting with itself', () => {
+    expect(namedFailoverOrder('deepseek', ['kimi', 'deepseek', 'glm'])).toEqual([
+      'deepseek',
+      'kimi',
+      'glm',
+    ])
+    expect(namedFailoverOrder('deepseek', [])).toEqual(['deepseek'])
   })
 
   it('joins the upstream path onto the provider base url', () => {

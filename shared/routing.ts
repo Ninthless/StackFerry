@@ -24,9 +24,18 @@ export type RoutingPolicy = {
   logRetention: number
 }
 
+export type RoutingGroupStrategy = 'order' | 'turn'
+
+export type RoutingGroup = {
+  id: string
+  members: string[]
+  strategy: RoutingGroupStrategy
+}
+
 export type RoutingLanePersist = {
   queue: string[]
   port: number | null
+  groups: RoutingGroup[]
 }
 
 export type RoutingSettings = RoutingPolicy & {
@@ -68,7 +77,7 @@ export function isRoutingLaneId(value: unknown): value is RoutingLaneId {
 }
 
 export function emptyLanePersist(): RoutingLanePersist {
-  return { queue: [], port: null }
+  return { queue: [], port: null, groups: [] }
 }
 
 export function emptyLaneState(): RoutingLaneState {

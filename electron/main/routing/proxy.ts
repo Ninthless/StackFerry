@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import type { RoutingLogEntry } from '../../../shared/routing'
+import type { RoutingGroup, RoutingLogEntry } from '../../../shared/routing'
 import type { ClaudeAuthScheme } from '../../../shared/types'
 import {
   classifyProxyPath,
@@ -7,6 +7,8 @@ import {
   errorCodeForHttp,
   FIRST_BYTE_TIMEOUT_MS,
   modelFromBody,
+  candidatesForRequest,
+  replaceModelField,
   shouldFailoverHttp,
   upstreamProxyPath,
   upstreamRequestUrl,
@@ -55,8 +57,15 @@ export function readUpstreamApiKey(decrypt: () => string, envKey = ''): string |
   }
 }
 
+export type CatalogModel = {
+  providerId: string
+  id: string
+}
+
 export type RoutingProxyDeps = {
   listCandidates: () => Promise<string[]>
+  listGroups?: () => Promise<RoutingGroup[]>
+  listCatalog?: () => Promise<CatalogModel[]>
   resolveUpstream: (id: string) => Promise<UpstreamTarget | null>
   admit: (id: string) => boolean
   recordSuccess: (id: string) => void
@@ -140,11 +149,19 @@ export class RoutingProxy {
       res.end('{"error":{"message":"Not found"}}')
       return
     }
+    if (route === 'models' && (req.method === 'GET' || req.method === 'HEAD')) {
+      await this.writeCatalog(res)
+      return
+    }
     const body = await readBody(req)
     const model = modelFromBody(body, headerValue(req.headers['content-type']))
     const candidates = await this.deps.listCandidates()
+    const groups = (await this.deps.listGroups?.()) ?? []
+    const planned = candidatesForRequest({ model, providerIds: candidates, groups })
+    const outboundModel = planned.model
+    const selected = planned.order
     let lastFailure: BufferedResponse | null = null
-    for (const id of candidates) {
+    for (const id of selected) {
       if (res.writableEnded) return
       if (!this.deps.admit(id)) {
         this.record(id, model, 0, 'breaker_open', Date.now())
@@ -158,7 +175,8 @@ export class RoutingProxy {
       }
       const started = this.now()
       try {
-        const result = await this.forward(req, res, upstream, pathname, body, route)
+        const forwarded = outboundModel ? (replaceModelField(body, outboundModel) ?? body) : body
+        const result = await this.forward(req, res, upstream, pathname, forwarded, route)
         if (result.kind === 'streamed') {
           this.deps.recordSuccess(id)
           this.record(id, model, result.status, '', started)
@@ -279,6 +297,15 @@ export class RoutingProxy {
   private now(): number {
     return this.deps.now?.() ?? Date.now()
   }
+
+  private async writeCatalog(res: ServerResponse): Promise<void> {
+    const models = (await this.deps.listCatalog?.()) ?? []
+    const data = models
+      .filter((item) => item.providerId && item.id)
+      .map((item) => ({ id: `${item.providerId}/${item.id}`, owned_by: item.providerId }))
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ object: 'list', data }))
+  }
 }
 
 function writeBuffered(res: ServerResponse, result: BufferedResponse): void {
@@ -395,3 +422,4 @@ function headerValue(value: string | string[] | undefined): string {
   if (!value) return ''
   return Array.isArray(value) ? value.join(', ') : value
 }
+

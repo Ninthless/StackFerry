@@ -15,6 +15,7 @@ import { RoutingProxy, type UpstreamTarget } from './proxy'
 
 export type LaneAdapter = {
   listCustomIds(): Promise<string[]>
+  listModels?(id: string): Promise<string[]>
   peekActive(): Promise<{ id: string; kind: ProviderKind } | null>
   peekKind(id: string): Promise<ProviderKind | null>
   overlayNeedsRouter(id: string): Promise<boolean>
@@ -55,6 +56,8 @@ export class RoutingLane {
     this.log = new RequestLog(() => this.options.policy().logRetention)
     this.proxy = new RoutingProxy({
       listCandidates: () => this.candidates(),
+      listGroups: async () => this.options.persist().groups,
+      listCatalog: () => this.catalog(),
       resolveUpstream: (id) => this.adapter.resolveUpstream(id),
       admit: (id) => this.breaker.admit(id),
       recordSuccess: (id) => this.breaker.recordSuccess(id),
@@ -73,6 +76,7 @@ export class RoutingLane {
     const queue = await this.viewQueue(persist.queue)
     return {
       queue,
+      groups: persist.groups,
       port: this.proxy.getPort() ?? persist.port,
       active: this.live,
       logs: this.log.list(),
@@ -222,6 +226,17 @@ export class RoutingLane {
   private async candidates(): Promise<string[]> {
     const [activeId, queue] = await this.routeParts(this.options.persist().queue)
     return requestOrder(activeId, queue)
+  }
+
+  private async catalog(): Promise<{ providerId: string; id: string }[]> {
+    const entries: { providerId: string; id: string }[] = []
+    for (const providerId of await this.candidates()) {
+      const models = (await this.adapter.listModels?.(providerId)) ?? []
+      for (const id of models) {
+        if (id) entries.push({ providerId, id })
+      }
+    }
+    return entries
   }
 
   private async viewQueue(queue: string[]): Promise<string[]> {

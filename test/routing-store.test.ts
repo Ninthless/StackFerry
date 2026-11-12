@@ -14,10 +14,10 @@ describe('routing store', () => {
       halfOpenSuccesses: 1,
       logRetention: 50,
       lanes: {
-        codex: { queue: [], port: null },
-        'claude-code': { queue: [], port: null },
-        'grok-build': { queue: [], port: null },
-        pi: { queue: [], port: null },
+        codex: { queue: [], port: null, groups: [] },
+        'claude-code': { queue: [], port: null, groups: [] },
+        'grok-build': { queue: [], port: null, groups: [] },
+        pi: { queue: [], port: null, groups: [] },
       },
     })
   })
@@ -33,8 +33,8 @@ describe('routing store', () => {
     expect(await store.get()).toMatchObject({
       failureThreshold: 3,
       lanes: {
-        codex: { queue: ['b', 'a'], port: 41234 },
-        'claude-code': { queue: [], port: null },
+        codex: { queue: ['b', 'a'], port: 41234, groups: [] },
+        'claude-code': { queue: [], port: null, groups: [] },
       },
     })
   })
@@ -63,5 +63,20 @@ describe('routing store', () => {
     const persisted = JSON.parse(await readFile(file, 'utf8')) as { version: number; queue?: unknown }
     expect(persisted.version).toBe(2)
     expect(persisted.queue).toBeUndefined()
+  })
+
+  it('drops a group with a blank id and keeps only known strategies', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'stackferry-routing-groups-'))
+    const store = new RoutingStore(path.join(dir, 'routing.json'))
+    const saved = await store.setGroups('codex', [
+      { id: ' fast ', members: ['kimi', 'kimi', ''], strategy: 'turn' },
+      { id: ' ', members: ['deepseek'], strategy: 'order' },
+      { id: 'cheap', members: ['deepseek'], strategy: 'weight' as 'order' },
+    ])
+    expect(saved.lanes.codex.groups).toEqual([
+      { id: 'fast', members: ['kimi'], strategy: 'turn' },
+      { id: 'cheap', members: ['deepseek'], strategy: 'order' },
+    ])
+    expect((await store.get()).lanes.codex.groups).toEqual(saved.lanes.codex.groups)
   })
 })
