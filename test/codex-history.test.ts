@@ -13,7 +13,7 @@ import { STACKFERRY_LIVE_PROVIDER_KEY, providerKey } from '../electron/main/code
 import { enableOfficialLiveConfig, enableThirdPartyLiveConfig } from '../electron/main/codex/writer'
 
 describe('codex history provider bucket', () => {
-  it('rewrites owned session tags and sqlite rows onto custom', async () => {
+  it('rewrites owned session tags and sqlite rows onto stackferry', async () => {
     const { codexHome, backupRoot } = await setupHome()
     const leftover = providerKey('aaaa-bbbb')
     const sessionDir = path.join(codexHome, 'sessions', '2026', '05', '20')
@@ -25,13 +25,13 @@ describe('codex history provider bucket', () => {
     const archivedPath = path.join(archivedDir, 'old.jsonl')
     await writeFile(ownedPath, sessionFile(leftover, 'keep-body'))
     await writeFile(officialPath, sessionFile('openai', 'official-body'))
-    await writeFile(archivedPath, sessionFile('stackferry', 'archived-body'))
+    await writeFile(archivedPath, sessionFile('stackferry_old', 'archived-body'))
     const old = new Date('2024-06-01T00:00:00Z')
     await utimes(ownedPath, old, old)
 
     writeStateDb(path.join(codexHome, 'state_5.sqlite'), [
       ['owned', leftover],
-      ['legacy', 'stackferry'],
+      ['legacy', 'stackferry_old'],
       ['official', 'openai'],
       ['already', 'custom'],
     ])
@@ -39,7 +39,7 @@ describe('codex history provider bucket', () => {
 
     const outcome = await migrateCodexHistoryProviderBucket({ codexHome, backupRoot })
     expect(outcome.jsonlFiles).toBe(2)
-    expect(outcome.stateRows).toBe(3)
+    expect(outcome.stateRows).toBe(4)
     expect(outcome.backupPath).toContain(HISTORY_MIGRATION_NAME)
 
     const owned = JSON.parse((await readFile(ownedPath, 'utf8')).split('\n')[0] ?? '') as {
@@ -55,13 +55,13 @@ describe('codex history provider bucket', () => {
     expect(Math.abs((await stat(ownedPath)).mtime.getTime() - old.getTime())).toBeLessThan(2000)
 
     expect(readProviders(path.join(codexHome, 'state_5.sqlite'))).toEqual({
-      already: 'custom',
-      legacy: 'custom',
+      already: 'stackferry',
+      legacy: 'stackferry',
       official: 'openai',
-      owned: 'custom',
+      owned: 'stackferry',
     })
     expect(readProviders(path.join(codexHome, 'sqlite', 'state_5.sqlite'))).toEqual({
-      desktop: 'custom',
+      desktop: 'stackferry',
     })
     expect(
       await readFile(
@@ -127,19 +127,19 @@ wire_api = "responses"
     })
 
     expect(await readFile(path.join(codexHome, 'config.toml'), 'utf8')).toContain(
-      'model_provider = "custom"',
+      'model_provider = "stackferry"',
     )
     const session = JSON.parse(
       (await readFile(path.join(sessionDir, 'owned.jsonl'), 'utf8')).split('\n')[0] ?? '',
     ) as { payload: { model_provider: string } }
-    expect(session.payload.model_provider).toBe('custom')
+    expect(session.payload.model_provider).toBe('stackferry')
     expect(readProviders(path.join(sqliteHome, 'state_5.sqlite'))).toEqual({
-      'from-home': 'custom',
+      'from-home': 'stackferry',
     })
 
     await enableOfficialLiveConfig({ codexHome, backupRoot })
     expect(readProviders(path.join(sqliteHome, 'state_5.sqlite'))).toEqual({
-      'from-home': 'custom',
+      'from-home': 'stackferry',
     })
   })
 
@@ -147,7 +147,7 @@ wire_api = "responses"
     const { root, codexHome, backupRoot } = await setupHome()
     const sqliteHome = path.join(root, 'env-sqlite')
     await mkdir(sqliteHome, { recursive: true })
-    writeStateDb(path.join(sqliteHome, 'state_11.sqlite'), [['env-row', 'stackferry']])
+    writeStateDb(path.join(sqliteHome, 'state_11.sqlite'), [['env-row', 'stackferry_old']])
 
     const outcome = await migrateCodexHistoryProviderBucket({
       codexHome,
@@ -156,7 +156,7 @@ wire_api = "responses"
     })
     expect(outcome.stateRows).toBe(1)
     expect(readProviders(path.join(sqliteHome, 'state_11.sqlite'))).toEqual({
-      'env-row': 'custom',
+      'env-row': 'stackferry',
     })
   })
 })

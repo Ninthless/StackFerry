@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import {
-  isLegacyOwnedCodexProviderKey,
+  isMovableCodexProviderKey,
   STACKFERRY_LEGACY_LIVE_PROVIDER_KEY,
   STACKFERRY_LIVE_PROVIDER_KEY,
   STACKFERRY_PREFIX,
@@ -20,7 +20,7 @@ const JSONL_ROOTS = [
 
 const STATE_DB_NAME = /^state_\d+\.sqlite$/
 const LEGACY_OWNED_SQL =
-  `model_provider = '${STACKFERRY_LEGACY_LIVE_PROVIDER_KEY}' OR model_provider LIKE '${STACKFERRY_PREFIX}%'`
+  `model_provider = '${STACKFERRY_LEGACY_LIVE_PROVIDER_KEY}' OR (model_provider LIKE '${STACKFERRY_PREFIX}%' AND model_provider != '${STACKFERRY_LIVE_PROVIDER_KEY}')`
 
 export type HistoryMigrationOutcome = {
   jsonlFiles: number
@@ -143,7 +143,7 @@ function rewriteSessionMetaLine(line: string): string | null {
   }
   if (!isRecord(value) || value.type !== 'session_meta' || !isRecord(value.payload)) return null
   const current = value.payload.model_provider
-  if (typeof current !== 'string' || !isLegacyOwnedCodexProviderKey(current)) return null
+  if (typeof current !== 'string' || !isMovableCodexProviderKey(current)) return null
   value.payload.model_provider = STACKFERRY_LIVE_PROVIDER_KEY
   try {
     return JSON.stringify(value)

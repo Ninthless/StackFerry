@@ -1,12 +1,13 @@
 import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { encodeCodexCatalog } from '../../../shared/codex-models'
+import { encodeCodexCatalog, gatewayModelId } from '../../../shared/codex-models'
 import { normalizeModelEntries, type ModelEntry } from '../../../shared/model-entry'
 import { parseProviderOverlay } from '../../../shared/provider-overlay'
 import { migrateCodexHistoryProviderBucket } from './history'
 import { codexAuthPath, codexConfigPath, stackferryCatalogPath } from './home'
 import {
+  applyGatewayBase,
   applyOfficialProvider,
   applyRouterProvider,
   applyThirdPartyProvider,
@@ -30,7 +31,7 @@ export async function enableThirdPartyLiveConfig(options: {
   const configPath = codexConfigPath(options.codexHome)
   const backupPath = await backupLiveFiles(options.codexHome, options.backupRoot)
   const current = await readTomlOrEmpty(configPath)
-  await writeStackferryCatalog(options.codexHome, options.provider.models, options.provider.tomlText)
+  await writeStackferryCatalog(options.codexHome, options.provider.models, options.provider.tomlText, '')
   const next = applyThirdPartyProvider(current, withCatalog(options.codexHome, options.provider))
   await mkdir(options.codexHome, { recursive: true })
   await atomicWriteFile(configPath, stringifyToml(next))
@@ -55,20 +56,41 @@ export async function enableRouterLiveConfig(options: {
   codexHome: string
   backupRoot: string
   port: number
-  provider: Pick<RouterLiveConfig, 'tomlText' | 'models'>
+  provider: Pick<RouterLiveConfig, 'tomlText' | 'models'> & { id: string }
 }): Promise<EnableResult> {
   const configPath = codexConfigPath(options.codexHome)
   const backupPath = await backupLiveFiles(options.codexHome, options.backupRoot)
   const current = await readTomlOrEmpty(configPath)
-  await writeStackferryCatalog(options.codexHome, options.provider.models, options.provider.tomlText)
-  const next = applyRouterProvider(current, {
-    port: options.port,
-    ...withCatalog(options.codexHome, options.provider),
-  })
+  const signedIn = await hasChatGptLogin(options.codexHome)
+  if (!signedIn) {
+    await writeStackferryCatalog(
+      options.codexHome,
+      options.provider.models,
+      options.provider.tomlText,
+      options.provider.id,
+    )
+  }
+  const next = signedIn
+    ? applyGatewayBase(current, options.port, gatewayModelId(options.provider.id, catalogModelIds(options.provider.models, options.provider.tomlText)[0]?.id ?? ''))
+    : applyRouterProvider(current, {
+        port: options.port,
+        ...withCatalog(options.codexHome, options.provider),
+      })
   await mkdir(options.codexHome, { recursive: true })
   await atomicWriteFile(configPath, stringifyToml(next))
-  await migrateHistory(options.codexHome, options.backupRoot, next)
+  if (!signedIn) await migrateHistory(options.codexHome, options.backupRoot, next)
   return { backupPath, configPath }
+}
+
+async function hasChatGptLogin(codexHome: string): Promise<boolean> {
+  const filePath = codexAuthPath(codexHome)
+  if (!existsSync(filePath)) return false
+  try {
+    const parsed = JSON.parse(await readFile(filePath, 'utf8')) as { tokens?: unknown }
+    return Boolean(parsed.tokens)
+  } catch {
+    return false
+  }
 }
 
 async function migrateHistory(codexHome: string, backupRoot: string, doc: TomlTable): Promise<void> {
@@ -96,21 +118,34 @@ function catalogModelIds(models: readonly ModelEntry[] | undefined, tomlText: st
   const listed = normalizeModelEntries(models)
   if (listed.length > 0) return listed
   // 只填了当前模型时也要写目录。否则 Codex 用未知模型的回退元数据，桌面端会关掉贴图。
-  const id = parseProviderOverlay(tomlText).model.trim()
+  const id = readTomlModel(tomlText)
   return normalizeModelEntries([id])
+}
+
+function readTomlModel(tomlText: string): string {
+  try {
+    return parseProviderOverlay(tomlText).model.trim()
+  } catch {
+    const match = tomlText.match(/^\s*model\s*=\s*"([^"]*)"/m)
+    return match?.[1]?.trim() ?? ''
+  }
 }
 
 async function writeStackferryCatalog(
   codexHome: string,
   models: readonly ModelEntry[] | undefined,
   tomlText: string,
+  providerId: string,
 ): Promise<void> {
   const listed = catalogModelIds(models, tomlText)
   if (listed.length === 0) return
   const filePath = stackferryCatalogPath(codexHome)
   await mkdir(path.dirname(filePath), { recursive: true })
   const contextWindow = parseProviderOverlay(tomlText).contextWindow
-  await atomicWriteFile(filePath, `${JSON.stringify(encodeCodexCatalog(listed, contextWindow), null, 2)}\n`)
+  await atomicWriteFile(
+    filePath,
+    `${JSON.stringify(encodeCodexCatalog(listed, contextWindow, providerId), null, 2)}\n`,
+  )
 }
 
 export async function backupLiveFiles(codexHome: string, backupRoot: string): Promise<string> {

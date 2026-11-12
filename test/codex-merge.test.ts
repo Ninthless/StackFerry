@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyGatewayBase,
   applyOfficialProvider,
   applyRouterProvider,
   applyThirdPartyProvider,
@@ -123,9 +124,8 @@ describe('codex toml merge', () => {
     expect(second.model_provider).toBe(STACKFERRY_LIVE_PROVIDER_KEY)
     expect(Object.keys(providers).sort()).toEqual([leftover, STACKFERRY_LIVE_PROVIDER_KEY].sort())
     expect(providers[STACKFERRY_LIVE_PROVIDER_KEY].experimental_bearer_token).toBe('key-b')
-    expect(providers[leftover].experimental_bearer_token).toBe('key-b')
+    expect(providers[leftover].experimental_bearer_token).toBe('key-a')
     expect(providers[STACKFERRY_LIVE_PROVIDER_KEY].base_url).toBe('https://b.example/v1')
-    expect(stringifyToml(second)).not.toContain('key-a')
   })
 
   it('retargets the leftover stackferry live table', () => {
@@ -329,6 +329,50 @@ ${overlayFor({
     expect(providers(routed)[STACKFERRY_LIVE_PROVIDER_KEY].base_url).toBe('http://127.0.0.1:17890/v1')
     expect(providers(back)[STACKFERRY_LIVE_PROVIDER_KEY].base_url).toBe('https://a.example/v1')
     expect(providers(back)[STACKFERRY_LIVE_PROVIDER_KEY].experimental_bearer_token).toBe('key-a')
+  })
+
+  it('points a signed-in Codex at the gateway without changing its provider', () => {
+    const signedIn = parseToml(`
+model_provider = "openai"
+model = "gpt-5"
+`)
+    const next = applyGatewayBase(signedIn, 17890)
+    expect(next.model_provider).toBe('openai')
+    expect(next.model).toBe('gpt-5')
+    expect(next.openai_base_url).toBe('http://127.0.0.1:17890/v1')
+    expect(next.model_providers).toBeUndefined()
+  })
+
+  it('keeps an unsigned Codex on one stackferry table and leaves the custom bucket alone', () => {
+    const first = applyThirdPartyProvider(existing, {
+      id: 'aaaa',
+      name: 'A',
+      tomlText: overlayFor({
+        providerId: 'provider_a',
+        name: 'A',
+        baseUrl: 'https://a.example/v1',
+        model: 'model-a',
+      }),
+      apiKey: 'key-a',
+    })
+    const seeded = structuredClone(first)
+    const providersAfterFirst = seeded.model_providers as Record<string, unknown>
+    providersAfterFirst.custom = { ...(providersAfterFirst.stackferry as object) }
+    const second = applyThirdPartyProvider(seeded, {
+      id: 'bbbb',
+      name: 'B',
+      tomlText: overlayFor({
+        providerId: 'provider_b',
+        name: 'B',
+        baseUrl: 'https://b.example/v1',
+        model: 'model-b',
+      }),
+      apiKey: 'key-b',
+    })
+    expect(second.model_provider).toBe('stackferry')
+    const providers = second.model_providers as Record<string, Record<string, string>>
+    expect(providers.stackferry.base_url).toBe('https://b.example/v1')
+    expect(providers.custom.experimental_bearer_token).toBe('key-a')
   })
 
   it('writes a local router table without secrets', () => {

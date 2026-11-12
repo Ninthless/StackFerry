@@ -18,9 +18,8 @@ export type { TomlTable }
 export { parseToml, stringifyToml }
 
 export const STACKFERRY_PREFIX = 'stackferry_'
-export const STACKFERRY_LEGACY_LIVE_PROVIDER_KEY = 'stackferry'
-// 与 CCSW 共用 custom 桶，Codex 历史列表才能看见两边留下的会话。
-export const STACKFERRY_LIVE_PROVIDER_KEY = 'custom'
+export const STACKFERRY_LEGACY_LIVE_PROVIDER_KEY = 'custom'
+export const STACKFERRY_LIVE_PROVIDER_KEY = 'stackferry'
 export const OFFICIAL_MODEL_PROVIDER = 'openai'
 
 export type CatalogLiveConfig = {
@@ -48,6 +47,10 @@ export function isLegacyOwnedCodexProviderKey(key: string): boolean {
   return key === STACKFERRY_LEGACY_LIVE_PROVIDER_KEY || key.startsWith(STACKFERRY_PREFIX)
 }
 
+export function isMovableCodexProviderKey(key: string): boolean {
+  return key !== STACKFERRY_LIVE_PROVIDER_KEY && isOwnedCodexProviderKey(key)
+}
+
 export function isOwnedCodexProviderKey(key: string): boolean {
   return key === STACKFERRY_LIVE_PROVIDER_KEY || isLegacyOwnedCodexProviderKey(key)
 }
@@ -68,12 +71,25 @@ export function applyThirdPartyProvider(doc: TomlTable, input: ThirdPartyLiveCon
   if (input.apiKey.trim() && !overlayUsesExternalAuth(table)) {
     table.experimental_bearer_token = input.apiKey.trim()
   }
-  // Codex 会话冻的是 model_provider id。直连和故障路由都写 custom，开关路由只改地址。
-  writeOwnedProviderTables(providers, table)
+  providers[STACKFERRY_LIVE_PROVIDER_KEY] = structuredClone(table)
   next.model_provider = STACKFERRY_LIVE_PROVIDER_KEY
+  delete next.openai_base_url
   applySessionKeys(next, overlay)
   applyCatalogPointer(next, input)
   return next
+}
+
+export function applyGatewayBase(doc: TomlTable, port: number, model = ''): TomlTable {
+  const next = cloneDoc(doc)
+  next.model_provider = OFFICIAL_MODEL_PROVIDER
+  next.openai_base_url = gatewayBaseUrl(port)
+  const trimmed = model.trim()
+  if (trimmed) next.model = trimmed
+  return next
+}
+
+export function gatewayBaseUrl(port: number): string {
+  return `http://${ROUTER_BIND_HOST}:${port}/v1`
 }
 
 export function applyOfficialProvider(doc: TomlTable, catalogPath?: string): TomlTable {
@@ -87,23 +103,16 @@ export function applyRouterProvider(doc: TomlTable, input: RouterLiveConfig): To
   const overlay = parseProviderOverlay(input.tomlText)
   const next = cloneDoc(doc)
   const providers = ensureProviderTable(next)
-  writeOwnedProviderTables(providers, {
+  providers[STACKFERRY_LIVE_PROVIDER_KEY] = {
     name: ROUTER_PROVIDER_NAME,
-    base_url: `http://${ROUTER_BIND_HOST}:${input.port}/v1`,
+    base_url: gatewayBaseUrl(input.port),
     wire_api: 'responses',
-  })
+  }
   next.model_provider = STACKFERRY_LIVE_PROVIDER_KEY
+  delete next.openai_base_url
   applySessionKeys(next, overlay)
   applyCatalogPointer(next, input)
   return next
-}
-
-function writeOwnedProviderTables(providers: TomlTable, table: TomlTable): void {
-  providers[STACKFERRY_LIVE_PROVIDER_KEY] = structuredClone(table)
-  for (const key of Object.keys(providers)) {
-    if (key === STACKFERRY_LIVE_PROVIDER_KEY || !isOwnedCodexProviderKey(key)) continue
-    providers[key] = structuredClone(table)
-  }
 }
 
 function applyCatalogPointer(doc: TomlTable, input: CatalogLiveConfig): void {

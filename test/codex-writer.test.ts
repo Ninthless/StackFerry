@@ -87,7 +87,7 @@ wire_api = "responses"
     const afterSecond = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
     expect(afterSecond).toContain('key-b')
     expect(afterSecond).not.toContain('key-a')
-    expect(afterSecond).toContain('model_provider = "custom"')
+    expect(afterSecond).toContain('model_provider = "stackferry"')
 
     await enableOfficialLiveConfig({ codexHome, backupRoot })
     const afterOfficial = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
@@ -95,6 +95,32 @@ wire_api = "responses"
     expect(afterOfficial).toContain('notify = [ "keep" ]')
     expect(afterOfficial).not.toContain('approval_policy')
     expect(afterOfficial).toContain('experimental_bearer_token = "key-b"')
+    expect(await readFile(path.join(codexHome, 'auth.json'), 'utf8')).toBe(originalAuth)
+  })
+
+  it('points a signed-in Codex at the gateway and leaves its provider alone', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'stackferry-signed-in-'))
+    const codexHome = path.join(root, 'codex')
+    const backupRoot = path.join(root, 'backups')
+    await mkdir(codexHome, { recursive: true })
+    await writeFile(path.join(codexHome, 'config.toml'), 'model = "gpt-5"\nmodel_provider = "openai"\n')
+    await writeFile(path.join(codexHome, 'auth.json'), originalAuth)
+
+    await enableRouterLiveConfig({
+      codexHome,
+      backupRoot,
+      port: 18765,
+      provider: {
+        id: 'signed-in',
+        tomlText: 'model = "model-r"\n',
+      },
+    })
+
+    const written = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
+    expect(written).toContain('model_provider = "openai"')
+    expect(written).toContain('openai_base_url = "http://127.0.0.1:18765/v1"')
+    expect(written).toContain('model = "signed-in/model-r"')
+    expect(written).not.toContain('model_providers')
     expect(await readFile(path.join(codexHome, 'auth.json'), 'utf8')).toBe(originalAuth)
   })
 
@@ -110,6 +136,7 @@ wire_api = "responses"
       backupRoot,
       port: 18765,
       provider: {
+        id: 'router-r',
         tomlText: `model = "model-r"
 model_provider = "provider_r"
 
@@ -122,7 +149,7 @@ wire_api = "responses"
     })
 
     const written = await readFile(path.join(codexHome, 'config.toml'), 'utf8')
-    expect(written).toContain('model_provider = "custom"')
+    expect(written).toContain('model_provider = "stackferry"')
     expect(written).toContain('base_url = "http://127.0.0.1:18765/v1"')
     expect(written).toContain('wire_api = "responses"')
     expect(written).toContain('model = "model-r"')
